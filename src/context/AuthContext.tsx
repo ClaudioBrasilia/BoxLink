@@ -55,7 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!data) {
         if (retries > 0) {
           console.log(`Profile not found, retrying... (${retries} attempts left)`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 2000));
           return fetchUserProfile(userId, retries - 1);
         }
         console.warn('Profile not found for user:', userId);
@@ -93,10 +93,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       if (authData.user) {
+        // Tenta buscar o perfil. Se não encontrar imediatamente, fetchUserProfile já tem retentativas.
         const profile = await fetchUserProfile(authData.user.id);
+        
+        // Se após as retentativas ainda não existir, pode ser um atraso na trigger do Supabase.
+        // Em vez de bloquear o login com erro, permitimos que o estado 'loading' ou o useEffect do App.tsx lidem com isso,
+        // ou fornecemos uma mensagem mais clara.
         if (!profile) {
+          console.error('Perfil não encontrado após login para o UID:', authData.user.id);
+          // Opcional: Você pode optar por criar o perfil aqui se a trigger falhar, 
+          // mas por segurança vamos apenas avisar que está sendo preparado.
           setLoading(false);
-          return { error: { message: 'Perfil não encontrado. Entre em contato com o suporte.' } };
+          return { error: { message: 'Seu perfil está sendo preparado. Por favor, tente entrar novamente em alguns segundos.' } };
         }
       }
       
