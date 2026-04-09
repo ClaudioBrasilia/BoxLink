@@ -1,0 +1,26 @@
+{
+  "rewards": {
+    "wod_result": {
+      "xp": 30,
+      "coins": 5,
+      "is_fixed": true
+    },
+    "checkin": {
+      "xp": 20,
+      "coins": 5
+    },
+    "weekly_bonus": {
+      "3_days": { "xp": 20, "coins": 15 },
+      "4_days": { "xp": 30, "coins": 20 },
+      "5_days": { "xp": 40, "coins": 30 },
+      "6_days": { "xp": 50, "coins": 40 }
+    },
+    "level_up": {
+      "coins": 25
+    }
+  },
+  "geofencing": {
+    "enabled": true,
+    "default_radius": 500
+  }
+}

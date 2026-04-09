@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Info, X } from 'lucide-react';
+import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Info, X, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { Wod as WodType } from '../types';
@@ -15,6 +15,7 @@ export default function Wod() {
   const [currentWod, setCurrentWod] = useState<WodType | null>(null);
   const [results, setResults] = useState<any[]>([]);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [newResult, setNewResult] = useState({ result: '', type: 'RX' });
 
   const fetchResults = async (wodId: string) => {
@@ -57,6 +58,7 @@ export default function Wod() {
 
     if (!error) {
       setIsRegistering(false);
+      setShowSuccess(true);
       setNewResult({ result: '', type: 'RX' });
       fetchResults(currentWod.id);
     } else {
@@ -256,6 +258,19 @@ export default function Wod() {
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+      {/* Success Notification */}
+      <AnimatePresence>
+        {showSuccess && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-24 left-4 right-4 z-50 bg-primary text-background p-4 rounded-2xl shadow-2xl flex items-center justify-center gap-3 font-headline font-black italic"
+          >
+            <Check className="w-6 h-6" /> RESULTADO SALVO COM SUCESSO!
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

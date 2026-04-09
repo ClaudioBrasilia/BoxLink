@@ -63,6 +63,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
       
+      const data = await response.json().catch(err => {
+        console.error('JSON parse error:', err);
+        throw new Error('Resposta do servidor inválida');
+      });
+      
       const mappedUser: User = {
         ...data,
         avatar: {

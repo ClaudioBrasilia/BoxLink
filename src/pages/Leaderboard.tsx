@@ -12,6 +12,8 @@ export default function Leaderboard() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     const fetchRankings = async () => {
       try {

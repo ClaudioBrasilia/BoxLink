@@ -49,6 +49,12 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?
 };
 
 export default function App() {
+  useEffect(() => {
+    // Seed items on app start
+    fetch('/api/admin/seed-items', { method: 'POST' })
+      .catch(err => console.error('Error seeding items:', err));
+  }, []);
+
   return (
     <AuthProvider>
       <BrowserRouter>

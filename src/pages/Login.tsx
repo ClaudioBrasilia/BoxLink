@@ -5,11 +5,17 @@ import { LogIn, UserPlus, Shield, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [error, setError] = useState('');
   const { login, user, loading } = useAuth();
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    // Force clear inputs on mount to prevent stale values from build or other sources
+    setEmailInput('');
+    setPasswordInput('');
+  }, []);
 
   React.useEffect(() => {
     if (user && !loading) {
@@ -21,7 +27,7 @@ export default function Login() {
     e.preventDefault();
     setError('');
     try {
-      const { error } = await login(email, password);
+      const { error } = await login(emailInput, passwordInput);
       if (!error) {
         navigate('/');
       } else {
@@ -55,9 +61,10 @@ export default function Login() {
             <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest ml-4">Endereço de E-mail</label>
             <input
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
               className="w-full bg-surface-container-low border border-outline-variant/10 rounded-2xl p-5 font-headline font-bold text-on-surface focus:border-primary/50 transition-all outline-none"
+              autoComplete="new-password"
               placeholder="atleta@crosscity.com"
               required
             />
@@ -66,9 +73,10 @@ export default function Login() {
             <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest ml-4">Senha</label>
             <input
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
               className="w-full bg-surface-container-low border border-outline-variant/10 rounded-2xl p-5 font-headline font-bold text-on-surface focus:border-primary/50 transition-all outline-none"
+              autoComplete="new-password"
               placeholder="••••••••"
               required
             />
