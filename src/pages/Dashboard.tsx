@@ -130,16 +130,28 @@ export default function Dashboard() {
           }
 
           // 4. Refresh user profile
-          const { data: updatedProfile } = await supabase.from('profiles').select('*, checkins(*)').eq('id', user?.id).single();
+          const { data: updatedProfile } = await supabase.from('profiles').select('*, checkins(*)').eq('id', user?.id).maybeSingle();
           if (updatedProfile) {
             const mappedUser: User = {
-              ...updatedProfile,
+              id: updatedProfile.id,
+              email: updatedProfile.email,
+              name: updatedProfile.name,
+              role: updatedProfile.role,
+              status: updatedProfile.status,
+              xp: updatedProfile.xp || 0,
+              coins: updatedProfile.coins || 0,
+              level: updatedProfile.level || 1,
               avatar: {
                 equipped: updatedProfile.avatar_equipped,
-                inventory: updatedProfile.avatar_inventory
+                inventory: updatedProfile.avatar_inventory || []
               },
-              checkins: updatedProfile.checkins || [],
-              paidBonuses: updatedProfile.paid_bonuses || []
+              checkins: (updatedProfile.checkins || []).map((c: any) => ({
+                date: c.date,
+                timestamp: c.timestamp,
+                classTime: c.class_time
+              })),
+              paidBonuses: updatedProfile.paid_bonuses || [],
+              createdAt: updatedProfile.created_at
             };
             updateUser(mappedUser);
           }

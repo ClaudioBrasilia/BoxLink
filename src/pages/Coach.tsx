@@ -226,10 +226,6 @@ export default function Coach() {
                   <label className="text-[10px] text-secondary font-bold uppercase tracking-widest">SCALED</label>
                   <textarea rows={2} value={newWod.scaled} onChange={e => setNewWod({...newWod, scaled: e.target.value})} className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">BEGINNER</label>
-                  <textarea rows={2} value={newWod.beginner} onChange={e => setNewWod({...newWod, beginner: e.target.value})} className="w-full bg-surface-container-highest/30 border border-outline-variant/20 rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" />
-                </div>
               </div>
 
               <button onClick={handleSaveWod} className="w-full bg-primary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-lg uppercase italic tracking-tight flex items-center justify-center gap-2">
