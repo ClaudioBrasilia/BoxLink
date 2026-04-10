@@ -44,7 +44,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchUserProfile = async (userId: string, retries = 3) => {
+  const fetchUserProfile = async (userId: string) => {
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -56,40 +56,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
       
       if (!data) {
-        if (retries > 0) {
-          console.log(`Profile not found, retrying... (${retries} attempts left)`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          return fetchUserProfile(userId, retries - 1);
-        }
         console.warn('Profile not found for user:', userId);
-        // Se o perfil não existe, criamos um objeto de usuário mínimo com o ID do Auth
-        // para que o App não redirecione para /login, mas sim mostre a tela de pendência.
-        const minimalUser: User = {
-          id: userId,
-          email: '',
-          name: 'Usuário',
-          role: 'athlete',
-          status: 'pending',
-          level: 1,
-          xp: 0,
-          coins: 0,
-          avatar: { equipped: {}, inventory: [] },
-          checkins: [],
-          paidBonuses: [],
-          created_at: new Date().toISOString()
-        };
-        setUser(minimalUser);
-        return minimalUser;
+        setUser(null);
+        return null;
       }
       
       const mappedUser: User = {
-        ...data,
+        id: data.id,
+        email: data.email,
+        name: data.name,
+        role: data.role,
+        status: data.status,
+        xp: data.xp || 0,
+        coins: data.coins || 0,
+        level: data.level || 1,
         avatar: {
           equipped: data.avatar_equipped,
-          inventory: data.avatar_inventory
+          inventory: data.avatar_inventory || []
         },
-        checkins: data.checkins || [],
-        paidBonuses: data.paid_bonuses || []
+        checkins: (data.checkins || []).map((c: any) => ({
+          date: c.date,
+          timestamp: c.timestamp,
+          classTime: c.class_time
+        })),
+        paidBonuses: data.paid_bonuses || [],
+        createdAt: data.created_at
       };
       
       setUser(mappedUser);
@@ -112,8 +103,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       if (authData.user) {
-        // Tenta buscar o perfil em segundo plano para não bloquear o login
-        fetchUserProfile(authData.user.id);
+        const profile = await fetchUserProfile(authData.user.id);
+        if (!profile) {
+          // Small delay and retry for robustness
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const retryProfile = await fetchUserProfile(authData.user.id);
+          if (!retryProfile) {
+            setLoading(false);
+            return { error: { message: 'Perfil não encontrado. Verifique se sua conta foi aprovada.' } };
+          }
+        }
       }
       
       return { error: null };
