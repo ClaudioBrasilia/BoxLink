@@ -28,10 +28,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     // Listen for changes on auth state (logged in, signed out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
-        setLoading(true);
-        fetchUserProfile(session.user.id);
+        // Se já temos o usuário correto, não precisamos dar fetch de novo a cada mudança menor de estado
+        if (!user || user.id !== session.user.id) {
+          setLoading(true);
+          await fetchUserProfile(session.user.id);
+        }
       } else {
         setUser(null);
         setLoading(false);
@@ -55,12 +58,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!data) {
         if (retries > 0) {
           console.log(`Profile not found, retrying... (${retries} attempts left)`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 2000));
           return fetchUserProfile(userId, retries - 1);
         }
         console.warn('Profile not found for user:', userId);
-        setUser(null);
-        return;
+        // Se o perfil não existe, criamos um objeto de usuário mínimo com o ID do Auth
+        // para que o App não redirecione para /login, mas sim mostre a tela de pendência.
+        const minimalUser: User = {
+          id: userId,
+          email: '',
+          name: 'Usuário',
+          role: 'athlete',
+          status: 'pending',
+          level: 1,
+          xp: 0,
+          coins: 0,
+          avatar: { equipped: {}, inventory: [] },
+          checkins: [],
+          paidBonuses: [],
+          created_at: new Date().toISOString()
+        };
+        setUser(minimalUser);
+        return minimalUser;
       }
       
       const mappedUser: User = {
