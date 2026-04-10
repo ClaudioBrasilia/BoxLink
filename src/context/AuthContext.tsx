@@ -28,10 +28,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     // Listen for changes on auth state (logged in, signed out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
-        setLoading(true);
-        fetchUserProfile(session.user.id);
+        // Se já temos o usuário correto, não precisamos dar fetch de novo a cada mudança menor de estado
+        if (!user || user.id !== session.user.id) {
+          setLoading(true);
+          await fetchUserProfile(session.user.id);
+        }
       } else {
         setUser(null);
         setLoading(false);
