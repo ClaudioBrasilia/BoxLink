@@ -28,10 +28,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     // Listen for changes on auth state (logged in, signed out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
-        setLoading(true);
-        fetchUserProfile(session.user.id);
+        // Se já temos o usuário correto, não precisamos dar fetch de novo a cada mudança menor de estado
+        if (!user || user.id !== session.user.id) {
+          setLoading(true);
+          await fetchUserProfile(session.user.id);
+        }
       } else {
         setUser(null);
         setLoading(false);
@@ -41,7 +44,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchUserProfile = async (userId: string, retries = 3) => {
+  const fetchUserProfile = async (userId: string) => {
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -53,24 +56,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
       
       if (!data) {
-        if (retries > 0) {
-          console.log(`Profile not found, retrying... (${retries} attempts left)`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          return fetchUserProfile(userId, retries - 1);
-        }
         console.warn('Profile not found for user:', userId);
         setUser(null);
-        return;
+        return null;
       }
       
       const mappedUser: User = {
-        ...data,
+        id: data.id,
+        email: data.email,
+        name: data.name ?? data.full_name ?? 'Atleta',
+        role: data.role,
+        status: data.status ?? data.approval_status ?? data.approvalStatus ?? 'pending',
+        xp: data.xp || 0,
+        coins: data.coins || 0,
+        level: data.level || 1,
         avatar: {
           equipped: data.avatar_equipped,
-          inventory: data.avatar_inventory
+          inventory: data.avatar_inventory || []
         },
-        checkins: data.checkins || [],
-        paidBonuses: data.paid_bonuses || []
+        checkins: (data.checkins || []).map((c: any) => ({
+          date: c.date,
+          timestamp: c.timestamp,
+          classTime: c.class_time
+        })),
+        paidBonuses: data.paid_bonuses || [],
+        createdAt: data.created_at
       };
       
       setUser(mappedUser);
@@ -93,10 +103,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       if (authData.user) {
-        // Tenta buscar o perfil.
-        // Se o usuário já existe e está auto-confirmado, o perfil deve estar lá.
-        // Não bloqueamos o login aqui; deixamos o onAuthStateChange ou o redirecionamento lidar com o estado.
-        fetchUserProfile(authData.user.id);
+        const profile = await fetchUserProfile(authData.user.id);
+        if (!profile) {
+          // Small delay and retry for robustness
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const retryProfile = await fetchUserProfile(authData.user.id);
+          if (!retryProfile) {
+            setLoading(false);
+            return { error: { message: 'Perfil não encontrado. Verifique se sua conta foi aprovada.' } };
+          }
+        }
       }
       
       return { error: null };

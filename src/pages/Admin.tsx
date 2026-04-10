@@ -72,12 +72,25 @@ export default function Admin() {
     const { data: usersData } = await supabase.from('profiles').select('*, checkins(*)');
     if (usersData) {
       const mappedUsers = usersData.map((u: any) => ({
-        ...u,
-        paidBonuses: u.paid_bonuses,
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        role: u.role,
+        status: u.status,
+        xp: u.xp || 0,
+        coins: u.coins || 0,
+        level: u.level || 1,
         avatar: {
           equipped: u.avatar_equipped,
-          inventory: u.avatar_inventory
-        }
+          inventory: u.avatar_inventory || []
+        },
+        checkins: (u.checkins || []).map((c: any) => ({
+          date: c.date,
+          timestamp: c.timestamp,
+          classTime: c.class_time
+        })),
+        paidBonuses: u.paid_bonuses || [],
+        createdAt: u.created_at
       }));
       setUsers(mappedUsers);
       const roles: Record<string, string> = {};

@@ -210,21 +210,35 @@ create policy "Users can manage their own PRs" on public.personal_records for al
 
 -- Functions and Triggers
 -- Automatically create profile on signup
-create function public.handle_new_user()
-returns trigger as $$
-begin
-  insert into public.profiles (id, name, email, role, status)
-  values (
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.profiles (id, name, email, role, status)
+  VALUES (
     new.id, 
-    new.raw_user_meta_data->>'name', 
+    COALESCE(new.raw_user_meta_data->>'name', 'Novo Atleta'), 
     new.email,
-    case when new.email = 'claudiobrasilia13@gmail.com' then 'admin' else 'athlete' end,
-    case when new.email = 'claudiobrasilia13@gmail.com' then 'approved' else 'pending' end
+    CASE WHEN new.email = 'claudiobrasilia13@gmail.com' THEN 'admin' ELSE 'athlete' END,
+    CASE WHEN new.email = 'claudiobrasilia13@gmail.com' THEN 'approved' ELSE 'pending' END
   );
-  return new;
-end;
-$$ language plpgsql security definer;
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();
+-- Ensure trigger is created
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+-- Backfill script for existing users without profiles
+INSERT INTO public.profiles (id, name, email, role, status)
+SELECT 
+    id, 
+    COALESCE(raw_user_meta_data->>'name', 'Atleta'), 
+    email,
+    CASE WHEN email = 'claudiobrasilia13@gmail.com' THEN 'admin' ELSE 'athlete' END,
+    CASE WHEN email = 'claudiobrasilia13@gmail.com' THEN 'approved' ELSE 'pending' END
+FROM auth.users
+WHERE id NOT IN (SELECT id FROM public.profiles)
+ON CONFLICT (id) DO NOTHING;
