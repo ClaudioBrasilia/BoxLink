@@ -64,9 +64,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const mappedUser: User = {
         id: data.id,
         email: data.email,
-        name: data.name,
+        name: data.name ?? data.full_name ?? 'Atleta',
         role: data.role,
-        status: data.status,
+        status: data.status ?? data.approval_status ?? data.approvalStatus ?? 'pending',
         xp: data.xp || 0,
         coins: data.coins || 0,
         level: data.level || 1,
