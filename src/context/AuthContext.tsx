@@ -41,7 +41,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const fetchUserProfile = async (userId: string) => {
-    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -85,8 +84,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error fetching user profile:', error);
       setUser(null);
       return null;
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -113,6 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
+      setLoading(false);
       return { error: null };
     } catch (error: any) {
       console.error('Login error:', error);
