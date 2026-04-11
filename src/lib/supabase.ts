@@ -8,14 +8,9 @@ export const getSupabase = () => {
     const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      console.error('Supabase credentials missing. App may not function correctly.');
-      // Return a proxy that logs errors instead of throwing
-      return new Proxy({}, {
-        get: () => () => ({ 
-          auth: { getSession: async () => ({ data: { session: null } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) },
-          from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: null, error: new Error('Missing credentials') }) }) }) })
-        })
-      });
+      throw new Error(
+        'ERRO: Variáveis de ambiente VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY não estão configuradas. Crie um arquivo .env na raiz do projeto com essas variáveis.'
+      );
     }
     if (supabaseAnonKey.startsWith('sb_')) {
       throw new Error("Invalid Supabase Key: It looks like you are using a Stripe key (starting with 'sb_') instead of a Supabase key. Please use the 'anon' key from Supabase Settings -> API.");
