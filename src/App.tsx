@@ -20,8 +20,8 @@ import DebugFlow from './pages/DebugFlow';
 import { Shield } from 'lucide-react';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
-  const { user, loading, logout } = useAuth();
-  if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO...</div>;
+  const { user, initializing, logout } = useAuth();
+  if (initializing) return <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO...</div>;
   if (!user) return <Navigate to="/login" />;
   
   if (!user.status || user.status !== 'approved') {

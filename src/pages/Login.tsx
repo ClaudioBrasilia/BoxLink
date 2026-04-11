@@ -8,14 +8,14 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { login, user, loading } = useAuth();
+  const { login, user, loading, initializing } = useAuth();
   const navigate = useNavigate();
 
   React.useEffect(() => {
-    if (user && !loading) {
+    if (!initializing && user) {
       navigate('/');
     }
-  }, [user, loading, navigate]);
+  }, [initializing, user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +31,10 @@ export default function Login() {
       setError('Erro ao conectar com o servidor');
     }
   };
+
+  if (initializing) {
+    return <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 relative overflow-hidden">
