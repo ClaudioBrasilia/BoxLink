@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { supabase } from '../lib/supabase';
 
@@ -9,29 +9,39 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateUser: (userData: User) => void;
   loading: boolean;
-  initializing: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [initializing, setInitializing] = useState(true);
-  const currentUserIdRef = useRef<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
-        currentUserIdRef.current = session.user.id;
-        await fetchUserProfile(session.user.id);
+    // Check active sessions and sets the user
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error('Session fetch error:', error);
+        if (error.message.includes('fetch')) {
+          // This will be caught by ErrorBoundary if we re-throw or handle it
+        }
       }
-      setInitializing(false);
+      if (session) {
+        fetchUserProfile(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    }).catch(err => {
+      console.error('Critical Auth Error:', err);
+      setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT' || !session) {
-        currentUserIdRef.current = null;
+    // Listen for changes on auth state (logged in, signed out, etc.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setLoading(true);
+        fetchUserProfile(session.user.id);
+      } else {
         setUser(null);
         setLoading(false);
       }
@@ -41,6 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const fetchUserProfile = async (userId: string) => {
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -49,19 +60,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       if (error) throw error;
-
+      
       if (!data) {
         console.warn('Profile not found for user:', userId);
         setUser(null);
         return null;
       }
-
+      
       const mappedUser: User = {
         id: data.id,
         email: data.email,
-        name: data.name ?? data.full_name ?? 'Atleta',
+        name: data.name,
         role: data.role,
-        status: data.status ?? data.approval_status ?? data.approvalStatus ?? 'pending',
+        status: data.status,
         xp: data.xp || 0,
         coins: data.coins || 0,
         level: data.level || 1,
@@ -77,13 +88,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         paidBonuses: data.paid_bonuses || [],
         createdAt: data.created_at
       };
-
+      
       setUser(mappedUser);
       return mappedUser;
     } catch (error) {
       console.error('Error fetching user profile:', error);
-      setUser(null);
       return null;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -95,13 +107,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLoading(false);
         return { error: authError };
       }
-
+      
       if (authData.user) {
-        currentUserIdRef.current = authData.user.id;
-
         const profile = await fetchUserProfile(authData.user.id);
         if (!profile) {
-          await new Promise(resolve => setTimeout(resolve, 800));
+          // Small delay and retry for robustness
+          await new Promise(resolve => setTimeout(resolve, 500));
           const retryProfile = await fetchUserProfile(authData.user.id);
           if (!retryProfile) {
             setLoading(false);
@@ -109,8 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       }
-
-      setLoading(false);
+      
       return { error: null };
     } catch (error: any) {
       console.error('Login error:', error);
@@ -125,14 +135,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { name } }
+        options: {
+          data: {
+            name: name
+          }
+        }
       });
-
+      
       if (authError) {
         setLoading(false);
         return { error: authError };
       }
-
+      
       setLoading(false);
       return { error: null };
     } catch (error: any) {
@@ -143,7 +157,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    currentUserIdRef.current = null;
     await supabase.auth.signOut();
   };
 
@@ -152,7 +165,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, updateUser, loading, initializing }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, updateUser, loading }}>
       {children}
     </AuthContext.Provider>
   );

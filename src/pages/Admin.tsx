@@ -1417,9 +1417,18 @@ export default function Admin() {
             <div className="grid grid-cols-2 gap-4">
               {items.map(item => (
                 <div key={item.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-3 group">
-                  <div className="aspect-square bg-surface-container-highest rounded-2xl flex items-center justify-center overflow-hidden border border-outline-variant/5">
+                  <div className="aspect-square bg-surface-container-highest rounded-2xl flex items-center justify-center overflow-hidden border border-outline-variant/5 text-2xl">
                     {item.image ? (
-                      <img src={item.image} alt={item.name} className="w-full h-full object-contain" />
+                      item.image.startsWith('http') ? (
+                        <img 
+                          src={item.image} 
+                          alt={item.name} 
+                          className="w-full h-full object-contain"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        item.image
+                      )
                     ) : (
                       <ShoppingBag className="w-8 h-8 text-on-surface-variant/20" />
                     )}

@@ -208,8 +208,17 @@ export default function AvatarCustomization() {
                   </div>
                 )}
                 
-                <div className="aspect-square rounded-2xl bg-surface-container-highest flex items-center justify-center text-4xl group-hover:scale-110 transition-transform">
-                  {item.image}
+                <div className="aspect-square rounded-2xl bg-surface-container-highest flex items-center justify-center text-4xl group-hover:scale-110 transition-transform overflow-hidden">
+                  {item.image.startsWith('http') ? (
+                    <img 
+                      src={item.image} 
+                      alt={item.name} 
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    item.image
+                  )}
                 </div>
 
                 <div>

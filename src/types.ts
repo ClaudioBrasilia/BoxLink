@@ -1,4 +1,4 @@
-export type UserRole = 'athlete' | 'coach' | 'admin';
+export type UserRole = 'student' | 'coach' | 'admin';
 export type UserStatus = 'pending' | 'approved' | 'rejected';
 
 export interface AvatarSlot {
