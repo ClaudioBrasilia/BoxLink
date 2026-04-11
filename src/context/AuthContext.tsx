@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { User } from '../types';
 import { supabase } from '../lib/supabase';
 
@@ -16,26 +16,27 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const currentUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Check active sessions and sets the user
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
+        currentUserIdRef.current = session.user.id;
         fetchUserProfile(session.user.id);
       } else {
         setLoading(false);
       }
     });
 
-    // Listen for changes on auth state (logged in, signed out, etc.)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session) {
-        // Se já temos o usuário correto, não precisamos dar fetch de novo a cada mudança menor de estado
-        if (!user || user.id !== session.user.id) {
+        if (currentUserIdRef.current !== session.user.id) {
+          currentUserIdRef.current = session.user.id;
           setLoading(true);
           await fetchUserProfile(session.user.id);
         }
       } else {
+        currentUserIdRef.current = null;
         setUser(null);
         setLoading(false);
       }
@@ -54,13 +55,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       if (error) throw error;
-      
+
       if (!data) {
         console.warn('Profile not found for user:', userId);
         setUser(null);
         return null;
       }
-      
+
       const mappedUser: User = {
         id: data.id,
         email: data.email,
@@ -82,11 +83,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         paidBonuses: data.paid_bonuses || [],
         createdAt: data.created_at
       };
-      
+
       setUser(mappedUser);
       return mappedUser;
     } catch (error) {
       console.error('Error fetching user profile:', error);
+      setUser(null);
       return null;
     } finally {
       setLoading(false);
@@ -101,12 +103,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLoading(false);
         return { error: authError };
       }
-      
+
       if (authData.user) {
+        currentUserIdRef.current = authData.user.id;
+
         const profile = await fetchUserProfile(authData.user.id);
         if (!profile) {
-          // Small delay and retry for robustness
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 800));
           const retryProfile = await fetchUserProfile(authData.user.id);
           if (!retryProfile) {
             setLoading(false);
@@ -114,7 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       }
-      
+
       return { error: null };
     } catch (error: any) {
       console.error('Login error:', error);
@@ -129,18 +132,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            name: name
-          }
-        }
+        options: { data: { name } }
       });
-      
+
       if (authError) {
         setLoading(false);
         return { error: authError };
       }
-      
+
       setLoading(false);
       return { error: null };
     } catch (error: any) {
@@ -151,6 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    currentUserIdRef.current = null;
     await supabase.auth.signOut();
   };
 
