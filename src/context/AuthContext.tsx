@@ -9,33 +9,28 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateUser: (userData: User) => void;
   loading: boolean;
+  initializing: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
   const currentUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {
         currentUserIdRef.current = session.user.id;
-        fetchUserProfile(session.user.id);
-      } else {
-        setLoading(false);
+        await fetchUserProfile(session.user.id);
       }
+      setInitializing(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session) {
-        if (currentUserIdRef.current !== session.user.id) {
-          currentUserIdRef.current = session.user.id;
-          setLoading(true);
-          await fetchUserProfile(session.user.id);
-        }
-      } else {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
         currentUserIdRef.current = null;
         setUser(null);
         setLoading(false);
@@ -159,7 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, updateUser, loading }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, updateUser, loading, initializing }}>
       {children}
     </AuthContext.Provider>
   );
