@@ -117,7 +117,14 @@ export default function Admin() {
         location: { lat: settingsData.lat, lng: settingsData.lng },
         radius: settingsData.radius,
         tvLayout: settingsData.tv_layout,
-        tvConfig: settingsData.tv_config || {},
+        tvConfig: {
+          showCheckins: settingsData.tv_config?.showCheckins ?? true,
+          showRanking: settingsData.tv_config?.showRanking ?? true,
+          showDuels: settingsData.tv_config?.showDuels ?? true,
+          showChallenges: settingsData.tv_config?.showChallenges ?? true,
+          rightBlock: settingsData.tv_config?.rightBlockContent || settingsData.tv_config?.rightBlock || 'ranking',
+          topBlock: settingsData.tv_config?.topBlockContent || settingsData.tv_config?.topBlock || 'wod',
+        },
         isActive: settingsData.is_active,
         announcements: settingsData.tv_config?.announcements || [],
         timezone: settingsData.timezone,
@@ -137,7 +144,6 @@ export default function Admin() {
           duel_win_xp: economyData.duel_win_xp,
           duel_win_coins: economyData.duel_win_coins,
           duel_loss_xp: economyData.duel_loss_xp,
-          // Challenges are also in economy settings but prefixed
           challenge_easy_xp: economyData.challenge_easy_xp || 50,
           challenge_easy_coins: economyData.challenge_easy_coins || 10,
           challenge_medium_xp: economyData.challenge_medium_xp || 100,
@@ -276,9 +282,15 @@ export default function Admin() {
         lat: settings.location.lat,
         lng: settings.location.lng,
         radius: settings.radius,
+        tv_layout: settings.tvLayout,
         is_active: settings.isActive,
         tv_config: {
-          ...(settings.tvConfig || {}),
+          showCheckins: settings.tvConfig?.showCheckins ?? true,
+          showRanking: settings.tvConfig?.showRanking ?? true,
+          showDuels: settings.tvConfig?.showDuels ?? true,
+          showChallenges: settings.tvConfig?.showChallenges ?? true,
+          rightBlockContent: settings.tvConfig?.rightBlock || 'ranking',
+          topBlockContent: settings.tvConfig?.topBlock || 'wod',
           announcements: settings.announcements
         },
         timezone: settings.timezone,
@@ -1049,14 +1061,25 @@ export default function Admin() {
                       exit={{ height: 0, opacity: 0 }}
                       className="overflow-hidden px-2 space-y-4"
                     >
-                      <div className="space-y-2">
-                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">BrazaCoins por Level Up</label>
-                        <input 
-                          type="number" 
-                          value={settings?.rewards?.level_up_bonus_coins || 0} 
-                          onChange={e => setSettings(s => s ? {...s, rewards: {...s.rewards, level_up_bonus_coins: parseInt(e.target.value)}} : null)}
-                          className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                        />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">BrazaCoins por Level Up</label>
+                          <input 
+                            type="number" 
+                            value={settings?.rewards?.level_up_bonus_coins || 0} 
+                            onChange={e => setSettings(s => s ? {...s, rewards: {...s.rewards, level_up_bonus_coins: parseInt(e.target.value)}} : null)}
+                            className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP por Derrota em Duelo</label>
+                          <input 
+                            type="number" 
+                            value={settings?.rewards?.duel_loss_xp || 0} 
+                            onChange={e => setSettings(s => s ? {...s, rewards: {...s.rewards, duel_loss_xp: parseInt(e.target.value)}} : null)}
+                            className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                          />
+                        </div>
                       </div>
                     </motion.div>
                   )}
