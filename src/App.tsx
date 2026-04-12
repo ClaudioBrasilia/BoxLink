@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
@@ -20,22 +20,32 @@ import DebugFlow from './pages/DebugFlow';
 import { Shield } from 'lucide-react';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
-  const { user, loading, logout } = useAuth();
-  if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO...</div>;
+  const { user, initializing, logout } = useAuth();
+
+  if (initializing) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">
+        CARREGANDO...
+      </div>
+    );
+  }
+
   if (!user) return <Navigate to="/login" />;
-  
+
   if (user.status !== 'approved') {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
         <div className="w-20 h-20 bg-surface-container-low rounded-3xl border border-outline-variant/10 flex items-center justify-center mb-6">
           <Shield className="w-10 h-10 text-primary animate-pulse" />
         </div>
-        <h1 className="text-2xl font-headline font-black text-on-surface uppercase italic mb-2">Acesso Pendente</h1>
+        <h1 className="text-2xl font-headline font-black text-on-surface uppercase italic mb-2">
+          Acesso Pendente
+        </h1>
         <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest max-w-xs leading-relaxed">
           Sua conta foi criada com sucesso e está aguardando aprovação de um administrador.
         </p>
-        <button 
-          onClick={() => logout()} 
+        <button
+          onClick={() => logout()}
           className="mt-8 text-primary font-headline font-black uppercase italic text-sm hover:underline"
         >
           SAIR DA CONTA

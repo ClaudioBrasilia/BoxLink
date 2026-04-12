@@ -1,4 +1,4 @@
-export type UserRole = 'student' | 'coach' | 'admin';
+export type UserRole = 'athlete' | 'coach' | 'admin';
 export type UserStatus = 'pending' | 'approved' | 'rejected';
 
 export interface AvatarSlot {
@@ -101,7 +101,7 @@ export interface Schedule {
   endTime: string;
   coach: string;
   capacity: number;
-  days: number[]; // 0-6 (Sunday-Saturday)
+  days: number[];
   isActive: boolean;
   checkinWindowMinutes: number;
 }

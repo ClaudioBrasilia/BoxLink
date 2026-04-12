@@ -1,21 +1,21 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogIn, UserPlus, Shield, ChevronRight } from 'lucide-react';
+import { Shield, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { login, user, loading } = useAuth();
+  const { login, user, loading, initializing } = useAuth();
   const navigate = useNavigate();
 
   React.useEffect(() => {
-    if (user && !loading) {
+    if (!initializing && user) {
       navigate('/');
     }
-  }, [user, loading, navigate]);
+  }, [initializing, user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,16 +27,23 @@ export default function Login() {
       } else {
         setError(error.message || 'Credenciais inválidas');
       }
-    } catch (e) {
+    } catch {
       setError('Erro ao conectar com o servidor');
     }
   };
 
+  if (initializing) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">
+        CARREGANDO...
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 relative overflow-hidden">
-      {/* Background Glow */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
-      
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -46,13 +53,19 @@ export default function Login() {
           <div className="w-24 h-24 bg-surface-container-low rounded-[2rem] border border-outline-variant/10 flex items-center justify-center mx-auto mb-6 shadow-2xl">
             <Shield className="w-12 h-12 text-primary" />
           </div>
-          <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter uppercase italic">CROSSCITY <span className="text-primary">HUB</span></h1>
-          <p className="text-on-surface-variant text-xs font-bold tracking-widest uppercase mt-2 italic">A Arena Espera Por Você</p>
+          <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter uppercase italic">
+            CROSSCITY <span className="text-primary">HUB</span>
+          </h1>
+          <p className="text-on-surface-variant text-xs font-bold tracking-widest uppercase mt-2 italic">
+            A Arena Espera Por Você
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="space-y-2">
-            <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest ml-4">Endereço de E-mail</label>
+            <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest ml-4">
+              Endereço de E-mail
+            </label>
             <input
               type="email"
               value={email}
@@ -63,7 +76,9 @@ export default function Login() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest ml-4">Senha</label>
+            <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest ml-4">
+              Senha
+            </label>
             <input
               type="password"
               value={password}
@@ -73,7 +88,13 @@ export default function Login() {
               required
             />
           </div>
-          {error && <p className="text-center text-[10px] font-black text-error uppercase tracking-widest">{error}</p>}
+
+          {error && (
+            <p className="text-center text-[10px] font-black text-error uppercase tracking-widest">
+              {error}
+            </p>
+          )}
+
           <button
             type="submit"
             disabled={loading}
@@ -85,7 +106,10 @@ export default function Login() {
 
         <div className="text-center">
           <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest">
-            Novo no box? <Link to="/signup" className="text-primary hover:underline">Solicitar Acesso</Link>
+            Novo no box?{' '}
+            <Link to="/signup" className="text-primary hover:underline">
+              Solicitar Acesso
+            </Link>
           </p>
         </div>
       </motion.div>
