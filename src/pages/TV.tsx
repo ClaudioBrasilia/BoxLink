@@ -41,13 +41,15 @@ export default function TV() {
       ]);
 
       const { data: checkinsRaw } = await supabase
-        .from('checkins').select('*')
+        .from('checkins')
+        .select('*')
         .gte('date', today)
         .order('timestamp', { ascending: false })
         .limit(20);
 
       const { data: profilesRaw } = await supabase
-        .from('profiles').select('id, name, avatar_equipped');
+        .from('profiles')
+        .select('id, name, avatar_equipped');
 
       const profileMap = Object.fromEntries((profilesRaw || []).map((p: any) => [p.id, p]));
       const checkins = (checkinsRaw || []).map((c: any) => ({

@@ -142,9 +142,14 @@ export default function Dashboard() {
 
           // 4. Refresh user profile
           const { data: updatedProfile } = await supabase
-            .from('profiles').select('*').eq('id', user?.id).maybeSingle();
+            .from('profiles')
+            .select('*')
+            .eq('id', user?.id)
+            .maybeSingle();
           const { data: updatedCheckins } = await supabase
-            .from('checkins').select('*').eq('user_id', user?.id);
+            .from('checkins')
+            .select('*')
+            .eq('user_id', user?.id);
 
           if (updatedProfile) {
             const mappedUser: User = {
