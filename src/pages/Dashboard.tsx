@@ -141,7 +141,11 @@ export default function Dashboard() {
           }
 
           // 4. Refresh user profile
-          const { data: updatedProfile } = await supabase.from('profiles').select('*, checkins(*)').eq('id', user?.id).maybeSingle();
+          const { data: updatedProfile } = await supabase
+            .from('profiles').select('*').eq('id', user?.id).maybeSingle();
+          const { data: updatedCheckins } = await supabase
+            .from('checkins').select('*').eq('user_id', user?.id);
+
           if (updatedProfile) {
             const mappedUser: User = {
               id: updatedProfile.id,
@@ -156,7 +160,7 @@ export default function Dashboard() {
                 equipped: updatedProfile.avatar_equipped,
                 inventory: updatedProfile.avatar_inventory || []
               },
-              checkins: (updatedProfile.checkins || []).map((c: any) => ({
+              checkins: (updatedCheckins || []).map((c: any) => ({
                 date: c.date,
                 timestamp: c.timestamp,
                 classTime: c.class_time

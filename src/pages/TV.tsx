@@ -28,7 +28,6 @@ export default function TV() {
         { data: settings },
         { data: economy },
         { data: wod },
-        { data: checkins },
         { data: challenges },
         { data: duels },
         { data: rankings }
@@ -36,11 +35,25 @@ export default function TV() {
         supabase.from('box_settings').select('*').maybeSingle(),
         supabase.from('avatar_economy_settings').select('*').eq('is_active', true).maybeSingle(),
         supabase.from('wods').select('*').eq('date', today).maybeSingle(),
-        supabase.from('checkins').select('*, profiles(name, avatar_equipped)').eq('date', today),
         supabase.from('challenges').select('*').eq('active', true),
         supabase.from('duels').select('*, challenger:profiles!challenger_id(name), opponent:profiles!opponent_id(name)').eq('status', 'accepted'),
         supabase.from('profiles').select('name, xp, level, avatar_equipped').order('xp', { ascending: false }).limit(10)
       ]);
+
+      const { data: checkinsRaw } = await supabase
+        .from('checkins').select('*')
+        .gte('date', today)
+        .order('timestamp', { ascending: false })
+        .limit(20);
+
+      const { data: profilesRaw } = await supabase
+        .from('profiles').select('id, name, avatar_equipped');
+
+      const profileMap = Object.fromEntries((profilesRaw || []).map((p: any) => [p.id, p]));
+      const checkins = (checkinsRaw || []).map((c: any) => ({
+        ...c,
+        profiles: profileMap[c.user_id] || null
+      }));
 
       // Mocked stats for the ticker
       const stats = {
