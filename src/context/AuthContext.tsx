@@ -27,7 +27,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*, checkins(*)')
+        .select('*')
         .eq('id', userId)
         .maybeSingle();
 
@@ -54,7 +54,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           equipped: data.avatar_equipped,
           inventory: data.avatar_inventory || []
         },
-        checkins: (data.checkins || []).map((c: any) => ({
+        checkins: (checkinsData || []).map((c: any) => ({
           date: c.date,
           timestamp: c.timestamp,
           classTime: c.class_time
