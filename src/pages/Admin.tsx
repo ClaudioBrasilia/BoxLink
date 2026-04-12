@@ -104,78 +104,19 @@ export default function Admin() {
 
     // Fetch Box Settings
     const { data: settingsData } = await supabase.from('box_settings').select('*').single();
-    const { data: economyData } = await supabase.from('avatar_economy_settings').select('*').eq('is_active', true).maybeSingle();
 
     if (settingsData) {
       setSettings({
+        ...settingsData,
         id: settingsData.id,
-        name: settingsData.name,
-        logo: settingsData.logo,
-        description: settingsData.description,
         institutionalPhoto: settingsData.institutional_photo,
         topBanner: settingsData.top_banner,
         location: { lat: settingsData.lat, lng: settingsData.lng },
-        radius: settingsData.radius,
-        tvLayout: settingsData.tv_layout,
-        tvConfig: {
-          showCheckins: settingsData.tv_config?.showCheckins ?? true,
-          showRanking: settingsData.tv_config?.showRanking ?? true,
-          showDuels: settingsData.tv_config?.showDuels ?? true,
-          showChallenges: settingsData.tv_config?.showChallenges ?? true,
-          rightBlock: settingsData.tv_config?.rightBlockContent || settingsData.tv_config?.rightBlock || 'ranking',
-          topBlock: settingsData.tv_config?.topBlockContent || settingsData.tv_config?.topBlock || 'wod',
-        },
-        isActive: settingsData.is_active,
-        announcements: settingsData.tv_config?.announcements || [],
-        timezone: settingsData.timezone,
-        modules: settingsData.modules,
-        rewards: economyData ? {
-          xp_per_checkin: economyData.xp_per_checkin,
-          coins_per_checkin: economyData.coins_per_checkin,
-          weekly_bonus_3_xp: economyData.weekly_bonus_3_xp,
-          weekly_bonus_3_coins: economyData.weekly_bonus_3_coins,
-          weekly_bonus_4_xp: economyData.weekly_bonus_4_xp,
-          weekly_bonus_4_coins: economyData.weekly_bonus_4_coins,
-          weekly_bonus_5_xp: economyData.weekly_bonus_5_xp,
-          weekly_bonus_5_coins: economyData.weekly_bonus_5_coins,
-          weekly_bonus_6_xp: economyData.weekly_bonus_6_xp,
-          weekly_bonus_6_coins: economyData.weekly_bonus_6_coins,
-          level_up_bonus_coins: economyData.level_up_bonus_coins,
-          duel_win_xp: economyData.duel_win_xp,
-          duel_win_coins: economyData.duel_win_coins,
-          duel_loss_xp: economyData.duel_loss_xp,
-          challenge_easy_xp: economyData.challenge_easy_xp || 50,
-          challenge_easy_coins: economyData.challenge_easy_coins || 10,
-          challenge_medium_xp: economyData.challenge_medium_xp || 100,
-          challenge_medium_coins: economyData.challenge_medium_coins || 20,
-          challenge_hard_xp: economyData.challenge_hard_xp || 200,
-          challenge_hard_coins: economyData.challenge_hard_coins || 40,
-          challenge_special_xp: economyData.challenge_special_xp || 500,
-          challenge_special_coins: economyData.challenge_special_coins || 100,
-        } : {
-          xp_per_checkin: 20,
-          coins_per_checkin: 5,
-          weekly_bonus_3_xp: 20,
-          weekly_bonus_3_coins: 15,
-          weekly_bonus_4_xp: 30,
-          weekly_bonus_4_coins: 20,
-          weekly_bonus_5_xp: 40,
-          weekly_bonus_5_coins: 30,
-          weekly_bonus_6_xp: 50,
-          weekly_bonus_6_coins: 40,
-          level_up_bonus_coins: 25,
-          duel_win_xp: 40,
-          duel_win_coins: 10,
-          duel_loss_xp: 15,
-          challenge_easy_xp: 50,
-          challenge_easy_coins: 10,
-          challenge_medium_xp: 100,
-          challenge_medium_coins: 20,
-          challenge_hard_xp: 200,
-          challenge_hard_coins: 40,
-          challenge_special_xp: 500,
-          challenge_special_coins: 100,
-        }
+        rewards: settingsData.rewards || {},
+        tv_config: settingsData.tv_config || {},
+        modules: settingsData.modules || { economy: true, store: true, duels: true, challenges: true },
+        announcements: settingsData.announcements || [],
+        timezone: settingsData.timezone || 'America/Sao_Paulo'
       } as any);
     }
 
@@ -270,8 +211,7 @@ export default function Admin() {
   const handleSaveSettings = async () => {
     if (!settings) return;
     
-    // Update Box Settings
-    const { data: boxData, error: boxError } = await supabase
+    const { data, error } = await supabase
       .from('box_settings')
       .update({
         name: settings.name,
@@ -279,64 +219,26 @@ export default function Admin() {
         description: settings.description,
         institutional_photo: settings.institutionalPhoto,
         top_banner: settings.topBanner,
-        lat: settings.location.lat,
-        lng: settings.location.lng,
+        lat: settings.location?.lat,
+        lng: settings.location?.lng,
         radius: settings.radius,
-        tv_layout: settings.tvLayout,
         is_active: settings.isActive,
-        tv_config: {
-          showCheckins: settings.tvConfig?.showCheckins ?? true,
-          showRanking: settings.tvConfig?.showRanking ?? true,
-          showDuels: settings.tvConfig?.showDuels ?? true,
-          showChallenges: settings.tvConfig?.showChallenges ?? true,
-          rightBlockContent: settings.tvConfig?.rightBlock || 'ranking',
-          topBlockContent: settings.tvConfig?.topBlock || 'wod',
-          announcements: settings.announcements
-        },
-        timezone: settings.timezone,
-        modules: settings.modules
+        rewards: settings.rewards || {},
+        tv_config: settings.tvConfig || settings.tv_config || {},
+        modules: settings.modules || {},
+        announcements: settings.announcements || [],
+        timezone: settings.timezone || 'America/Sao_Paulo',
+        updated_at: new Date().toISOString()
       })
-      .eq('id', settings.id)
+      .eq('is_active', true)
       .select()
       .single();
 
-    // Update Economy Settings
-    const { error: economyError } = await supabase
-      .from('avatar_economy_settings')
-      .update({
-        xp_per_checkin: settings.rewards.xp_per_checkin,
-        coins_per_checkin: settings.rewards.coins_per_checkin,
-        weekly_bonus_3_xp: settings.rewards.weekly_bonus_3_xp,
-        weekly_bonus_3_coins: settings.rewards.weekly_bonus_3_coins,
-        weekly_bonus_4_xp: settings.rewards.weekly_bonus_4_xp,
-        weekly_bonus_4_coins: settings.rewards.weekly_bonus_4_coins,
-        weekly_bonus_5_xp: settings.rewards.weekly_bonus_5_xp,
-        weekly_bonus_5_coins: settings.rewards.weekly_bonus_5_coins,
-        weekly_bonus_6_xp: settings.rewards.weekly_bonus_6_xp,
-        weekly_bonus_6_coins: settings.rewards.weekly_bonus_6_coins,
-        level_up_bonus_coins: settings.rewards.level_up_bonus_coins,
-        duel_win_xp: settings.rewards.duel_win_xp,
-        duel_win_coins: settings.rewards.duel_win_coins,
-        duel_loss_xp: settings.rewards.duel_loss_xp,
-        // Challenges
-        challenge_easy_xp: (settings.rewards as any).challenge_easy_xp,
-        challenge_easy_coins: (settings.rewards as any).challenge_easy_coins,
-        challenge_medium_xp: (settings.rewards as any).challenge_medium_xp,
-        challenge_medium_coins: (settings.rewards as any).challenge_medium_coins,
-        challenge_hard_xp: (settings.rewards as any).challenge_hard_xp,
-        challenge_hard_coins: (settings.rewards as any).challenge_hard_coins,
-        challenge_special_xp: (settings.rewards as any).challenge_special_xp,
-        challenge_special_coins: (settings.rewards as any).challenge_special_coins,
-      })
-      .eq('is_active', true);
-
-    if (!boxError && !economyError && boxData) {
-      // Re-fetch to get latest state
+    if (!error && data) {
       fetchAll();
       alert('Ajustes salvos com sucesso!');
     } else {
-      const errorMsg = boxError?.message || economyError?.message || 'Erro desconhecido';
-      alert('Erro ao salvar ajustes: ' + errorMsg);
+      alert('Erro ao salvar ajustes: ' + (error?.message || 'Erro desconhecido'));
     }
   };
 
