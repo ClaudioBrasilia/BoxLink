@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { User } from '../types';
 import { supabase } from '../lib/supabase';
 
@@ -9,70 +9,51 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateUser: (userData: User) => void;
   loading: boolean;
+  initializing: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
+  const fetchingRef = useRef(false);
 
-  useEffect(() => {
-    // Check active sessions and sets the user
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.error('Session fetch error:', error);
-        if (error.message.includes('fetch')) {
-          // This will be caught by ErrorBoundary if we re-throw or handle it
-        }
-      }
-      if (session) {
-        fetchUserProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    }).catch(err => {
-      console.error('Critical Auth Error:', err);
-      setLoading(false);
-    });
+  const fetchUserProfile = async (userId: string): Promise<User | null> => {
+    if (fetchingRef.current) return null;
+    fetchingRef.current = true;
 
-    // Listen for changes on auth state (logged in, signed out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        setLoading(true);
-        fetchUserProfile(session.user.id);
-      } else {
-        setUser(null);
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchUserProfile = async (userId: string) => {
-    setLoading(true);
     try {
+      // Busca perfil separado dos checkins (evita erro de foreign key no Supabase)
       const { data, error } = await supabase
         .from('profiles')
-        .select('*, checkins(*)')
+        .select('*')
         .eq('id', userId)
         .maybeSingle();
 
-      if (error) throw error;
-      
-      if (!data) {
-        console.warn('Profile not found for user:', userId);
-        setUser(null);
+      if (error) {
+        console.error('Supabase query error:', error);
         return null;
       }
-      
+
+      if (!data) {
+        console.warn('Profile not found for user:', userId);
+        return null;
+      }
+
+      // Busca checkins separadamente
+      const { data: checkinsData } = await supabase
+        .from('checkins')
+        .select('*')
+        .eq('user_id', userId);
+
       const mappedUser: User = {
         id: data.id,
         email: data.email,
-        name: data.name,
+        name: data.name ?? 'Atleta',
         role: data.role,
-        status: data.status,
+        status: data.status ?? 'pending',
         xp: data.xp || 0,
         coins: data.coins || 0,
         level: data.level || 1,
@@ -80,7 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           equipped: data.avatar_equipped,
           inventory: data.avatar_inventory || []
         },
-        checkins: (data.checkins || []).map((c: any) => ({
+        checkins: (checkinsData || []).map((c: any) => ({
           date: c.date,
           timestamp: c.timestamp,
           classTime: c.class_time
@@ -88,42 +69,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         paidBonuses: data.paid_bonuses || [],
         createdAt: data.created_at
       };
-      
+
       setUser(mappedUser);
       return mappedUser;
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
+    } catch (err) {
+      console.error('Error fetching user profile:', err);
       return null;
     } finally {
-      setLoading(false);
+      fetchingRef.current = false;
     }
   };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!isMounted) return;
+      if (session?.user) {
+        await fetchUserProfile(session.user.id);
+      }
+      if (isMounted) setInitializing(false);
+    }).catch(() => {
+      if (isMounted) setInitializing(false);
+    });
+
+    // Apenas trata SIGNED_OUT — login é tratado dentro de login()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return;
+      if (event === 'SIGNED_OUT' || !session) {
+        setUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+
       if (authError) {
         setLoading(false);
         return { error: authError };
       }
-      
+
       if (authData.user) {
         const profile = await fetchUserProfile(authData.user.id);
         if (!profile) {
-          // Small delay and retry for robustness
-          await new Promise(resolve => setTimeout(resolve, 500));
-          const retryProfile = await fetchUserProfile(authData.user.id);
-          if (!retryProfile) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const retry = await fetchUserProfile(authData.user.id);
+          if (!retry) {
             setLoading(false);
             return { error: { message: 'Perfil não encontrado. Verifique se sua conta foi aprovada.' } };
           }
         }
       }
-      
+
+      setLoading(false);
       return { error: null };
-    } catch (error: any) {
-      console.error('Login error:', error);
+    } catch (err: any) {
+      console.error('Login error:', err);
       setLoading(false);
       return { error: { message: 'Erro ao conectar com o servidor' } };
     }
@@ -132,40 +142,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signup = async (email: string, password: string, name: string) => {
     setLoading(true);
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      const { error: authError } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            name: name
-          }
-        }
+        options: { data: { name } }
       });
-      
+
       if (authError) {
         setLoading(false);
         return { error: authError };
       }
-      
+
       setLoading(false);
       return { error: null };
-    } catch (error: any) {
-      console.error('Signup error:', error);
+    } catch (err: any) {
       setLoading(false);
       return { error: { message: 'Erro ao conectar com o servidor' } };
     }
   };
 
   const logout = async () => {
+    setUser(null);
     await supabase.auth.signOut();
   };
 
-  const updateUser = (userData: User) => {
-    setUser(userData);
-  };
+  const updateUser = (userData: User) => setUser(userData);
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, updateUser, loading }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, updateUser, loading, initializing }}>
       {children}
     </AuthContext.Provider>
   );
@@ -173,8 +177,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
