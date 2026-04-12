@@ -41,11 +41,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return null;
       }
 
-      const { data: checkinsData } = await supabase
-        .from('checkins')
-        .select('*')
-        .eq('user_id', userId);
-
       const mappedUser: User = {
         id: data.id,
         email: data.email,
