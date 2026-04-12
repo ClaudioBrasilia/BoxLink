@@ -69,7 +69,8 @@ export default function Admin() {
 
   const fetchAll = async () => {
     // Fetch Users
-    const { data: usersData } = await supabase.from('profiles').select('*, checkins(*)');
+    const { data: usersData } = await supabase.from('profiles').select('*');
+    const { data: allCheckins } = await supabase.from('checkins').select('*');
     if (usersData) {
       const mappedUsers = usersData.map((u: any) => ({
         id: u.id,
@@ -84,7 +85,7 @@ export default function Admin() {
           equipped: u.avatar_equipped,
           inventory: u.avatar_inventory || []
         },
-        checkins: (u.checkins || []).map((c: any) => ({
+        checkins: (allCheckins || []).filter((c: any) => c.user_id === u.id).map((c: any) => ({
           date: c.date,
           timestamp: c.timestamp,
           classTime: c.class_time
@@ -246,7 +247,7 @@ export default function Admin() {
         checkinWindowMinutes: 60
       });
     } else {
-      alert('Erro ao adicionar horário: ' + (error?.message || 'Erro desconhecido'));
+      alert('Erro ao salvar horário: ' + (error?.message || 'Erro desconhecido'));
     }
   };
 
