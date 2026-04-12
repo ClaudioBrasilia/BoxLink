@@ -23,6 +23,7 @@ export default function Admin() {
   const [items, setItems] = useState<Item[]>([]);
   const [duels, setDuels] = useState<Duel[]>([]);
   const [wods, setWods] = useState<Wod[]>([]);
+  const [editingWod, setEditingWod] = useState<Wod | null>(null);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -59,7 +60,8 @@ export default function Admin() {
     image: ''
   });
 
-  const [openSections, setOpenSections] = useState<string[]>(['general', 'checkin', 'challenges', 'weekly', 'other', 'tv', 'system']);
+  const [isManageUsersOpen, setIsManageUsersOpen] = useState(false);
+  const [openSections, setOpenSections] = useState<string[]>([]);
 
   const toggleSection = (section: string) => {
     setOpenSections(prev => 
@@ -69,8 +71,7 @@ export default function Admin() {
 
   const fetchAll = async () => {
     // Fetch Users
-    const { data: usersData } = await supabase.from('profiles').select('*');
-    const { data: allCheckins } = await supabase.from('checkins').select('*');
+    const { data: usersData } = await supabase.from('profiles').select('*, checkins(*)');
     if (usersData) {
       const mappedUsers = usersData.map((u: any) => ({
         id: u.id,
@@ -85,7 +86,7 @@ export default function Admin() {
           equipped: u.avatar_equipped,
           inventory: u.avatar_inventory || []
         },
-        checkins: (allCheckins || []).filter((c: any) => c.user_id === u.id).map((c: any) => ({
+        checkins: (u.checkins || []).map((c: any) => ({
           date: c.date,
           timestamp: c.timestamp,
           classTime: c.class_time
@@ -103,18 +104,90 @@ export default function Admin() {
 
     // Fetch Box Settings
     const { data: settingsData } = await supabase.from('box_settings').select('*').single();
+    const { data: economyData } = await supabase.from('avatar_economy_settings').select('*').eq('is_active', true).maybeSingle();
+
     if (settingsData) {
       setSettings({
-        ...settingsData,
+        id: settingsData.id,
+        name: settingsData.name,
+        logo: settingsData.logo,
+        description: settingsData.description,
+        institutionalPhoto: settingsData.institutional_photo,
+        topBanner: settingsData.top_banner,
         location: { lat: settingsData.lat, lng: settingsData.lng },
-        rewards: settingsData.rewards || {},
-        tv_config: settingsData.tv_config || {}
+        radius: settingsData.radius,
+        tvLayout: settingsData.tv_layout,
+        tvConfig: settingsData.tv_config || {},
+        isActive: settingsData.is_active,
+        announcements: settingsData.tv_config?.announcements || [],
+        timezone: settingsData.timezone,
+        modules: settingsData.modules,
+        rewards: economyData ? {
+          xp_per_checkin: economyData.xp_per_checkin,
+          coins_per_checkin: economyData.coins_per_checkin,
+          weekly_bonus_3_xp: economyData.weekly_bonus_3_xp,
+          weekly_bonus_3_coins: economyData.weekly_bonus_3_coins,
+          weekly_bonus_4_xp: economyData.weekly_bonus_4_xp,
+          weekly_bonus_4_coins: economyData.weekly_bonus_4_coins,
+          weekly_bonus_5_xp: economyData.weekly_bonus_5_xp,
+          weekly_bonus_5_coins: economyData.weekly_bonus_5_coins,
+          weekly_bonus_6_xp: economyData.weekly_bonus_6_xp,
+          weekly_bonus_6_coins: economyData.weekly_bonus_6_coins,
+          level_up_bonus_coins: economyData.level_up_bonus_coins,
+          duel_win_xp: economyData.duel_win_xp,
+          duel_win_coins: economyData.duel_win_coins,
+          duel_loss_xp: economyData.duel_loss_xp,
+          // Challenges are also in economy settings but prefixed
+          challenge_easy_xp: economyData.challenge_easy_xp || 50,
+          challenge_easy_coins: economyData.challenge_easy_coins || 10,
+          challenge_medium_xp: economyData.challenge_medium_xp || 100,
+          challenge_medium_coins: economyData.challenge_medium_coins || 20,
+          challenge_hard_xp: economyData.challenge_hard_xp || 200,
+          challenge_hard_coins: economyData.challenge_hard_coins || 40,
+          challenge_special_xp: economyData.challenge_special_xp || 500,
+          challenge_special_coins: economyData.challenge_special_coins || 100,
+        } : {
+          xp_per_checkin: 20,
+          coins_per_checkin: 5,
+          weekly_bonus_3_xp: 20,
+          weekly_bonus_3_coins: 15,
+          weekly_bonus_4_xp: 30,
+          weekly_bonus_4_coins: 20,
+          weekly_bonus_5_xp: 40,
+          weekly_bonus_5_coins: 30,
+          weekly_bonus_6_xp: 50,
+          weekly_bonus_6_coins: 40,
+          level_up_bonus_coins: 25,
+          duel_win_xp: 40,
+          duel_win_coins: 10,
+          duel_loss_xp: 15,
+          challenge_easy_xp: 50,
+          challenge_easy_coins: 10,
+          challenge_medium_xp: 100,
+          challenge_medium_coins: 20,
+          challenge_hard_xp: 200,
+          challenge_hard_coins: 40,
+          challenge_special_xp: 500,
+          challenge_special_coins: 100,
+        }
       } as any);
     }
 
     // Fetch Schedule
-    const { data: scheduleData } = await supabase.from('schedule').select('*');
-    if (scheduleData) setSchedule(scheduleData);
+    const { data: scheduleData } = await supabase.from('schedule').select('*').order('time', { ascending: true });
+    if (scheduleData) {
+      const mappedSchedule = scheduleData.map((s: any) => ({
+        id: s.id,
+        time: s.time,
+        endTime: s.end_time,
+        coach: s.coach,
+        capacity: s.capacity,
+        days: s.days,
+        isActive: s.is_active,
+        checkinWindowMinutes: s.checkin_window_minutes
+      }));
+      setSchedule(mappedSchedule);
+    }
 
     // Fetch Challenges
     const { data: challengesData } = await supabase.from('challenges').select('*').order('created_at', { ascending: false });
@@ -190,7 +263,9 @@ export default function Admin() {
 
   const handleSaveSettings = async () => {
     if (!settings) return;
-    const { data, error } = await supabase
+    
+    // Update Box Settings
+    const { data: boxData, error: boxError } = await supabase
       .from('box_settings')
       .update({
         name: settings.name,
@@ -202,26 +277,62 @@ export default function Admin() {
         lng: settings.location.lng,
         radius: settings.radius,
         is_active: settings.isActive,
-        rewards: settings.rewards,
-        tv_config: settings.tv_config
+        tv_config: {
+          ...(settings.tvConfig || {}),
+          announcements: settings.announcements
+        },
+        timezone: settings.timezone,
+        modules: settings.modules
       })
       .eq('id', settings.id)
       .select()
       .single();
 
-    if (!error && data) {
-      setSettings({
-        ...data,
-        location: { lat: data.lat, lng: data.lng }
-      } as any);
+    // Update Economy Settings
+    const { error: economyError } = await supabase
+      .from('avatar_economy_settings')
+      .update({
+        xp_per_checkin: settings.rewards.xp_per_checkin,
+        coins_per_checkin: settings.rewards.coins_per_checkin,
+        weekly_bonus_3_xp: settings.rewards.weekly_bonus_3_xp,
+        weekly_bonus_3_coins: settings.rewards.weekly_bonus_3_coins,
+        weekly_bonus_4_xp: settings.rewards.weekly_bonus_4_xp,
+        weekly_bonus_4_coins: settings.rewards.weekly_bonus_4_coins,
+        weekly_bonus_5_xp: settings.rewards.weekly_bonus_5_xp,
+        weekly_bonus_5_coins: settings.rewards.weekly_bonus_5_coins,
+        weekly_bonus_6_xp: settings.rewards.weekly_bonus_6_xp,
+        weekly_bonus_6_coins: settings.rewards.weekly_bonus_6_coins,
+        level_up_bonus_coins: settings.rewards.level_up_bonus_coins,
+        duel_win_xp: settings.rewards.duel_win_xp,
+        duel_win_coins: settings.rewards.duel_win_coins,
+        duel_loss_xp: settings.rewards.duel_loss_xp,
+        // Challenges
+        challenge_easy_xp: (settings.rewards as any).challenge_easy_xp,
+        challenge_easy_coins: (settings.rewards as any).challenge_easy_coins,
+        challenge_medium_xp: (settings.rewards as any).challenge_medium_xp,
+        challenge_medium_coins: (settings.rewards as any).challenge_medium_coins,
+        challenge_hard_xp: (settings.rewards as any).challenge_hard_xp,
+        challenge_hard_coins: (settings.rewards as any).challenge_hard_coins,
+        challenge_special_xp: (settings.rewards as any).challenge_special_xp,
+        challenge_special_coins: (settings.rewards as any).challenge_special_coins,
+      })
+      .eq('is_active', true);
+
+    if (!boxError && !economyError && boxData) {
+      // Re-fetch to get latest state
+      fetchAll();
       alert('Ajustes salvos com sucesso!');
     } else {
-      alert('Erro ao salvar ajustes: ' + (error?.message || 'Erro desconhecido'));
+      const errorMsg = boxError?.message || economyError?.message || 'Erro desconhecido';
+      alert('Erro ao salvar ajustes: ' + errorMsg);
     }
   };
 
   const handleAddSchedule = async () => {
-    if (!newSchedule.time || !newSchedule.endTime || !newSchedule.coach) return;
+    if (!newSchedule.time || !newSchedule.endTime || !newSchedule.coach) {
+      alert('Por favor, preencha todos os campos obrigatórios: Início, Fim e Coach.');
+      return;
+    }
     const { data, error } = await supabase
       .from('schedule')
       .insert({
@@ -236,7 +347,18 @@ export default function Admin() {
       .select();
 
     if (!error && data) {
-      setSchedule([...schedule, data[0]]);
+      const added = data[0];
+      const mapped: Schedule = {
+        id: added.id,
+        time: added.time,
+        endTime: added.end_time,
+        coach: added.coach,
+        capacity: added.capacity,
+        days: added.days,
+        isActive: added.is_active,
+        checkinWindowMinutes: added.checkin_window_minutes
+      };
+      setSchedule([...schedule, mapped]);
       setNewSchedule({ 
         time: '', 
         endTime: '', 
@@ -246,8 +368,9 @@ export default function Admin() {
         isActive: true,
         checkinWindowMinutes: 60
       });
+      alert('Horário adicionado com sucesso!');
     } else {
-      alert('Erro ao salvar horário: ' + (error?.message || 'Erro desconhecido'));
+      alert('Erro ao adicionar horário: ' + (error?.message || 'Erro desconhecido'));
     }
   };
 
@@ -336,6 +459,31 @@ export default function Admin() {
     }
   };
 
+  const handleUpdateWod = async () => {
+    if (!editingWod) return;
+    const { error } = await supabase
+      .from('wods')
+      .update({
+        name: editingWod.name,
+        type: editingWod.type,
+        warmup: editingWod.warmup,
+        skill: editingWod.skill,
+        rx: editingWod.rx,
+        scaled: editingWod.scaled,
+        beginner: editingWod.beginner,
+        date: editingWod.date
+      })
+      .eq('id', editingWod.id);
+
+    if (!error) {
+      setWods(wods.map(w => w.id === editingWod.id ? editingWod : w));
+      setEditingWod(null);
+      alert('WOD atualizado com sucesso!');
+    } else {
+      alert('Erro ao atualizar WOD: ' + error.message);
+    }
+  };
+
   const filteredUsers = users.filter(u => {
     const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || u.status === statusFilter;
@@ -343,7 +491,12 @@ export default function Admin() {
     return matchesSearch && matchesStatus && matchesRole;
   });
 
-  const pendingUsers = filteredUsers.filter(u => u.status === 'pending');
+  const pendingUsers = users.filter(u => {
+    const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+    return matchesSearch && matchesRole && u.status === 'pending';
+  });
+
   const approvedUsers = filteredUsers.filter(u => u.status === 'approved');
   const rejectedUsers = filteredUsers.filter(u => u.status === 'rejected');
 
@@ -492,59 +645,90 @@ export default function Admin() {
             </div>
 
             {/* Manage Approved Users Section */}
-            <div className="flex justify-between items-center mt-6 mb-2">
-              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">GERENCIAR USUÁRIOS</h3>
-              <span className="bg-surface-container-highest text-on-surface-variant text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{approvedUsers.length} ATIVOS</span>
-            </div>
+            <div className="mt-6">
+              <button 
+                onClick={() => setIsManageUsersOpen(!isManageUsersOpen)}
+                className="w-full flex justify-between items-center bg-surface-container-low p-6 rounded-3xl border border-outline-variant/10 group hover:border-primary/30 transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "p-2 rounded-xl transition-colors",
+                    isManageUsersOpen ? "bg-primary/20 text-primary" : "bg-surface-container-highest text-on-surface-variant"
+                  )}>
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">GERENCIAR USUÁRIOS</h3>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="bg-surface-container-highest text-on-surface-variant text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{approvedUsers.length} ATIVOS</span>
+                  <ChevronDown className={cn("w-5 h-5 text-on-surface-variant transition-transform", isManageUsersOpen && "rotate-180")} />
+                </div>
+              </button>
 
-            <div className="space-y-3">
-              {approvedUsers.map((u) => (
-                <div key={u.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-4">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-headline font-black text-xl">
-                        {u.name[0]}
-                      </div>
-                      <div>
-                        <p className="text-on-surface font-bold uppercase text-sm">{u.name}</p>
-                        <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{u.email}</p>
-                        <div className="mt-3 flex flex-col gap-2">
-                          <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">ALTERAR CARGO:</label>
-                          <div className="flex gap-2">
-                            {(['student', 'coach', 'admin'] as const).map((role) => (
-                              <button
-                                key={role}
-                                onClick={() => handleRoleChange(u.id, role)}
-                                className={cn(
-                                  "px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all border",
-                                  selectedRoles[u.id] === role 
-                                    ? "bg-primary text-background border-primary" 
-                                    : "bg-surface-container-highest text-on-surface-variant border-outline-variant/20"
-                                )}
-                              >
-                                {role === 'admin' ? 'ADMIN' : role === 'coach' ? 'COACH' : 'ALUNO'}
-                              </button>
-                            ))}
-                            {selectedRoles[u.id] !== u.role && (
-                              <button 
-                                onClick={() => handleRoleUpdate(u.id)}
-                                className="px-3 py-1 bg-secondary text-background rounded-lg text-[8px] font-black uppercase tracking-widest animate-pulse"
-                              >
-                                SALVAR
-                              </button>
-                            )}
+              <AnimatePresence>
+                {isManageUsersOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pt-4 space-y-3">
+                      {approvedUsers.length > 0 ? approvedUsers.map((u) => (
+                        <div key={u.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-4">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-headline font-black text-xl">
+                                {u.name[0]}
+                              </div>
+                              <div>
+                                <p className="text-on-surface font-bold uppercase text-sm">{u.name}</p>
+                                <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{u.email}</p>
+                                <div className="mt-3 flex flex-col gap-2">
+                                  <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">ALTERAR CARGO:</label>
+                                  <div className="flex gap-2">
+                                    {(['student', 'coach', 'admin'] as const).map((role) => (
+                                      <button
+                                        key={role}
+                                        onClick={() => handleRoleChange(u.id, role)}
+                                        className={cn(
+                                          "px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all border",
+                                          selectedRoles[u.id] === role 
+                                            ? "bg-primary text-background border-primary" 
+                                            : "bg-surface-container-highest text-on-surface-variant border-outline-variant/20"
+                                        )}
+                                      >
+                                        {role === 'admin' ? 'ADMIN' : role === 'coach' ? 'COACH' : 'ALUNO'}
+                                      </button>
+                                    ))}
+                                    {selectedRoles[u.id] !== u.role && (
+                                      <button 
+                                        onClick={() => handleRoleUpdate(u.id)}
+                                        className="px-3 py-1 bg-secondary text-background rounded-lg text-[8px] font-black uppercase tracking-widest animate-pulse"
+                                      >
+                                        SALVAR
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <span className="bg-primary/20 text-primary text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest h-fit">
+                                ATIVO
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )) : (
+                        <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 text-center">
+                          <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50 italic">Nenhum usuário encontrado</p>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex gap-2">
-                      <span className="bg-primary/20 text-primary text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest h-fit">
-                        ATIVO
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Rejected Users Section */}
@@ -1245,13 +1429,21 @@ export default function Admin() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Coach</label>
-                  <input 
-                    type="text" 
+                  <select 
                     value={newSchedule.coach} 
                     onChange={e => setNewSchedule({...newSchedule, coach: e.target.value})}
-                    placeholder="Nome do Coach"
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                  />
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer" 
+                  >
+                    <option value="" className="bg-surface-container-highest">Selecionar Coach</option>
+                    {users
+                      .filter(u => u.role === 'coach' || u.role === 'admin')
+                      .map(coach => (
+                        <option key={coach.id} value={coach.name} className="bg-surface-container-highest">
+                          {coach.name} ({coach.role === 'admin' ? 'Head' : 'Coach'})
+                        </option>
+                      ))
+                    }
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Capacidade</label>
@@ -1464,14 +1656,118 @@ export default function Admin() {
                   <History className="w-5 h-5 text-primary" /> HISTÓRICO DE WODS
                 </h3>
               </div>
+
+              {editingWod && (
+                <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/30 space-y-4 mb-6">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-headline font-bold text-on-surface uppercase italic">EDITAR WOD</h4>
+                    <button onClick={() => setEditingWod(null)} className="text-on-surface-variant hover:text-error">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Título</label>
+                      <input 
+                        type="text" 
+                        value={editingWod.name} 
+                        onChange={e => setEditingWod({...editingWod, name: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data</label>
+                      <input 
+                        type="date" 
+                        value={editingWod.date} 
+                        onChange={e => setEditingWod({...editingWod, date: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo (ex: AMRAP, EMOM, FOR TIME)</label>
+                    <input 
+                      type="text" 
+                      value={editingWod.type} 
+                      onChange={e => setEditingWod({...editingWod, type: e.target.value})}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Warmup</label>
+                      <textarea 
+                        rows={3}
+                        value={editingWod.warmup} 
+                        onChange={e => setEditingWod({...editingWod, warmup: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Skill</label>
+                      <textarea 
+                        rows={3}
+                        value={editingWod.skill} 
+                        onChange={e => setEditingWod({...editingWod, skill: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">RX</label>
+                      <textarea 
+                        rows={4}
+                        value={editingWod.rx} 
+                        onChange={e => setEditingWod({...editingWod, rx: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Scaled</label>
+                      <textarea 
+                        rows={4}
+                        value={editingWod.scaled} 
+                        onChange={e => setEditingWod({...editingWod, scaled: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Beginner</label>
+                      <textarea 
+                        rows={4}
+                        value={editingWod.beginner} 
+                        onChange={e => setEditingWod({...editingWod, beginner: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                      />
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={handleUpdateWod}
+                    className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
+                  >
+                    <Save className="w-5 h-5" /> SALVAR ALTERAÇÕES
+                  </button>
+                </div>
+              )}
+
               <div className="space-y-3">
                 {wods.length > 0 ? wods.map(wod => (
                   <div key={wod.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex justify-between items-center">
                     <div>
-                      <p className="text-on-surface font-bold uppercase text-sm italic">{wod.title}</p>
+                      <p className="text-on-surface font-bold uppercase text-sm italic">{wod.name}</p>
                       <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{format(parseISO(wod.date), 'dd/MM/yyyy')}</p>
                     </div>
-                    <button className="p-2 text-on-surface-variant hover:text-primary transition-colors">
+                    <button 
+                      onClick={() => setEditingWod(wod)}
+                      className="p-2 text-on-surface-variant hover:text-primary transition-colors"
+                    >
                       <Edit2 className="w-5 h-5" />
                     </button>
                   </div>
