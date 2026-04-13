@@ -16,56 +16,7 @@ export default function Admin() {
   const { user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'schedule' | 'challenges' | 'store' | 'operation' | 'ranking'>('users');
-  const [settings, setSettings] = useState<BoxSettings>({
-    name: '',
-    logo: '',
-    description: '',
-    institutionalPhoto: '',
-    topBanner: '',
-    location: { lat: -15.7942, lng: -47.8822 },
-    radius: 500,
-    tvLayout: 'new',
-    tvConfig: {
-      showCheckins: true,
-      showRanking: true,
-      showDuels: true,
-      showChallenges: true,
-      rightBlockContent: 'ranking',
-      topBlockContent: 'logo'
-    },
-    rewards: {
-      xp_per_checkin: 20,
-      coins_per_checkin: 5,
-      weekly_bonus_3_xp: 50,
-      weekly_bonus_3_coins: 10,
-      weekly_bonus_4_xp: 100,
-      weekly_bonus_4_coins: 20,
-      weekly_bonus_5_xp: 150,
-      weekly_bonus_5_coins: 30,
-      weekly_bonus_6_xp: 200,
-      weekly_bonus_6_coins: 40,
-      level_up_bonus_coins: 50,
-      challenge_easy_xp: 50,
-      challenge_easy_coins: 10,
-      challenge_medium_xp: 100,
-      challenge_medium_coins: 20,
-      challenge_hard_xp: 200,
-      challenge_hard_coins: 40,
-      challenge_special_xp: 500,
-      challenge_special_coins: 100,
-      duel_win_xp: 40,
-      duel_win_coins: 10
-    },
-    isActive: true,
-    announcements: [],
-    timezone: 'America/Sao_Paulo',
-    modules: {
-      economy: true,
-      store: true,
-      duels: true,
-      challenges: true
-    }
-  });
+  const [settings, setSettings] = useState<BoxSettings | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
   const [schedule, setSchedule] = useState<Schedule[]>([]);
   const [challenges, setChallenges] = useState<any[]>([]);
@@ -120,7 +71,8 @@ export default function Admin() {
 
   const fetchAll = async () => {
     // Fetch Users
-    const { data: usersData } = await supabase.from('profiles').select('*, checkins(*)');
+    const { data: usersData } = await supabase.from('profiles').select('*');
+    const { data: allCheckins } = await supabase.from('checkins').select('*');
     if (usersData) {
       const mappedUsers = usersData.map((u: any) => ({
         id: u.id,
@@ -135,7 +87,7 @@ export default function Admin() {
           equipped: u.avatar_equipped,
           inventory: u.avatar_inventory || []
         },
-        checkins: (u.checkins || []).map((c: any) => ({
+        checkins: (allCheckins || []).filter((c: any) => c.user_id === u.id).map((c: any) => ({
           date: c.date,
           timestamp: c.timestamp,
           classTime: c.class_time
@@ -155,19 +107,18 @@ export default function Admin() {
     const { data: settingsData } = await supabase.from('box_settings').select('*').single();
 
     if (settingsData) {
-      setSettings(prev => ({
-        ...prev,
+      setSettings({
         ...settingsData,
         id: settingsData.id,
         institutionalPhoto: settingsData.institutional_photo,
         topBanner: settingsData.top_banner,
         location: { lat: settingsData.lat, lng: settingsData.lng },
-        rewards: settingsData.rewards || prev.rewards,
-        tvConfig: settingsData.tv_config || (prev as any).tvConfig || {},
-        modules: settingsData.modules || prev.modules,
-        announcements: settingsData.announcements || prev.announcements,
-        timezone: settingsData.timezone || prev.timezone
-      }));
+        rewards: settingsData.rewards || {},
+        tv_config: settingsData.tv_config || {},
+        modules: settingsData.modules || { economy: true, store: true, duels: true, challenges: true },
+        announcements: settingsData.announcements || [],
+        timezone: settingsData.timezone || 'America/Sao_Paulo'
+      } as any);
     }
 
     // Fetch Schedule
@@ -259,10 +210,11 @@ export default function Admin() {
   };
 
   const handleSaveSettings = async () => {
+    if (!settings) return;
+    
     const { data, error } = await supabase
       .from('box_settings')
-      .upsert({
-        id: (settings as any).id,
+      .update({
         name: settings.name,
         logo: settings.logo,
         description: settings.description,
@@ -273,12 +225,13 @@ export default function Admin() {
         radius: settings.radius,
         is_active: settings.isActive,
         rewards: settings.rewards || {},
-        tv_config: settings.tvConfig || (settings as any).tv_config || {},
+        tv_config: settings.tvConfig || settings.tv_config || {},
         modules: settings.modules || {},
         announcements: settings.announcements || [],
         timezone: settings.timezone || 'America/Sao_Paulo',
         updated_at: new Date().toISOString()
-      }, { onConflict: 'is_active' })
+      })
+      .eq('is_active', true)
       .select()
       .single();
 
@@ -536,7 +489,7 @@ export default function Admin() {
                     className="bg-transparent border-none text-[10px] font-black uppercase tracking-widest focus:ring-0 p-0"
                   >
                     <option value="all">TODAS FUNÇÕES</option>
-                    <option value="athlete">ALUNOS</option>
+                    <option value="student">ALUNOS</option>
                     <option value="coach">COACHES</option>
                     <option value="admin">ADMINS</option>
                   </select>
@@ -571,7 +524,7 @@ export default function Admin() {
                         <div className="mt-3 flex flex-col gap-2">
                           <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">DEFINIR CARGO:</label>
                           <div className="flex gap-2">
-                            {(['athlete', 'coach', 'admin'] as const).map((role) => (
+                            {(['student', 'coach', 'admin'] as const).map((role) => (
                               <button
                                 key={role}
                                 onClick={() => handleRoleChange(u.id, role)}
@@ -649,7 +602,7 @@ export default function Admin() {
                                 <div className="mt-3 flex flex-col gap-2">
                                   <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">ALTERAR CARGO:</label>
                                   <div className="flex gap-2">
-                                    {(['athlete', 'coach', 'admin'] as const).map((role) => (
+                                    {(['student', 'coach', 'admin'] as const).map((role) => (
                                       <button
                                         key={role}
                                         onClick={() => handleRoleChange(u.id, role)}
@@ -754,8 +707,8 @@ export default function Admin() {
                         <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome do Box</label>
                         <input 
                           type="text" 
-                          value={settings.name} 
-                          onChange={e => setSettings(s => ({...s, name: e.target.value}))}
+                          value={settings?.name || ''} 
+                          onChange={e => setSettings(s => s ? {...s, name: e.target.value} : null)}
                           className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                         />
                       </div>
@@ -764,11 +717,11 @@ export default function Admin() {
                         <div className="flex gap-4 items-center">
                           <input 
                             type="text" 
-                            value={settings.logo} 
-                            onChange={e => setSettings(s => ({...s, logo: e.target.value}))}
+                            value={settings?.logo || ''} 
+                            onChange={e => setSettings(s => s ? {...s, logo: e.target.value} : null)}
                             className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                           />
-                          {settings.logo && (
+                          {settings?.logo && (
                             <img src={settings.logo} alt="Preview" className="w-12 h-12 rounded-xl object-cover border border-outline-variant/20" />
                           )}
                         </div>
@@ -777,8 +730,8 @@ export default function Admin() {
                         <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Descrição do Box</label>
                         <textarea 
                           rows={3}
-                          value={settings.description} 
-                          onChange={e => setSettings(s => ({...s, description: e.target.value}))}
+                          value={settings?.description || ''} 
+                          onChange={e => setSettings(s => s ? {...s, description: e.target.value} : null)}
                           className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
                         />
                       </div>
@@ -787,11 +740,11 @@ export default function Admin() {
                         <div className="flex gap-4 items-center">
                           <input 
                             type="text" 
-                            value={settings.institutionalPhoto} 
-                            onChange={e => setSettings(s => ({...s, institutionalPhoto: e.target.value}))}
+                            value={settings?.institutionalPhoto || ''} 
+                            onChange={e => setSettings(s => s ? {...s, institutionalPhoto: e.target.value} : null)}
                             className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                           />
-                          {settings.institutionalPhoto && (
+                          {settings?.institutionalPhoto && (
                             <img src={settings.institutionalPhoto} alt="Preview" className="w-12 h-12 rounded-xl object-cover border border-outline-variant/20" />
                           )}
                         </div>
@@ -801,11 +754,11 @@ export default function Admin() {
                         <div className="flex gap-4 items-center">
                           <input 
                             type="text" 
-                            value={settings.topBanner} 
-                            onChange={e => setSettings(s => ({...s, topBanner: e.target.value}))}
+                            value={settings?.topBanner || ''} 
+                            onChange={e => setSettings(s => s ? {...s, topBanner: e.target.value} : null)}
                             className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                           />
-                          {settings.topBanner && (
+                          {settings?.topBanner && (
                             <img src={settings.topBanner} alt="Preview" className="w-12 h-12 rounded-xl object-cover border border-outline-variant/20" />
                           )}
                         </div>
@@ -815,14 +768,14 @@ export default function Admin() {
                         <div className="flex gap-4">
                           <input 
                             type="text" 
-                            value={settings.location.lat} 
-                            onChange={e => setSettings(s => ({...s, location: {...s.location, lat: parseFloat(e.target.value) || 0}}))}
+                            value={settings?.location.lat || ''} 
+                            onChange={e => setSettings(s => s ? {...s, location: {...s.location, lat: parseFloat(e.target.value)}} : null)}
                             className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                           />
                           <input 
                             type="text" 
-                            value={settings.location.lng} 
-                            onChange={e => setSettings(s => ({...s, location: {...s.location, lng: parseFloat(e.target.value) || 0}}))}
+                            value={settings?.location.lng || ''} 
+                            onChange={e => setSettings(s => s ? {...s, location: {...s.location, lng: parseFloat(e.target.value)}} : null)}
                             className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                           />
                         </div>
@@ -831,11 +784,8 @@ export default function Admin() {
                         <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Raio de Check-in (metros)</label>
                         <input 
                           type="number" 
-                          value={settings.radius} 
-                          onChange={e => {
-                            const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                            setSettings(s => ({...s, radius: val}));
-                          }}
+                          value={settings?.radius || 0} 
+                          onChange={e => setSettings(s => s ? {...s, radius: parseInt(e.target.value)} : null)}
                           className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                         />
                       </div>
@@ -865,15 +815,15 @@ export default function Admin() {
                       <div className="flex justify-between items-center">
                         <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Sistema Ativo</label>
                         <button 
-                          onClick={() => setSettings(s => ({...s, isActive: !s.isActive}))}
+                          onClick={() => setSettings(s => s ? {...s, isActive: !s.isActive} : null)}
                           className={cn(
                             "w-10 h-6 rounded-full transition-all relative",
-                            settings.isActive ? "bg-primary" : "bg-surface-container-highest"
+                            settings?.isActive ? "bg-primary" : "bg-surface-container-highest"
                           )}
                         >
                           <div className={cn(
                             "absolute top-1 w-4 h-4 rounded-full bg-background transition-all",
-                            settings.isActive ? "right-1" : "left-1"
+                            settings?.isActive ? "right-1" : "left-1"
                           )} />
                         </button>
                       </div>
@@ -882,11 +832,8 @@ export default function Admin() {
                           <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP por Check-in</label>
                           <input 
                             type="number" 
-                            value={settings.rewards.xp_per_checkin} 
-                            onChange={e => {
-                              const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                              setSettings(s => ({...s, rewards: {...s.rewards, xp_per_checkin: val}}));
-                            }}
+                            value={settings?.rewards?.xp_per_checkin || 0} 
+                            onChange={e => setSettings(s => s ? {...s, rewards: {...s.rewards, xp_per_checkin: parseInt(e.target.value)}} : null)}
                             className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                           />
                         </div>
@@ -894,11 +841,8 @@ export default function Admin() {
                           <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">BrazaCoins por Check-in</label>
                           <input 
                             type="number" 
-                            value={settings.rewards.coins_per_checkin} 
-                            onChange={e => {
-                              const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                              setSettings(s => ({...s, rewards: {...s.rewards, coins_per_checkin: val}}));
-                            }}
+                            value={settings?.rewards?.coins_per_checkin || 0} 
+                            onChange={e => setSettings(s => s ? {...s, rewards: {...s.rewards, coins_per_checkin: parseInt(e.target.value)}} : null)}
                             className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                           />
                         </div>
@@ -934,11 +878,8 @@ export default function Admin() {
                               <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">XP</label>
                               <input 
                                 type="number" 
-                                value={(settings.rewards as any)[`challenge_${diff}_xp`]} 
-                                onChange={e => {
-                                  const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                                  setSettings(s => ({...s, rewards: {...s.rewards, [`challenge_${diff}_xp`]: val}}));
-                                }}
+                                value={(settings?.rewards as any)?.[`challenge_${diff}_xp`] || 0} 
+                                onChange={e => setSettings(s => s ? {...s, rewards: {...s.rewards, [`challenge_${diff}_xp`]: parseInt(e.target.value)}} : null)}
                                 className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm" 
                               />
                             </div>
@@ -946,11 +887,8 @@ export default function Admin() {
                               <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">BrazaCoins</label>
                               <input 
                                 type="number" 
-                                value={(settings.rewards as any)[`challenge_${diff}_coins`]} 
-                                onChange={e => {
-                                  const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                                  setSettings(s => ({...s, rewards: {...s.rewards, [`challenge_${diff}_coins`]: val}}));
-                                }}
+                                value={(settings?.rewards as any)?.[`challenge_${diff}_coins`] || 0} 
+                                onChange={e => setSettings(s => s ? {...s, rewards: {...s.rewards, [`challenge_${diff}_coins`]: parseInt(e.target.value)}} : null)}
                                 className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm" 
                               />
                             </div>
@@ -987,11 +925,8 @@ export default function Admin() {
                             <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">XP Bônus</label>
                             <input 
                               type="number" 
-                              value={(settings.rewards as any)[`weekly_bonus_${count}_xp`]} 
-                              onChange={e => {
-                                const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                                setSettings(s => ({...s, rewards: {...s.rewards, [`weekly_bonus_${count}_xp`]: val}}));
-                              }}
+                              value={(settings?.rewards as any)?.[`weekly_bonus_${count}_xp`] || 0} 
+                              onChange={e => setSettings(s => s ? {...s, rewards: {...s.rewards, [`weekly_bonus_${count}_xp`]: parseInt(e.target.value)}} : null)}
                               className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm" 
                             />
                           </div>
@@ -999,11 +934,8 @@ export default function Admin() {
                             <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">BrazaCoins Bônus</label>
                             <input 
                               type="number" 
-                              value={(settings.rewards as any)[`weekly_bonus_${count}_coins`]} 
-                              onChange={e => {
-                                const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                                setSettings(s => ({...s, rewards: {...s.rewards, [`weekly_bonus_${count}_coins`]: val}}));
-                              }}
+                              value={(settings?.rewards as any)?.[`weekly_bonus_${count}_coins`] || 0} 
+                              onChange={e => setSettings(s => s ? {...s, rewards: {...s.rewards, [`weekly_bonus_${count}_coins`]: parseInt(e.target.value)}} : null)}
                               className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm" 
                             />
                           </div>
@@ -1037,11 +969,8 @@ export default function Admin() {
                           <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">BrazaCoins por Level Up</label>
                           <input 
                             type="number" 
-                            value={settings.rewards.level_up_bonus_coins} 
-                            onChange={e => {
-                              const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                              setSettings(s => ({...s, rewards: {...s.rewards, level_up_bonus_coins: val}}));
-                            }}
+                            value={settings?.rewards?.level_up_bonus_coins || 0} 
+                            onChange={e => setSettings(s => s ? {...s, rewards: {...s.rewards, level_up_bonus_coins: parseInt(e.target.value)}} : null)}
                             className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                           />
                         </div>
@@ -1049,11 +978,8 @@ export default function Admin() {
                           <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP por Derrota em Duelo</label>
                           <input 
                             type="number" 
-                            value={settings.rewards.duel_loss_xp || 0} 
-                            onChange={e => {
-                              const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                              setSettings(s => ({...s, rewards: {...s.rewards, duel_loss_xp: val}}));
-                            }}
+                            value={settings?.rewards?.duel_loss_xp || 0} 
+                            onChange={e => setSettings(s => s ? {...s, rewards: {...s.rewards, duel_loss_xp: parseInt(e.target.value)}} : null)}
                             className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                           />
                         </div>
@@ -1081,14 +1007,14 @@ export default function Admin() {
                       exit={{ height: 0, opacity: 0 }}
                       className="overflow-hidden px-2 space-y-4"
                     >
-                      {settings.announcements?.map((ann, idx) => (
+                      {settings?.announcements?.map((ann, idx) => (
                         <div key={idx} className="flex gap-2">
                           <input 
                             value={ann}
                             onChange={(e) => {
                               const newAnn = [...(settings.announcements || [])];
                               newAnn[idx] = e.target.value;
-                              setSettings(s => ({ ...s, announcements: newAnn }));
+                              setSettings(s => s ? { ...s, announcements: newAnn } : null);
                             }}
                             placeholder="Digite o comunicado..."
                             className="flex-1 bg-surface-container-highest border-none rounded-xl px-4 py-3 text-on-surface text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary transition-all"
@@ -1096,7 +1022,7 @@ export default function Admin() {
                           <button 
                             onClick={() => {
                               const newAnn = settings.announcements?.filter((_, i) => i !== idx);
-                              setSettings(s => ({ ...s, announcements: newAnn }));
+                              setSettings(s => s ? { ...s, announcements: newAnn } : null);
                             }}
                             className="p-3 bg-error-container text-on-error-container rounded-xl"
                           >
@@ -1105,7 +1031,7 @@ export default function Admin() {
                         </div>
                       ))}
                       <button 
-                        onClick={() => setSettings(s => ({ ...s, announcements: [...(s.announcements || []), ''] }))}
+                        onClick={() => setSettings(s => s ? { ...s, announcements: [...(s.announcements || []), ''] } : null)}
                         className="w-full py-3 border-2 border-dashed border-outline-variant/20 rounded-xl text-on-surface-variant text-[10px] font-bold uppercase tracking-widest hover:border-primary/50 hover:text-primary transition-all"
                       >
                         + ADICIONAR COMUNICADO
@@ -1141,10 +1067,10 @@ export default function Admin() {
                           {(['new', 'old'] as const).map(layout => (
                             <button 
                               key={layout}
-                              onClick={() => setSettings(s => ({...s, tvLayout: layout}))}
+                              onClick={() => setSettings(s => s ? {...s, tvLayout: layout} : null)}
                               className={cn(
                                 "flex-1 py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all",
-                                settings.tvLayout === layout ? "bg-primary text-background shadow-lg" : "bg-surface-container-highest text-on-surface"
+                                settings?.tvLayout === layout ? "bg-primary text-background shadow-lg" : "bg-surface-container-highest text-on-surface"
                               )}
                             >
                               {layout === 'new' ? 'MODERNO' : 'CLÁSSICO'}
@@ -1155,8 +1081,8 @@ export default function Admin() {
                       <div className="space-y-2">
                         <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Bloco Direito</label>
                         <select 
-                          value={settings.tvConfig?.rightBlock || 'ranking'}
-                          onChange={e => setSettings(s => ({...s, tvConfig: {...(s.tvConfig || {}), rightBlock: e.target.value as any}}))}
+                          value={settings?.tvConfig?.rightBlock || 'ranking'}
+                          onChange={e => setSettings(s => s ? {...s, tvConfig: {...(s.tvConfig || {}), rightBlock: e.target.value as any}} : null)}
                           className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
                         >
                           <option value="ranking">RANKING DO DIA</option>
@@ -1167,8 +1093,8 @@ export default function Admin() {
                       <div className="space-y-2">
                         <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Bloco Superior</label>
                         <select 
-                          value={settings.tvConfig?.topBlock || 'wod'}
-                          onChange={e => setSettings(s => ({...s, tvConfig: {...(s.tvConfig || {}), topBlock: e.target.value as any}}))}
+                          value={settings?.tvConfig?.topBlock || 'wod'}
+                          onChange={e => setSettings(s => s ? {...s, tvConfig: {...(s.tvConfig || {}), topBlock: e.target.value as any}} : null)}
                           className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
                         >
                           <option value="wod">WOD DO DIA</option>
@@ -1204,8 +1130,8 @@ export default function Admin() {
                       <div className="space-y-2">
                         <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Fuso Horário</label>
                         <select 
-                          value={settings.timezone || 'America/Sao_Paulo'}
-                          onChange={e => setSettings(s => ({...s, timezone: e.target.value}))}
+                          value={settings?.timezone || 'America/Sao_Paulo'}
+                          onChange={e => setSettings(s => s ? {...s, timezone: e.target.value} : null)}
                           className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
                         >
                           <option value="America/Sao_Paulo">Brasília (GMT-3)</option>
@@ -1219,16 +1145,16 @@ export default function Admin() {
                           {(['economy', 'store', 'duels', 'challenges'] as const).map(module => (
                             <button 
                               key={module}
-                              onClick={() => setSettings(s => ({...s, modules: {...(s.modules || {}), [module]: !s.modules?.[module]}}))}
+                              onClick={() => setSettings(s => s ? {...s, modules: {...(s.modules || {}), [module]: !s.modules?.[module]}} : null)}
                               className={cn(
                                 "flex items-center justify-between p-4 rounded-2xl border transition-all",
-                                settings.modules?.[module] 
+                                settings?.modules?.[module] 
                                   ? "bg-primary/10 border-primary text-primary" 
                                   : "bg-surface-container-highest border-outline-variant/10 text-on-surface-variant"
                               )}
                             >
                               <span className="text-[10px] font-black uppercase tracking-widest">{module === 'economy' ? 'ECONOMIA' : module === 'store' ? 'LOJA' : module === 'duels' ? 'DUELOS' : 'DESAFIOS'}</span>
-                              {settings.modules?.[module] ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
+                              {settings?.modules?.[module] ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
                             </button>
                           ))}
                         </div>
@@ -1450,10 +1376,7 @@ export default function Admin() {
                   <input 
                     type="number" 
                     value={newSchedule.capacity} 
-                    onChange={e => {
-                      const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                      setNewSchedule({...newSchedule, capacity: val});
-                    }}
+                    onChange={e => setNewSchedule({...newSchedule, capacity: parseInt(e.target.value)})}
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                   />
                 </div>
@@ -1463,10 +1386,7 @@ export default function Admin() {
                 <input 
                   type="number" 
                   value={newSchedule.checkinWindowMinutes} 
-                  onChange={e => {
-                    const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                    setNewSchedule({...newSchedule, checkinWindowMinutes: val});
-                  }}
+                  onChange={e => setNewSchedule({...newSchedule, checkinWindowMinutes: parseInt(e.target.value)})}
                   className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                 />
               </div>
@@ -1590,10 +1510,7 @@ export default function Admin() {
                   <input 
                     type="number" 
                     value={newItem.price} 
-                    onChange={e => {
-                      const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                      setNewItem({...newItem, price: val});
-                    }}
+                    onChange={e => setNewItem({...newItem, price: parseInt(e.target.value)})}
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                   />
                 </div>
