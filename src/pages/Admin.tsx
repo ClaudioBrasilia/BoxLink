@@ -104,7 +104,7 @@ export default function Admin() {
     }
 
     // Fetch Box Settings
-    const { data: settingsData } = await supabase.from('box_settings').select('*').single();
+    const { data: settingsData } = await supabase.from('box_settings').select('*').maybeSingle();
 
     if (settingsData) {
       setSettings({
@@ -174,14 +174,14 @@ export default function Admin() {
   }, []);
 
   const handleStatusChange = async (userId: string, status: string) => {
-    const role = selectedRoles[userId];
+    const role = selectedRoles[userId] || 'athlete';
     const { error } = await supabase
       .from('profiles')
       .update({ status, role })
       .eq('id', userId);
     
     if (!error) {
-      setUsers(users.map(u => u.id === userId ? { ...u, status: status as any, role: role as any } : u));
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: status as any, role: role as any } : u));
     } else {
       alert('Erro ao atualizar status: ' + error.message);
     }
@@ -489,7 +489,7 @@ export default function Admin() {
                     className="bg-transparent border-none text-[10px] font-black uppercase tracking-widest focus:ring-0 p-0"
                   >
                     <option value="all">TODAS FUNÇÕES</option>
-                    <option value="student">ALUNOS</option>
+                    <option value="athlete">ALUNOS</option>
                     <option value="coach">COACHES</option>
                     <option value="admin">ADMINS</option>
                   </select>
@@ -524,7 +524,7 @@ export default function Admin() {
                         <div className="mt-3 flex flex-col gap-2">
                           <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">DEFINIR CARGO:</label>
                           <div className="flex gap-2">
-                            {(['student', 'coach', 'admin'] as const).map((role) => (
+                            {(['athlete', 'coach', 'admin'] as const).map((role) => (
                               <button
                                 key={role}
                                 onClick={() => handleRoleChange(u.id, role)}
@@ -602,7 +602,7 @@ export default function Admin() {
                                 <div className="mt-3 flex flex-col gap-2">
                                   <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">ALTERAR CARGO:</label>
                                   <div className="flex gap-2">
-                                    {(['student', 'coach', 'admin'] as const).map((role) => (
+                                    {(['athlete', 'coach', 'admin'] as const).map((role) => (
                                       <button
                                         key={role}
                                         onClick={() => handleRoleChange(u.id, role)}
