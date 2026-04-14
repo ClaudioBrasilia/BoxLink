@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity } from 'lucide-react';
+import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity, Users } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { useState } from 'react';
@@ -23,6 +23,7 @@ export default function Layout() {
     { icon: LineChart, label: 'Evolução', path: '/progress' },
     { icon: Box, label: 'Meu Box', path: '/mybox' },
     { icon: Sparkles, label: 'Avatar', path: '/avatar' },
+    { icon: Users, label: 'Clãs', path: '/clans' },
     ...(user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Admin', path: '/admin' }] : []),
     ...(user?.role === 'coach' || user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Coach', path: '/coach' }] : []),
   ];
