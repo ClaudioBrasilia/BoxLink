@@ -15,6 +15,7 @@ export default function TV() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [timer, setTimer] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [isWodAutoRotationActive, setIsWodAutoRotationActive] = useState(true);
   const [athleteIndex, setAthleteIndex] = useState(0);
   const [wodTabIndex, setWodTabIndex] = useState(0);
 
@@ -98,9 +99,12 @@ export default function TV() {
       });
     }, 8000);
 
-    const wodInterval = setInterval(() => {
-      setWodTabIndex(prev => (prev + 1) % 3);
-    }, 15000);
+    let wodInterval: any;
+    if (isWodAutoRotationActive) {
+      wodInterval = setInterval(() => {
+        setWodTabIndex(prev => (prev + 1) % 3);
+      }, 15000);
+    }
 
     const checkinsChannel = supabase.channel('tv-checkins')
       .on('postgres_changes', { event: '*', table: 'checkins' }, fetchData)
@@ -112,7 +116,7 @@ export default function TV() {
       clearInterval(wodInterval);
       supabase.removeChannel(checkinsChannel);
     };
-  }, [data?.rankings?.length, data?.checkins?.length]);
+  }, [data?.rankings?.length, data?.checkins?.length, isWodAutoRotationActive]);
 
   useEffect(() => {
     let interval: any;
@@ -248,6 +252,21 @@ export default function TV() {
               ))}
             </div>
             <div className="flex gap-2 mr-2">
+              <button 
+                onClick={() => setIsWodAutoRotationActive(!isWodAutoRotationActive)}
+                className={cn(
+                  "p-3 rounded-xl border transition-all flex items-center gap-2",
+                  isWodAutoRotationActive 
+                    ? "bg-primary/20 border-primary/30 text-primary" 
+                    : "bg-white/5 border-white/10 text-white/40"
+                )}
+                title={isWodAutoRotationActive ? "Pausar Rotação" : "Retomar Rotação"}
+              >
+                {isWodAutoRotationActive ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                <span className="text-[10px] font-black uppercase italic tracking-widest">
+                  {isWodAutoRotationActive ? 'AUTO' : 'PAUSADO'}
+                </span>
+              </button>
               <button 
                 onClick={() => setWodTabIndex(prev => (prev - 1 + 3) % 3)}
                 className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all"
