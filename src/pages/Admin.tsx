@@ -152,7 +152,7 @@ export default function Admin() {
     }
 
     // Fetch Box Settings
-    const { data: settingsData } = await supabase.from('box_settings').select('*').single();
+    const { data: settingsData } = await supabase.from('box_settings').select('*').maybeSingle();
 
     if (settingsData) {
       setSettings(prev => ({
@@ -223,7 +223,7 @@ export default function Admin() {
   }, []);
 
   const handleStatusChange = async (userId: string, status: string) => {
-    const role = selectedRoles[userId];
+    const role = selectedRoles[userId] || 'athlete';
     const { error } = await supabase
       .from('profiles')
       .update({ status, role })
@@ -241,7 +241,7 @@ export default function Admin() {
   };
 
   const handleRoleUpdate = async (userId: string) => {
-    const role = selectedRoles[userId];
+    const role = selectedRoles[userId] || 'athlete';
     const user = users.find(u => u.id === userId);
     if (!user) return;
     
@@ -277,6 +277,7 @@ export default function Admin() {
         modules: settings.modules || {},
         announcements: settings.announcements || [],
         timezone: settings.timezone || 'America/Sao_Paulo',
+        clans_enabled: (settings as any).clans_enabled || false,
         updated_at: new Date().toISOString()
       }, { onConflict: 'is_active' })
       .select()
