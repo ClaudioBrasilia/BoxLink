@@ -48,7 +48,7 @@ export default function TV() {
         .limit(20);
 
       const { data: profilesRaw } = await supabase
-        .from('profiles').select('id, name, avatar_equipped');
+        .from('profiles').select('id, name, avatar_equipped, xp, level, role');
 
       const profileMap = Object.fromEntries((profilesRaw || []).map((p: any) => [p.id, p]));
       const checkins = (checkinsRaw || []).map((c: any) => ({
@@ -90,7 +90,10 @@ export default function TV() {
     
     const athleteInterval = setInterval(() => {
       setAthleteIndex(prev => {
-        const count = data?.rankings?.length || 1;
+        const athletesToDisplay = data?.checkins?.length > 0 
+          ? data.checkins.map((c: any) => c.profiles).filter(Boolean)
+          : data?.rankings || [];
+        const count = athletesToDisplay.length || 1;
         return (prev + 1) % count;
       });
     }, 8000);
@@ -109,7 +112,7 @@ export default function TV() {
       clearInterval(wodInterval);
       supabase.removeChannel(checkinsChannel);
     };
-  }, [data?.rankings?.length]);
+  }, [data?.rankings?.length, data?.checkins?.length]);
 
   useEffect(() => {
     let interval: any;
@@ -153,9 +156,14 @@ export default function TV() {
   if (!data) return <div className="min-h-screen bg-black flex items-center justify-center text-primary font-headline font-black text-4xl italic animate-pulse">PREPARANDO ARENA...</div>;
 
   const { wod, checkins, settings, rankings, stats, duels } = data;
-  const rankingsCount = rankings?.length || 0;
-  const currentAthlete = rankingsCount > 0 ? rankings[athleteIndex % rankingsCount] : null;
-  const nextAthlete = rankingsCount > 1 ? rankings[(athleteIndex + 1) % rankingsCount] : null;
+  
+  const athletesToDisplay = checkins.length > 0 
+    ? checkins.map((c: any) => c.profiles).filter(Boolean)
+    : rankings;
+
+  const athletesCount = athletesToDisplay?.length || 0;
+  const currentAthlete = athletesCount > 0 ? athletesToDisplay[athleteIndex % athletesCount] : null;
+  const nextAthlete = athletesCount > 1 ? athletesToDisplay[(athleteIndex + 1) % athletesCount] : null;
 
   return (
     <div className="min-h-screen bg-black text-white font-sans overflow-hidden flex flex-col p-6 gap-6 relative select-none">
