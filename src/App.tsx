@@ -17,6 +17,7 @@ import TV from './pages/TV';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import DebugFlow from './pages/DebugFlow';
+import Clans from './pages/Clans';
 import { Shield } from 'lucide-react';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
@@ -66,6 +67,7 @@ export default function App() {
             <Route path="profile" element={<Profile />} />
             <Route path="progress" element={<Progress />} />
             <Route path="avatar" element={<AvatarCustomization />} />
+            <Route path="clans" element={<Clans />} />
             <Route path="debug-flow" element={<DebugFlow />} />
             <Route path="admin" element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
             <Route path="coach" element={<ProtectedRoute roles={['coach', 'admin']}><Coach /></ProtectedRoute>} />
