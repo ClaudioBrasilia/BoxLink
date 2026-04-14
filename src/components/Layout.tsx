@@ -22,8 +22,8 @@ export default function Layout() {
     { icon: Zap, label: 'Desafios', path: '/challenges' },
     { icon: LineChart, label: 'Evolução', path: '/progress' },
     { icon: Box, label: 'Meu Box', path: '/mybox' },
-    { icon: Sparkles, label: 'Avatar', path: '/avatar' },
     { icon: Users, label: 'Clãs', path: '/clans' },
+    { icon: Sparkles, label: 'Avatar', path: '/avatar' },
     ...(user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Admin', path: '/admin' }] : []),
     ...(user?.role === 'coach' || user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Coach', path: '/coach' }] : []),
   ];

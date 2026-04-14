@@ -166,6 +166,7 @@ create table public.box_settings (
   lat double precision default -23.5505,
   lng double precision default -46.6333,
   radius integer default 500,
+  clans_enabled boolean default false,
   tv_layout text default 'new',
   tv_config jsonb default '{
     "showCheckins": true,
@@ -184,6 +185,48 @@ create table public.box_settings (
   }',
   is_active boolean default true,
   updated_at timestamptz default now()
+);
+
+-- 13. Clans
+create table public.clans (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  motto text,
+  color text default '#CAFD00',
+  created_by uuid references auth.users(id),
+  is_active boolean default true,
+  created_at timestamptz default now()
+);
+
+-- 14. Clan Memberships
+create table public.clan_memberships (
+  id uuid primary key default gen_random_uuid(),
+  clan_id uuid references public.clans(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete cascade,
+  role text default 'member' check (role in ('member', 'captain')),
+  status text default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  created_at timestamptz default now(),
+  unique(clan_id, user_id)
+);
+
+-- 15. Territories
+create table public.territories (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  icon text,
+  focus text,
+  rotation_order integer,
+  created_at timestamptz default now()
+);
+
+-- 16. Domination Events
+create table public.domination_events (
+  id uuid primary key default gen_random_uuid(),
+  clan_id uuid references public.clans(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete cascade,
+  territory_id uuid references public.territories(id) on delete cascade,
+  energy integer default 0,
+  created_at timestamptz default now()
 );
 
 -- Enable Row Level Security (RLS)
@@ -207,6 +250,30 @@ create policy "Users can insert their own WOD results" on public.wod_results for
 
 create policy "Users can view their own PRs" on public.personal_records for select using (auth.uid() = user_id);
 create policy "Users can manage their own PRs" on public.personal_records for all using (auth.uid() = user_id);
+
+-- Clans Policies
+create policy "Clans are viewable by everyone" on public.clans for select using (true);
+create policy "Captains can manage their clans" on public.clans for all using (
+  exists (
+    select 1 from public.clan_memberships
+    where clan_id = id and user_id = auth.uid() and role = 'captain'
+  )
+);
+create policy "Users can create clans" on public.clans for insert with check (auth.role() = 'authenticated');
+
+create policy "Memberships are viewable by everyone" on public.clan_memberships for select using (true);
+create policy "Users can apply for membership" on public.clan_memberships for insert with check (auth.uid() = user_id);
+create policy "Captains can manage memberships" on public.clan_memberships for all using (
+  exists (
+    select 1 from public.clan_memberships
+    where clan_id = public.clan_memberships.clan_id and user_id = auth.uid() and role = 'captain'
+  )
+);
+
+create policy "Territories are viewable by everyone" on public.territories for select using (true);
+
+create policy "Domination events are viewable by everyone" on public.domination_events for select using (true);
+create policy "Users can insert domination events" on public.domination_events for insert with check (auth.uid() = user_id);
 
 -- Functions and Triggers
 -- Automatically create profile on signup

@@ -14,10 +14,10 @@ import AvatarCustomization from './pages/AvatarCustomization';
 import Admin from './pages/Admin';
 import Coach from './pages/Coach';
 import TV from './pages/TV';
+import Clans from './pages/Clans';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import DebugFlow from './pages/DebugFlow';
-import Clans from './pages/Clans';
 import { Shield } from 'lucide-react';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {

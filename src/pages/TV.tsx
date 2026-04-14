@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Timer, Trophy, Zap, Swords, Maximize, LayoutDashboard, Activity, Users, Play, Pause, RotateCcw } from 'lucide-react';
+import { Timer, Trophy, Zap, Swords, Maximize, LayoutDashboard, Activity, Users, Play, Pause, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wod, Challenge, Duel, User, BoxSettings } from '../types';
 import { format } from 'date-fns';
@@ -16,6 +16,7 @@ export default function TV() {
   const [timer, setTimer] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [athleteIndex, setAthleteIndex] = useState(0);
+  const [wodTabIndex, setWodTabIndex] = useState(0);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -94,6 +95,10 @@ export default function TV() {
       });
     }, 8000);
 
+    const wodInterval = setInterval(() => {
+      setWodTabIndex(prev => (prev + 1) % 3);
+    }, 15000);
+
     const checkinsChannel = supabase.channel('tv-checkins')
       .on('postgres_changes', { event: '*', table: 'checkins' }, fetchData)
       .subscribe();
@@ -101,6 +106,7 @@ export default function TV() {
     return () => {
       clearInterval(interval);
       clearInterval(athleteInterval);
+      clearInterval(wodInterval);
       supabase.removeChannel(checkinsChannel);
     };
   }, [data?.rankings?.length]);
@@ -208,68 +214,160 @@ export default function TV() {
       <div className="flex-1 grid grid-cols-12 gap-6 overflow-hidden">
         {/* Left: WARM-UP & THE WOD */}
         <div className="col-span-8 flex flex-col gap-6">
-          <div className="grid grid-cols-2 gap-6 h-[40%]">
-            {/* WARM-UP */}
-            <section className="bg-[#111] rounded-[2.5rem] p-8 border border-white/5 relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-6">
-                <div className="w-12 h-12 rounded-full border-2 border-primary/20 flex items-center justify-center">
-                  <Activity className="w-6 h-6 text-primary animate-pulse" />
-                </div>
-              </div>
-              <h3 className="text-primary text-xs font-black uppercase tracking-[0.3em] italic mb-6">WARM-UP</h3>
-              <div className="space-y-4">
-                {(wod?.warmup || '').split('\n').filter(Boolean).map((line: string, i: number) => (
-                  <div key={i} className="flex items-center gap-4">
-                    <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_10px_#cafd00]"></div>
-                    <p className="text-2xl font-headline font-black text-white uppercase italic tracking-tight">{line}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* SKILL */}
-            <section className="bg-[#111] rounded-[2.5rem] p-8 border border-white/5 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-6">
-                <span className="bg-secondary/20 text-secondary text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest border border-secondary/30 italic">TECHNIQUE</span>
-              </div>
-              <h3 className="text-secondary text-xs font-black uppercase tracking-[0.3em] italic mb-6">SKILL</h3>
-              <div className="space-y-2">
-                <h4 className="text-4xl font-headline font-black text-white uppercase italic tracking-tighter leading-none mb-6">{(wod?.skill || '').split('\n')[0] || '---'}</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                    <span className="text-white/40 text-[8px] font-black uppercase tracking-widest block mb-1">SETS</span>
-                    <span className="text-2xl font-headline font-black text-white italic">5 x 3</span>
-                  </div>
-                  <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                    <span className="text-white/40 text-[8px] font-black uppercase tracking-widest block mb-1">LOAD</span>
-                    <span className="text-2xl font-headline font-black text-secondary italic">65% 1RM</span>
-                  </div>
-                </div>
-              </div>
-            </section>
+          {/* WOD Tabs Navigation */}
+          <div className="flex items-center justify-between bg-[#111] rounded-3xl p-3 border border-white/5">
+            <div className="flex gap-3">
+              {['WARM-UP', 'SKILL', 'THE WOD'].map((label, i) => (
+                <button
+                  key={label}
+                  onClick={() => setWodTabIndex(i)}
+                  className={cn(
+                    "px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-[0.2em] italic transition-all border relative overflow-hidden group",
+                    wodTabIndex === i 
+                      ? "bg-primary text-black border-primary shadow-[0_0_20px_rgba(202,253,0,0.3)]" 
+                      : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"
+                  )}
+                >
+                  <span className="relative z-10">{label}</span>
+                  {wodTabIndex === i && (
+                    <motion.div 
+                      layoutId="activeTab"
+                      className="absolute inset-0 bg-primary"
+                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 mr-2">
+              <button 
+                onClick={() => setWodTabIndex(prev => (prev - 1 + 3) % 3)}
+                className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={() => setWodTabIndex(prev => (prev + 1) % 3)}
+                className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
-          {/* THE WOD */}
-          <section className="bg-[#111] rounded-[3rem] p-10 border border-white/5 flex-1 relative overflow-hidden flex flex-col justify-center">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-secondary to-primary opacity-50"></div>
-            <div className="flex items-center gap-4 mb-4">
-              <span className="text-white/40 text-xs font-black uppercase tracking-[0.5em] italic">MAIN EVENT</span>
-              <div className="h-[1px] flex-1 bg-white/10"></div>
-            </div>
-            <h2 className="text-[10rem] font-headline font-black text-white italic tracking-tighter uppercase leading-[0.8] mb-6">THE WOD</h2>
-            <div className="flex items-center gap-8">
-              <div className="bg-primary text-black px-8 py-3 rounded-2xl font-headline font-black text-4xl italic uppercase tracking-tighter">
-                {wod.type} 20
-              </div>
-              <div className="flex-1 space-y-2">
-                <p className="text-white/60 text-xl font-bold uppercase tracking-widest leading-tight">{wod.name}</p>
-                <div className="flex gap-4">
-                  <span className="text-secondary text-xs font-black uppercase tracking-widest">RX: {wod.rx}</span>
-                  <span className="text-white/40 text-xs font-black uppercase tracking-widest">SCALED: {wod.scaled}</span>
-                </div>
-              </div>
-            </div>
-          </section>
+          <div className="flex-1 relative">
+            <AnimatePresence mode="wait">
+              {wodTabIndex === 0 && (
+                <motion.section 
+                  key="warmup"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  className="absolute inset-0 bg-[#111] rounded-[3rem] p-12 border border-white/5 flex flex-col"
+                >
+                  <div className="flex justify-between items-start mb-12">
+                    <div>
+                      <h3 className="text-primary text-sm font-black uppercase tracking-[0.4em] italic mb-2">PHASE 01</h3>
+                      <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter">WARM-UP</h2>
+                    </div>
+                    <div className="w-20 h-20 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                      <Activity className="w-10 h-10 text-primary animate-pulse" />
+                    </div>
+                  </div>
+                  <div className="flex-1 flex flex-col justify-center gap-8">
+                    {(wod?.warmup || '').split('\n').filter(Boolean).map((line: string, i: number) => (
+                      <motion.div 
+                        key={i}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.1 }}
+                        className="flex items-center gap-8"
+                      >
+                        <div className="w-4 h-4 rounded-full bg-primary shadow-[0_0_20px_#cafd00]"></div>
+                        <p className="text-5xl font-headline font-black text-white uppercase italic tracking-tight leading-tight">{line}</p>
+                      </motion.div>
+                    ))}
+                  </div>
+                </motion.section>
+              )}
+
+              {wodTabIndex === 1 && (
+                <motion.section 
+                  key="skill"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  className="absolute inset-0 bg-[#111] rounded-[3rem] p-12 border border-white/5 flex flex-col"
+                >
+                  <div className="flex justify-between items-start mb-12">
+                    <div>
+                      <h3 className="text-secondary text-sm font-black uppercase tracking-[0.4em] italic mb-2">PHASE 02</h3>
+                      <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter">SKILL / TECHNIQUE</h2>
+                    </div>
+                    <div className="w-20 h-20 rounded-3xl bg-secondary/10 border border-secondary/20 flex items-center justify-center">
+                      <Zap className="w-10 h-10 text-secondary" />
+                    </div>
+                  </div>
+                    <div className="flex-1 flex flex-col justify-center gap-8">
+                      {(wod?.skill || '').split('\n').filter(Boolean).map((line: string, i: number) => (
+                        <motion.div 
+                          key={i}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                          className="flex items-center gap-8"
+                        >
+                          <div className="w-4 h-4 rounded-full bg-secondary shadow-[0_0_20px_#ff7439]"></div>
+                          <p className="text-5xl font-headline font-black text-white uppercase italic tracking-tight leading-tight">{line}</p>
+                        </motion.div>
+                      ))}
+                    </div>
+                </motion.section>
+              )}
+
+              {wodTabIndex === 2 && (
+                <motion.section 
+                  key="wod"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  className="absolute inset-0 bg-[#111] rounded-[3rem] p-12 border border-white/5 flex flex-col"
+                >
+                  <div className="flex justify-between items-start mb-8">
+                    <div>
+                      <h3 className="text-primary text-sm font-black uppercase tracking-[0.4em] italic mb-2">PHASE 03</h3>
+                      <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter">THE WOD</h2>
+                    </div>
+                    <div className="bg-primary text-black px-8 py-4 rounded-3xl font-headline font-black text-5xl italic uppercase tracking-tighter shadow-[0_0_30px_rgba(202,253,0,0.3)]">
+                      {wod.type}
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 flex flex-col justify-center">
+                    <div className="text-center mb-12">
+                      <p className="text-white/40 text-sm font-black uppercase tracking-[0.5em] italic mb-4">MAIN EVENT</p>
+                      <h2 className="text-[12rem] font-headline font-black text-white italic tracking-tighter uppercase leading-[0.7] mb-8">{wod.name}</h2>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-6">
+                      <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 text-center">
+                        <span className="text-secondary text-xs font-black uppercase tracking-widest block mb-2">RX</span>
+                        <span className="text-4xl font-headline font-black text-white italic">{wod.rx}</span>
+                      </div>
+                      <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 text-center">
+                        <span className="text-white/40 text-xs font-black uppercase tracking-widest block mb-2">SCALED</span>
+                        <span className="text-4xl font-headline font-black text-white italic">{wod.scaled}</span>
+                      </div>
+                      <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 text-center">
+                        <span className="text-white/40 text-xs font-black uppercase tracking-widest block mb-2">BEGINNER</span>
+                        <span className="text-4xl font-headline font-black text-white italic">{wod.beginner}</span>
+                      </div>
+                    </div>
+                  </div>
+                </motion.section>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
 
         {/* Right: CHECK-IN & ATHLETE CARDS */}
@@ -292,7 +390,10 @@ export default function TV() {
                 className="h-full bg-primary shadow-[0_0_15px_#cafd00]"
               />
             </div>
-            <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mt-4 text-center italic">CLASS TIME: 08:00 AM • COACH: BRUNO S.</p>
+            <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mt-4 text-center italic">
+              {checkins[0]?.class_time ? `CLASS TIME: ${checkins[0].class_time}` : 'PRÓXIMA AULA'} 
+              {checkins[0]?.profiles?.name ? ` • COACH: ${checkins[0].profiles.name.split(' ')[0]}` : ''}
+            </p>
           </section>
 
           {/* ATHLETE ROTATION */}
@@ -310,11 +411,15 @@ export default function TV() {
                   <div className="flex items-center gap-6 mb-8">
                     <div className="relative">
                       <AvatarPreview equipped={currentAthlete.avatar_equipped} size="lg" className="border-4 border-primary shadow-[0_0_30px_rgba(202,253,0,0.2)]" />
-                      <div className="absolute -bottom-2 -right-2 bg-secondary text-white text-[10px] font-black px-3 py-1 rounded-full uppercase italic shadow-lg">ELITE</div>
+                      <div className="absolute -bottom-2 -right-2 bg-secondary text-white text-[10px] font-black px-3 py-1 rounded-full uppercase italic shadow-lg">
+                        {currentAthlete.level >= 50 ? 'ELITE' : `LVL ${currentAthlete.level}`}
+                      </div>
                     </div>
                     <div>
                       <h4 className="text-4xl font-headline font-black text-white uppercase italic tracking-tighter leading-none">{currentAthlete.name}</h4>
-                      <p className="text-primary text-xs font-black uppercase tracking-widest mt-2">ELITE MEMBER</p>
+                      <p className="text-primary text-xs font-black uppercase tracking-widest mt-2">
+                        {currentAthlete.role === 'admin' ? 'HEAD COACH' : currentAthlete.role === 'coach' ? 'COACH' : 'ATLETA'}
+                      </p>
                     </div>
                   </div>
 
