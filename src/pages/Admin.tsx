@@ -117,7 +117,8 @@ export default function Admin() {
         tv_config: settingsData.tv_config || {},
         modules: settingsData.modules || { economy: true, store: true, duels: true, challenges: true },
         announcements: settingsData.announcements || [],
-        timezone: settingsData.timezone || 'America/Sao_Paulo'
+        timezone: settingsData.timezone || 'America/Sao_Paulo',
+        clans_enabled: settingsData.clans_enabled || false
       } as any);
     }
 
@@ -192,7 +193,7 @@ export default function Admin() {
   };
 
   const handleRoleUpdate = async (userId: string) => {
-    const role = selectedRoles[userId];
+    const role = selectedRoles[userId] || 'athlete';
     const user = users.find(u => u.id === userId);
     if (!user) return;
     
@@ -229,6 +230,7 @@ export default function Admin() {
         modules: settings.modules || {},
         announcements: settings.announcements || [],
         timezone: settings.timezone || 'America/Sao_Paulo',
+        clans_enabled: (settings as any).clans_enabled || false,
         updated_at: new Date().toISOString()
       })
       .eq('is_active', true)
@@ -1158,6 +1160,18 @@ export default function Admin() {
                             </button>
                           ))}
                         </div>
+                      </div>
+                      <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
+                        <div>
+                          <p className="text-xs font-black text-on-surface uppercase italic">Sistema de Clãs</p>
+                          <p className="text-[10px] text-on-surface-variant mt-0.5">Ativa disputa por territórios entre equipes</p>
+                        </div>
+                        <button
+                          onClick={() => setSettings(s => s ? {...s, clans_enabled: !(s as any).clans_enabled} : null)}
+                          className={`w-12 h-6 rounded-full transition-all ${(settings as any)?.clans_enabled ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
+                        >
+                          <div className={`w-5 h-5 rounded-full bg-white shadow transition-all mx-0.5 ${(settings as any)?.clans_enabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                        </button>
                       </div>
                     </motion.div>
                   )}
