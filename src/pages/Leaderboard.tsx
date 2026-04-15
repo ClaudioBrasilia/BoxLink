@@ -151,7 +151,7 @@ export default function Leaderboard() {
               activeTab === tab ? "bg-primary text-background shadow-lg" : "text-on-surface-variant hover:text-on-surface"
             )}
           >
-            {tab === 'xp' ? 'XP GERAL' : tab === 'freq' ? 'FREQUÊNCIA' : tab === 'clans' ? 'CLÃS' : 'RANK WOD'}
+            {tab === 'xp' ? 'XP GERAL' : tab === 'freq' ? 'FREQUÊNCIA' : tab === 'clans' ? 'TIMES' : 'RANK WOD'}
           </button>
         ))}
       </div>
@@ -231,7 +231,7 @@ export default function Leaderboard() {
       {/* List */}
       <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 flex flex-col gap-4">
         <div className="flex justify-between items-center px-2">
-          <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">{isClans ? 'TODOS CLÃS' : 'TODOS ATLETAS'}</h3>
+          <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">{isClans ? 'TODOS TIMES' : 'TODOS ATLETAS'}</h3>
           <button onClick={() => setIsExpanded(!isExpanded)} className="text-primary text-xs font-bold flex items-center gap-1">
             {isExpanded ? 'RECOLHER' : 'EXPANDIR'} {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>

@@ -1233,7 +1233,7 @@ export default function Admin() {
                                   : "bg-surface-container-highest border-outline-variant/10 text-on-surface-variant"
                               )}
                             >
-                              <span className="text-[10px] font-black uppercase tracking-widest">{module === 'economy' ? 'ECONOMIA' : module === 'store' ? 'LOJA' : module === 'duels' ? 'DUELOS' : module === 'challenges' ? 'DESAFIOS' : 'CLÃS'}</span>
+                              <span className="text-[10px] font-black uppercase tracking-widest">{module === 'economy' ? 'ECONOMIA' : module === 'store' ? 'LOJA' : module === 'duels' ? 'DUELOS' : module === 'challenges' ? 'DESAFIOS' : 'TIMES'}</span>
                               {settings.modules?.[module] ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
                             </button>
                           ))}
@@ -1241,7 +1241,7 @@ export default function Admin() {
                       </div>
                       {settings.modules?.clans && (
                         <div className="space-y-2">
-                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Limite de Membros por Clã</label>
+                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Limite de Membros por Time</label>
                           <input 
                             type="number"
                             value={settings.max_clan_members || 10}
