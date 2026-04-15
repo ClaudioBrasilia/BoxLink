@@ -259,10 +259,10 @@ export default function Admin() {
   };
 
   const handleSaveSettings = async () => {
+    if (!settings) return;
     const { data, error } = await supabase
       .from('box_settings')
-      .upsert({
-        id: (settings as any).id,
+      .update({
         name: settings.name,
         logo: settings.logo,
         description: settings.description,
@@ -273,15 +273,16 @@ export default function Admin() {
         radius: settings.radius,
         is_active: settings.isActive,
         rewards: settings.rewards || {},
-        tv_config: settings.tvConfig || (settings as any).tv_config || {},
+        tv_config: (settings as any).tvConfig || (settings as any).tv_config || {},
         modules: settings.modules || {},
         announcements: settings.announcements || [],
         timezone: settings.timezone || 'America/Sao_Paulo',
         clans_enabled: (settings as any).clans_enabled || false,
         updated_at: new Date().toISOString()
-      }, { onConflict: 'is_active' })
+      })
+      .eq('is_active', true)
       .select()
-      .single();
+      .maybeSingle();
 
     if (!error && data) {
       fetchAll();
