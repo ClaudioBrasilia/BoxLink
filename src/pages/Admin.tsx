@@ -65,7 +65,8 @@ export default function Admin() {
       duels: true,
       challenges: true,
       clans: true
-    }
+    },
+    max_clan_members: 10
   });
   const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
   const [schedule, setSchedule] = useState<Schedule[]>([]);
@@ -167,7 +168,8 @@ export default function Admin() {
         tvConfig: settingsData.tv_config || (prev as any).tvConfig || {},
         modules: settingsData.modules || prev.modules,
         announcements: settingsData.announcements || prev.announcements,
-        timezone: settingsData.timezone || prev.timezone
+        timezone: settingsData.timezone || prev.timezone,
+        max_clan_members: settingsData.max_clan_members || 10
       }));
     }
 
@@ -279,6 +281,7 @@ export default function Admin() {
         announcements: settings.announcements || [],
         timezone: settings.timezone || 'America/Sao_Paulo',
         clans_enabled: (settings as any).clans_enabled || false,
+        max_clan_members: settings.max_clan_members || 10,
         updated_at: new Date().toISOString()
       })
       .eq('is_active', true)
@@ -1236,6 +1239,18 @@ export default function Admin() {
                           ))}
                         </div>
                       </div>
+                      {settings.modules?.clans && (
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Limite de Membros por Clã</label>
+                          <input 
+                            type="number"
+                            value={settings.max_clan_members || 10}
+                            onChange={e => setSettings(s => ({...s, max_clan_members: parseInt(e.target.value) || 1}))}
+                            className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
+                            min="1"
+                          />
+                        </div>
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
