@@ -68,9 +68,9 @@ export default function Clans() {
       // Check if clans are enabled
       const { data: settings } = await supabase
         .from('box_settings')
-        .select('clans_enabled')
+        .select('modules')
         .maybeSingle();
-      setClansEnabled(settings?.clans_enabled || false);
+      setClansEnabled(settings?.modules?.clans || false);
 
       // Fetch clans
       const { data: clansData } = await supabase
