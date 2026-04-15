@@ -5,6 +5,7 @@ import { User as UserType } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { supabase } from '../lib/supabase';
+import ShareRankingButton from '../components/ShareRankingButton';
 
 export default function Leaderboard() {
   const [rankings, setRankings] = useState<{ xpRank: UserType[], freqRank: UserType[] } | null>(null);
@@ -138,6 +139,13 @@ export default function Leaderboard() {
           <Trophy className="w-8 h-8 text-primary" />
           RANKING
         </h1>
+        {rankings && top3.length > 0 && (
+          <ShareRankingButton
+            top3={top3}
+            rankingType={activeTab as 'xp' | 'freq' | 'clans'}
+            title={activeTab === 'xp' ? 'XP GERAL' : activeTab === 'freq' ? 'FREQUÊNCIA' : 'TIMES'}
+          />
+        )}
       </header>
 
       {/* Tabs */}
