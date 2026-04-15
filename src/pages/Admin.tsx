@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, MapPin, Calendar, Megaphone, Plus, Settings, 
   ChevronRight, ChevronDown, Activity, Check, X, Shield, UserPlus, 
   ImageIcon, ShoppingBag, Tv, Trophy, History, Search, Filter,
-  Clock, ToggleLeft, ToggleRight, Trash2, Edit2, Save
+  Clock, ToggleLeft, ToggleRight, Trash2, Edit2, Save, Camera
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User, BoxSettings, Schedule, Item, Duel, Wod } from '../types';
@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '../lib/supabase';
+import { uploadImage } from '../utils/image';
 
 export default function Admin() {
   const { user } = useAuth();
@@ -79,6 +80,7 @@ export default function Admin() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [uploading, setUploading] = useState<string | null>(null);
 
   const [newChallenge, setNewChallenge] = useState({
     title: '',
@@ -258,6 +260,22 @@ export default function Admin() {
       alert('Cargo atualizado com sucesso!');
     } else {
       alert('Erro ao atualizar cargo: ' + error.message);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'logo' | 'institutionalPhoto' | 'topBanner') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(field);
+    try {
+      const fileName = `${field}_${Date.now()}.jpg`;
+      const publicUrl = await uploadImage(file, 'box-assets', fileName);
+      setSettings(s => ({ ...s, [field]: publicUrl }));
+    } catch (error: any) {
+      alert('Erro ao fazer upload: ' + error.message);
+    } finally {
+      setUploading(null);
     }
   };
 
@@ -766,14 +784,21 @@ export default function Admin() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">URL da Logo</label>
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Logo do Box</label>
                         <div className="flex gap-4 items-center">
-                          <input 
-                            type="text" 
-                            value={settings.logo} 
-                            onChange={e => setSettings(s => ({...s, logo: e.target.value}))}
-                            className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                          />
+                          <div className="flex-1 relative">
+                            <input 
+                              type="text" 
+                              value={settings.logo} 
+                              onChange={e => setSettings(s => ({...s, logo: e.target.value}))}
+                              className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface pr-12" 
+                              placeholder="URL da logo ou faça upload"
+                            />
+                            <label className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-primary text-background rounded-xl cursor-pointer hover:scale-110 transition-all">
+                              {uploading === 'logo' ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" /> : <Camera className="w-4 h-4" />}
+                              <input type="file" className="hidden" accept="image/*" onChange={e => handleFileUpload(e, 'logo')} />
+                            </label>
+                          </div>
                           {settings.logo && (
                             <img src={settings.logo} alt="Preview" className="w-12 h-12 rounded-xl object-cover border border-outline-variant/20" />
                           )}
@@ -789,28 +814,42 @@ export default function Admin() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Foto Institucional (URL)</label>
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Foto Institucional</label>
                         <div className="flex gap-4 items-center">
-                          <input 
-                            type="text" 
-                            value={settings.institutionalPhoto} 
-                            onChange={e => setSettings(s => ({...s, institutionalPhoto: e.target.value}))}
-                            className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                          />
+                          <div className="flex-1 relative">
+                            <input 
+                              type="text" 
+                              value={settings.institutionalPhoto} 
+                              onChange={e => setSettings(s => ({...s, institutionalPhoto: e.target.value}))}
+                              className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface pr-12" 
+                              placeholder="URL da foto ou faça upload"
+                            />
+                            <label className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-primary text-background rounded-xl cursor-pointer hover:scale-110 transition-all">
+                              {uploading === 'institutionalPhoto' ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" /> : <Camera className="w-4 h-4" />}
+                              <input type="file" className="hidden" accept="image/*" onChange={e => handleFileUpload(e, 'institutionalPhoto')} />
+                            </label>
+                          </div>
                           {settings.institutionalPhoto && (
                             <img src={settings.institutionalPhoto} alt="Preview" className="w-12 h-12 rounded-xl object-cover border border-outline-variant/20" />
                           )}
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Banner Superior (URL)</label>
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Banner Superior</label>
                         <div className="flex gap-4 items-center">
-                          <input 
-                            type="text" 
-                            value={settings.topBanner} 
-                            onChange={e => setSettings(s => ({...s, topBanner: e.target.value}))}
-                            className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                          />
+                          <div className="flex-1 relative">
+                            <input 
+                              type="text" 
+                              value={settings.topBanner} 
+                              onChange={e => setSettings(s => ({...s, topBanner: e.target.value}))}
+                              className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface pr-12" 
+                              placeholder="URL do banner ou faça upload"
+                            />
+                            <label className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-primary text-background rounded-xl cursor-pointer hover:scale-110 transition-all">
+                              {uploading === 'topBanner' ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" /> : <Camera className="w-4 h-4" />}
+                              <input type="file" className="hidden" accept="image/*" onChange={e => handleFileUpload(e, 'topBanner')} />
+                            </label>
+                          </div>
                           {settings.topBanner && (
                             <img src={settings.topBanner} alt="Preview" className="w-12 h-12 rounded-xl object-cover border border-outline-variant/20" />
                           )}
