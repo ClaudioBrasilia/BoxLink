@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Wod, User } from '../types';
 import confetti from 'canvas-confetti';
 import AvatarPreview from '../components/AvatarPreview';
+import ShareAppButton from '../components/ShareAppButton';
 import { supabase } from '../lib/supabase';
 
 import { addReward } from '../utils/rewards';
@@ -200,6 +201,7 @@ export default function Dashboard() {
             <p className="text-on-surface-variant text-[10px] font-bold tracking-widest uppercase mt-1 italic">Pronto para o treino?</p>
           </div>
         </div>
+        <ShareAppButton />
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded-full border border-outline-variant/10">
             <span className="text-[10px] font-black text-primary uppercase italic">LVL {user?.level}</span>
