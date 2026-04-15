@@ -156,4 +156,5 @@ export interface BoxSettings {
     challenges: boolean;
     clans: boolean;
   };
+  max_clan_members?: number;
 }
