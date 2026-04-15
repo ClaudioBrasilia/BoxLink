@@ -46,6 +46,7 @@ export default function Clans() {
   const [myClan, setMyClan] = useState<Clan | null>(null);
   const [myMembership, setMyMembership] = useState<ClanMembership | null>(null);
   const [clansEnabled, setClansEnabled] = useState(false);
+  const [maxMembers, setMaxMembers] = useState(10);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newClanName, setNewClanName] = useState('');
@@ -68,9 +69,10 @@ export default function Clans() {
       // Check if clans are enabled
       const { data: settings } = await supabase
         .from('box_settings')
-        .select('modules')
+        .select('modules, max_clan_members')
         .maybeSingle();
       setClansEnabled(settings?.modules?.clans || false);
+      setMaxMembers(settings?.max_clan_members || 10);
 
       // Fetch clans
       const { data: clansData } = await supabase
@@ -163,6 +165,14 @@ export default function Clans() {
 
   const handleJoinClan = async (clanId: string) => {
     if (!user) return;
+    
+    // Check if clan is full
+    const clanMembers = memberships.filter(m => m.clan_id === clanId);
+    if (clanMembers.length >= maxMembers) {
+      alert(`Este clã já atingiu o limite máximo de ${maxMembers} membros.`);
+      return;
+    }
+
     setJoining(clanId);
     try {
       const { error } = await supabase.from('clan_memberships').insert({
