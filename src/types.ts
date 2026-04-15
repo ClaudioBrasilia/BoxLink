@@ -83,6 +83,13 @@ export interface Duel {
   reward: { xp: number; coins: number };
   type: string;
   createdAt: string;
+  bet_mode?: boolean;
+  bet_type?: 'none' | 'xp' | 'coins';
+  bet_amount?: number;
+  bet_reserved?: boolean;
+  bet_reserved_at?: string;
+  bet_settled_at?: string;
+  bet_canceled_at?: string;
 }
 
 export interface RewardEvent {
