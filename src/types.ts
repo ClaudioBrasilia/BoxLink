@@ -106,6 +106,26 @@ export interface Schedule {
   checkinWindowMinutes: number;
 }
 
+export interface Clan {
+  id: string;
+  name: string;
+  motto: string;
+  color: string;
+  shield_url?: string;
+  created_by: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ClanMembership {
+  id: string;
+  clan_id: string;
+  user_id: string;
+  role: 'member' | 'captain';
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+}
+
 export interface BoxSettings {
   name: string;
   logo: string;
