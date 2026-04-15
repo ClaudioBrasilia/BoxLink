@@ -63,7 +63,8 @@ export default function Admin() {
       economy: true,
       store: true,
       duels: true,
-      challenges: true
+      challenges: true,
+      clans: true
     }
   });
   const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
@@ -1218,7 +1219,7 @@ export default function Admin() {
                       <div className="space-y-4">
                         <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Módulos Ativos</label>
                         <div className="grid grid-cols-2 gap-4">
-                          {(['economy', 'store', 'duels', 'challenges'] as const).map(module => (
+                          {(['economy', 'store', 'duels', 'challenges', 'clans'] as const).map(module => (
                             <button 
                               key={module}
                               onClick={() => setSettings(s => ({...s, modules: {...(s.modules || {}), [module]: !s.modules?.[module]}}))}
@@ -1229,7 +1230,7 @@ export default function Admin() {
                                   : "bg-surface-container-highest border-outline-variant/10 text-on-surface-variant"
                               )}
                             >
-                              <span className="text-[10px] font-black uppercase tracking-widest">{module === 'economy' ? 'ECONOMIA' : module === 'store' ? 'LOJA' : module === 'duels' ? 'DUELOS' : 'DESAFIOS'}</span>
+                              <span className="text-[10px] font-black uppercase tracking-widest">{module === 'economy' ? 'ECONOMIA' : module === 'store' ? 'LOJA' : module === 'duels' ? 'DUELOS' : module === 'challenges' ? 'DESAFIOS' : 'CLÃS'}</span>
                               {settings.modules?.[module] ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
                             </button>
                           ))}
