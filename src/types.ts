@@ -154,5 +154,6 @@ export interface BoxSettings {
     store: boolean;
     duels: boolean;
     challenges: boolean;
+    clans: boolean;
   };
 }
