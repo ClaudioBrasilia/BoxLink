@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, MapPin, Calendar, Megaphone, Plus, Settings, 
   ChevronRight, ChevronDown, Activity, Check, X, Shield, UserPlus, 
   ImageIcon, ShoppingBag, Tv, Trophy, History, Search, Filter,
-  Clock, ToggleLeft, ToggleRight, Trash2, Edit2, Save, Camera
+  Clock, ToggleLeft, ToggleRight, Trash2, Edit2, Save, Camera, AlertTriangle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User, BoxSettings, Schedule, Item, Duel, Wod } from '../types';
@@ -467,6 +467,51 @@ export default function Admin() {
       alert('WOD atualizado com sucesso!');
     } else {
       alert('Erro ao atualizar WOD: ' + error.message);
+    }
+  };
+
+  const handleSystemReset = async () => {
+    const confirm1 = window.confirm("⚠️ ATENÇÃO: Você está prestes a realizar um RESET GERAL do sistema.\n\nIsso apagará todos os check-ins, resultados de WOD, histórico de recompensas, duelos e eventos de times.\n\nOs usuários terão XP, Nível e Moedas resetados para o valor inicial (0).\n\nDESEJA CONTINUAR?");
+    if (!confirm1) return;
+
+    const confirm2 = window.confirm("TEM CERTEZA ABSOLUTA? Esta ação não pode ser desfeita.");
+    if (!confirm2) return;
+
+    try {
+      // 1. Limpar tabelas de histórico e eventos
+      await supabase.from('checkins').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('wod_results').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('reward_history').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('duels').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('domination_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+      // 2. Resetar perfis (exceto admins)
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          xp: 0,
+          level: 1,
+          coins: 0,
+          avatar_inventory: ['default_base'],
+          avatar_equipped: {
+            base_outfit: "default_base",
+            top: null,
+            bottom: null,
+            shoes: null,
+            accessory: null,
+            head_accessory: null,
+            wrist_accessory: null,
+            special: null
+          }
+        })
+        .neq('role', 'admin');
+
+      if (profileError) throw profileError;
+
+      alert("SISTEMA RESETADO COM SUCESSO!\n\nTodos os dados foram limpos e os atletas voltaram ao nível zero.");
+      fetchAll();
+    } catch (error: any) {
+      alert("Erro ao resetar sistema: " + error.message);
     }
   };
 
@@ -1301,6 +1346,24 @@ export default function Admin() {
               >
                 SALVAR AJUSTES
               </button>
+
+              <div className="pt-8 border-t border-outline-variant/10">
+                <div className="bg-error-container/10 border border-error/20 rounded-[2rem] p-6 space-y-4">
+                  <div className="flex items-center gap-3 text-error">
+                    <AlertTriangle className="w-6 h-6" />
+                    <h3 className="font-headline font-black text-lg uppercase italic">ZONA DE PERIGO</h3>
+                  </div>
+                  <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest leading-relaxed">
+                    O Reset Geral apaga todos os dados de atividade (check-ins, resultados, duelos) e retorna todos os atletas ao nível 0 com 0 moedas. Use apenas para iniciar uma nova temporada ou zerar a academia.
+                  </p>
+                  <button 
+                    onClick={handleSystemReset}
+                    className="w-full bg-error text-on-error py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg hover:bg-error/90 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-5 h-5" /> RESETAR SISTEMA (LIMPEZA GERAL)
+                  </button>
+                </div>
+              </div>
             </div>
           </motion.div>
         )}
