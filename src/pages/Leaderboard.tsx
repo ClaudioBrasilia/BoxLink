@@ -1,19 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Trophy, Zap, Calendar, Timer, ChevronDown, ChevronUp, User, Medal, Users } from 'lucide-react';
+import { Trophy, Zap, Calendar, Timer, ChevronDown, ChevronUp, User, Medal } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User as UserType } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { supabase } from '../lib/supabase';
-import ShareRankingButton from '../components/ShareRankingButton';
 
 export default function Leaderboard() {
   const [rankings, setRankings] = useState<{ xpRank: UserType[], freqRank: UserType[] } | null>(null);
-  const [activeTab, setActiveTab] = useState<'xp' | 'freq' | 'clans' | 'wod'>('xp');
+  const [activeTab, setActiveTab] = useState<'xp' | 'freq' | 'wod'>('xp');
   const [isExpanded, setIsExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [clanRankings, setClanRankings] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchRankings = async () => {
@@ -73,43 +70,6 @@ export default function Leaderboard() {
             paidBonuses: u.paid_bonuses || []
           }))
         });
-
-        // 3. Fetch Clan Rankings (Based on total energy)
-        const { data: clansData } = await supabase
-          .from('clans')
-          .select('*')
-          .eq('is_active', true);
-
-        const { data: eventsData } = await supabase
-          .from('domination_events')
-          .select('clan_id, energy');
-
-        const { data: membershipsData } = await supabase
-          .from('clan_memberships')
-          .select('clan_id')
-          .eq('status', 'approved');
-
-        if (clansData) {
-          const processedClans = clansData.map(clan => {
-            const energy = (eventsData || [])
-              .filter(e => e.clan_id === clan.id)
-              .reduce((sum, e) => sum + e.energy, 0);
-            const memberCount = (membershipsData || [])
-              .filter(m => m.clan_id === clan.id).length;
-            
-            return {
-              id: clan.id,
-              name: clan.name,
-              color: clan.color,
-              energy,
-              memberCount,
-              level: Math.floor(energy / 500) + 1 // Dynamic level based on energy
-            };
-          }).sort((a, b) => b.energy - a.energy);
-          
-          setClanRankings(processedClans);
-        }
-
       } catch (err: any) {
         console.error(err);
         setError(err.message);
@@ -127,8 +87,7 @@ export default function Leaderboard() {
 
   if (!rankings) return <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO RANKINGS...</div>;
 
-  const isClans = activeTab === 'clans';
-  const currentRank = isClans ? clanRankings : (activeTab === 'xp' ? rankings.xpRank : rankings.freqRank);
+  const currentRank = activeTab === 'xp' ? rankings.xpRank : rankings.freqRank;
   const top3 = currentRank.slice(0, 3);
   const others = currentRank.slice(3);
 
@@ -139,27 +98,20 @@ export default function Leaderboard() {
           <Trophy className="w-8 h-8 text-primary" />
           RANKING
         </h1>
-        {rankings && top3.length > 0 && (
-          <ShareRankingButton
-            top3={top3}
-            rankingType={activeTab as 'xp' | 'freq' | 'clans'}
-            title={activeTab === 'xp' ? 'XP GERAL' : activeTab === 'freq' ? 'FREQUÊNCIA' : 'TIMES'}
-          />
-        )}
       </header>
 
       {/* Tabs */}
-      <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10 overflow-x-auto no-scrollbar">
-        {(['xp', 'freq', 'clans', 'wod'] as const).map((tab) => (
+      <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10">
+        {(['xp', 'freq', 'wod'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={cn(
-              "flex-1 min-w-[80px] py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all whitespace-nowrap px-2",
+              "flex-1 py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all",
               activeTab === tab ? "bg-primary text-background shadow-lg" : "text-on-surface-variant hover:text-on-surface"
             )}
           >
-            {tab === 'xp' ? 'XP GERAL' : tab === 'freq' ? 'FREQUÊNCIA' : tab === 'clans' ? 'TIMES' : 'RANK WOD'}
+            {tab === 'xp' ? 'XP GERAL' : tab === 'freq' ? 'FREQUÊNCIA' : 'RANK WOD'}
           </button>
         ))}
       </div>
@@ -169,19 +121,15 @@ export default function Leaderboard() {
         {/* 2nd Place */}
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
-            <div className="w-16 h-16 rounded-full border-4 border-outline-variant/30 overflow-hidden bg-surface-container-highest flex items-center justify-center" style={isClans && top3[1] ? { borderColor: top3[1].color } : {}}>
-              {isClans && top3[1] ? (
-                <Users className="w-8 h-8" style={{ color: top3[1].color }} />
-              ) : (
-                <span className="text-2xl flex items-center justify-center h-full">🥈</span>
-              )}
+            <div className="w-16 h-16 rounded-full border-4 border-outline-variant/30 overflow-hidden bg-surface-container-highest">
+              <span className="text-2xl flex items-center justify-center h-full">🥈</span>
             </div>
             <div className="absolute -top-2 -right-2 bg-outline-variant/30 text-on-surface text-[10px] font-black px-2 py-0.5 rounded-full">#2</div>
           </div>
           <div className="text-center">
             <p className="text-xs font-headline font-black text-on-surface uppercase italic truncate max-w-[80px]">{top3[1]?.name?.split(' ')[0] || '---'}</p>
             <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
-              {isClans ? `${top3[1]?.energy || 0} ENERGIA` : (activeTab === 'xp' ? `${top3[1]?.xp} XP` : `${top3[1]?.monthCheckinCount || 0} Check-ins`)}
+              {activeTab === 'xp' ? `${top3[1]?.xp} XP` : `${top3[1]?.monthCheckinCount || 0} Check-ins`}
             </p>
           </div>
           <div className="w-16 h-20 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex flex-col items-center justify-center">
@@ -192,19 +140,15 @@ export default function Leaderboard() {
         {/* 1st Place */}
         <div className="flex flex-col items-center gap-3 -mt-8">
           <div className="relative">
-            <div className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden bg-surface-container-highest shadow-[0_0_30px_rgba(202,253,0,0.3)] flex items-center justify-center" style={isClans && top3[0] ? { borderColor: top3[0].color } : {}}>
-              {isClans && top3[0] ? (
-                <Users className="w-12 h-12" style={{ color: top3[0].color }} />
-              ) : (
-                <span className="text-4xl flex items-center justify-center h-full">🥇</span>
-              )}
+            <div className="w-24 h-24 rounded-full border-4 border-primary overflow-hidden bg-surface-container-highest shadow-[0_0_30px_rgba(202,253,0,0.3)]">
+              <span className="text-4xl flex items-center justify-center h-full">🥇</span>
             </div>
             <div className="absolute -top-3 -right-3 bg-primary text-background text-xs font-black px-3 py-1 rounded-full shadow-lg">#1</div>
           </div>
           <div className="text-center">
             <p className="text-sm font-headline font-black text-primary uppercase italic truncate max-w-[100px]">{top3[0]?.name?.split(' ')[0] || '---'}</p>
             <p className="text-xs text-on-surface font-bold uppercase tracking-widest">
-              {isClans ? `${top3[0]?.energy || 0} ENERGIA` : (activeTab === 'xp' ? `${top3[0]?.xp} XP` : `${top3[0]?.monthCheckinCount || 0} Check-ins`)}
+              {activeTab === 'xp' ? `${top3[0]?.xp} XP` : `${top3[0]?.monthCheckinCount || 0} Check-ins`}
             </p>
           </div>
           <div className="w-24 h-32 bg-primary/10 rounded-t-3xl border-x border-t border-primary/20 flex flex-col items-center justify-center">
@@ -215,19 +159,15 @@ export default function Leaderboard() {
         {/* 3rd Place */}
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
-            <div className="w-16 h-16 rounded-full border-4 border-secondary/30 overflow-hidden bg-surface-container-highest flex items-center justify-center" style={isClans && top3[2] ? { borderColor: top3[2].color } : {}}>
-              {isClans && top3[2] ? (
-                <Users className="w-8 h-8" style={{ color: top3[2].color }} />
-              ) : (
-                <span className="text-2xl flex items-center justify-center h-full">🥉</span>
-              )}
+            <div className="w-16 h-16 rounded-full border-4 border-secondary/30 overflow-hidden bg-surface-container-highest">
+              <span className="text-2xl flex items-center justify-center h-full">🥉</span>
             </div>
             <div className="absolute -top-2 -right-2 bg-secondary/30 text-on-surface text-[10px] font-black px-2 py-0.5 rounded-full">#3</div>
           </div>
           <div className="text-center">
             <p className="text-xs font-headline font-black text-on-surface uppercase italic truncate max-w-[80px]">{top3[2]?.name?.split(' ')[0] || '---'}</p>
             <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
-              {isClans ? `${top3[2]?.energy || 0} ENERGIA` : (activeTab === 'xp' ? `${top3[2]?.xp} XP` : `${top3[2]?.monthCheckinCount || 0} Check-ins`)}
+              {activeTab === 'xp' ? `${top3[2]?.xp} XP` : `${top3[2]?.monthCheckinCount || 0} Check-ins`}
             </p>
           </div>
           <div className="w-16 h-16 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex flex-col items-center justify-center">
@@ -239,7 +179,7 @@ export default function Leaderboard() {
       {/* List */}
       <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 flex flex-col gap-4">
         <div className="flex justify-between items-center px-2">
-          <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">{isClans ? 'TODOS TIMES' : 'TODOS ATLETAS'}</h3>
+          <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">TODOS ATLETAS</h3>
           <button onClick={() => setIsExpanded(!isExpanded)} className="text-primary text-xs font-bold flex items-center gap-1">
             {isExpanded ? 'RECOLHER' : 'EXPANDIR'} {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
@@ -250,17 +190,17 @@ export default function Leaderboard() {
             <div key={u.id} className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between group hover:border-primary/30 transition-all">
               <div className="flex items-center gap-4">
                 <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i + 4}</span>
-                <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-sm" style={isClans ? { border: `2px solid ${u.color}` } : {}}>
-                  {isClans ? <Users className="w-5 h-5" style={{ color: u.color }} /> : u.name[0]}
+                <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-sm">
+                  {u.name[0]}
                 </div>
                 <div>
                   <p className="text-on-surface font-bold uppercase text-sm italic">{u.name}</p>
-                  <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{isClans ? `${u.memberCount} Membros` : 'Atleta'}</p>
+                  <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Atleta</p>
                 </div>
               </div>
               <div className="text-right">
                 <p className="text-on-surface font-headline font-black text-sm italic">
-                  {isClans ? `${u.energy} ENERGIA` : (activeTab === 'xp' ? `${u.xp} XP` : `${u.monthCheckinCount || 0} Check-ins`)}
+                  {activeTab === 'xp' ? `${u.xp} XP` : `${u.monthCheckinCount || 0} Check-ins`}
                 </p>
                 <div className="flex items-center gap-1 justify-end">
                   <Zap className="w-3 h-3 text-primary" />

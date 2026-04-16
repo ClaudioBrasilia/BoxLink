@@ -83,13 +83,6 @@ export interface Duel {
   reward: { xp: number; coins: number };
   type: string;
   createdAt: string;
-  bet_mode?: boolean;
-  bet_type?: 'none' | 'xp' | 'coins';
-  bet_amount?: number;
-  bet_reserved?: boolean;
-  bet_reserved_at?: string;
-  bet_settled_at?: string;
-  bet_canceled_at?: string;
 }
 
 export interface RewardEvent {
@@ -111,26 +104,6 @@ export interface Schedule {
   days: number[]; // 0-6 (Sunday-Saturday)
   isActive: boolean;
   checkinWindowMinutes: number;
-}
-
-export interface Clan {
-  id: string;
-  name: string;
-  motto: string;
-  color: string;
-  shield_url?: string;
-  created_by: string;
-  is_active: boolean;
-  created_at: string;
-}
-
-export interface ClanMembership {
-  id: string;
-  clan_id: string;
-  user_id: string;
-  role: 'member' | 'captain';
-  status: 'pending' | 'approved' | 'rejected';
-  created_at: string;
 }
 
 export interface BoxSettings {
@@ -181,7 +154,5 @@ export interface BoxSettings {
     store: boolean;
     duels: boolean;
     challenges: boolean;
-    clans: boolean;
   };
-  max_clan_members?: number;
 }

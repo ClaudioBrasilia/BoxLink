@@ -1,11 +1,27 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, Camera, Edit2 } from 'lucide-react';
+import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { uploadImage } from '../utils/image';
-import { Clan, ClanMembership } from '../types';
+
+interface Clan {
+  id: string;
+  name: string;
+  motto: string;
+  color: string;
+  created_by: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+interface ClanMembership {
+  id: string;
+  clan_id: string;
+  user_id: string;
+  role: 'member' | 'captain';
+  status: 'pending' | 'approved' | 'rejected';
+}
 
 interface Territory {
   id: string;
@@ -23,7 +39,6 @@ interface DominationEvent {
 export default function Clans() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [clans, setClans] = useState<Clan[]>([]);
   const [memberships, setMemberships] = useState<ClanMembership[]>([]);
   const [dominationEvents, setDominationEvents] = useState<DominationEvent[]>([]);
@@ -31,17 +46,13 @@ export default function Clans() {
   const [myClan, setMyClan] = useState<Clan | null>(null);
   const [myMembership, setMyMembership] = useState<ClanMembership | null>(null);
   const [clansEnabled, setClansEnabled] = useState(false);
-  const [maxMembers, setMaxMembers] = useState(10);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
   const [newClanName, setNewClanName] = useState('');
   const [newClanMotto, setNewClanMotto] = useState('');
   const [newClanColor, setNewClanColor] = useState('#CAFD00');
-  const [editingClan, setEditingClan] = useState<Clan | null>(null);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
 
   const colors = ['#CAFD00', '#FF4444', '#4444FF', '#FF8800', '#AA44FF', '#00CCFF', '#FF44AA'];
 
@@ -57,10 +68,9 @@ export default function Clans() {
       // Check if clans are enabled
       const { data: settings } = await supabase
         .from('box_settings')
-        .select('modules, max_clan_members')
+        .select('clans_enabled')
         .maybeSingle();
-      setClansEnabled(settings?.modules?.clans || false);
-      setMaxMembers(settings?.max_clan_members || 10);
+      setClansEnabled(settings?.clans_enabled || false);
 
       // Fetch clans
       const { data: clansData } = await supabase
@@ -136,7 +146,7 @@ export default function Clans() {
         .insert({ name: newClanName.trim(), motto: newClanMotto.trim(), color: newClanColor, created_by: user.id })
         .select()
         .single();
-      if (error) { alert('Erro ao criar time: ' + error.message); return; }
+      if (error) { alert('Erro ao criar clã: ' + error.message); return; }
 
       await supabase.from('clan_memberships').insert({
         clan_id: clan.id, user_id: user.id, role: 'captain', status: 'approved'
@@ -151,57 +161,8 @@ export default function Clans() {
     }
   };
 
-  const handleUpdateClan = async () => {
-    if (!editingClan || !editingClan.name.trim()) return;
-    setCreating(true);
-    try {
-      const { error } = await supabase
-        .from('clans')
-        .update({ 
-          name: editingClan.name.trim(), 
-          motto: editingClan.motto.trim(), 
-          color: editingClan.color,
-          shield_url: editingClan.shield_url
-        })
-        .eq('id', editingClan.id);
-      
-      if (error) { alert('Erro ao atualizar time: ' + error.message); return; }
-
-      setShowEditModal(false);
-      setEditingClan(null);
-      fetchAll();
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const handleShieldUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !editingClan) return;
-
-    setUploading(true);
-    try {
-      const fileName = `shield_${editingClan.id}_${Date.now()}.jpg`;
-      const publicUrl = await uploadImage(file, 'clans', fileName);
-      
-      setEditingClan({ ...editingClan, shield_url: publicUrl });
-    } catch (error: any) {
-      alert('Erro ao fazer upload do escudo: ' + error.message);
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const handleJoinClan = async (clanId: string) => {
     if (!user) return;
-    
-    // Check if clan is full
-    const clanMembers = memberships.filter(m => m.clan_id === clanId);
-    if (clanMembers.length >= maxMembers) {
-      alert(`Este time já atingiu o limite máximo de ${maxMembers} membros.`);
-      return;
-    }
-
     setJoining(clanId);
     try {
       const { error } = await supabase.from('clan_memberships').insert({
@@ -217,7 +178,7 @@ export default function Clans() {
 
   const handleLeaveClan = async () => {
     if (!myMembership || !user) return;
-    if (!confirm('Tem certeza que deseja sair do time?')) return;
+    if (!confirm('Tem certeza que deseja sair do clã?')) return;
     await supabase.from('clan_memberships').delete().eq('id', myMembership.id);
     setMyClan(null);
     setMyMembership(null);
@@ -236,9 +197,9 @@ export default function Clans() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 p-6 text-center">
         <Swords className="w-16 h-16 text-outline-variant" />
-        <h2 className="text-2xl font-headline font-black text-on-surface uppercase italic">Times Desativados</h2>
+        <h2 className="text-2xl font-headline font-black text-on-surface uppercase italic">Clãs Desativados</h2>
         <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest max-w-xs">
-          O sistema de times ainda não foi ativado pelo administrador do box.
+          O sistema de clãs ainda não foi ativado pelo administrador do box.
         </p>
       </div>
     );
@@ -250,7 +211,7 @@ export default function Clans() {
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-3xl font-headline font-black text-on-surface uppercase italic tracking-tighter">
-            TIMES
+            CLÃS
           </h1>
           <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest mt-1">
             Forme sua equipe. Domine o box.
@@ -261,7 +222,7 @@ export default function Clans() {
             onClick={() => setShowCreateModal(true)}
             className="bg-primary text-background px-4 py-2 rounded-xl font-headline font-black text-xs uppercase italic flex items-center gap-2"
           >
-            <Plus className="w-4 h-4" /> Criar Time
+            <Plus className="w-4 h-4" /> Criar Clã
           </button>
         )}
       </div>
@@ -280,51 +241,29 @@ export default function Clans() {
         </div>
       )}
 
-      {/* Meu Time */}
+      {/* Meu Clã */}
       {myClan && (
         <div className="bg-surface-container-low rounded-[2rem] border-2 p-5" style={{ borderColor: myClan.color }}>
           <div className="flex justify-between items-start">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-surface-container-highest flex items-center justify-center overflow-hidden border-2" style={{ borderColor: myClan.color }}>
-                {myClan.shield_url ? (
-                  <img src={myClan.shield_url} alt={myClan.name} className="w-full h-full object-cover" />
-                ) : (
-                  <Users className="w-8 h-8" style={{ color: myClan.color }} />
-                )}
-              </div>
-              <div>
-                <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Meu Time</p>
-                <h3 className="font-headline font-black text-on-surface text-xl uppercase italic flex items-center gap-2">
-                  {myMembership?.role === 'captain' && <Crown className="w-5 h-5" style={{ color: myClan.color }} />}
-                  {myClan.name}
-                </h3>
-                {myClan.motto && <p className="text-on-surface-variant text-xs mt-1 italic">"{myClan.motto}"</p>}
-              </div>
+            <div>
+              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Meu Clã</p>
+              <h3 className="font-headline font-black text-on-surface text-xl uppercase italic flex items-center gap-2">
+                {myMembership?.role === 'captain' && <Crown className="w-5 h-5" style={{ color: myClan.color }} />}
+                {myClan.name}
+              </h3>
+              {myClan.motto && <p className="text-on-surface-variant text-xs mt-1 italic">"{myClan.motto}"</p>}
             </div>
-            <div className="flex flex-col items-end gap-2">
-              {myMembership?.role === 'captain' && (
-                <button
-                  onClick={() => {
-                    setEditingClan(myClan);
-                    setShowEditModal(true);
-                  }}
-                  className="text-primary text-xs font-black uppercase hover:underline flex items-center gap-1"
-                >
-                  <Edit2 className="w-3 h-3" /> Editar
-                </button>
-              )}
-              <button
-                onClick={handleLeaveClan}
-                className="text-error text-xs font-black uppercase hover:underline"
-              >
-                Sair
-              </button>
-            </div>
+            <button
+              onClick={handleLeaveClan}
+              className="text-error text-xs font-black uppercase hover:underline"
+            >
+              Sair
+            </button>
           </div>
         </div>
       )}
 
-      {/* Ranking de Times */}
+      {/* Ranking de Clãs */}
       <div>
         <h2 className="text-xs font-black text-on-surface-variant uppercase tracking-widest mb-3 flex items-center gap-2">
           <Trophy className="w-4 h-4 text-primary" /> Ranking de Hoje
@@ -344,214 +283,147 @@ export default function Clans() {
                 className={`bg-surface-container-low rounded-[1.5rem] border p-4 ${isMine ? 'border-2' : 'border-outline-variant/10'}`}
                 style={isMine ? { borderColor: item.clan.color } : {}}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex justify-between items-start mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-xl overflow-hidden" style={{ border: `2px solid ${item.clan.color}` }}>
-                      {item.clan.shield_url ? (
-                        <img src={item.clan.shield_url} alt={item.clan.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <Users className="w-5 h-5" style={{ color: item.clan.color }} />
+                    <span className="font-headline font-black text-2xl text-on-surface-variant">
+                      #{idx + 1}
+                    </span>
+                    <div>
+                      <h3 className="font-headline font-black text-on-surface uppercase italic flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: item.clan.color }} />
+                        {item.clan.name}
+                      </h3>
+                      {item.clan.motto && (
+                        <p className="text-on-surface-variant text-[10px] italic">"{item.clan.motto}"</p>
                       )}
                     </div>
-                    <div>
-                      <h4 className="font-headline font-black text-on-surface uppercase italic text-sm">
-                        {item.clan.name}
-                      </h4>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-on-surface-variant font-bold uppercase">{item.memberCount}/{maxMembers} MEMBROS</span>
-                      </div>
-                    </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <div className="flex items-center gap-1 justify-end">
-                        <Zap className="w-3 h-3 text-primary" />
-                        <span className="font-headline font-black text-on-surface italic">{item.energy}</span>
-                      </div>
-                      <div className="w-24 h-1 bg-surface-container-highest rounded-full mt-1 overflow-hidden">
-                        <div 
-                          className="h-full transition-all duration-500" 
-                          style={{ 
-                            width: `${(item.energy / maxEnergy) * 100}%`,
-                            backgroundColor: item.clan.color 
-                          }} 
-                        />
-                      </div>
+                  <div className="text-right">
+                    <div className="flex items-center gap-1 text-primary font-black text-sm">
+                      <Zap className="w-3 h-3" /> {item.energy}
                     </div>
-                    {!myClan && !alreadyRequested && (
-                      <button
-                        onClick={() => handleJoinClan(item.clan.id)}
-                        disabled={joining === item.clan.id}
-                        className="bg-primary/10 text-primary p-2 rounded-xl hover:bg-primary hover:text-background transition-all disabled:opacity-50"
-                      >
-                        {joining === item.clan.id ? <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" /> : <LogIn className="w-4 h-4" />}
-                      </button>
-                    )}
-                    {alreadyRequested && !isMine && (
-                      <span className="text-[8px] font-black text-on-surface-variant uppercase bg-surface-container-highest px-2 py-1 rounded-lg">Pendente</span>
-                    )}
+                    <div className="flex items-center gap-1 text-on-surface-variant text-[10px]">
+                      <Users className="w-3 h-3" /> {item.memberCount}
+                    </div>
                   </div>
                 </div>
+
+                {/* Energy bar */}
+                <div className="h-1.5 bg-surface-container-highest rounded-full overflow-hidden mb-3">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${(item.energy / maxEnergy) * 100}%`, backgroundColor: item.clan.color }}
+                  />
+                </div>
+
+                {/* Join button */}
+                {!myClan && !alreadyRequested && (
+                  <button
+                    onClick={() => handleJoinClan(item.clan.id)}
+                    disabled={joining === item.clan.id}
+                    className="w-full py-2 rounded-xl font-headline font-black text-xs uppercase italic border border-outline-variant/20 text-on-surface-variant hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-2"
+                  >
+                    <LogIn className="w-3 h-3" />
+                    {joining === item.clan.id ? 'Solicitando...' : 'Solicitar Entrada'}
+                  </button>
+                )}
+                {alreadyRequested && !isMine && (
+                  <p className="text-center text-[10px] text-on-surface-variant font-black uppercase tracking-widest">
+                    Solicitação Pendente
+                  </p>
+                )}
               </motion.div>
             );
           })}
+
+          {clans.length === 0 && (
+            <div className="text-center py-12 text-on-surface-variant">
+              <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="font-black uppercase italic text-sm">Nenhum clã criado ainda</p>
+              <p className="text-xs mt-1">Seja o primeiro a criar um clã!</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Create Modal */}
+      {/* Modal Criar Clã */}
       <AnimatePresence>
         {showCreateModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="w-full max-w-md bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl"
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4"
+            onClick={() => setShowCreateModal(false)}
+          >
+            <motion.div
+              initial={{ y: 100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 100, opacity: 0 }}
+              className="bg-surface-container-low rounded-[2rem] p-6 w-full max-w-md"
+              onClick={e => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-6">
-                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">CRIAR TIME</h3>
-                <button onClick={() => setShowCreateModal(false)} className="p-2 hover:bg-surface-container-highest rounded-xl transition-all">
-                  <X className="w-5 h-5" />
+                <h2 className="font-headline font-black text-on-surface text-xl uppercase italic">Criar Clã</h2>
+                <button onClick={() => setShowCreateModal(false)}>
+                  <X className="w-5 h-5 text-on-surface-variant" />
                 </button>
               </div>
-              
-              <div className="space-y-4">
+
+              <div className="flex flex-col gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome do Time</label>
-                  <input 
-                    type="text" 
-                    value={newClanName} 
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Nome do Clã</label>
+                  <input
+                    type="text"
+                    value={newClanName}
                     onChange={e => setNewClanName(e.target.value)}
-                    placeholder="ex: Os Brutos"
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                    placeholder="Ex: Os Invictos"
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface outline-none"
+                    maxLength={30}
                   />
                 </div>
+
                 <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Lema (Opcional)</label>
-                  <input 
-                    type="text" 
-                    value={newClanMotto} 
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Lema (opcional)</label>
+                  <input
+                    type="text"
+                    value={newClanMotto}
                     onChange={e => setNewClanMotto(e.target.value)}
-                    placeholder="ex: Força e Honra"
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                    placeholder="Ex: Sem dor, sem glória"
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface outline-none"
+                    maxLength={50}
                   />
                 </div>
+
                 <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Cor do Time</label>
-                  <div className="flex gap-2">
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Cor do Clã</label>
+                  <div className="flex gap-3 flex-wrap">
                     {colors.map(color => (
                       <button
                         key={color}
                         onClick={() => setNewClanColor(color)}
-                        className={`w-8 h-8 rounded-full border-2 transition-all ${newClanColor === color ? 'scale-125 border-white' : 'border-transparent'}`}
-                        style={{ backgroundColor: color }}
+                        className="w-8 h-8 rounded-full border-2 transition-all"
+                        style={{
+                          backgroundColor: color,
+                          borderColor: newClanColor === color ? 'white' : 'transparent',
+                          transform: newClanColor === color ? 'scale(1.2)' : 'scale(1)'
+                        }}
                       />
                     ))}
                   </div>
                 </div>
-                <button 
+
+                <button
                   onClick={handleCreateClan}
-                  disabled={creating || !newClanName.trim()}
-                  className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg mt-4 disabled:opacity-50"
+                  disabled={!newClanName.trim() || creating}
+                  className="w-full py-4 rounded-2xl font-headline font-black text-background uppercase italic disabled:opacity-50 mt-2"
+                  style={{ backgroundColor: newClanColor }}
                 >
-                  {creating ? 'CRIANDO...' : 'CRIAR TIME'}
+                  {creating ? 'Criando...' : 'Criar Clã'}
                 </button>
               </div>
             </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Edit Modal */}
-      <AnimatePresence>
-        {showEditModal && editingClan && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="w-full max-w-md bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl"
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">EDITAR TIME</h3>
-                <button onClick={() => setShowEditModal(false)} className="p-2 hover:bg-surface-container-highest rounded-xl transition-all">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              
-              <div className="space-y-4">
-                <div className="flex flex-col items-center gap-4 mb-4">
-                  <div className="relative group">
-                    <div className="w-24 h-24 rounded-[2rem] bg-surface-container-highest flex items-center justify-center overflow-hidden border-4" style={{ borderColor: editingClan.color }}>
-                      {editingClan.shield_url ? (
-                        <img src={editingClan.shield_url} alt="Escudo" className="w-full h-full object-cover" />
-                      ) : (
-                        <Users className="w-10 h-10" style={{ color: editingClan.color }} />
-                      )}
-                      {uploading && (
-                        <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
-                          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                        </div>
-                      )}
-                    </div>
-                    <button 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="absolute -bottom-2 -right-2 bg-primary text-background p-2 rounded-xl shadow-lg hover:scale-110 transition-all"
-                    >
-                      <Camera className="w-4 h-4" />
-                    </button>
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      onChange={handleShieldUpload} 
-                      accept="image/*" 
-                      className="hidden" 
-                    />
-                  </div>
-                  <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Escudo do Time</p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome do Time</label>
-                  <input 
-                    type="text" 
-                    value={editingClan.name} 
-                    onChange={e => setEditingClan({...editingClan, name: e.target.value})}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Lema</label>
-                  <input 
-                    type="text" 
-                    value={editingClan.motto} 
-                    onChange={e => setEditingClan({...editingClan, motto: e.target.value})}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Cor do Time</label>
-                  <div className="flex gap-2">
-                    {colors.map(color => (
-                      <button
-                        key={color}
-                        onClick={() => setEditingClan({...editingClan, color})}
-                        className={`w-8 h-8 rounded-full border-2 transition-all ${editingClan.color === color ? 'scale-125 border-white' : 'border-transparent'}`}
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                  </div>
-                </div>
-                <button 
-                  onClick={handleUpdateClan}
-                  disabled={creating || !editingClan.name.trim()}
-                  className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg mt-4 disabled:opacity-50"
-                >
-                  {creating ? 'SALVANDO...' : 'SALVAR ALTERAÇÕES'}
-                </button>
-              </div>
-            </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

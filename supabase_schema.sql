@@ -9,7 +9,7 @@ create table public.profiles (
   status text default 'pending' check (status in ('pending', 'approved', 'rejected')),
   level integer default 1,
   xp integer default 0,
-  coins integer default 0, -- Initial coins
+  coins integer default 100, -- Initial coins
   avatar_equipped jsonb default '{
     "base_outfit": "default_base",
     "top": null,
