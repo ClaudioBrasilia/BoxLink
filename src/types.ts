@@ -154,5 +154,26 @@ export interface BoxSettings {
     store: boolean;
     duels: boolean;
     challenges: boolean;
+    clans: boolean;
   };
+  max_clan_members: number;
+}
+
+export interface Clan {
+  id: string;
+  name: string;
+  motto?: string;
+  color: string;
+  created_by: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ClanMembership {
+  id: string;
+  clan_id: string;
+  user_id: string;
+  role: 'member' | 'captain';
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
 }

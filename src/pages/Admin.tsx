@@ -529,9 +529,12 @@ export default function Admin() {
 
   // Usuários pendentes de aprovação
   const pendingUsers = users.filter(u => {
+    // IMPORTANTE: Ignoramos o statusFilter aqui para sempre mostrar pendentes na seção de solicitações
     const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRole = roleFilter === 'all' || u.role === roleFilter;
-    return matchesSearch && matchesRole && u.status === 'pending';
+    
+    // Garantimos que o status seja exatamente 'pending'
+    return matchesSearch && matchesRole && (u.status === 'pending' || !u.status);
   });
 
   // Usuários aprovados
