@@ -67,7 +67,7 @@ export default function TV() {
       setData({
         settings: settings || { name: "CrossCity Hub", logo: "" },
         rewards: economy,
-        wod: wod || { name: "WOD de Hoje", type: "AMRAP", warmup: "400M RUN\n20 AIR SQUATS", skill: "SNATCH FOCUS\n5 x 3 @ 65% 1RM", rx: "A definir", scaled: "A definir", beginner: "A definir" },
+        wod: wod || null,
         checkins: checkins || [],
         challenges: challenges || [],
         duels: (duels || []).map((d: any) => ({
@@ -161,6 +161,31 @@ export default function TV() {
 
   const { wod, checkins, settings, rankings, stats, duels } = data;
   
+  if (!wod) {
+    return (
+      <div className="min-h-screen bg-black text-white font-sans overflow-hidden flex flex-col p-6 gap-6 relative select-none">
+        <header className="flex justify-between items-center bg-[#111] rounded-[2rem] p-6 border border-white/5 shadow-2xl">
+          <div className="flex items-center gap-6">
+            <img src={settings.logo || "https://picsum.photos/seed/box/200"} alt="Logo" className="w-16 h-16 rounded-2xl border-2 border-primary" />
+            <div>
+              <h1 className="text-4xl font-headline font-black text-white italic tracking-tighter uppercase leading-none">{settings.name}</h1>
+              <p className="text-primary text-[10px] font-black tracking-[0.4em] uppercase italic mt-1">CROSSCITY HUB • PERFORMANCE ELITE</p>
+            </div>
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">HORA ATUAL</span>
+            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(new Date(), 'HH:mm:ss')}</span>
+          </div>
+        </header>
+        <div className="flex-1 flex flex-col items-center justify-center bg-[#111] rounded-[3rem] border border-white/5">
+          <Activity className="w-24 h-24 text-primary/20 mb-8" />
+          <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter mb-4">AGUARDANDO WOD</h2>
+          <p className="text-white/40 text-xl font-black uppercase tracking-[0.4em] italic">NENHUM TREINO CADASTRADO PARA HOJE</p>
+        </div>
+      </div>
+    );
+  }
+
   const athletesToDisplay = checkins.length > 0 
     ? checkins.map((c: any) => c.profiles).filter(Boolean)
     : rankings;
