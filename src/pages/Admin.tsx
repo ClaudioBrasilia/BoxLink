@@ -81,6 +81,8 @@ export default function Admin() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [uploading, setUploading] = useState<string | null>(null);
+  const [rankingMonth, setRankingMonth] = useState<number>(new Date().getMonth());
+  const [rankingYear, setRankingYear] = useState<number>(new Date().getFullYear());
 
   const [newChallenge, setNewChallenge] = useState({
     title: '',
@@ -1961,33 +1963,82 @@ export default function Admin() {
             className="flex flex-col gap-6"
           >
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-6">
-              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
-                <Activity className="w-5 h-5 text-primary" /> MONITORAMENTO DE PRESENÇA
-              </h3>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-primary" /> MONITORAMENTO DE PRESENÇA
+                </h3>
+                
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <select 
+                    value={rankingMonth}
+                    onChange={(e) => setRankingMonth(parseInt(e.target.value))}
+                    className="flex-1 sm:flex-none bg-surface-container-highest border-none rounded-xl px-3 py-2 font-headline font-bold text-[10px] text-on-surface uppercase tracking-widest"
+                  >
+                    {['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'].map((m, i) => (
+                      <option key={i} value={i}>{m}</option>
+                    ))}
+                  </select>
+                  <select 
+                    value={rankingYear}
+                    onChange={(e) => setRankingYear(parseInt(e.target.value))}
+                    className="flex-1 sm:flex-none bg-surface-container-highest border-none rounded-xl px-3 py-2 font-headline font-bold text-[10px] text-on-surface uppercase tracking-widest"
+                  >
+                    {[2024, 2025, 2026].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 text-center">
                   <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Check-ins Hoje</p>
-                  <p className="text-3xl font-headline font-black text-primary italic">24</p>
+                  <p className="text-3xl font-headline font-black text-primary italic">
+                    {users.reduce((acc, u) => acc + (u.checkins?.filter(c => c.date === format(new Date(), 'yyyy-MM-dd')).length || 0), 0)}
+                  </p>
                 </div>
                 <div className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 text-center">
-                  <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Média Semanal</p>
-                  <p className="text-3xl font-headline font-black text-secondary italic">18</p>
+                  <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Total no Período</p>
+                  <p className="text-3xl font-headline font-black text-secondary italic">
+                    {users.reduce((acc, u) => acc + (u.checkins?.filter(c => {
+                      const d = parseISO(c.date);
+                      return d.getMonth() === rankingMonth && d.getFullYear() === rankingYear;
+                    }).length || 0), 0)}
+                  </p>
                 </div>
               </div>
 
               <div className="space-y-4">
-                <h4 className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">RANKING DE FREQUÊNCIA (MÊS)</h4>
+                <h4 className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">RANKING DE FREQUÊNCIA (SELECIONADO)</h4>
                 <div className="space-y-2">
-                  {approvedUsers.slice(0, 5).map((u, idx) => (
-                    <div key={u.id} className="flex items-center justify-between p-3 bg-surface-container-highest/20 rounded-xl border border-outline-variant/5">
-                      <div className="flex items-center gap-3">
-                        <span className="w-5 text-[10px] font-black text-primary italic">#{idx + 1}</span>
-                        <p className="text-xs font-bold text-on-surface uppercase">{u.name}</p>
+                  {users
+                    .map(u => ({
+                      ...u,
+                      periodCheckins: u.checkins?.filter(c => {
+                        const d = parseISO(c.date);
+                        return d.getMonth() === rankingMonth && d.getFullYear() === rankingYear;
+                      }).length || 0
+                    }))
+                    .filter(u => u.periodCheckins > 0)
+                    .sort((a, b) => b.periodCheckins - a.periodCheckins)
+                    .slice(0, 10)
+                    .map((u, idx) => (
+                      <div key={u.id} className="flex items-center justify-between p-3 bg-surface-container-highest/20 rounded-xl border border-outline-variant/5">
+                        <div className="flex items-center gap-3">
+                          <span className="w-5 text-[10px] font-black text-primary italic">#{idx + 1}</span>
+                          <p className="text-xs font-bold text-on-surface uppercase">{u.name}</p>
+                        </div>
+                        <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">{u.periodCheckins} PRESENÇAS</span>
                       </div>
-                      <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">{20 - idx} PRESENÇAS</span>
+                    ))}
+                  {users.filter(u => u.checkins?.some(c => {
+                    const d = parseISO(c.date);
+                    return d.getMonth() === rankingMonth && d.getFullYear() === rankingYear;
+                  })).length === 0 && (
+                    <div className="bg-surface-container-highest/10 p-8 rounded-2xl border border-dashed border-outline-variant/20 text-center">
+                      <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest opacity-50 italic">Nenhum check-in registrado neste período</p>
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </div>
