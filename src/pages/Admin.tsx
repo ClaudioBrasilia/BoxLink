@@ -77,6 +77,8 @@ export default function Admin() {
   const [wods, setWods] = useState<Wod[]>([]);
   const [editingWod, setEditingWod] = useState<Wod | null>(null);
   const [clans, setClans] = useState<any[]>([]);
+  const [editingChallenge, setEditingChallenge] = useState<any | null>(null);
+  const [isEditingChallenge, setIsEditingChallenge] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -449,6 +451,60 @@ export default function Admin() {
       setItems(items.filter(i => i.id !== id));
     } else {
       alert('Erro ao excluir item: ' + error.message);
+    }
+  };
+
+  const handleEditChallenge = (challenge: any) => {
+    setEditingChallenge({
+      ...challenge,
+      startDate: challenge.start_date,
+      endDate: challenge.end_date
+    });
+    setIsEditingChallenge(true);
+  };
+
+  const handleUpdateChallenge = async () => {
+    if (!editingChallenge || !editingChallenge.title || !editingChallenge.description) return;
+    
+    const { error } = await supabase
+      .from('challenges')
+      .update({
+        title: editingChallenge.title,
+        description: editingChallenge.description,
+        active: editingChallenge.active,
+        start_date: editingChallenge.startDate,
+        end_date: editingChallenge.endDate,
+        xp: editingChallenge.xp,
+        coins: editingChallenge.coins,
+        repeatable: editingChallenge.repeatable,
+        daily_limit: editingChallenge.dailyLimit,
+        difficulty: editingChallenge.difficulty
+      })
+      .eq('id', editingChallenge.id);
+
+    if (!error) {
+      setChallenges(challenges.map(c => c.id === editingChallenge.id ? editingChallenge : c));
+      setEditingChallenge(null);
+      setIsEditingChallenge(false);
+      alert('Desafio atualizado com sucesso!');
+    } else {
+      alert('Erro ao atualizar desafio: ' + error.message);
+    }
+  };
+
+  const handleDeleteChallenge = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este desafio permanentemente?')) return;
+    
+    const { error } = await supabase
+      .from('challenges')
+      .delete()
+      .eq('id', id);
+    
+    if (!error) {
+      setChallenges(challenges.filter(c => c.id !== id));
+      alert('Desafio excluído com sucesso!');
+    } else {
+      alert('Erro ao excluir desafio: ' + error.message);
     }
   };
 
@@ -1422,14 +1478,30 @@ export default function Admin() {
             <div className="space-y-3">
               <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">DESAFIOS ATIVOS</h3>
               {challenges.map((c) => (
-                <div key={c.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 space-y-3">
+                <div key={c.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 space-y-3 group relative">
                   <div className="flex justify-between items-start">
-                    <div>
+                    <div className="flex-1">
                       <h4 className="text-on-surface font-bold uppercase text-sm italic">{c.title}</h4>
                       <p className="text-on-surface-variant text-[10px] mt-1">{c.description}</p>
                     </div>
+                    <div className="flex gap-2 ml-2">
+                      <button
+                        onClick={() => handleEditChallenge(c)}
+                        className="p-2 bg-primary/20 text-primary rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-primary/30"
+                        title="Editar desafio"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteChallenge(c.id)}
+                        className="p-2 bg-error-container text-on-error-container rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-error/30"
+                        title="Excluir desafio"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                     <span className={cn(
-                      "text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest",
+                      "text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest whitespace-nowrap ml-2",
                       c.active ? "bg-primary/20 text-primary" : "bg-surface-container-highest text-on-surface-variant"
                     )}>
                       {c.active ? 'ATIVO' : 'INATIVO'}
@@ -1736,6 +1808,129 @@ export default function Admin() {
                   className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
                 >
                   <Save className="w-5 h-5" /> SALVAR WOD
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Challenge Modal */}
+      <AnimatePresence>
+        {isEditingChallenge && editingChallenge && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="w-full max-w-lg bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center">
+                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">EDITAR DESAFIO</h3>
+                <button onClick={() => { setEditingChallenge(null); setIsEditingChallenge(false); }} className="p-2 text-on-surface-variant hover:text-on-surface transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Título</label>
+                  <input 
+                    type="text" 
+                    value={editingChallenge.title} 
+                    onChange={e => setEditingChallenge({...editingChallenge, title: e.target.value})}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Descrição</label>
+                  <textarea 
+                    value={editingChallenge.description} 
+                    onChange={e => setEditingChallenge({...editingChallenge, description: e.target.value})}
+                    rows={3}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Inicial</label>
+                    <input 
+                      type="date" 
+                      value={editingChallenge.startDate} 
+                      onChange={e => setEditingChallenge({...editingChallenge, startDate: e.target.value})}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Final</label>
+                    <input 
+                      type="date" 
+                      value={editingChallenge.endDate} 
+                      onChange={e => setEditingChallenge({...editingChallenge, endDate: e.target.value})}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP</label>
+                    <input 
+                      type="number" 
+                      value={editingChallenge.xp} 
+                      onChange={e => setEditingChallenge({...editingChallenge, xp: parseInt(e.target.value)})}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Coins</label>
+                    <input 
+                      type="number" 
+                      value={editingChallenge.coins} 
+                      onChange={e => setEditingChallenge({...editingChallenge, coins: parseInt(e.target.value)})}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dificuldade</label>
+                    <select 
+                      value={editingChallenge.difficulty} 
+                      onChange={e => setEditingChallenge({...editingChallenge, difficulty: e.target.value})}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer" 
+                    >
+                      <option value="easy">Fácil</option>
+                      <option value="medium">Médio</option>
+                      <option value="hard">Difícil</option>
+                      <option value="special">Especial</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Status</label>
+                    <select 
+                      value={editingChallenge.active ? 'true' : 'false'} 
+                      onChange={e => setEditingChallenge({...editingChallenge, active: e.target.value === 'true'})}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer" 
+                    >
+                      <option value="true">Ativo</option>
+                      <option value="false">Inativo</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button 
+                  onClick={() => { setEditingChallenge(null); setIsEditingChallenge(false); }}
+                  className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-bold uppercase italic transition-colors hover:bg-surface-container-highest/80"
+                >
+                  CANCELAR
+                </button>
+                <button 
+                  onClick={handleUpdateChallenge}
+                  className="flex-1 bg-primary text-background py-3 rounded-2xl font-headline font-bold uppercase italic flex items-center justify-center gap-2 transition-colors hover:bg-primary/90"
+                >
+                  <Save className="w-5 h-5" /> SALVAR
                 </button>
               </div>
             </motion.div>
