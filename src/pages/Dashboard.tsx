@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
@@ -6,13 +7,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Wod, User } from '../types';
 import confetti from 'canvas-confetti';
 import AvatarPreview from '../components/AvatarPreview';
-import ShareAppButton from '../components/ShareAppButton';
 import { supabase } from '../lib/supabase';
 
 import { addReward } from '../utils/rewards';
 
 export default function Dashboard() {
   const { user, updateUser } = useAuth();
+  const navigate = useNavigate();
   const [wod, setWod] = useState<Wod | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkinMessage, setCheckinMessage] = useState<string | null>(null);
@@ -201,7 +202,6 @@ export default function Dashboard() {
             <p className="text-on-surface-variant text-[10px] font-bold tracking-widest uppercase mt-1 italic">Pronto para o treino?</p>
           </div>
         </div>
-        <ShareAppButton />
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded-full border border-outline-variant/10">
             <span className="text-[10px] font-black text-primary uppercase italic">LVL {user?.level}</span>
@@ -394,6 +394,25 @@ export default function Dashboard() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Quick Actions */}
+      <section className="grid grid-cols-1 gap-4">
+        <button 
+          onClick={() => navigate('/challenges')}
+          className="bg-secondary/10 border border-secondary/20 p-6 rounded-[2rem] flex items-center justify-between group hover:bg-secondary/20 transition-all"
+        >
+          <div className="flex items-center gap-4">
+            <div className="bg-secondary/20 w-12 h-12 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Zap className="w-6 h-6 text-secondary fill-secondary" />
+            </div>
+            <div className="text-left">
+              <h3 className="font-headline font-black text-xl text-on-surface uppercase italic leading-none mb-1">DESAFIOS</h3>
+              <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Conclua e ganhe recompensas</p>
+            </div>
+          </div>
+          <ChevronRight className="w-6 h-6 text-secondary" />
+        </button>
+      </section>
 
       {/* Quick Stats */}
       <section className="grid grid-cols-2 gap-4">
