@@ -1193,6 +1193,20 @@ export default function Admin() {
                   )}
                 </AnimatePresence>
               </div>
+
+              {/* Toggle Sistema de Times */}
+              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
+                <div>
+                  <p className="text-xs font-black text-on-surface uppercase italic">Sistema de Times</p>
+                  <p className="text-[10px] text-on-surface-variant mt-0.5">Ativa disputa por territórios entre times</p>
+                </div>
+                <button
+                  onClick={() => setSettings({...settings, clans_enabled: !(settings as any).clans_enabled} as any)}
+                  className={`w-12 h-6 rounded-full transition-all relative ${(settings as any)?.clans_enabled ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${(settings as any)?.clans_enabled ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
