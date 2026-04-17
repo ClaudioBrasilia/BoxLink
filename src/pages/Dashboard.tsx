@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, X } from 'lucide-react';
+import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, X, Share2, Target } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -19,6 +19,8 @@ export default function Dashboard() {
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [announcements, setAnnouncements] = useState<string[]>([]);
   const [showWodDetails, setShowWodDetails] = useState(false);
+  const [activeChallenges, setActiveChallenges] = useState<any[]>([]);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const fetchData = async () => {
     // Fetch WODs - Usando data atual com fuso horário de Brasília
@@ -48,6 +50,14 @@ export default function Dashboard() {
       ).filter(Boolean);
       setAnnouncements(annTexts);
     }
+
+    // Fetch active challenges
+    const { data: challengesData } = await supabase
+      .from('challenges')
+      .select('*')
+      .eq('active', true)
+      .limit(3);
+    setActiveChallenges(challengesData || []);
 
     // Fetch Schedule
     const { data: scheduleData } = await supabase.from('schedule').select('*').eq('is_active', true).order('time', { ascending: true });
@@ -205,6 +215,22 @@ export default function Dashboard() {
   const today = new Date().toISOString().split('T')[0];
   const alreadyCheckedIn = user?.checkins.some(c => c.date === today);
 
+  const handleShare = () => {
+    const appUrl = window.location.origin;
+    const text = `💪 Treino na ${user?.name?.split(' ')[0] || 'Arena'}! Baixe o BoxLink e acompanhe meu progresso: ${appUrl}`;
+    if (navigator.share) {
+      navigator.share({ title: 'BoxLink', text, url: appUrl }).catch(() => {});
+    } else {
+      setShowShareModal(true);
+    }
+  };
+
+  const shareViaWhatsApp = () => {
+    const appUrl = window.location.origin;
+    const text = encodeURIComponent(`💪 Estou treinando no BoxLink! Venha acompanhar meu progresso: ${appUrl}`);
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+
   return (
     <div className="flex flex-col gap-6 p-4 pt-8">
       {/* Header */}
@@ -230,6 +256,13 @@ export default function Dashboard() {
             <span className="font-headline font-black text-sm text-on-surface">{user?.coins}</span>
             <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">BC</span>
           </div>
+          <button
+            onClick={handleShare}
+            className="flex items-center gap-1 bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-full hover:bg-primary/20 transition-all"
+          >
+            <Share2 className="w-3 h-3 text-primary" />
+            <span className="text-[8px] font-black text-primary uppercase tracking-widest">COMPARTILHAR</span>
+          </button>
         </div>
       </header>
 
@@ -246,6 +279,43 @@ export default function Dashboard() {
                 • {ann}
               </p>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Desafios Ativos */}
+      {activeChallenges.length > 0 && (
+        <section
+          className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-4 cursor-pointer hover:border-primary/30 transition-all"
+          onClick={() => window.location.href = '/challenges'}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 bg-primary/20 rounded-xl flex items-center justify-center">
+                <Target className="w-4 h-4 text-primary" />
+              </div>
+              <h3 className="text-[10px] font-black text-on-surface uppercase tracking-widest italic">DESAFIOS ATIVOS</h3>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full">{activeChallenges.length}</span>
+              <ChevronRight className="w-4 h-4 text-on-surface-variant" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            {activeChallenges.slice(0, 2).map((c) => (
+              <div key={c.id} className="flex items-center justify-between bg-surface-container-highest/50 rounded-2xl px-3 py-2">
+                <p className="text-xs font-bold text-on-surface uppercase italic truncate flex-1">{c.title}</p>
+                <div className="flex items-center gap-2 ml-2 shrink-0">
+                  <span className="text-[9px] font-black text-primary">+{c.xp} XP</span>
+                  <span className="text-[9px] font-black text-secondary">+{c.coins} BC</span>
+                </div>
+              </div>
+            ))}
+            {activeChallenges.length > 2 && (
+              <p className="text-[9px] text-center text-on-surface-variant font-bold uppercase tracking-widest">
+                +{activeChallenges.length - 2} outros desafios
+              </p>
+            )}
           </div>
         </section>
       )}
@@ -447,6 +517,49 @@ export default function Dashboard() {
           </div>
         </div>
       </section>
+      {/* Share Modal */}
+      <AnimatePresence>
+        {showShareModal && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-background/80 backdrop-blur-sm"
+            onClick={() => setShowShareModal(false)}>
+            <motion.div
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 100 }}
+              className="w-full max-w-md bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic mb-6 flex items-center gap-3">
+                <Share2 className="w-6 h-6 text-primary" /> COMPARTILHAR APP
+              </h3>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={shareViaWhatsApp}
+                  className="w-full bg-[#25D366] text-white py-4 rounded-2xl font-headline font-black uppercase italic flex items-center justify-center gap-3"
+                >
+                  📱 COMPARTILHAR VIA WHATSAPP
+                </button>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.origin);
+                    alert('Link copiado!');
+                    setShowShareModal(false);
+                  }}
+                  className="w-full bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-black uppercase italic flex items-center justify-center gap-3"
+                >
+                  🔗 COPIAR LINK
+                </button>
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="w-full text-on-surface-variant py-3 font-headline font-black uppercase italic text-sm"
+                >
+                  CANCELAR
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
