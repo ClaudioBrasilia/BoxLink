@@ -3,6 +3,7 @@
  */
 
 import { User as UserType } from '../types';
+import { supabase } from '../lib/supabase';
 
 export interface RankingImageOptions {
   title: string;
@@ -12,10 +13,28 @@ export interface RankingImageOptions {
 }
 
 /**
+ * Carregar uma imagem a partir de uma URL
+ */
+const loadImage = (url: string): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = (e) => reject(e);
+    img.src = url;
+  });
+};
+
+/**
  * Gerar uma imagem do ranking em formato canvas
  */
 export const generateRankingImage = async (options: RankingImageOptions): Promise<string> => {
-  const { title, top3, rankingType, boxName = 'BoxLink' } = options;
+  const { title, top3, rankingType } = options;
+
+  // Buscar configurações do Box para pegar a logo e o nome real
+  const { data: settings } = await supabase.from('box_settings').select('name, logo').maybeSingle();
+  const boxName = settings?.name || options.boxName || 'BoxLink';
+  const logoUrl = settings?.logo;
 
   // Criar canvas
   const canvas = document.createElement('canvas');
@@ -25,79 +44,124 @@ export const generateRankingImage = async (options: RankingImageOptions): Promis
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Não foi possível obter contexto do canvas');
 
-  // Background gradient
+  // Background gradient (Dark Theme)
   const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, '#1a1a1a');
-  gradient.addColorStop(1, '#2d2d2d');
+  gradient.addColorStop(0, '#0a0a0a');
+  gradient.addColorStop(1, '#1a1a1a');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Título
-  ctx.font = 'bold 60px Arial';
+  // Adicionar elementos decorativos (linhas/formas)
+  ctx.strokeStyle = 'rgba(202, 253, 0, 0.1)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < canvas.width; i += 100) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, canvas.height);
+    ctx.stroke();
+  }
+
+  // Logo do Box (se existir)
+  if (logoUrl) {
+    try {
+      const logoImg = await loadImage(logoUrl);
+      const logoSize = 180;
+      const logoX = (canvas.width - logoSize) / 2;
+      const logoY = 80;
+      
+      // Desenhar logo com sombra
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+      ctx.shadowBlur = 20;
+      ctx.drawImage(logoImg, logoX, logoY, logoSize, logoSize);
+      ctx.shadowBlur = 0;
+    } catch (err) {
+      console.error('Erro ao carregar logo:', err);
+    }
+  }
+
+  // Título do Ranking
+  ctx.font = 'black 80px Arial';
   ctx.fillStyle = '#CAFD00';
   ctx.textAlign = 'center';
-  ctx.fillText('🏆 RANKING 🏆', canvas.width / 2, 100);
+  ctx.textBaseline = 'middle';
+  ctx.fillText('RANKING', canvas.width / 2, 350);
 
-  // Subtítulo
-  ctx.font = '32px Arial';
+  // Subtítulo (Tipo de Ranking)
+  ctx.font = 'bold 40px Arial';
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(title, canvas.width / 2, 160);
+  ctx.fillText(title.toUpperCase(), canvas.width / 2, 420);
 
-  // Box Name
-  ctx.font = '24px Arial';
+  // Nome do Box
+  ctx.font = 'italic bold 30px Arial';
   ctx.fillStyle = '#999999';
-  ctx.fillText(boxName, canvas.width / 2, 210);
+  ctx.fillText(boxName.toUpperCase(), canvas.width / 2, 470);
 
-  // Desenhar Top 3
+  // Desenhar Podium
+  const podiumY = 950;
   const positions = [
-    { x: canvas.width / 2 - 200, y: 400, medal: '🥈', rank: '2º' },
-    { x: canvas.width / 2, y: 300, medal: '🥇', rank: '1º' },
-    { x: canvas.width / 2 + 200, y: 400, medal: '🥉', rank: '3º' },
+    { x: canvas.width / 2 - 300, y: podiumY + 50, medal: '🥈', rank: '2º', color: '#C0C0C0', height: 300 },
+    { x: canvas.width / 2, y: podiumY, medal: '🥇', rank: '1º', color: '#CAFD00', height: 450 },
+    { x: canvas.width / 2 + 300, y: podiumY + 100, medal: '🥉', rank: '3º', color: '#CD7F32', height: 200 },
   ];
 
+  // Desenhar bases do podium
+  positions.forEach((pos, index) => {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.beginPath();
+    ctx.roundRect(pos.x - 130, pos.y, 260, pos.height, 20);
+    ctx.fill();
+    ctx.strokeStyle = pos.color + '44';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Número da posição no podium
+    ctx.font = 'bold 120px Arial';
+    ctx.fillStyle = pos.color + '22';
+    ctx.fillText(pos.rank[0], pos.x, pos.y + 150);
+  });
+
+  // Desenhar Atletas
   top3.forEach((user, index) => {
     const pos = positions[index];
+    const avatarY = pos.y - 120;
 
-    // Círculo de fundo
-    ctx.fillStyle = index === 0 ? '#CAFD00' : '#666666';
+    // Círculo do Avatar
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y - 100, 80, 0, Math.PI * 2);
+    ctx.arc(pos.x, avatarY, 90, 0, Math.PI * 2);
+    ctx.fillStyle = '#222222';
     ctx.fill();
+    ctx.strokeStyle = pos.color;
+    ctx.lineWidth = 5;
+    ctx.stroke();
 
-    // Medal emoji
-    ctx.font = 'bold 80px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(pos.medal, pos.x, pos.y - 80);
+    // Medalha
+    ctx.font = '60px Arial';
+    ctx.fillText(pos.medal, pos.x, avatarY - 100);
 
-    // Nome
-    ctx.font = 'bold 28px Arial';
+    // Nome do Atleta
+    ctx.font = 'bold 36px Arial';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(user.name.split(' ')[0], pos.x, pos.y + 80);
+    ctx.fillText(user.name.split(' ')[0].toUpperCase(), pos.x, pos.y - 240);
 
     // Pontuação
-    ctx.font = '24px Arial';
-    ctx.fillStyle = '#CAFD00';
+    ctx.font = 'bold 32px Arial';
+    ctx.fillStyle = pos.color;
     let scoreText = '';
     if (rankingType === 'xp') {
       scoreText = `${user.xp} XP`;
     } else if (rankingType === 'freq') {
-      scoreText = `${user.monthCheckinCount || 0} Check-ins`;
+      scoreText = `${user.monthCheckinCount || 0} CHECK-INS`;
     } else {
-      scoreText = `${user.level} Nível`;
+      scoreText = `LVL ${user.level}`;
     }
-    ctx.fillText(scoreText, pos.x, pos.y + 120);
-
-    // Nível
-    ctx.font = '20px Arial';
-    ctx.fillStyle = '#999999';
-    ctx.fillText(`Nível ${user.level}`, pos.x, pos.y + 160);
+    ctx.fillText(scoreText, pos.x, pos.y - 200);
   });
 
   // Footer
-  ctx.font = '20px Arial';
-  ctx.fillStyle = '#666666';
+  ctx.font = 'bold 24px Arial';
+  ctx.fillStyle = '#444444';
   ctx.textAlign = 'center';
-  ctx.fillText('Compartilhado do BoxLink 💪', canvas.width / 2, canvas.height - 50);
+  ctx.fillText('GERADO POR BOXLINK • ARENA DE PERFORMANCE', canvas.width / 2, canvas.height - 60);
 
   // Converter para data URL
   return canvas.toDataURL('image/png');
@@ -119,14 +183,13 @@ export const downloadRankingImage = (imageUrl: string, filename: string = 'ranki
  * Compartilhar imagem via WhatsApp
  */
 export const shareRankingToWhatsApp = (imageUrl: string, title: string) => {
-  const text = encodeURIComponent(`🏆 ${title}\n\nVeja meu ranking no BoxLink!\n\n`);
-  // WhatsApp não permite compartilhamento direto de imagens via URL, então compartilhamos o link
+  const text = encodeURIComponent(`🏆 *RANKING ${title.toUpperCase()}*\n\nConfira o pódio do nosso Box no BoxLink! 💪🔥\n\n`);
   const whatsappUrl = `https://wa.me/?text=${text}`;
   window.open(whatsappUrl, '_blank');
 };
 
 /**
- * Copiar imagem para clipboard (se suportado)
+ * Copiar imagem para clipboard
  */
 export const copyImageToClipboard = async (imageUrl: string): Promise<boolean> => {
   try {
