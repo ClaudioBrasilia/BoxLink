@@ -39,8 +39,14 @@ export default function Dashboard() {
     
     // Fetch Box Settings
     const { data: settingsData } = await supabase.from('box_settings').select('*').single();
-    if (settingsData?.tv_config?.announcements) {
-      setAnnouncements(settingsData.tv_config.announcements);
+    // Busca comunicados do campo correto (announcements salvo pelo Admin)
+    const rawAnn = settingsData?.announcements || settingsData?.tv_config?.announcements || [];
+    if (Array.isArray(rawAnn) && rawAnn.length > 0) {
+      // Suporta tanto formato antigo (string[]) quanto novo ({title, content}[])
+      const annTexts = rawAnn.map((a: any) => 
+        typeof a === 'string' ? a : (a.title ? `${a.title}${a.content ? ': ' + a.content : ''}` : '')
+      ).filter(Boolean);
+      setAnnouncements(annTexts);
     }
 
     // Fetch Schedule
