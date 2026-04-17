@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -146,7 +147,7 @@ export default function Clans() {
         .insert({ name: newClanName.trim(), motto: newClanMotto.trim(), color: newClanColor, created_by: user.id })
         .select()
         .single();
-      if (error) { alert('Erro ao criar clã: ' + error.message); return; }
+      if (error) { alert('Erro ao criar time: ' + error.message); return; }
 
       await supabase.from('clan_memberships').insert({
         clan_id: clan.id, user_id: user.id, role: 'captain', status: 'approved'
@@ -168,8 +169,8 @@ export default function Clans() {
       const { error } = await supabase.from('clan_memberships').insert({
         clan_id: clanId, user_id: user.id, role: 'member', status: 'pending'
       });
-      if (error) { alert('Erro ao solicitar entrada: ' + error.message); return; }
-      alert('Solicitação enviada! Aguarde aprovação do capitão.');
+      if (error) { alert('Erro ao entrar no time: ' + error.message); return; }
+      alert('Solicitação enviada! Aguarde aprovação do capitão do time.');
       fetchAll();
     } finally {
       setJoining(null);
@@ -178,7 +179,7 @@ export default function Clans() {
 
   const handleLeaveClan = async () => {
     if (!myMembership || !user) return;
-    if (!confirm('Tem certeza que deseja sair do clã?')) return;
+    if (!confirm('Tem certeza que deseja sair do time?')) return;
     await supabase.from('clan_memberships').delete().eq('id', myMembership.id);
     setMyClan(null);
     setMyMembership(null);
@@ -197,9 +198,9 @@ export default function Clans() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 p-6 text-center">
         <Swords className="w-16 h-16 text-outline-variant" />
-        <h2 className="text-2xl font-headline font-black text-on-surface uppercase italic">Clãs Desativados</h2>
+        <h2 className="text-2xl font-headline font-black text-on-surface uppercase italic">Times Desativados</h2>
         <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest max-w-xs">
-          O sistema de clãs ainda não foi ativado pelo administrador do box.
+          O sistema de times ainda não foi ativado pelo administrador do box.
         </p>
       </div>
     );
@@ -211,10 +212,10 @@ export default function Clans() {
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-3xl font-headline font-black text-on-surface uppercase italic tracking-tighter">
-            CLÃS
+            TIMES
           </h1>
           <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest mt-1">
-            Forme sua equipe. Domine o box.
+            Forme seu time. Domine o box.
           </p>
         </div>
         {!myClan && (
@@ -222,7 +223,7 @@ export default function Clans() {
             onClick={() => setShowCreateModal(true)}
             className="bg-primary text-background px-4 py-2 rounded-xl font-headline font-black text-xs uppercase italic flex items-center gap-2"
           >
-            <Plus className="w-4 h-4" /> Criar Clã
+            <Plus className="w-4 h-4" /> Criar Time
           </button>
         )}
       </div>
@@ -241,12 +242,12 @@ export default function Clans() {
         </div>
       )}
 
-      {/* Meu Clã */}
+      {/* Meu Time */}
       {myClan && (
         <div className="bg-surface-container-low rounded-[2rem] border-2 p-5" style={{ borderColor: myClan.color }}>
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Meu Clã</p>
+              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Meu Time</p>
               <h3 className="font-headline font-black text-on-surface text-xl uppercase italic flex items-center gap-2">
                 {myMembership?.role === 'captain' && <Crown className="w-5 h-5" style={{ color: myClan.color }} />}
                 {myClan.name}
@@ -263,7 +264,7 @@ export default function Clans() {
         </div>
       )}
 
-      {/* Ranking de Clãs */}
+      {/* Ranking de Times */}
       <div>
         <h2 className="text-xs font-black text-on-surface-variant uppercase tracking-widest mb-3 flex items-center gap-2">
           <Trophy className="w-4 h-4 text-primary" /> Ranking de Hoje
@@ -324,7 +325,7 @@ export default function Clans() {
                     className="w-full py-2 rounded-xl font-headline font-black text-xs uppercase italic border border-outline-variant/20 text-on-surface-variant hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-2"
                   >
                     <LogIn className="w-3 h-3" />
-                    {joining === item.clan.id ? 'Solicitando...' : 'Solicitar Entrada'}
+                    {joining === item.clan.id ? 'Solicitando...' : 'Entrar no Time'}
                   </button>
                 )}
                 {alreadyRequested && !isMine && (
@@ -339,14 +340,14 @@ export default function Clans() {
           {clans.length === 0 && (
             <div className="text-center py-12 text-on-surface-variant">
               <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="font-black uppercase italic text-sm">Nenhum clã criado ainda</p>
-              <p className="text-xs mt-1">Seja o primeiro a criar um clã!</p>
+              <p className="font-black uppercase italic text-sm">Nenhum time criado ainda</p>
+              <p className="text-xs mt-1">Seja o primeiro a criar um time!</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Modal Criar Clã */}
+      {/* Modal Criar Time */}
       <AnimatePresence>
         {showCreateModal && (
           <motion.div
@@ -364,7 +365,7 @@ export default function Clans() {
               onClick={e => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-6">
-                <h2 className="font-headline font-black text-on-surface text-xl uppercase italic">Criar Clã</h2>
+                <h2 className="font-headline font-black text-on-surface text-xl uppercase italic">Criar Time</h2>
                 <button onClick={() => setShowCreateModal(false)}>
                   <X className="w-5 h-5 text-on-surface-variant" />
                 </button>
@@ -372,7 +373,7 @@ export default function Clans() {
 
               <div className="flex flex-col gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Nome do Clã</label>
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Nome do Time</label>
                   <input
                     type="text"
                     value={newClanName}
@@ -384,7 +385,7 @@ export default function Clans() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Lema (opcional)</label>
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Lema do Time (opcional)</label>
                   <input
                     type="text"
                     value={newClanMotto}
@@ -396,7 +397,7 @@ export default function Clans() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Cor do Clã</label>
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Cor do Time</label>
                   <div className="flex gap-3 flex-wrap">
                     {colors.map(color => (
                       <button
@@ -419,7 +420,7 @@ export default function Clans() {
                   className="w-full py-4 rounded-2xl font-headline font-black text-background uppercase italic disabled:opacity-50 mt-2"
                   style={{ backgroundColor: newClanColor }}
                 >
-                  {creating ? 'Criando...' : 'Criar Clã'}
+                  {creating ? 'Criando...' : 'Criar Time'}
                 </button>
               </div>
             </motion.div>
