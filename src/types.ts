@@ -147,7 +147,7 @@ export interface BoxSettings {
     duel_win_coins: number;
   };
   isActive: boolean;
-  announcements?: string[];
+  announcements?: { id: string; title: string; content: string; date: string; active: boolean }[];
   timezone: string;
   modules: {
     economy: boolean;
