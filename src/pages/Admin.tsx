@@ -58,7 +58,7 @@ export default function Admin() {
       duel_win_coins: 10
     },
     isActive: true,
-    announcements: [],
+    announcements: [] as any[],
     timezone: 'America/Sao_Paulo',
     modules: {
       economy: true,
@@ -173,7 +173,7 @@ export default function Admin() {
         rewards: settingsData.rewards || prev.rewards,
         tvConfig: settingsData.tv_config || (prev as any).tvConfig || {},
         modules: settingsData.modules || prev.modules,
-        announcements: settingsData.announcements || prev.announcements,
+        announcements: (settingsData.announcements || prev.announcements || []) as any[],
         timezone: settingsData.timezone || prev.timezone,
         max_clan_members: settingsData.max_clan_members || 10
       }));
@@ -303,7 +303,7 @@ export default function Admin() {
         rewards: settings.rewards || {},
         tv_config: (settings as any).tvConfig || (settings as any).tv_config || {},
         modules: settings.modules || {},
-        announcements: settings.announcements || [],
+        announcements: (settings as any).announcements || [],
         timezone: settings.timezone || 'America/Sao_Paulo',
         clans_enabled: (settings as any).clans_enabled || false,
         max_clan_members: settings.max_clan_members || 10,
@@ -1207,6 +1207,14 @@ export default function Admin() {
                   <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${(settings as any)?.clans_enabled ? 'right-0.5' : 'left-0.5'}`} />
                 </button>
               </div>
+
+              {/* Botão Salvar no final */}
+              <button
+                onClick={handleSaveSettings}
+                className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-lg uppercase italic shadow-lg hover:scale-[0.98] active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <Save className="w-5 h-5" /> SALVAR AJUSTES
+              </button>
             </div>
           </motion.div>
         )}
