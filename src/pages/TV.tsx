@@ -17,6 +17,8 @@ export default function TV() {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [isWodAutoRotationActive, setIsWodAutoRotationActive] = useState(true);
   const [athleteIndex, setAthleteIndex] = useState(0);
+  const [rankingTab, setRankingTab] = useState<'xp' | 'freq'>('xp');
+  const [freqRanking, setFreqRanking] = useState<any[]>([]);
   const [wodTabIndex, setWodTabIndex] = useState(0);
 
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +41,7 @@ export default function TV() {
         supabase.from('wods').select('*').eq('date', today).maybeSingle(),
         supabase.from('challenges').select('*').eq('active', true),
         supabase.from('duels').select('*, challenger:profiles!challenger_id(name), opponent:profiles!opponent_id(name)').eq('status', 'accepted'),
-        supabase.from('profiles').select('name, xp, level, avatar_equipped').order('xp', { ascending: false }).limit(10)
+        supabase.from('profiles').select('name, xp, level, avatar_equipped').eq('status', 'approved').order('xp', { ascending: false }).limit(10)
       ]);
 
       const { data: checkinsRaw } = await supabase
@@ -56,6 +58,24 @@ export default function TV() {
         ...c,
         profiles: profileMap[c.user_id] || null
       }));
+
+      // Frequency ranking for current month
+      const firstDayOfMonth = new Date();
+      firstDayOfMonth.setDate(1);
+      firstDayOfMonth.setHours(0,0,0,0);
+      const { data: monthCheckins } = await supabase
+        .from('checkins').select('user_id')
+        .gte('date', firstDayOfMonth.toISOString().split('T')[0]);
+      const freqCounts: Record<string, number> = {};
+      (monthCheckins || []).forEach((c: any) => {
+        freqCounts[c.user_id] = (freqCounts[c.user_id] || 0) + 1;
+      });
+      const freqTop = (profilesRaw || [])
+        .map((p: any) => ({ ...p, freq: freqCounts[p.id] || 0 }))
+        .filter((p: any) => p.freq > 0)
+        .sort((a: any, b: any) => b.freq - a.freq)
+        .slice(0, 3);
+      setFreqRanking(freqTop);
 
       // Mocked stats for the ticker
       setData({
@@ -82,6 +102,10 @@ export default function TV() {
     fetchData();
     const interval = setInterval(fetchData, 30000);
     
+    const rankingTabInterval = setInterval(() => {
+      setRankingTab(prev => prev === 'xp' ? 'freq' : 'xp');
+    }, 8000);
+
     const athleteInterval = setInterval(() => {
       setAthleteIndex(prev => {
         const athletesToDisplay = data?.checkins?.length > 0 
@@ -105,6 +129,7 @@ export default function TV() {
 
     return () => {
       clearInterval(interval);
+      clearInterval(rankingTabInterval);
       clearInterval(athleteInterval);
       clearInterval(wodInterval);
       supabase.removeChannel(checkinsChannel);
@@ -390,18 +415,18 @@ export default function TV() {
                   
                   <div className="flex-1 flex flex-col justify-center">
                     <div className="text-center mb-12">
-                      <p className="text-white/40 text-sm font-black uppercase tracking-[0.5em] italic mb-4">MAIN EVENT</p>
-                      <h2 className="text-[12rem] font-headline font-black text-white italic tracking-tighter uppercase leading-[0.7] mb-8">{wod.name}</h2>
+                      
+                      <h2 className="text-[5rem] font-headline font-black text-white italic tracking-tighter uppercase leading-none mb-4">{wod.name}</h2>
                     </div>
 
                     <div className="grid grid-cols-3 gap-6">
-                      <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 text-center">
+                      <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 text-left flex flex-col gap-2">
                         <span className="text-secondary text-xs font-black uppercase tracking-widest block mb-2">RX</span>
-                        <span className="text-4xl font-headline font-black text-white italic">{wod.rx}</span>
+                        <span className="text-2xl font-headline font-black text-white italic leading-tight whitespace-pre-wrap">{wod.rx}</span>
                       </div>
                       <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 text-center">
                         <span className="text-white/40 text-xs font-black uppercase tracking-widest block mb-2">SCALED</span>
-                        <span className="text-4xl font-headline font-black text-white italic">{wod.scaled}</span>
+                        <span className="text-2xl font-headline font-black text-white italic leading-tight whitespace-pre-wrap">{wod.scaled}</span>
                       </div>
                       <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 text-center">
                         <span className="text-white/40 text-xs font-black uppercase tracking-widest block mb-2">BEGINNER</span>
@@ -417,80 +442,144 @@ export default function TV() {
 
         {/* Right: CHECK-IN & ATHLETE CARDS */}
         <div className="col-span-4 flex flex-col gap-6">
-          {/* CHECK-IN */}
-          <section className="bg-[#111] rounded-[2.5rem] p-8 border border-white/5 h-[30%] flex flex-col justify-center">
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-3">
-                <Users className="w-6 h-6 text-primary" />
-                <h3 className="text-2xl font-headline font-black text-white italic uppercase tracking-tight">CHECK-IN</h3>
+          {/* TOP 3 RANKING */}
+          <section className="bg-[#111] rounded-[2.5rem] p-5 border border-white/5 flex flex-col gap-3">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-primary" />
+                <h3 className="text-base font-headline font-black text-white italic uppercase tracking-tight">TOP 3</h3>
               </div>
-              <div className="bg-primary/20 text-primary px-4 py-1 rounded-full font-headline font-black text-xl italic">
-                {checkins.length}/20
+              <div className="flex gap-2">
+                {(['xp', 'freq'] as const).map(tab => (
+                  <button key={tab} onClick={() => setRankingTab(tab)}
+                    className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${rankingTab === tab ? 'bg-primary text-black' : 'bg-white/5 text-white/40'}`}>
+                    {tab === 'xp' ? 'XP MÊS' : 'FREQ'}
+                  </button>
+                ))}
               </div>
             </div>
-            <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5">
-              <motion.div 
-                initial={{ width: 0 }}
-                animate={{ width: `${(checkins.length / 20) * 100}%` }}
-                className="h-full bg-primary shadow-[0_0_15px_#cafd00]"
-              />
+            {(rankingTab === 'xp' ? (data?.rankings || []).slice(0,3) : freqRanking).map((r: any, i: number) => (
+              <div key={r.id || i} className="flex items-center gap-3 bg-white/5 rounded-2xl px-3 py-2 border border-white/5">
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black
+                  ${i===0?'bg-primary text-black':i===1?'bg-white/20 text-white':'bg-white/10 text-white/60'}`}>
+                  {i+1}
+                </span>
+                <AvatarPreview equipped={r.avatar_equipped} size="xs" className="border border-white/10" />
+                <p className="flex-1 text-white font-bold uppercase text-xs italic truncate">{r.name}</p>
+                <p className="text-primary text-[10px] font-black shrink-0">
+                  {rankingTab === 'xp' ? `${r.xp} XP` : `${r.freq} treinos`}
+                </p>
+              </div>
+            ))}
+            <div className="flex items-center justify-between pt-1 border-t border-white/5">
+              <p className="text-white/30 text-[8px] font-black uppercase tracking-widest">CHECK-INS HOJE</p>
+              <p className="text-primary text-sm font-black">{checkins.length} <span className="text-white/30 text-[8px]">atletas</span></p>
             </div>
-            <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mt-4 text-center italic">
-              {checkins[0]?.class_time ? `CLASS TIME: ${checkins[0].class_time}` : 'PRÓXIMA AULA'} 
-              {checkins[0]?.profiles?.name ? ` • COACH: ${checkins[0].profiles.name.split(' ')[0]}` : ''}
-            </p>
           </section>
 
-          {/* CHECK-IN LIST */}
-          <section className="bg-[#111] rounded-[2.5rem] border border-white/5 flex-1 relative overflow-hidden p-6 flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-3">
-                <Users className="w-5 h-5 text-primary" />
-                <h3 className="text-lg font-headline font-black text-white italic uppercase tracking-tight">ATLETAS NA AULA</h3>
+          {/* ATLETAS NA AULA — Carrossel dinâmico */}
+          <section className="bg-[#111] rounded-[2.5rem] border border-white/5 flex-1 relative overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex justify-between items-center px-5 pt-4 pb-2">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-headline font-black text-white italic uppercase tracking-tight">ATLETAS NA AULA</h3>
               </div>
-              <span className="bg-primary text-black px-3 py-1 rounded-full font-headline font-black text-sm italic">
+              <span className="bg-primary text-black px-2 py-0.5 rounded-full font-headline font-black text-xs italic">
                 {checkins.length}
               </span>
             </div>
 
             {checkins.length === 0 ? (
               <div className="flex-1 flex items-center justify-center">
-                <p className="text-white/20 text-xs font-black uppercase tracking-widest italic text-center">
+                <p className="text-white/20 text-xs font-black uppercase tracking-widest italic text-center px-4">
                   Nenhum check-in<br/>registrado ainda
                 </p>
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar">
-                {checkins.map((c: any, i: number) => {
-                  const profile = c.profiles;
-                  return (
-                    <motion.div
-                      key={c.id}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      className="flex items-center gap-3 bg-white/5 rounded-2xl px-4 py-3 border border-white/5"
-                    >
-                      <div className="w-9 h-9 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center font-headline font-black text-primary text-sm shrink-0">
-                        {profile?.name?.[0] || '?'}
+              <>
+                {/* Avatar em destaque — atleta atual */}
+                <AnimatePresence mode="wait">
+                  {(() => {
+                    const c = checkins[athleteIndex % checkins.length];
+                    const profile = c?.profiles;
+                    return (
+                      <motion.div
+                        key={athleteIndex}
+                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 1.05, y: -20 }}
+                        transition={{ duration: 0.5 }}
+                        className="flex flex-col items-center justify-center flex-1 gap-3 pb-2"
+                      >
+                        {/* Avatar grande com glow */}
+                        <div className="relative">
+                          <div className="absolute inset-0 rounded-full bg-primary/20 blur-2xl scale-150" />
+                          <AvatarPreview
+                            equipped={profile?.avatar_equipped}
+                            size="xl"
+                            className="relative border-4 border-primary shadow-[0_0_40px_rgba(202,253,0,0.4)]"
+                          />
+                          {/* Badge check-in */}
+                          <div className="absolute -bottom-2 -right-2 bg-primary text-black text-[9px] font-black px-2 py-0.5 rounded-full uppercase italic shadow-lg">
+                            ✓ CHECK-IN
+                          </div>
+                        </div>
+
+                        {/* Nome e info */}
+                        <div className="text-center px-4">
+                          <h4 className="text-2xl font-headline font-black text-white uppercase italic tracking-tight leading-none">
+                            {profile?.name?.split(' ')[0] || 'Atleta'}
+                          </h4>
+                          <p className="text-primary text-[10px] font-black uppercase tracking-widest mt-1">
+                            {c?.class_time ? `Aula ${c.class_time}` : 'Check-in realizado'}
+                          </p>
+                        </div>
+
+                        {/* Indicadores de paginação */}
+                        <div className="flex gap-1.5 mt-1">
+                          {checkins.slice(0, Math.min(checkins.length, 8)).map((_: any, i: number) => (
+                            <div
+                              key={i}
+                              className={`rounded-full transition-all duration-300 ${
+                                i === athleteIndex % checkins.length
+                                  ? 'w-4 h-1.5 bg-primary'
+                                  : 'w-1.5 h-1.5 bg-white/20'
+                              }`}
+                            />
+                          ))}
+                          {checkins.length > 8 && (
+                            <span className="text-white/30 text-[8px] font-black">+{checkins.length - 8}</span>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })()}
+                </AnimatePresence>
+
+                {/* Mini lista dos outros atletas */}
+                <div className="border-t border-white/5 px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar">
+                  {checkins.map((c: any, i: number) => {
+                    const profile = c?.profiles;
+                    const isActive = i === athleteIndex % checkins.length;
+                    return (
+                      <div
+                        key={c.id}
+                        className={`shrink-0 flex flex-col items-center gap-1 transition-all ${isActive ? 'opacity-100' : 'opacity-40'}`}
+                      >
+                        <AvatarPreview
+                          equipped={profile?.avatar_equipped}
+                          size="sm"
+                          className={`border-2 transition-all ${isActive ? 'border-primary shadow-[0_0_10px_rgba(202,253,0,0.4)]' : 'border-white/10'}`}
+                        />
+                        <span className="text-[7px] font-black text-white/60 uppercase truncate max-w-[40px]">
+                          {profile?.name?.split(' ')[0] || '?'}
+                        </span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white font-bold uppercase text-sm italic truncate leading-tight">
-                          {profile?.name || 'Atleta'}
-                        </p>
-                        <p className="text-white/40 text-[9px] font-black uppercase tracking-widest">
-                          {c.class_time || 'Check-in'}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-primary text-[10px] font-black uppercase italic">
-                          LVL {profile?.level || 1}
-                        </p>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </section>
         </div>
