@@ -403,35 +403,27 @@ export default function TV() {
                   exit={{ opacity: 0, x: 20 }}
                   className="absolute inset-0 bg-[#111] rounded-[3rem] p-12 border border-white/5 flex flex-col"
                 >
-                  <div className="flex justify-between items-start mb-8">
-                    <div>
-                      <h3 className="text-primary text-sm font-black uppercase tracking-[0.4em] italic mb-2">PHASE 03</h3>
-                      <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter">THE WOD</h2>
-                    </div>
-                    <div className="bg-primary text-black px-8 py-4 rounded-3xl font-headline font-black text-5xl italic uppercase tracking-tighter shadow-[0_0_30px_rgba(202,253,0,0.3)]">
+                  {/* Header compacto */}
+                  <div className="flex items-center justify-between mb-5">
+                    <h2 className="text-3xl font-headline font-black text-white uppercase italic tracking-tighter">{wod.name}</h2>
+                    <div className="bg-primary text-black px-6 py-2 rounded-2xl font-headline font-black text-xl italic uppercase tracking-tight">
                       {wod.type}
                     </div>
                   </div>
-                  
-                  <div className="flex-1 flex flex-col justify-center">
-                    <div className="text-center mb-12">
-                      
-                      <h2 className="text-[5rem] font-headline font-black text-white italic tracking-tighter uppercase leading-none mb-4">{wod.name}</h2>
-                    </div>
 
-                    <div className="grid grid-cols-3 gap-6">
-                      <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 text-left flex flex-col gap-2">
-                        <span className="text-secondary text-xs font-black uppercase tracking-widest block mb-2">RX</span>
-                        <span className="text-2xl font-headline font-black text-white italic leading-tight whitespace-pre-wrap">{wod.rx}</span>
-                      </div>
-                      <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 text-center">
-                        <span className="text-white/40 text-xs font-black uppercase tracking-widest block mb-2">SCALED</span>
-                        <span className="text-2xl font-headline font-black text-white italic leading-tight whitespace-pre-wrap">{wod.scaled}</span>
-                      </div>
-                      <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 text-center">
-                        <span className="text-white/40 text-xs font-black uppercase tracking-widest block mb-2">BEGINNER</span>
-                        <span className="text-4xl font-headline font-black text-white italic">{wod.beginner}</span>
-                      </div>
+                  {/* RX / Scaled / Beginner — ocupa todo o espaço */}
+                  <div className="flex-1 grid grid-cols-3 gap-4">
+                    <div className="bg-secondary/10 border-2 border-secondary/40 rounded-[2rem] p-6 flex flex-col">
+                      <span className="text-secondary text-base font-black uppercase tracking-widest mb-4">🔴 RX</span>
+                      <p className="text-white font-headline font-black text-3xl italic leading-snug whitespace-pre-wrap flex-1">{wod.rx}</p>
+                    </div>
+                    <div className="bg-white/5 border border-white/10 rounded-[2rem] p-6 flex flex-col">
+                      <span className="text-white/60 text-base font-black uppercase tracking-widest mb-4">⚪ SCALED</span>
+                      <p className="text-white/90 font-headline font-black text-3xl italic leading-snug whitespace-pre-wrap flex-1">{wod.scaled}</p>
+                    </div>
+                    <div className="bg-white/5 border border-white/10 rounded-[2rem] p-6 flex flex-col">
+                      <span className="text-white/60 text-base font-black uppercase tracking-widest mb-4">🟢 BEGINNER</span>
+                      <p className="text-white/90 font-headline font-black text-3xl italic leading-snug whitespace-pre-wrap flex-1">{wod.beginner}</p>
                     </div>
                   </div>
                 </motion.section>
@@ -458,19 +450,51 @@ export default function TV() {
                 ))}
               </div>
             </div>
-            {(rankingTab === 'xp' ? (data?.rankings || []).slice(0,3) : freqRanking).map((r: any, i: number) => (
-              <div key={r.id || i} className="flex items-center gap-3 bg-white/5 rounded-2xl px-3 py-2 border border-white/5">
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black
-                  ${i===0?'bg-primary text-black':i===1?'bg-white/20 text-white':'bg-white/10 text-white/60'}`}>
-                  {i+1}
-                </span>
-                <AvatarPreview equipped={r.avatar_equipped} size="xs" className="border border-white/10" />
-                <p className="flex-1 text-white font-bold uppercase text-xs italic truncate">{r.name}</p>
-                <p className="text-primary text-[10px] font-black shrink-0">
-                  {rankingTab === 'xp' ? `${r.xp} XP` : `${r.freq} treinos`}
-                </p>
-              </div>
-            ))}
+            {/* Pódio */}
+            <div className="flex items-end justify-between gap-2 px-2 pb-1">
+              {/* 2º */}
+              {(rankingTab === 'xp' ? (data?.rankings || []) : freqRanking)[1] && (() => {
+                const r = (rankingTab === 'xp' ? (data?.rankings || []) : freqRanking)[1];
+                return (
+                  <div className="flex flex-col items-center gap-1 flex-1">
+                    <div className="w-10 h-10 rounded-full bg-white/10 border-2 border-white/20 flex items-center justify-center font-headline font-black text-white text-lg">{r.name?.[0]}</div>
+                    <p className="text-white/80 text-[9px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
+                    <p className="text-white/50 text-[8px] font-bold">{rankingTab === 'xp' ? `${r.xp} XP` : `${r.freq} treinos`}</p>
+                    <div className="w-full h-8 bg-white/10 rounded-t-lg flex items-center justify-center">
+                      <span className="text-white/60 text-xs font-black">#2</span>
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* 1º */}
+              {(rankingTab === 'xp' ? (data?.rankings || []) : freqRanking)[0] && (() => {
+                const r = (rankingTab === 'xp' ? (data?.rankings || []) : freqRanking)[0];
+                return (
+                  <div className="flex flex-col items-center gap-1 flex-1 -mb-0">
+                    <div className="w-12 h-12 rounded-full bg-primary/30 border-2 border-primary flex items-center justify-center font-headline font-black text-primary text-xl shadow-[0_0_15px_rgba(202,253,0,0.4)]">{r.name?.[0]}</div>
+                    <p className="text-primary text-[10px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
+                    <p className="text-primary text-[9px] font-black">{rankingTab === 'xp' ? `${r.xp} XP` : `${r.freq} treinos`}</p>
+                    <div className="w-full h-12 bg-primary/20 border border-primary/30 rounded-t-lg flex items-center justify-center">
+                      <span className="text-primary text-sm font-black">👑 #1</span>
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* 3º */}
+              {(rankingTab === 'xp' ? (data?.rankings || []) : freqRanking)[2] && (() => {
+                const r = (rankingTab === 'xp' ? (data?.rankings || []) : freqRanking)[2];
+                return (
+                  <div className="flex flex-col items-center gap-1 flex-1">
+                    <div className="w-9 h-9 rounded-full bg-white/5 border-2 border-white/10 flex items-center justify-center font-headline font-black text-white/60 text-base">{r.name?.[0]}</div>
+                    <p className="text-white/50 text-[9px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
+                    <p className="text-white/40 text-[8px] font-bold">{rankingTab === 'xp' ? `${r.xp} XP` : `${r.freq} treinos`}</p>
+                    <div className="w-full h-6 bg-white/5 rounded-t-lg flex items-center justify-center">
+                      <span className="text-white/40 text-[9px] font-black">#3</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
             <div className="flex items-center justify-between pt-1 border-t border-white/5">
               <p className="text-white/30 text-[8px] font-black uppercase tracking-widest">CHECK-INS HOJE</p>
               <p className="text-primary text-sm font-black">{checkins.length} <span className="text-white/30 text-[8px]">atletas</span></p>
