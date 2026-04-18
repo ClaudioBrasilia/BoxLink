@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Timer, Trophy, Zap, Swords, Maximize, LayoutDashboard, Activity, Users, Play, Pause, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -59,12 +58,6 @@ export default function TV() {
       }));
 
       // Mocked stats for the ticker
-      const stats = {
-        frequency: "92% OPTIMAL",
-        newRecord: "JULIA M. (158 REPS)",
-        upcoming: "HYPERTROPHY STRENGTH"
-      };
-
       setData({
         settings: settings || { name: "CrossCity Hub", logo: "" },
         rewards: economy,
@@ -76,8 +69,7 @@ export default function TV() {
           challengerName: d.challenger?.name || 'Atleta',
           opponentName: d.opponent?.name || 'Atleta'
         })),
-        rankings: rankings || [],
-        stats
+        rankings: rankings || []
       });
       setError(null);
     } catch (err: any) {
@@ -511,8 +503,8 @@ export default function TV() {
             {[1, 2].map(i => (
               <div key={i} className="flex gap-24 items-center">
                 <div className="flex items-center gap-4">
-                  <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">FREQUENCY:</span>
-                  <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.frequency}</span>
+                  <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">CHECK-INS HOJE:</span>
+                  <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{checkins.length} atletas</span>
                 </div>
                 <div className="w-2 h-2 rounded-full bg-white/20"></div>
 
@@ -531,12 +523,12 @@ export default function TV() {
 
                 <div className="flex items-center gap-4">
                   <span className="text-secondary text-[10px] font-black uppercase tracking-widest italic">NEW BOX RECORD:</span>
-                  <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.newRecord}</span>
+                  <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{rankings?.[0]?.name ? `${rankings[0].name.split(' ')[0].toUpperCase()} • ${rankings[0].xp} XP` : 'SEM DADOS'}</span>
                 </div>
                 <div className="w-2 h-2 rounded-full bg-white/20"></div>
                 <div className="flex items-center gap-4">
                   <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">UPCOMING:</span>
-                  <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.upcoming}</span>
+                  <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{wod?.name || 'WOD NÃO CADASTRADO'}</span>
                 </div>
                 <div className="w-2 h-2 rounded-full bg-white/20"></div>
               </div>
