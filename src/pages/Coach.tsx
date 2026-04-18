@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calendar, Megaphone, Plus, Settings, ChevronRight, Activity, Timer, Trophy, Check, X, Shield, UserPlus, Info } from 'lucide-react';
+import { LayoutDashboard, Users, Calendar, Megaphone, Plus, Settings, ChevronRight, Activity, Timer, Trophy, Check, X, Shield, UserPlus, Info, Edit2, Save } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Wod, User } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,6 +17,7 @@ export default function Coach() {
   const [activeTab, setActiveTab] = useState<'aula' | 'history' | 'results'>('aula');
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [selectedResultsDate, setSelectedResultsDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [editingWod, setEditingWod] = useState<Partial<Wod> | null>(null);
   const [newWod, setNewWod] = useState<Partial<Wod>>({
     date: format(new Date(), 'yyyy-MM-dd'),
     name: '',
@@ -142,6 +143,30 @@ export default function Coach() {
   };
 
   const rankedData = getRankedResults();
+  const handleUpdateWod = async () => {
+    if (!editingWod?.id || !editingWod.name) return;
+    const { error } = await supabase
+      .from('wods')
+      .update({
+        name: editingWod.name,
+        type: editingWod.type,
+        warmup: editingWod.warmup,
+        skill: editingWod.skill,
+        rx: editingWod.rx,
+        scaled: editingWod.scaled,
+        beginner: editingWod.beginner,
+      })
+      .eq('id', editingWod.id);
+
+    if (!error) {
+      setWods(wods.map(w => w.id === editingWod.id ? { ...w, ...editingWod } as Wod : w));
+      setEditingWod(null);
+      alert('WOD atualizado com sucesso!');
+    } else {
+      alert('Erro ao atualizar WOD: ' + error.message);
+    }
+  };
+
   const historyWod = wods.find(w => w.date === selectedHistoryDate);
 
   return (
@@ -292,9 +317,20 @@ export default function Coach() {
               {historyWod ? (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                   <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
-                    <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-1">WOD DO DIA</p>
-                    <h4 className="text-xl font-headline font-black text-on-surface uppercase italic">{historyWod.name}</h4>
-                    <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mt-1">{historyWod.type}</p>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-1">WOD DO DIA</p>
+                        <h4 className="text-xl font-headline font-black text-on-surface uppercase italic">{historyWod.name}</h4>
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mt-1">{historyWod.type}</p>
+                      </div>
+                      <button
+                        onClick={() => setEditingWod({...historyWod})}
+                        className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary hover:text-background transition-all flex items-center gap-1"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                        <span className="text-[9px] font-black uppercase">EDITAR</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid gap-4">
@@ -400,5 +436,78 @@ export default function Coach() {
         )}
       </AnimatePresence>
     </div>
+      {/* Edit WOD Modal */}
+      <AnimatePresence>
+        {editingWod && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-background/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 100 }}
+              className="w-full max-w-lg bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center mb-5">
+                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic flex items-center gap-2">
+                  <Edit2 className="w-5 h-5 text-primary" /> EDITAR WOD
+                </h3>
+                <button onClick={() => setEditingWod(null)} className="p-2 hover:bg-surface-container-highest rounded-xl">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome do WOD</label>
+                    <input type="text" value={editingWod.name || ''} onChange={e => setEditingWod({...editingWod, name: e.target.value})}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-3 font-headline font-bold text-on-surface text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</label>
+                    <select value={editingWod.type || 'AMRAP'} onChange={e => setEditingWod({...editingWod, type: e.target.value})}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-3 font-headline font-bold text-on-surface text-sm">
+                      <option value="AMRAP">AMRAP</option>
+                      <option value="FOR TIME">FOR TIME</option>
+                      <option value="EMOM">EMOM</option>
+                      <option value="TABATA">TABATA</option>
+                      <option value="STRENGTH">STRENGTH</option>
+                      <option value="BENCHMARK">BENCHMARK</option>
+                    </select>
+                  </div>
+                </div>
+
+                {[
+                  { key: 'warmup', label: 'Aquecimento' },
+                  { key: 'skill', label: 'Skill' },
+                  { key: 'rx', label: 'RX' },
+                  { key: 'scaled', label: 'Scaled' },
+                  { key: 'beginner', label: 'Iniciante' },
+                ].map(({ key, label }) => (
+                  <div key={key} className="space-y-1">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">{label}</label>
+                    <textarea
+                      value={(editingWod as any)[key] || ''}
+                      onChange={e => setEditingWod({...editingWod, [key]: e.target.value})}
+                      rows={3}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-3 font-headline font-bold text-on-surface text-sm resize-none"
+                    />
+                  </div>
+                ))}
+
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setEditingWod(null)}
+                    className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-black text-xs uppercase italic">
+                    CANCELAR
+                  </button>
+                  <button onClick={handleUpdateWod}
+                    className="flex-1 bg-primary text-background py-3 rounded-2xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
+                    <Save className="w-4 h-4" /> SALVAR
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
   );
 }
