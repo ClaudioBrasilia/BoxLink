@@ -1,513 +1,320 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calendar, Megaphone, Plus, Settings, ChevronRight, Activity, Timer, Trophy, Check, X, Shield, UserPlus, Info, Edit2, Save } from 'lucide-react';
+import { Trophy, Zap, Calendar, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { Wod, User } from '../types';
-import { motion, AnimatePresence } from 'framer-motion';
-import { format } from 'date-fns';
+import { User as UserType } from '../types';
+import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 
-import { formatInTimeZone } from 'date-fns-tz';
+interface RankedUser extends UserType {
+  monthXp?: number;
+  monthCheckinCount?: number;
+}
 
-const TIMEZONE = "America/Sao_Paulo";
+export default function Leaderboard() {
+  const [xpAllTime, setXpAllTime] = useState<RankedUser[]>([]);
+  const [xpMonthly, setXpMonthly] = useState<RankedUser[]>([]);
+  const [freqRank, setFreqRank] = useState<RankedUser[]>([]);
+  const [clanRankings, setClanRankings] = useState<any[]>([]);
+  const [wodRanking, setWodRanking] = useState<any[]>([]);
+  const [wodInfo, setWodInfo] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'xp_mes' | 'freq' | 'xp_total' | 'clans' | 'wod'>('xp_mes');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-export default function Coach() {
-  const [wods, setWods] = useState<Wod[]>([]);
-  const [athletes, setAthletes] = useState<any[]>([]);
-  const [results, setResults] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'aula' | 'history' | 'results'>('aula');
-  const [selectedHistoryDate, setSelectedHistoryDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [selectedResultsDate, setSelectedResultsDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [editingWod, setEditingWod] = useState<Partial<Wod> | null>(null);
-  const [newWod, setNewWod] = useState<Partial<Wod>>({
-    date: format(new Date(), 'yyyy-MM-dd'),
-    name: '',
-    type: 'AMRAP',
-    warmup: '',
-    skill: '',
-    rx: '',
-    scaled: '',
-    beginner: '',
-  });
+  const now = new Date();
+  const monthName = now.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const todayStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(new Date());
 
-  const fetchData = async () => {
-    const today = formatInTimeZone(new Date(), TIMEZONE, "yyyy-MM-dd");
+  useEffect(() => { fetchAll(); }, []);
 
-    // Fetch WODs
-    const { data: wodsData } = await supabase.from('wods').select('*').order('date', { ascending: false });
-    setWods(wodsData || []);
+  const fetchAll = async () => {
+    setLoading(true);
+    try {
+      // 1. Perfis aprovados
+      const { data: allUsers, error: usersError } = await supabase
+        .from('profiles').select('*').eq('status', 'approved');
+      if (usersError) throw usersError;
 
-    // Fetch Athletes (Check-ins for today)
-    const { data: athletesData } = await supabase
-      .from('checkins')
-      .select('*, profiles(*)')
-      .eq('date', today);
-    setAthletes(athletesData || []);
-
-    // Fetch Results for today's WODs
-    const { data: todayWods } = await supabase.from('wods').select('id').eq('date', today);
-    if (todayWods && todayWods.length > 0) {
-      const { data: resultsData } = await supabase
-        .from('wod_results')
-        .select('*, profiles(name), wods(*)')
-        .in('wod_id', todayWods.map(w => w.id))
-        .order('created_at', { ascending: false });
-      setResults(resultsData || []);
-    } else {
-      setResults([]);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-
-    const channel = supabase
-      .channel('coach_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, () => fetchData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wod_results' }, () => fetchData())
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const handleSaveWod = async () => {
-    if (!newWod.name || !newWod.date) return;
-    
-    const { data, error } = await supabase
-      .from('wods')
-      .insert({
-        date: newWod.date,
-        name: newWod.name,
-        type: newWod.type,
-        warmup: newWod.warmup,
-        skill: newWod.skill,
-        rx: newWod.rx,
-        scaled: newWod.scaled,
-        beginner: newWod.beginner
-      })
-      .select()
-      .single();
-    
-    if (!error && data) {
-      setWods([data, ...wods]);
-      alert('WOD Postado com Sucesso!');
-      setNewWod({
-        date: format(new Date(), 'yyyy-MM-dd'),
-        name: '',
-        type: 'AMRAP',
-        warmup: '',
-        skill: '',
-        rx: '',
-        scaled: '',
-        beginner: '',
+      const mapUser = (u: any, extra = {}): RankedUser => ({
+        id: u.id, email: u.email, name: u.name ?? 'Atleta',
+        role: u.role, status: u.status, xp: u.xp || 0,
+        coins: u.coins || 0, level: u.level || 1,
+        avatar: { equipped: u.avatar_equipped, inventory: u.avatar_inventory || [] },
+        checkins: [], paidBonuses: u.paid_bonuses || [],
+        createdAt: u.created_at, ...extra
       });
-    } else {
-      console.error('Error saving WOD:', error);
-      alert('Erro ao postar WOD: ' + error?.message);
-    }
-  };
 
-  // Helper to parse time string "MM:SS" to seconds
-  const timeToSeconds = (timeStr: string) => {
-    const [min, sec] = timeStr.split(':').map(Number);
-    return (min * 60) + (sec || 0);
-  };
+      // 2. XP total
+      setXpAllTime([...(allUsers || [])].sort((a, b) => (b.xp||0)-(a.xp||0)).slice(0,50).map(u => mapUser(u)));
 
-  // Improved Ranking Logic
-  const getRankedResults = () => {
-    const filteredResults = results.filter(r => 
-      format(new Date(r.created_at), 'yyyy-MM-dd') === selectedResultsDate
-    );
-
-    const categories = ['RX', 'Scaled', 'Beginner'];
-    const ranked: Record<string, any[]> = {};
-
-    categories.forEach(cat => {
-      const catResults = filteredResults.filter(r => r.type === cat);
-      
-      ranked[cat] = catResults.sort((a, b) => {
-        const isForTime = a.wods?.type === 'FOR TIME';
-        
-        if (isForTime) {
-          return timeToSeconds(a.result) - timeToSeconds(b.result);
-        } else {
-          // AMRAP/Reps: Higher is better
-          return parseFloat(b.result) - parseFloat(a.result);
-        }
+      // 3. XP do mês via reward_history
+      const { data: rewardHistory } = await supabase
+        .from('reward_history').select('user_id, xp')
+        .gte('created_at', firstDayOfMonth + 'T00:00:00');
+      const monthXpByUser: Record<string, number> = {};
+      (rewardHistory || []).forEach((r: any) => {
+        if (r.xp > 0) monthXpByUser[r.user_id] = (monthXpByUser[r.user_id] || 0) + r.xp;
       });
-    });
+      setXpMonthly([...(allUsers || [])]
+        .map(u => mapUser(u, { monthXp: monthXpByUser[u.id] || 0 }))
+        .sort((a, b) => (b.monthXp||0)-(a.monthXp||0)).slice(0,50));
 
-    return ranked;
+      // 4. Frequência do mês
+      const { data: checkinsData } = await supabase
+        .from('checkins').select('user_id').gte('date', firstDayOfMonth);
+      const checkinCounts: Record<string, number> = {};
+      (checkinsData || []).forEach((c: any) => {
+        checkinCounts[c.user_id] = (checkinCounts[c.user_id] || 0) + 1;
+      });
+      setFreqRank([...(allUsers || [])]
+        .map(u => mapUser(u, { monthCheckinCount: checkinCounts[u.id] || 0 }))
+        .filter(u => (u.monthCheckinCount || 0) > 0)
+        .sort((a, b) => (b.monthCheckinCount||0)-(a.monthCheckinCount||0)).slice(0,50));
+
+      // 5. Times ranking
+      const { data: clansData } = await supabase.from('clans').select('*').eq('is_active', true);
+      const { data: eventsData } = await supabase.from('domination_events').select('clan_id, energy');
+      const { data: membershipsData } = await supabase.from('clan_memberships').select('clan_id').eq('status', 'approved');
+      if (clansData) {
+        setClanRankings(clansData.map(clan => ({
+          ...clan,
+          energy: (eventsData||[]).filter(e => e.clan_id === clan.id).reduce((s,e) => s+e.energy, 0),
+          memberCount: (membershipsData||[]).filter(m => m.clan_id === clan.id).length,
+        })).sort((a,b) => b.energy - a.energy));
+      }
+
+      // 6. WOD do dia
+      const { data: todayWod } = await supabase.from('wods').select('*').eq('date', todayStr).maybeSingle();
+      setWodInfo(todayWod);
+      if (todayWod) {
+        const { data: wodResults } = await supabase
+          .from('wod_results').select('*, profiles(name, level)')
+          .eq('wod_id', todayWod.id);
+        if (wodResults && wodResults.length > 0) {
+          const isTimeBased = ['FOR TIME','TIME','TEMPO'].some(t => (todayWod.type||'').toUpperCase().includes(t));
+          const parseResult = (r: string): number => {
+            if (/^\d+:\d+/.test(r)) {
+              const p = r.split(':').map(Number);
+              return p.length === 2 ? p[0]*60+p[1] : p[0]*3600+p[1]*60+p[2];
+            }
+            return parseFloat(r.replace(/[^0-9.]/g,'')) || 0;
+          };
+          setWodRanking([...wodResults].sort((a,b) =>
+            isTimeBased ? parseResult(a.result)-parseResult(b.result) : parseResult(b.result)-parseResult(a.result)
+          ).map(r => ({
+            id: r.id, name: r.profiles?.name || 'Atleta',
+            result: r.result, type: r.type, level: r.profiles?.level || 1,
+          })));
+        } else { setWodRanking([]); }
+      } else { setWodRanking([]); }
+
+    } catch(err: any) { setError(err.message); }
+    finally { setLoading(false); }
   };
 
-  const rankedData = getRankedResults();
-  const handleUpdateWod = async () => {
-    if (!editingWod?.id || !editingWod.name) return;
-    const { error } = await supabase
-      .from('wods')
-      .update({
-        name: editingWod.name,
-        type: editingWod.type,
-        warmup: editingWod.warmup,
-        skill: editingWod.skill,
-        rx: editingWod.rx,
-        scaled: editingWod.scaled,
-        beginner: editingWod.beginner,
-      })
-      .eq('id', editingWod.id);
+  const isClans = activeTab === 'clans';
+  const isWod = activeTab === 'wod';
+  const currentRank = activeTab === 'xp_total' ? xpAllTime : activeTab === 'xp_mes' ? xpMonthly : activeTab === 'freq' ? freqRank : clanRankings;
+  const top3 = currentRank.slice(0, 3);
+  const others = currentRank.slice(3);
 
-    if (!error) {
-      setWods(wods.map(w => w.id === editingWod.id ? { ...w, ...editingWod } as Wod : w));
-      setEditingWod(null);
-      alert('WOD atualizado com sucesso!');
-    } else {
-      alert('Erro ao atualizar WOD: ' + error.message);
-    }
+  const getScore = (u: any) => {
+    if (activeTab === 'xp_total') return `${u.xp} XP`;
+    if (activeTab === 'xp_mes') return `${u.monthXp||0} XP`;
+    if (activeTab === 'freq') return `${u.monthCheckinCount||0} check-ins`;
+    if (activeTab === 'clans') return `${u.energy||0} ⚡`;
+    return '';
   };
 
-  const historyWod = wods.find(w => w.date === selectedHistoryDate);
+  if (error) return (
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center text-error font-headline font-black text-xl italic p-4 text-center">
+      <p>ERRO AO CARREGAR</p>
+      <button onClick={fetchAll} className="mt-4 bg-primary text-background px-6 py-2 rounded-xl text-sm font-black">TENTAR NOVAMENTE</button>
+    </div>
+  );
+  if (loading) return (
+    <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO...</div>
+  );
 
   return (
     <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background">
       <header className="flex justify-between items-center">
         <h1 className="text-3xl font-headline font-black text-on-surface tracking-tight uppercase italic flex items-center gap-3">
-          <LayoutDashboard className="w-8 h-8 text-primary" />
-          PAINEL COACH
+          <Trophy className="w-8 h-8 text-primary" /> RANKING
         </h1>
+        <div className="flex items-center gap-1 text-on-surface-variant text-[10px] font-black uppercase tracking-widest">
+          <Calendar className="w-3 h-3" /> {monthName}
+        </div>
       </header>
 
       {/* Tabs */}
-      <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10 overflow-x-auto no-scrollbar">
-        {(['aula', 'history', 'results'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "flex-1 min-w-[100px] py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all",
-              activeTab === tab ? "bg-primary text-background shadow-lg" : "text-on-surface-variant hover:text-on-surface"
-            )}
-          >
-            {tab === 'aula' ? 'AULA DE HOJE' : tab === 'history' ? 'HISTÓRICO' : 'RANKING'}
-          </button>
+      <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10 gap-1 overflow-x-auto no-scrollbar">
+        {([
+          { key: 'xp_mes', label: 'XP MÊS' },
+          { key: 'freq', label: 'FREQUÊNCIA' },
+          { key: 'wod', label: 'RANK WOD' },
+          { key: 'clans', label: 'TIMES' },
+          { key: 'xp_total', label: 'XP TOTAL' },
+        ] as const).map(({ key, label }) => (
+          <button key={key} onClick={() => setActiveTab(key)}
+            className={cn("flex-1 min-w-[70px] py-3 rounded-xl font-headline font-bold text-[9px] uppercase tracking-widest transition-all",
+              activeTab === key ? "bg-primary text-background shadow-lg" : "text-on-surface-variant hover:text-on-surface"
+            )}>{label}</button>
         ))}
       </div>
 
-      <AnimatePresence mode="wait">
-        {activeTab === 'aula' && (
-          <motion.div
-            key="aula"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="flex flex-col gap-8"
-          >
-            {/* Post WOD Section */}
-            <div className="bg-surface-container-low p-6 rounded-[2.5rem] border border-outline-variant/10 space-y-6">
-              <div className="flex items-center gap-2 mb-2">
-                <Plus className="w-5 h-5 text-primary" />
-                <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">POSTAR TREINO</h3>
-              </div>
+      {/* Subtítulo */}
+      <p className="text-center text-[10px] text-on-surface-variant font-black uppercase tracking-widest -mt-3">
+        {activeTab === 'xp_mes' && `XP ganho em ${monthName} — reinicia todo mês`}
+        {activeTab === 'freq' && `Check-ins de ${monthName} — só quem treinou`}
+        {activeTab === 'xp_total' && 'XP acumulado desde o início'}
+        {activeTab === 'clans' && 'Energia acumulada pelos times'}
+        {activeTab === 'wod' && `Resultados do WOD de hoje — ${wodInfo?.name || 'sem WOD cadastrado'}`}
+      </p>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data</label>
-                  <input type="date" value={newWod.date} onChange={e => setNewWod({...newWod, date: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</label>
-                  <select value={newWod.type} onChange={e => setNewWod({...newWod, type: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface">
-                    <option>AMRAP</option>
-                    <option>EMOM</option>
-                    <option>FOR TIME</option>
-                    <option>TABATA</option>
-                    <option>HERO WOD</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome do WOD</label>
-                <input type="text" value={newWod.name} onChange={e => setNewWod({...newWod, name: e.target.value})} placeholder="ex: MURPH" className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">WARM UP</label>
-                <textarea rows={3} value={newWod.warmup} onChange={e => setNewWod({...newWod, warmup: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">SKILL</label>
-                <textarea rows={3} value={newWod.skill} onChange={e => setNewWod({...newWod, skill: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" />
-              </div>
-
-              <div className="space-y-4 pt-4 border-t border-outline-variant/10">
-                <div className="space-y-2">
-                  <label className="text-[10px] text-primary font-bold uppercase tracking-widest">RX</label>
-                  <textarea rows={2} value={newWod.rx} onChange={e => setNewWod({...newWod, rx: e.target.value})} className="w-full bg-primary/5 border border-primary/20 rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-secondary font-bold uppercase tracking-widest">SCALED</label>
-                  <textarea rows={2} value={newWod.scaled} onChange={e => setNewWod({...newWod, scaled: e.target.value})} className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" />
-                </div>
-              </div>
-
-              <button onClick={handleSaveWod} className="w-full bg-primary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-lg uppercase italic tracking-tight flex items-center justify-center gap-2">
-                POSTAR WOD <Plus className="w-5 h-5" />
-              </button>
+      {/* WOD Tab */}
+      {isWod && (
+        <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 flex flex-col gap-4">
+          {wodInfo && (
+            <div className="bg-surface-container-highest/30 rounded-2xl p-3">
+              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">WOD de Hoje</p>
+              <p className="text-sm font-headline font-black text-primary uppercase italic">{wodInfo.name} — {wodInfo.type}</p>
+              <p className="text-[10px] text-on-surface-variant mt-1">
+                {['FOR TIME','TIME','TEMPO'].some(t => (wodInfo.type||'').toUpperCase().includes(t))
+                  ? '⏱ Menor tempo = melhor resultado'
+                  : '🔁 Maior número = melhor resultado'}
+              </p>
             </div>
-
-            {/* Check-ins Section */}
-            <div className="flex flex-col gap-4">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">CHECK-INS DE HOJE</h3>
-                <span className="bg-primary/20 text-primary text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{athletes.length} ATLETAS</span>
-              </div>
-
-              <div className="space-y-3">
-                {athletes.length > 0 ? athletes.map((checkin) => (
-                  <div key={checkin.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex items-center justify-between group hover:border-primary/30 transition-all">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-xl">
-                        {checkin.profiles?.name?.[0] || 'A'}
-                      </div>
-                      <div>
-                        <p className="text-on-surface font-bold uppercase text-sm italic">{checkin.profiles?.name}</p>
-                        <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Check-in: {checkin.class_time}</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="bg-primary/20 p-2 rounded-xl">
-                        <Check className="w-4 h-4 text-primary" />
-                      </div>
-                    </div>
-                  </div>
-                )) : (
-                  <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 text-center">
-                    <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50 italic">Nenhum check-in hoje</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {activeTab === 'history' && (
-          <motion.div
-            key="history"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="flex flex-col gap-6"
-          >
-            <div className="bg-surface-container-low p-6 rounded-[2.5rem] border border-outline-variant/10">
-              <div className="flex items-center gap-2 mb-6">
-                <Calendar className="w-5 h-5 text-primary" />
-                <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">CALENDÁRIO DE TREINOS</h3>
-              </div>
-              
-              <input 
-                type="date" 
-                value={selectedHistoryDate} 
-                onChange={e => setSelectedHistoryDate(e.target.value)}
-                className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface mb-6"
-              />
-
-              {historyWod ? (
-                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-                  <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-1">WOD DO DIA</p>
-                        <h4 className="text-xl font-headline font-black text-on-surface uppercase italic">{historyWod.name}</h4>
-                        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mt-1">{historyWod.type}</p>
-                      </div>
-                      <button
-                        onClick={() => setEditingWod({...historyWod})}
-                        className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary hover:text-background transition-all flex items-center gap-1"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                        <span className="text-[9px] font-black uppercase">EDITAR</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4">
-                    <div className="p-4 bg-surface-container-highest rounded-2xl">
-                      <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-2">WARM UP</p>
-                      <p className="text-sm text-on-surface font-medium whitespace-pre-wrap">{historyWod.warmup}</p>
-                    </div>
-                    <div className="p-4 bg-surface-container-highest rounded-2xl">
-                      <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-2">SKILL</p>
-                      <p className="text-sm text-on-surface font-medium whitespace-pre-wrap">{historyWod.skill}</p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
-                        <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-2">RX</p>
-                        <p className="text-xs text-on-surface font-bold whitespace-pre-wrap">{historyWod.rx}</p>
-                      </div>
-                      <div className="p-4 bg-secondary/5 rounded-2xl border border-secondary/10">
-                        <p className="text-[10px] text-secondary font-black uppercase tracking-widest mb-2">SCALED</p>
-                        <p className="text-xs text-on-surface font-bold whitespace-pre-wrap">{historyWod.scaled}</p>
-                      </div>
-                    </div>
-                  </div>
+          )}
+          {!wodInfo && <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-4">Nenhum WOD cadastrado para hoje</p>}
+          {wodRanking.length === 0 && wodInfo && (
+            <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-4 italic">Nenhum resultado registrado ainda</p>
+          )}
+          {wodRanking.map((r, i) => (
+            <motion.div key={r.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i*0.05 }}
+              className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between hover:border-primary/30 transition-all">
+              <div className="flex items-center gap-3">
+                <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i+1}</span>
+                <div className={cn("w-9 h-9 rounded-full flex items-center justify-center font-headline font-black text-sm",
+                  i===0?"bg-primary text-background":i===1?"bg-outline-variant/40 text-on-surface":i===2?"bg-secondary/30 text-on-surface":"bg-surface-container-highest text-on-surface")}>
+                  {r.name[0]}
                 </div>
-              ) : (
-                <div className="text-center py-12 opacity-50">
-                  <Activity className="w-12 h-12 text-on-surface-variant mx-auto mb-4 opacity-20" />
-                  <p className="text-on-surface-variant text-sm font-bold uppercase tracking-widest italic">Nenhum WOD registrado nesta data</p>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-
-        {activeTab === 'results' && (
-          <motion.div
-            key="results"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="flex flex-col gap-6"
-          >
-            <div className="bg-surface-container-low p-6 rounded-[2.5rem] border border-outline-variant/10">
-              <div className="flex items-center gap-2 mb-6">
-                <Trophy className="w-5 h-5 text-primary" />
-                <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">RANKING POR DATA</h3>
-              </div>
-              
-              <input 
-                type="date" 
-                value={selectedResultsDate} 
-                onChange={e => setSelectedResultsDate(e.target.value)}
-                className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface mb-2"
-              />
-            </div>
-
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">RESULTADOS</h3>
-              <span className="bg-secondary/20 text-secondary text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
-                {Object.values(rankedData).flat().length} REGISTROS
-              </span>
-            </div>
-
-            {Object.entries(rankedData).map(([category, catResults]) => (
-              <div key={category} className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-1 h-6 rounded-full",
-                    category === 'RX' ? "bg-primary" : category === 'Scaled' ? "bg-secondary" : "bg-on-surface-variant"
-                  )} />
-                  <h4 className="font-headline font-black text-on-surface uppercase italic tracking-tight">{category}</h4>
-                </div>
-
-                <div className="space-y-3">
-                  {catResults.length > 0 ? catResults.map((res, index) => (
-                    <div key={res.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex items-center justify-between group hover:border-primary/30 transition-all">
-                      <div className="flex items-center gap-4">
-                        <div className={cn(
-                          "w-10 h-10 rounded-full flex items-center justify-center font-headline font-black text-lg",
-                          index === 0 ? "bg-primary text-background" : "bg-surface-container-highest text-on-surface"
-                        )}>
-                          {index + 1}
-                        </div>
-                        <div>
-                          <p className="text-on-surface font-bold uppercase text-sm italic">{res.profiles?.name}</p>
-                          <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{res.wods?.name || 'WOD'}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="bg-surface-container-highest px-4 py-2 rounded-2xl border border-outline-variant/10">
-                          <span className="text-primary font-headline font-black text-lg italic">{res.result}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )) : (
-                    <div className="bg-surface-container-low/50 p-6 rounded-3xl border border-dashed border-outline-variant/20 text-center">
-                      <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest opacity-40 italic">Sem resultados nesta categoria</p>
-                    </div>
-                  )}
+                <div>
+                  <p className="text-on-surface font-bold uppercase text-sm italic">{r.name}</p>
+                  <p className="text-on-surface-variant text-[10px] font-bold uppercase">{r.type}</p>
                 </div>
               </div>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-      {/* Edit WOD Modal */}
-      <AnimatePresence>
-        {editingWod && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-background/80 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, y: 100 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 100 }}
-              className="w-full max-w-lg bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
-            >
-              <div className="flex justify-between items-center mb-5">
-                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic flex items-center gap-2">
-                  <Edit2 className="w-5 h-5 text-primary" /> EDITAR WOD
-                </h3>
-                <button onClick={() => setEditingWod(null)} className="p-2 hover:bg-surface-container-highest rounded-xl">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome do WOD</label>
-                    <input type="text" value={editingWod.name || ''} onChange={e => setEditingWod({...editingWod, name: e.target.value})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-3 font-headline font-bold text-on-surface text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</label>
-                    <select value={editingWod.type || 'AMRAP'} onChange={e => setEditingWod({...editingWod, type: e.target.value})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-3 font-headline font-bold text-on-surface text-sm">
-                      <option value="AMRAP">AMRAP</option>
-                      <option value="FOR TIME">FOR TIME</option>
-                      <option value="EMOM">EMOM</option>
-                      <option value="TABATA">TABATA</option>
-                      <option value="STRENGTH">STRENGTH</option>
-                      <option value="BENCHMARK">BENCHMARK</option>
-                    </select>
-                  </div>
-                </div>
-
-                {[
-                  { key: 'warmup', label: 'Aquecimento' },
-                  { key: 'skill', label: 'Skill' },
-                  { key: 'rx', label: 'RX' },
-                  { key: 'scaled', label: 'Scaled' },
-                  { key: 'beginner', label: 'Iniciante' },
-                ].map(({ key, label }) => (
-                  <div key={key} className="space-y-1">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">{label}</label>
-                    <textarea
-                      value={(editingWod as any)[key] || ''}
-                      onChange={e => setEditingWod({...editingWod, [key]: e.target.value})}
-                      rows={3}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-3 font-headline font-bold text-on-surface text-sm resize-none"
-                    />
-                  </div>
-                ))}
-
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setEditingWod(null)}
-                    className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-black text-xs uppercase italic">
-                    CANCELAR
-                  </button>
-                  <button onClick={handleUpdateWod}
-                    className="flex-1 bg-primary text-background py-3 rounded-2xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
-                    <Save className="w-4 h-4" /> SALVAR
-                  </button>
-                </div>
+              <div className="text-right">
+                <p className="text-primary font-headline font-black text-sm italic">{r.result}</p>
+                <p className="text-on-surface-variant text-[9px] font-bold">Nível {r.level}</p>
               </div>
             </motion.div>
+          ))}
+        </section>
+      )}
+
+      {/* Pódio — não mostra no WOD */}
+      {!isWod && (
+        <div className="flex items-end justify-center gap-4 pt-8 pb-4">
+          {top3[1] && (
+            <div className="flex flex-col items-center gap-2">
+              <div className="relative">
+                <div className="w-16 h-16 rounded-full border-4 border-outline-variant/30 bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-on-surface">
+                  {isClans ? (top3[1].name?.[0]||'T') : top3[1].name[0]}
+                </div>
+                <div className="absolute -top-2 -right-2 bg-outline-variant/40 text-on-surface text-[10px] font-black px-2 py-0.5 rounded-full">#2</div>
+              </div>
+              <div className="text-center">
+                <p className="text-xs font-headline font-black text-on-surface uppercase italic truncate max-w-[80px]">{isClans ? top3[1].name : top3[1].name.split(' ')[0]}</p>
+                <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[1])}</p>
+              </div>
+              <div className="w-16 h-20 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex items-center justify-center">
+                <span className="text-[10px] font-black text-on-surface-variant italic">{isClans ? `${top3[1].memberCount} mbr` : `LVL ${top3[1].level}`}</span>
+              </div>
+            </div>
+          )}
+          {top3[0] && (
+            <div className="flex flex-col items-center gap-2 -mt-8">
+              <div className="relative">
+                <div className="w-24 h-24 rounded-full border-4 border-primary bg-surface-container-highest shadow-[0_0_30px_rgba(202,253,0,0.3)] flex items-center justify-center font-headline font-black text-3xl text-primary">
+                  {isClans ? (top3[0].name?.[0]||'T') : top3[0].name[0]}
+                </div>
+                <div className="absolute -top-3 -right-3 bg-primary text-background text-xs font-black px-3 py-1 rounded-full shadow-lg">#1</div>
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-headline font-black text-primary uppercase italic truncate max-w-[100px]">{isClans ? top3[0].name : top3[0].name.split(' ')[0]}</p>
+                <p className="text-xs text-on-surface font-bold">{getScore(top3[0])}</p>
+              </div>
+              <div className="w-24 h-32 bg-primary/10 rounded-t-3xl border-x border-t border-primary/20 flex items-center justify-center">
+                <span className="text-xs font-black text-primary italic">{isClans ? `${top3[0].memberCount} mbr` : `LVL ${top3[0].level}`}</span>
+              </div>
+            </div>
+          )}
+          {top3[2] && (
+            <div className="flex flex-col items-center gap-2">
+              <div className="relative">
+                <div className="w-16 h-16 rounded-full border-4 border-secondary/30 bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-on-surface">
+                  {isClans ? (top3[2].name?.[0]||'T') : top3[2].name[0]}
+                </div>
+                <div className="absolute -top-2 -right-2 bg-secondary/30 text-on-surface text-[10px] font-black px-2 py-0.5 rounded-full">#3</div>
+              </div>
+              <div className="text-center">
+                <p className="text-xs font-headline font-black text-on-surface uppercase italic truncate max-w-[80px]">{isClans ? top3[2].name : top3[2].name.split(' ')[0]}</p>
+                <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[2])}</p>
+              </div>
+              <div className="w-16 h-16 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex items-center justify-center">
+                <span className="text-[10px] font-black text-on-surface-variant italic">{isClans ? `${top3[2].memberCount} mbr` : `LVL ${top3[2].level}`}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Lista */}
+      {!isWod && (
+        <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 flex flex-col gap-4">
+          <div className="flex justify-between items-center px-2">
+            <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">
+              {isClans ? 'TODOS OS TIMES' : 'TODOS ATLETAS'}
+            </h3>
+            <button onClick={() => setIsExpanded(!isExpanded)} className="text-primary text-xs font-bold flex items-center gap-1">
+              {isExpanded ? 'RECOLHER' : 'EXPANDIR'} {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
           </div>
-        )}
-      </AnimatePresence>
+          <div className={cn("space-y-3 transition-all duration-500 overflow-hidden", isExpanded ? "max-h-[2000px]" : "max-h-[300px]")}>
+            {others.map((u, i) => (
+              <motion.div key={u.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i*0.03 }}
+                className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between hover:border-primary/30 transition-all">
+                <div className="flex items-center gap-4">
+                  <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i+4}</span>
+                  <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-sm border border-outline-variant/10">
+                    {(u.name||'?')[0]}
+                  </div>
+                  <div>
+                    <p className="text-on-surface font-bold uppercase text-sm italic">{u.name}</p>
+                    <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
+                      {isClans ? <><Users className="w-3 h-3" /> {(u as any).memberCount} membros</> : <><Zap className="w-3 h-3 text-primary" /> Nível {u.level}</>}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-on-surface font-headline font-black text-sm italic">{getScore(u)}</p>
+                  {activeTab === 'xp_mes' && <p className="text-on-surface-variant text-[9px] font-bold">Total: {u.xp} XP</p>}
+                </div>
+              </motion.div>
+            ))}
+            {others.length === 0 && (
+              <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-4 italic">
+                {currentRank.length <= 3 ? `Apenas ${currentRank.length} no ranking` : 'Nenhum resultado'}
+              </p>
+            )}
+          </div>
+        </section>
+      )}
+    </div>
   );
 }
