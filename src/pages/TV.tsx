@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Timer, Trophy, Zap, Swords, Maximize, LayoutDashboard, Activity, Users, Play, Pause, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -448,71 +449,57 @@ export default function TV() {
             </p>
           </section>
 
-          {/* ATHLETE ROTATION */}
-          <section className="bg-[#111] rounded-[2.5rem] border border-white/5 flex-1 relative overflow-hidden p-8 flex flex-col">
-            <AnimatePresence mode="wait">
-              {currentAthlete && (
-                <motion.div 
-                  key={currentAthlete.id || athleteIndex}
-                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 1.05, y: -20 }}
-                  transition={{ duration: 0.5 }}
-                  className="flex flex-col h-full"
-                >
-                  <div className="flex items-center gap-6 mb-8">
-                    <div className="relative">
-                      <AvatarPreview equipped={currentAthlete.avatar_equipped} size="lg" className="border-4 border-primary shadow-[0_0_30px_rgba(202,253,0,0.2)]" />
-                      <div className="absolute -bottom-2 -right-2 bg-secondary text-white text-[10px] font-black px-3 py-1 rounded-full uppercase italic shadow-lg">
-                        {currentAthlete.level >= 50 ? 'ELITE' : `LVL ${currentAthlete.level}`}
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="text-4xl font-headline font-black text-white uppercase italic tracking-tighter leading-none">{currentAthlete.name}</h4>
-                      <p className="text-primary text-xs font-black uppercase tracking-widest mt-2">
-                        {currentAthlete.role === 'admin' ? 'HEAD COACH' : currentAthlete.role === 'coach' ? 'COACH' : 'ATLETA'}
-                      </p>
-                    </div>
-                  </div>
+          {/* CHECK-IN LIST */}
+          <section className="bg-[#111] rounded-[2.5rem] border border-white/5 flex-1 relative overflow-hidden p-6 flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-3">
+                <Users className="w-5 h-5 text-primary" />
+                <h3 className="text-lg font-headline font-black text-white italic uppercase tracking-tight">ATLETAS NA AULA</h3>
+              </div>
+              <span className="bg-primary text-black px-3 py-1 rounded-full font-headline font-black text-sm italic">
+                {checkins.length}
+              </span>
+            </div>
 
-                  <div className="grid grid-cols-2 gap-4 mb-auto">
-                    <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5">
-                      <span className="text-white/40 text-[10px] font-black uppercase tracking-widest block mb-2">CURRENT PERFORMANCE</span>
-                      <div className="flex items-end gap-2">
-                        <span className="text-4xl font-headline font-black text-white italic">158</span>
-                        <span className="text-primary text-[10px] font-black uppercase mb-1">REPS</span>
+            {checkins.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-white/20 text-xs font-black uppercase tracking-widest italic text-center">
+                  Nenhum check-in<br/>registrado ainda
+                </p>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar">
+                {checkins.map((c: any, i: number) => {
+                  const profile = c.profiles;
+                  return (
+                    <motion.div
+                      key={c.id}
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="flex items-center gap-3 bg-white/5 rounded-2xl px-4 py-3 border border-white/5"
+                    >
+                      <div className="w-9 h-9 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center font-headline font-black text-primary text-sm shrink-0">
+                        {profile?.name?.[0] || '?'}
                       </div>
-                    </div>
-                    <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5">
-                      <span className="text-white/40 text-[10px] font-black uppercase tracking-widest block mb-2">XP EARNED</span>
-                      <div className="flex items-end gap-2">
-                        <span className="text-4xl font-headline font-black text-white italic">138</span>
-                        <span className="text-secondary text-[10px] font-black uppercase mb-1">XP</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-bold uppercase text-sm italic truncate leading-tight">
+                          {profile?.name || 'Atleta'}
+                        </p>
+                        <p className="text-white/40 text-[9px] font-black uppercase tracking-widest">
+                          {c.class_time || 'Check-in'}
+                        </p>
                       </div>
-                    </div>
-                  </div>
-
-                  {nextAthlete && (
-                    <div className="mt-8 pt-8 border-t border-white/5 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/40 font-headline font-black italic">
-                          {nextAthlete?.name?.[0] || '?'}
-                        </div>
-                        <div>
-                          <p className="text-white/40 text-[8px] font-black uppercase tracking-widest">NEXT UP</p>
-                          <p className="text-lg font-headline font-black text-white/80 uppercase italic leading-none">{nextAthlete?.name || '---'}</p>
-                        </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-primary text-[10px] font-black uppercase italic">
+                          LVL {profile?.level || 1}
+                        </p>
                       </div>
-                      <div className="flex gap-1">
-                        {[0, 1, 2].map(i => (
-                          <div key={i} className={cn("w-1.5 h-1.5 rounded-full", i === athleteIndex % 3 ? "bg-primary" : "bg-white/10")} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
           </section>
         </div>
       </div>
