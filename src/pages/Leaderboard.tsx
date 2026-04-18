@@ -14,6 +14,8 @@ export default function Leaderboard() {
   const [error, setError] = useState<string | null>(null);
 
   const [clanRankings, setClanRankings] = useState<any[]>([]);
+  const [wodRanking, setWodRanking] = useState<any[]>([]);
+  const [wodInfo, setWodInfo] = useState<any>(null);
 
   useEffect(() => {
     const fetchRankings = async () => {
@@ -74,6 +76,53 @@ export default function Leaderboard() {
           }))
         });
 
+        // 3. Fetch WOD Ranking (today's results)
+        const todayStr = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date());
+
+        const { data: todayWod } = await supabase
+          .from('wods').select('*').eq('date', todayStr).maybeSingle();
+        setWodInfo(todayWod);
+
+        if (todayWod) {
+          const { data: wodResults } = await supabase
+            .from('wod_results')
+            .select('*, profiles(name, level)')
+            .eq('wod_id', todayWod.id);
+
+          if (wodResults && wodResults.length > 0) {
+            const isTimeBased = ['FOR TIME', 'TIME', 'TEMPO'].some(t =>
+              (todayWod.type || '').toUpperCase().includes(t)
+            );
+            const parseResult = (result: string): number => {
+              if (/^\d+:\d+/.test(result)) {
+                const parts = result.split(':').map(Number);
+                if (parts.length === 2) return parts[0] * 60 + parts[1];
+                if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+              }
+              const num = parseFloat(result.replace(/[^0-9.]/g, ''));
+              return isNaN(num) ? 0 : num;
+            };
+            const sorted = [...wodResults].sort((a, b) => {
+              const va = parseResult(a.result);
+              const vb = parseResult(b.result);
+              return isTimeBased ? va - vb : vb - va;
+            });
+            setWodRanking(sorted.map(r => ({
+              id: r.id,
+              name: r.profiles?.name || 'Atleta',
+              result: r.result,
+              type: r.type,
+              level: r.profiles?.level || 1,
+            })));
+          } else {
+            setWodRanking([]);
+          }
+        } else {
+          setWodRanking([]);
+        }
+
         // 3. Fetch Clan Rankings (Based on total energy)
         const { data: clansData } = await supabase
           .from('clans')
@@ -128,6 +177,7 @@ export default function Leaderboard() {
   if (!rankings) return <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO RANKINGS...</div>;
 
   const isClans = activeTab === 'clans';
+  const isWod = activeTab === 'wod';
   const currentRank = isClans ? clanRankings : (activeTab === 'xp' ? rankings.xpRank : rankings.freqRank);
   const top3 = currentRank.slice(0, 3);
   const others = currentRank.slice(3);
@@ -164,8 +214,8 @@ export default function Leaderboard() {
         ))}
       </div>
 
-      {/* Podium */}
-      <div className="flex items-end justify-center gap-4 pt-12 pb-8 relative">
+      {/* Podium - hide on WOD tab */}
+      {!isWod && <div className="flex items-end justify-center gap-4 pt-12 pb-8 relative">
         {/* 2nd Place */}
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
@@ -240,11 +290,57 @@ export default function Leaderboard() {
       <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 flex flex-col gap-4">
         <div className="flex justify-between items-center px-2">
           <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">{isClans ? 'TODOS TIMES' : 'TODOS ATLETAS'}</h3>
-          <button onClick={() => setIsExpanded(!isExpanded)} className="text-primary text-xs font-bold flex items-center gap-1">
+          {!isWod && <button onClick={() => setIsExpanded(!isExpanded)} className="text-primary text-xs font-bold flex items-center gap-1">
             {isExpanded ? 'RECOLHER' : 'EXPANDIR'} {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
+          </button>}
         </div>
 
+        {/* WOD Tab special render */}
+        {isWod && (
+          <div className="space-y-3">
+            {wodInfo ? (
+              <div className="bg-surface-container-highest/30 rounded-2xl p-3 mb-2">
+                <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">WOD de Hoje</p>
+                <p className="text-sm font-headline font-black text-primary uppercase italic">{wodInfo.name} — {wodInfo.type}</p>
+                <p className="text-[10px] text-on-surface-variant mt-1">
+                  {['FOR TIME', 'TIME', 'TEMPO'].some(t => (wodInfo.type || '').toUpperCase().includes(t))
+                    ? '⏱ Menor tempo = melhor resultado'
+                    : '🔁 Maior número = melhor resultado'}
+                </p>
+              </div>
+            ) : (
+              <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-4">
+                Nenhum WOD cadastrado para hoje
+              </p>
+            )}
+            {wodRanking.length === 0 && wodInfo && (
+              <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-4 italic">
+                Nenhum resultado registrado ainda
+              </p>
+            )}
+            {wodRanking.map((r, i) => (
+              <div key={r.id} className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between hover:border-primary/30 transition-all">
+                <div className="flex items-center gap-3">
+                  <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i + 1}</span>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-headline font-black text-sm
+                    ${i === 0 ? 'bg-primary text-background' : i === 1 ? 'bg-outline-variant/40 text-on-surface' : i === 2 ? 'bg-secondary/30 text-on-surface' : 'bg-surface-container-highest text-on-surface'}`}>
+                    {r.name[0]}
+                  </div>
+                  <div>
+                    <p className="text-on-surface font-bold uppercase text-sm italic">{r.name}</p>
+                    <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{r.type}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-primary font-headline font-black text-sm italic">{r.result}</p>
+                  <p className="text-on-surface-variant text-[9px] font-bold">Nível {r.level}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isWod && (
         <div className={cn("space-y-3 transition-all duration-500 overflow-hidden", isExpanded ? "max-h-[1000px]" : "max-h-[300px]")}>
           {others.map((u, i) => (
             <div key={u.id} className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between group hover:border-primary/30 transition-all">
@@ -270,6 +366,7 @@ export default function Leaderboard() {
             </div>
           ))}
         </div>
+        )}
       </section>
     </div>
   );
