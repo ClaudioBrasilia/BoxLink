@@ -24,16 +24,18 @@ export default function Leaderboard() {
 
   const now = new Date();
   const monthName = now.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-  const todayStr = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
-  }).format(new Date());
 
   useEffect(() => { fetchAll(); }, []);
 
   const fetchAll = async () => {
     setLoading(true);
     try {
+      const now = new Date();
+      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      const todayStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+      }).format(now);
+
       // 1. Perfis aprovados
       const { data: allUsers, error: usersError } = await supabase
         .from('profiles').select('*').eq('status', 'approved');
@@ -103,15 +105,31 @@ export default function Leaderboard() {
         if (wodResults && wodResults.length > 0) {
           const isTimeBased = ['FOR TIME','TIME','TEMPO'].some(t => (todayWod.type||'').toUpperCase().includes(t));
           const parseResult = (r: string): number => {
-            if (/^\d+:\d+/.test(r)) {
-              const p = r.split(':').map(Number);
+            if (!r) return isTimeBased ? 999999 : 0;
+            const str = r.trim();
+            // MM:SS or HH:MM:SS
+            if (/^\d+:\d+/.test(str)) {
+              const p = str.split(':').map(Number);
               return p.length === 2 ? p[0]*60+p[1] : p[0]*3600+p[1]*60+p[2];
             }
-            return parseFloat(r.replace(/[^0-9.]/g,'')) || 0;
+            // Pure number (seconds or reps)
+            return parseFloat(str.replace(/[^0-9.]/g,'')) || (isTimeBased ? 999999 : 0);
           };
-          setWodRanking([...wodResults].sort((a,b) =>
+          // Deduplica: pega melhor resultado por usuário
+          const bestByUser: Record<string, any> = {};
+          wodResults.forEach((r: any) => {
+            const uid = r.user_id;
+            const val = parseResult(r.result);
+            const prev = bestByUser[uid];
+            if (!prev) { bestByUser[uid] = r; return; }
+            const prevVal = parseResult(prev.result);
+            const isBetter = isTimeBased ? val < prevVal : val > prevVal;
+            if (isBetter) bestByUser[uid] = r;
+          });
+          const deduped = Object.values(bestByUser);
+          setWodRanking(deduped.sort((a: any, b: any) =>
             isTimeBased ? parseResult(a.result)-parseResult(b.result) : parseResult(b.result)-parseResult(a.result)
-          ).map(r => ({
+          ).map((r: any) => ({
             id: r.id, name: r.profiles?.name || 'Atleta',
             result: r.result, type: r.type, level: r.profiles?.level || 1,
           })));
