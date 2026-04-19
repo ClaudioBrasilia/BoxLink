@@ -157,13 +157,12 @@ export default function Coach() {
         beginner: editingWod.beginner,
       })
       .eq('id', editingWod.id);
-
     if (!error) {
       setWods(wods.map(w => w.id === editingWod.id ? { ...w, ...editingWod } as Wod : w));
       setEditingWod(null);
       alert('WOD atualizado com sucesso!');
     } else {
-      alert('Erro ao atualizar WOD: ' + error.message);
+      alert('Erro ao atualizar: ' + error.message);
     }
   };
 
@@ -323,10 +322,8 @@ export default function Coach() {
                         <h4 className="text-xl font-headline font-black text-on-surface uppercase italic">{historyWod.name}</h4>
                         <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mt-1">{historyWod.type}</p>
                       </div>
-                      <button
-                        onClick={() => setEditingWod({...historyWod})}
-                        className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary hover:text-background transition-all flex items-center gap-1"
-                      >
+                      <button onClick={() => setEditingWod({...historyWod})}
+                        className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary hover:text-background transition-all flex items-center gap-1">
                         <Edit2 className="w-4 h-4" />
                         <span className="text-[9px] font-black uppercase">EDITAR</span>
                       </button>
@@ -436,16 +433,12 @@ export default function Coach() {
         )}
       </AnimatePresence>
     </div>
-      {/* Edit WOD Modal */}
+      {/* Modal Editar WOD */}
       <AnimatePresence>
         {editingWod && (
           <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-background/80 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, y: 100 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 100 }}
-              className="w-full max-w-lg bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
-            >
+            <motion.div initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }}
+              className="w-full max-w-lg bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-5">
                 <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic flex items-center gap-2">
                   <Edit2 className="w-5 h-5 text-primary" /> EDITAR WOD
@@ -454,11 +447,10 @@ export default function Coach() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome do WOD</label>
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome</label>
                     <input type="text" value={editingWod.name || ''} onChange={e => setEditingWod({...editingWod, name: e.target.value})}
                       className="w-full bg-surface-container-highest border-none rounded-2xl p-3 font-headline font-bold text-on-surface text-sm" />
                   </div>
@@ -475,30 +467,16 @@ export default function Coach() {
                     </select>
                   </div>
                 </div>
-
-                {[
-                  { key: 'warmup', label: 'Aquecimento' },
-                  { key: 'skill', label: 'Skill' },
-                  { key: 'rx', label: 'RX' },
-                  { key: 'scaled', label: 'Scaled' },
-                  { key: 'beginner', label: 'Iniciante' },
-                ].map(({ key, label }) => (
+                {[{key:'warmup',label:'Aquecimento'},{key:'skill',label:'Skill'},{key:'rx',label:'RX'},{key:'scaled',label:'Scaled'},{key:'beginner',label:'Iniciante'}].map(({key,label}) => (
                   <div key={key} className="space-y-1">
                     <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">{label}</label>
-                    <textarea
-                      value={(editingWod as any)[key] || ''}
-                      onChange={e => setEditingWod({...editingWod, [key]: e.target.value})}
-                      rows={3}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-3 font-headline font-bold text-on-surface text-sm resize-none"
-                    />
+                    <textarea value={(editingWod as any)[key] || ''} onChange={e => setEditingWod({...editingWod, [key]: e.target.value})}
+                      rows={3} className="w-full bg-surface-container-highest border-none rounded-2xl p-3 font-headline font-bold text-on-surface text-sm resize-none" />
                   </div>
                 ))}
-
                 <div className="flex gap-3 pt-2">
                   <button onClick={() => setEditingWod(null)}
-                    className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-black text-xs uppercase italic">
-                    CANCELAR
-                  </button>
+                    className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-black text-xs uppercase italic">CANCELAR</button>
                   <button onClick={handleUpdateWod}
                     className="flex-1 bg-primary text-background py-3 rounded-2xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
                     <Save className="w-4 h-4" /> SALVAR
