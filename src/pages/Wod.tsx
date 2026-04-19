@@ -59,8 +59,10 @@ export default function Wod() {
       setIsRegistering(false);
       setNewResult({ result: '', type: 'RX' });
       fetchResults(currentWod.id);
+      alert('Resultado registrado com sucesso!');
     } else {
       console.error('Error registering result:', error);
+      alert('Erro ao registrar resultado: ' + error.message);
     }
   };
 
