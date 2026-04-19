@@ -44,17 +44,23 @@ export const generateRankingImage = async (options: RankingImageOptions): Promis
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Não foi possível obter contexto do canvas');
 
-  // Background gradient (Dark Theme)
-  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, '#0a0a0a');
-  gradient.addColorStop(1, '#1a1a1a');
-  ctx.fillStyle = gradient;
+  // Background transparente com overlay sutil
+  // Fundo transparente — ideal para postar sobre fotos ou fundo personalizado
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Overlay dark semi-transparente para legibilidade
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Adicionar elementos decorativos (linhas/formas)
-  ctx.strokeStyle = 'rgba(202, 253, 0, 0.1)';
-  ctx.lineWidth = 2;
-  for (let i = 0; i < canvas.width; i += 100) {
+  // Borda decorativa verde
+  ctx.strokeStyle = 'rgba(202, 253, 0, 0.3)';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+
+  // Linhas decorativas sutis
+  ctx.strokeStyle = 'rgba(202, 253, 0, 0.05)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < canvas.width; i += 80) {
     ctx.beginPath();
     ctx.moveTo(i, 0);
     ctx.lineTo(i, canvas.height);
@@ -164,7 +170,7 @@ export const generateRankingImage = async (options: RankingImageOptions): Promis
   ctx.fillText('GERADO POR BOXLINK • ARENA DE PERFORMANCE', canvas.width / 2, canvas.height - 60);
 
   // Converter para data URL
-  return canvas.toDataURL('image/png');
+  return canvas.toDataURL('image/png', 1.0); // PNG mantém transparência
 };
 
 /**
