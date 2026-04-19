@@ -23,9 +23,21 @@ export default function Dashboard() {
   const [showWodDetails, setShowWodDetails] = useState(false);
 
   const fetchData = async () => {
-    // Fetch WODs
-    const { data: wodsData } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1);
-    if (wodsData) setWod(wodsData[0]);
+    // Fetch WODs - Filter by today's date in the correct timezone
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+    const { data: wodsData } = await supabase
+      .from('wods')
+      .select('*')
+      .eq('date', today)
+      .maybeSingle();
+    
+    if (wodsData) {
+      setWod(wodsData);
+    } else {
+      // Fallback: if no WOD for today, get the most recent one (optional, but keeps the UI from being empty if that's preferred)
+      // However, the user specifically complained about old WODs appearing, so we should probably only show today's.
+      setWod(null);
+    }
     
     // Fetch Box Settings
     const { data: settingsData } = await supabase.from('box_settings').select('*').single();
@@ -285,26 +297,35 @@ export default function Dashboard() {
           <span className="bg-primary/20 text-primary text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">HOJE</span>
         </div>
         <h3 className="font-headline font-black text-2xl text-on-surface mb-1 uppercase italic tracking-tight">WOD DO DIA</h3>
-        <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest mb-4">{wod?.name || 'Carregando...'}</p>
         
-        <div className="flex gap-4 mb-6">
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</span>
-            <span className="text-sm font-headline font-black text-on-surface uppercase italic">{wod?.type}</span>
-          </div>
-          <div className="w-[1px] bg-outline-variant/20"></div>
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Time Cap</span>
-            <span className="text-sm font-headline font-black text-on-surface uppercase italic">20:00</span>
-          </div>
-        </div>
+        {wod ? (
+          <>
+            <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest mb-4">{wod.name}</p>
+            
+            <div className="flex gap-4 mb-6">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</span>
+                <span className="text-sm font-headline font-black text-on-surface uppercase italic">{wod.type}</span>
+              </div>
+              <div className="w-[1px] bg-outline-variant/20"></div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Time Cap</span>
+                <span className="text-sm font-headline font-black text-on-surface uppercase italic">20:00</span>
+              </div>
+            </div>
 
-        <button 
-          onClick={() => setShowWodDetails(true)}
-          className="w-full bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary hover:text-background transition-all uppercase italic"
-        >
-          VER DETALHES <ChevronRight className="w-4 h-4" />
-        </button>
+            <button 
+              onClick={() => setShowWodDetails(true)}
+              className="w-full bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary hover:text-background transition-all uppercase italic"
+            >
+              VER DETALHES <ChevronRight className="w-4 h-4" />
+            </button>
+          </>
+        ) : (
+          <div className="py-8 text-center">
+            <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic opacity-50">Nenhum WOD cadastrado para hoje</p>
+          </div>
+        )}
       </section>
 
       {/* WOD Details Modal */}
