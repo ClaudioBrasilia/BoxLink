@@ -49,7 +49,11 @@ export default function Leaderboard() {
       });
 
       // 2. XP total
-      setXpAllTime([...(allUsers || [])].sort((a, b) => (b.xp||0)-(a.xp||0)).slice(0,50).map(u => mapUser(u)));
+      setXpAllTime([...(allUsers || [])]
+        .map(u => mapUser(u))
+        .filter(u => (u.xp || 0) > 0)
+        .sort((a, b) => (b.xp || 0) - (a.xp || 0))
+        .slice(0, 50));
 
       // 3. XP do mês via reward_history
       const { data: rewardHistory } = await supabase
@@ -59,9 +63,11 @@ export default function Leaderboard() {
       (rewardHistory || []).forEach((r: any) => {
         if (r.xp > 0) monthXpByUser[r.user_id] = (monthXpByUser[r.user_id] || 0) + r.xp;
       });
-      setXpMonthly([...(allUsers || [])]
+           setXpMonthly([...(allUsers || [])]
         .map(u => mapUser(u, { monthXp: monthXpByUser[u.id] || 0 }))
-        .sort((a, b) => (b.monthXp||0)-(a.monthXp||0)).slice(0,50));
+        .filter(u => (u.monthXp || 0) > 0)
+        .sort((a, b) => (b.monthXp || 0) - (a.monthXp || 0))
+        .slice(0, 50));
 
       // 4. Frequência do mês
       const { data: checkinsData } = await supabase
