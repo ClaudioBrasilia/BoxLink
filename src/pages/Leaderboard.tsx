@@ -3,6 +3,7 @@ import { Trophy, Zap, Calendar, ChevronDown, ChevronUp, Users } from 'lucide-rea
 import { cn } from '../lib/utils';
 import { User as UserType } from '../types';
 import { motion } from 'framer-motion';
+import ShareRankingButton from '../components/ShareRankingButton';
 import { supabase } from '../lib/supabase';
 
 interface RankedUser extends UserType {
@@ -25,20 +26,7 @@ export default function Leaderboard() {
   const now = new Date();
   const monthName = now.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
 
-  useEffect(() => { 
-    fetchAll(); 
-    
-    // Realtime subscription for WOD results
-    const channel = supabase.channel('wod-results-changes')
-      .on('postgres_changes', { event: '*', table: 'wod_results' }, () => {
-        fetchAll();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  useEffect(() => { fetchAll(); }, []);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -47,7 +35,7 @@ export default function Leaderboard() {
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
       const todayStr = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
-      }).format(now).replace(/\//g, '-');
+      }).format(now);
 
       // 1. Perfis aprovados
       const { data: allUsers, error: usersError } = await supabase
@@ -116,47 +104,35 @@ export default function Leaderboard() {
           .from('wod_results').select('*, profiles(name, level)')
           .eq('wod_id', todayWod.id);
         if (wodResults && wodResults.length > 0) {
-          const isTimeBased = ['FOR TIME','TIME','TEMPO'].some(t => (todayWod.type||'').toUpperCase().includes(t)) && !['REPS','REPETIÇÕES','CARGA','WEIGHT','AMRAP'].some(t => (todayWod.type||'').toUpperCase().includes(t));
-          
+          const isTimeBased = ['FOR TIME','TIME','TEMPO'].some(t => (todayWod.type||'').toUpperCase().includes(t));
           const parseResult = (r: string): number => {
             if (!r) return isTimeBased ? 999999 : 0;
-            const str = r.trim().toLowerCase();
-            
+            const str = r.trim();
             // MM:SS or HH:MM:SS
-            if (/^(\d+:)+\d+$/.test(str)) {
+            if (/^\d+:\d+/.test(str)) {
               const p = str.split(':').map(Number);
-              if (p.length === 2) return p[0] * 60 + p[1];
-              if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
+              return p.length === 2 ? p[0]*60+p[1] : p[0]*3600+p[1]*60+p[2];
             }
-            
-            // Handle "12 min" or "12:45 min"
-            const timeMatch = str.match(/^([\d:]+)\s*(min|s|seg|m)/);
-            if (timeMatch) {
-              const val = timeMatch[1];
-              if (val.includes(':')) {
-                const p = val.split(':').map(Number);
-                return p[0] * 60 + p[1];
-              }
-              return parseFloat(val) * (timeMatch[2].startsWith('m') ? 60 : 1);
-            }
-
-            // Pure number (reps or seconds)
-            return parseFloat(str.replace(/[^0-9.]/g, '')) || (isTimeBased ? 999999 : 0);
+            // Pure number (seconds or reps)
+            return parseFloat(str.replace(/[^0-9.]/g,'')) || (isTimeBased ? 999999 : 0);
           };
-
-          // Sort and map results
-          const sorted = [...wodResults].sort((a: any, b: any) => {
-            const valA = parseResult(a.result);
-            const valB = parseResult(b.result);
-            return isTimeBased ? valA - valB : valB - valA;
+          // Deduplica: pega melhor resultado por usuário
+          const bestByUser: Record<string, any> = {};
+          wodResults.forEach((r: any) => {
+            const uid = r.user_id;
+            const val = parseResult(r.result);
+            const prev = bestByUser[uid];
+            if (!prev) { bestByUser[uid] = r; return; }
+            const prevVal = parseResult(prev.result);
+            const isBetter = isTimeBased ? val < prevVal : val > prevVal;
+            if (isBetter) bestByUser[uid] = r;
           });
-
-          setWodRanking(sorted.map((r: any) => ({
-            id: r.id, 
-            name: r.profiles?.name || 'Atleta',
-            result: r.result, 
-            type: r.type, 
-            level: r.profiles?.level || 1,
+          const deduped = Object.values(bestByUser);
+          setWodRanking(deduped.sort((a: any, b: any) =>
+            isTimeBased ? parseResult(a.result)-parseResult(b.result) : parseResult(b.result)-parseResult(a.result)
+          ).map((r: any) => ({
+            id: r.id, name: r.profiles?.name || 'Atleta',
+            result: r.result, type: r.type, level: r.profiles?.level || 1,
           })));
         } else { setWodRanking([]); }
       } else { setWodRanking([]); }
@@ -195,8 +171,21 @@ export default function Leaderboard() {
         <h1 className="text-3xl font-headline font-black text-on-surface tracking-tight uppercase italic flex items-center gap-3">
           <Trophy className="w-8 h-8 text-primary" /> RANKING
         </h1>
-        <div className="flex items-center gap-1 text-on-surface-variant text-[10px] font-black uppercase tracking-widest">
-          <Calendar className="w-3 h-3" /> {monthName}
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-1 text-on-surface-variant text-[10px] font-black uppercase tracking-widest">
+            <Calendar className="w-3 h-3" /> {monthName}
+          </div>
+          {!isWod && top3.length > 0 && (
+            <ShareRankingButton
+              top3={top3 as any}
+              rankingType={activeTab === 'xp_mes' || activeTab === 'xp_total' ? 'xp' : activeTab === 'freq' ? 'freq' : 'clans'}
+              title={
+                activeTab === 'xp_mes' ? 'XP DO MÊS' :
+                activeTab === 'freq' ? 'FREQUÊNCIA' :
+                activeTab === 'xp_total' ? 'XP TOTAL' : 'TIMES'
+              }
+            />
+          )}
         </div>
       </header>
 
