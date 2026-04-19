@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Info, X } from 'lucide-react';
+import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Info, X, Edit2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { Wod as WodType } from '../types';
@@ -17,8 +17,11 @@ export default function Wod() {
   const [wods, setWods] = useState<WodType[]>([]);
   const [currentWod, setCurrentWod] = useState<WodType | null>(null);
   const [results, setResults] = useState<any[]>([]);
+  const [userResult, setUserResult] = useState<any>(null);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [newResult, setNewResult] = useState({ result: '', type: 'RX' });
+  const [isSaving, setIsSaving] = useState(false);
 
   const fetchResults = async (wodId: string) => {
     const { data } = await supabase
@@ -27,6 +30,17 @@ export default function Wod() {
       .eq('wod_id', wodId)
       .order('created_at', { ascending: false });
     setResults(data || []);
+
+    // Buscar resultado do usuário atual
+    if (user) {
+      const userRes = (data || []).find((r: any) => r.user_id === user.id);
+      setUserResult(userRes || null);
+      if (userRes) {
+        setNewResult({ result: userRes.result, type: userRes.type });
+      } else {
+        setNewResult({ result: '', type: 'RX' });
+      }
+    }
   };
 
   useEffect(() => {
@@ -41,31 +55,53 @@ export default function Wod() {
         fetchResults(found.id);
       } else {
         setResults([]);
+        setUserResult(null);
       }
     };
     fetchWods();
-  }, [selectedDate]);
+  }, [selectedDate, user]);
 
   const handleRegisterResult = async () => {
-    if (!user || !currentWod || !newResult.result) return;
-    
-    const { error } = await supabase
-      .from('wod_results')
-      .upsert({
-        user_id: user.id,
-        wod_id: currentWod.id,
-        result: newResult.result,
-        type: newResult.type
-      }, { onConflict: 'user_id,wod_id' });
+    if (!user || !currentWod || !newResult.result) {
+      alert('Por favor, preencha o resultado');
+      return;
+    }
 
-    if (!error) {
-      setIsRegistering(false);
-      setNewResult({ result: '', type: 'RX' });
-      fetchResults(currentWod.id);
-      alert('Resultado registrado com sucesso!');
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('wod_results')
+        .upsert({
+          user_id: user.id,
+          wod_id: currentWod.id,
+          result: newResult.result,
+          type: newResult.type
+        }, { onConflict: 'user_id,wod_id' });
+
+      if (!error) {
+        setIsRegistering(false);
+        setIsEditing(false);
+        await fetchResults(currentWod.id);
+        alert(userResult ? 'Resultado atualizado com sucesso!' : 'Resultado registrado com sucesso!');
+      } else {
+        console.error('Error registering result:', error);
+        alert('Erro ao registrar resultado: ' + error.message);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEditClick = () => {
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    if (userResult) {
+      setNewResult({ result: userResult.result, type: userResult.type });
     } else {
-      console.error('Error registering result:', error);
-      alert('Erro ao registrar resultado: ' + error.message);
+      setNewResult({ result: '', type: 'RX' });
     }
   };
 
@@ -156,6 +192,34 @@ export default function Wod() {
                 </div>
               </div>
 
+              {/* Seu Resultado (se já registrou) */}
+              {userResult && !isEditing && (
+                <div className="space-y-4">
+                  <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
+                    <Trophy className="w-5 h-5 text-primary" /> SEU RESULTADO
+                  </h3>
+                  <div className="bg-primary/10 border-2 border-primary/30 p-6 rounded-2xl flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary font-headline font-black text-lg">
+                        ✓
+                      </div>
+                      <div>
+                        <p className="text-on-surface font-bold uppercase text-sm italic">Resultado Registrado</p>
+                        <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">
+                          {userResult.result} • {userResult.type}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleEditClick}
+                      className="p-3 bg-primary/20 hover:bg-primary/30 rounded-xl transition-all flex items-center gap-2 text-primary font-headline font-bold text-sm uppercase"
+                    >
+                      <Edit2 className="w-4 h-4" /> EDITAR
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Leaderboard for this WOD */}
               <div className="space-y-4">
                 <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
@@ -164,17 +228,17 @@ export default function Wod() {
                 
                 <div className="space-y-3">
                   {results.length > 0 ? results.map((res, i) => (
-                    <div key={res.id} className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between group hover:border-primary/30 transition-all">
+                    <div key={res.id} className={cn("bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between group hover:border-primary/30 transition-all", res.user_id === user?.id && "border-primary/50 bg-primary/5")}>
                       <div className="flex items-center gap-4">
                         <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i + 1}</span>
-                        <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-sm">
+                        <div className={cn("w-10 h-10 rounded-full flex items-center justify-center text-on-surface font-headline font-black text-sm", res.user_id === user?.id ? "bg-primary/20 text-primary" : "bg-surface-container-highest")}>
                           {res.profiles?.name?.[0] || 'A'}
                         </div>
                         <div>
-                          <p className="text-on-surface font-bold uppercase text-sm italic">{res.profiles?.name || 'Atleta'}</p>
+                          <p className="text-on-surface font-bold uppercase text-sm italic">{res.profiles?.name || 'Atleta'} {res.user_id === user?.id && <span className="text-primary text-[10px] font-black">(VOCÊ)</span>}</p>
                           <span className={cn(
                             "text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest border",
-                            res.type === 'RX' ? "bg-primary/20 text-primary border-primary/30" : "bg-secondary/20 text-secondary border-secondary/30"
+                            res.type === 'RX' ? "bg-primary/20 text-primary border-primary/30" : res.type === 'SCALED' ? "bg-secondary/20 text-secondary border-secondary/30" : "bg-surface-container-highest text-on-surface-variant border-outline-variant/10"
                           )}>
                             {res.type}
                           </span>
@@ -191,12 +255,14 @@ export default function Wod() {
               </div>
 
               {/* Action Button */}
-              <button 
-                onClick={() => setIsRegistering(true)}
-                className="w-full bg-primary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-lg uppercase italic tracking-tight flex items-center justify-center gap-2 mt-4"
-              >
-                REGISTRAR RESULTADO <ChevronRight className="w-5 h-5" />
-              </button>
+              {!userResult && !isEditing && (
+                <button 
+                  onClick={() => setIsRegistering(true)}
+                  className="w-full bg-primary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-lg uppercase italic tracking-tight flex items-center justify-center gap-2 mt-4"
+                >
+                  REGISTRAR RESULTADO <ChevronRight className="w-5 h-5" />
+                </button>
+              )}
             </>
           ) : (
             <div className="bg-surface-container-low p-12 rounded-[2.5rem] border border-outline-variant/10 text-center flex flex-col items-center gap-4">
@@ -209,7 +275,7 @@ export default function Wod() {
 
       {/* Register Modal */}
       <AnimatePresence>
-        {isRegistering && (
+        {(isRegistering || isEditing) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
@@ -218,8 +284,17 @@ export default function Wod() {
               className="w-full max-w-md bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl"
             >
               <div className="flex justify-between items-center mb-6">
-                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">REGISTRAR RESULTADO</h3>
-                <button onClick={() => setIsRegistering(false)} className="p-2 hover:bg-surface-container-highest rounded-xl transition-all">
+                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">
+                  {isEditing ? 'EDITAR RESULTADO' : 'REGISTRAR RESULTADO'}
+                </h3>
+                <button 
+                  onClick={() => {
+                    setIsRegistering(false);
+                    handleCancelEdit();
+                  }} 
+                  className="p-2 hover:bg-surface-container-highest rounded-xl transition-all"
+                  disabled={isSaving}
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -233,6 +308,7 @@ export default function Wod() {
                     onChange={e => setNewResult({...newResult, result: e.target.value})}
                     placeholder="ex: 12:45 ou 150 reps"
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                    disabled={isSaving}
                   />
                 </div>
                 <div className="space-y-2">
@@ -242,8 +318,9 @@ export default function Wod() {
                       <button
                         key={t}
                         onClick={() => setNewResult({...newResult, type: t})}
+                        disabled={isSaving}
                         className={cn(
-                          "flex-1 py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all",
+                          "flex-1 py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all disabled:opacity-50",
                           newResult.type === t ? "bg-primary text-background shadow-lg" : "bg-surface-container-highest text-on-surface-variant"
                         )}
                       >
@@ -254,10 +331,20 @@ export default function Wod() {
                 </div>
                 <button 
                   onClick={handleRegisterResult}
-                  className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg mt-4"
+                  disabled={isSaving}
+                  className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  SALVAR RESULTADO
+                  {isSaving ? 'SALVANDO...' : isEditing ? 'ATUALIZAR RESULTADO' : 'SALVAR RESULTADO'}
                 </button>
+                {isEditing && (
+                  <button 
+                    onClick={handleCancelEdit}
+                    disabled={isSaving}
+                    className="w-full bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-bold uppercase italic shadow-sm disabled:opacity-50"
+                  >
+                    CANCELAR
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>
