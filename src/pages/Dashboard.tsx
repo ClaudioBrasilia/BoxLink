@@ -20,7 +20,7 @@ export default function Dashboard() {
   const [schedule, setSchedule] = useState<{ time: string; endTime: string; coach: string }[]>([]);
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [announcements, setAnnouncements] = useState<string[]>([]);
-  const [showWodDetails, setShowWodDetails] = useState(false);
+  // Removed showWodDetails state as we now navigate to /wod page
 
   const fetchData = async () => {
     // Fetch WODs - Filter by today's date in the correct timezone
@@ -315,7 +315,7 @@ export default function Dashboard() {
             </div>
 
             <button 
-              onClick={() => setShowWodDetails(true)}
+              onClick={() => navigate('/wod')}
               className="w-full bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary hover:text-background transition-all uppercase italic"
             >
               VER DETALHES <ChevronRight className="w-4 h-4" />
@@ -328,93 +328,7 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* WOD Details Modal */}
-      <AnimatePresence>
-        {showWodDetails && wod && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowWodDetails(false)}
-              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-lg bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 shadow-2xl overflow-hidden"
-            >
-              <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto no-scrollbar">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h2 className="text-2xl font-headline font-black text-on-surface uppercase italic tracking-tight">{wod.name}</h2>
-                    <p className="text-primary text-[10px] font-black uppercase tracking-widest mt-1">{wod.type}</p>
-                  </div>
-                  <button 
-                    onClick={() => setShowWodDetails(false)}
-                    className="p-2 bg-surface-container-highest rounded-full text-on-surface-variant hover:text-primary transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <div className="space-y-6">
-                  {wod.warmup && (
-                    <div className="space-y-2">
-                      <h4 className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-2">
-                        <Timer className="w-3 h-3 text-primary" /> AQUECIMENTO
-                      </h4>
-                      <p className="text-sm text-on-surface font-medium leading-relaxed bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/5">
-                        {wod.warmup}
-                      </p>
-                    </div>
-                  )}
-
-                  {wod.skill && (
-                    <div className="space-y-2">
-                      <h4 className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-2">
-                        <Zap className="w-3 h-3 text-primary" /> TÉCNICA / SKILL
-                      </h4>
-                      <p className="text-sm text-on-surface font-medium leading-relaxed bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/5">
-                        {wod.skill}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="space-y-4">
-                    <h4 className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-2">
-                      <Activity className="w-3 h-3 text-primary" /> WORKOUT (WOD)
-                    </h4>
-                    <div className="grid grid-cols-1 gap-3">
-                      <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10">
-                        <span className="text-[8px] font-black text-primary uppercase tracking-widest mb-1 block">RX</span>
-                        <p className="text-sm text-on-surface font-bold leading-relaxed whitespace-pre-wrap">{wod.rx}</p>
-                      </div>
-                      <div className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/5">
-                        <span className="text-[8px] font-black text-on-surface-variant uppercase tracking-widest mb-1 block">SCALED</span>
-                        <p className="text-sm text-on-surface font-medium leading-relaxed whitespace-pre-wrap">{wod.scaled}</p>
-                      </div>
-                      <div className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/5">
-                        <span className="text-[8px] font-black text-on-surface-variant uppercase tracking-widest mb-1 block">BEGINNER</span>
-                        <p className="text-sm text-on-surface font-medium leading-relaxed whitespace-pre-wrap">{wod.beginner}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="p-6 bg-surface-container-highest/50 border-t border-outline-variant/10">
-                <button 
-                  onClick={() => setShowWodDetails(false)}
-                  className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg"
-                >
-                  ENTENDIDO
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* WOD Details Modal removed - navigating to /wod instead */}
 
       {/* Quick Actions */}
       <section className="grid grid-cols-1 gap-4">
