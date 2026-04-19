@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Zap, Coins, Activity, Trophy, Settings, ChevronRight, Medal, Calendar, LogOut, Clock, History, Plus, X, Award, Download, Share2, Edit2, Save } from 'lucide-react';
+import { User, Zap, Coins, Activity, Trophy, Settings, ChevronRight, Medal, Calendar, LogOut, Clock, History, Plus, X, Award, Download, Share2, Edit2, Save, CalendarCheck, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,6 +15,8 @@ export default function Profile() {
   const [history, setHistory] = useState<RewardEvent[]>([]);
   const [prs, setPrs] = useState<PersonalRecord[]>([]);
   const [checkinCount, setCheckinCount] = useState(0);
+  const [checkinDates, setCheckinDates] = useState<string[]>([]);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [isPrModalOpen, setIsPrModalOpen] = useState(false);
   const [newPr, setNewPr] = useState({ exercise: '', value: '', date: new Date().toISOString().split('T')[0] });
   const [selectedAchievement, setSelectedAchievement] = useState<any | null>(null);
@@ -55,12 +57,14 @@ export default function Profile() {
           .order('date', { ascending: false });
         setPrs(prsData || []);
 
-        // Fetch Checkin Count
-        const { count } = await supabase
+        // Fetch Checkin dates
+        const { data: checkinsData, count } = await supabase
           .from('checkins')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id);
+          .select('date', { count: 'exact' })
+          .eq('user_id', user.id)
+          .order('date', { ascending: false });
         setCheckinCount(count || 0);
+        setCheckinDates((checkinsData || []).map((c: any) => c.date));
       };
       fetchData();
     }
@@ -458,6 +462,131 @@ export default function Profile() {
             </div>
           )}
         </div>
+      </section>
+
+      {/* ===== CALENDÁRIO DE CHECK-INS ===== */}
+      <section className="flex flex-col gap-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-headline font-black text-on-surface uppercase italic flex items-center gap-2">
+            <CalendarCheck className="w-6 h-6 text-primary" /> HISTÓRICO DE TREINOS
+          </h2>
+        </div>
+
+        {/* Month navigator */}
+        <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <button onClick={() => setCalendarMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+              className="p-2 hover:bg-surface-container-highest rounded-xl transition-all">
+              <ChevronLeft className="w-5 h-5 text-on-surface-variant" />
+            </button>
+            <p className="font-headline font-black text-on-surface uppercase italic text-base capitalize">
+              {calendarMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+            </p>
+            <button onClick={() => setCalendarMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+              className="p-2 hover:bg-surface-container-highest rounded-xl transition-all"
+              disabled={calendarMonth.getMonth() === new Date().getMonth() && calendarMonth.getFullYear() === new Date().getFullYear()}>
+              <ChevronRight className="w-5 h-5 text-on-surface-variant" />
+            </button>
+          </div>
+
+          {/* Day labels */}
+          <div className="grid grid-cols-7 gap-1">
+            {['D','S','T','Q','Q','S','S'].map((d, i) => (
+              <div key={i} className="text-center text-[9px] font-black text-on-surface-variant uppercase tracking-widest py-1">{d}</div>
+            ))}
+          </div>
+
+          {/* Calendar grid */}
+          {(() => {
+            const year = calendarMonth.getFullYear();
+            const month = calendarMonth.getMonth();
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const today = new Date();
+            const cells = [];
+
+            // Empty cells before first day
+            for (let i = 0; i < firstDay; i++) {
+              cells.push(<div key={`e${i}`} />);
+            }
+
+            for (let d = 1; d <= daysInMonth; d++) {
+              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+              const isCheckin = checkinDates.includes(dateStr);
+              const isToday = today.getDate() === d && today.getMonth() === month && today.getFullYear() === year;
+              const isFuture = new Date(year, month, d) > today;
+
+              cells.push(
+                <div key={d} className={`aspect-square rounded-xl flex items-center justify-center text-xs font-black transition-all ${
+                  isCheckin
+                    ? 'bg-primary text-background shadow-[0_0_10px_rgba(202,253,0,0.4)]'
+                    : isToday
+                      ? 'bg-outline-variant/20 text-primary border border-primary/40'
+                      : isFuture
+                        ? 'text-on-surface-variant/20'
+                        : 'text-on-surface-variant/40'
+                }`}>
+                  {d}
+                </div>
+              );
+            }
+
+            return <div className="grid grid-cols-7 gap-1">{cells}</div>;
+          })()}
+
+          {/* Monthly summary */}
+          {(() => {
+            const year = calendarMonth.getFullYear();
+            const month = calendarMonth.getMonth();
+            const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
+            const monthCheckins = checkinDates.filter(d => d.startsWith(monthStr)).length;
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const pct = Math.round((monthCheckins / daysInMonth) * 100);
+            return (
+              <div className="flex items-center justify-between pt-2 border-t border-outline-variant/10">
+                <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
+                  {monthCheckins} treino{monthCheckins !== 1 ? 's' : ''} este mês
+                </p>
+                <p className="text-[10px] text-primary font-black uppercase">
+                  {pct}% de frequência
+                </p>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Monthly history list */}
+        {(() => {
+          const monthMap: Record<string, number> = {};
+          checkinDates.forEach(d => {
+            const key = d.slice(0, 7);
+            monthMap[key] = (monthMap[key] || 0) + 1;
+          });
+          const months = Object.entries(monthMap)
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .slice(0, 6)
+            .map(([key, total]) => {
+              const [y, m] = key.split('-').map(Number);
+              const label = new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+              return { key, label, total };
+            });
+          if (months.length === 0) return null;
+          return (
+            <div className="flex flex-col gap-2">
+              {months.map(m => (
+                <div key={m.key} className="flex items-center justify-between bg-surface-container-low rounded-2xl border border-outline-variant/10 px-4 py-3">
+                  <p className="text-sm font-bold text-on-surface uppercase italic capitalize">{m.label}</p>
+                  <div className="flex items-center gap-2">
+                    <div className="h-1.5 w-24 bg-surface-container-highest rounded-full overflow-hidden">
+                      <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.min(100, (m.total / 26) * 100)}%` }} />
+                    </div>
+                    <span className="text-primary text-xs font-black">{m.total}x</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </section>
 
       {/* ===== CONQUISTAS ===== */}
