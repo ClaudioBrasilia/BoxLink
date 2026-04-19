@@ -39,15 +39,25 @@ export default function Challenges() {
   }, [user?.id]);
 
   const handleComplete = async (challengeId: string) => {
-    if (!user) return;
+    if (!user || loading) return;
     setLoading(true);
     try {
+      // Re-fetch history to ensure we have the latest state before processing
+      const { data: latestHistory } = await supabase
+        .from('reward_history')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('type', 'challenge')
+        .order('created_at', { ascending: false });
+      
+      const currentHistory = latestHistory || history;
+
       const challenge = challenges.find(c => c.id === challengeId);
       if (!challenge) throw new Error('Desafio não encontrado');
 
       // Check if already completed (if not repeatable)
       if (!challenge.repeatable) {
-        const alreadyDone = history.some(h => h.challenge_id === challengeId);
+        const alreadyDone = currentHistory.some(h => h.challenge_id === challengeId);
         if (alreadyDone) {
           alert('Você já concluiu este desafio!');
           setLoading(false);
@@ -56,7 +66,7 @@ export default function Challenges() {
       } else {
         // Check daily limit
         const today = new Date().toISOString().split('T')[0];
-        const todayCompletions = history.filter(h => h.challenge_id === challengeId && h.created_at.startsWith(today));
+        const todayCompletions = currentHistory.filter(h => h.challenge_id === challengeId && h.created_at.startsWith(today));
         if (todayCompletions.length >= (challenge.dailyLimit || 1)) {
           alert('Você já atingiu o limite diário para este desafio!');
           setLoading(false);
@@ -68,6 +78,12 @@ export default function Challenges() {
       const rewardResult = await addReward(user.id, 'challenge', challenge.xp, challenge.coins, `Desafio: ${challenge.title}`, challengeId);
       
       if (rewardResult) {
+        if ((rewardResult as any).duplicate) {
+          alert('Este desafio já foi resgatado!');
+          fetchData();
+          return;
+        }
+
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
         if (rewardResult.levelUp) {
           setTimeout(() => {
