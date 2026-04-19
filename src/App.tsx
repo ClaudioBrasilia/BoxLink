@@ -18,6 +18,7 @@ import Clans from './pages/Clans';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import DebugFlow from './pages/DebugFlow';
+import Install from './pages/Install';
 import { Shield } from 'lucide-react';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/tv" element={<TV />} />
+          <Route path="/install" element={<Install />} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="wod" element={<Wod />} />
