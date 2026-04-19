@@ -250,34 +250,40 @@ export default function Coach() {
                   <label className="text-[10px] text-secondary font-bold uppercase tracking-widest">SCALED</label>
                   <textarea rows={2} value={newWod.scaled} onChange={e => setNewWod({...newWod, scaled: e.target.value})} className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" />
                 </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">BEGINNER</label>
+                  <textarea rows={2} value={newWod.beginner} onChange={e => setNewWod({...newWod, beginner: e.target.value})} className="w-full bg-surface-container-highest border border-outline-variant/10 rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" />
+                </div>
               </div>
 
-              <button onClick={handleSaveWod} className="w-full bg-primary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-lg uppercase italic tracking-tight flex items-center justify-center gap-2">
-                POSTAR WOD <Plus className="w-5 h-5" />
+              <button onClick={handleSaveWod} className="w-full bg-primary text-background py-5 rounded-2xl font-headline font-black text-lg uppercase italic shadow-lg flex items-center justify-center gap-3 hover:scale-[0.98] transition-all">
+                <Plus className="w-6 h-6" /> POSTAR WOD
               </button>
             </div>
 
-            {/* Check-ins Section */}
-            <div className="flex flex-col gap-4">
-              <div className="flex justify-between items-center mb-2">
+            {/* Today's Athletes Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-primary" />
                 <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">CHECK-INS DE HOJE</h3>
-                <span className="bg-primary/20 text-primary text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{athletes.length} ATLETAS</span>
               </div>
-
-              <div className="space-y-3">
-                {athletes.length > 0 ? athletes.map((checkin) => (
-                  <div key={checkin.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex items-center justify-between group hover:border-primary/30 transition-all">
+              <div className="grid gap-3">
+                {athletes.length > 0 ? athletes.map((athlete) => (
+                  <div key={athlete.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-xl">
-                        {checkin.profiles?.name?.[0] || 'A'}
+                      <div className="w-12 h-12 rounded-full bg-surface-container-highest border border-outline-variant/10 overflow-hidden">
+                        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${athlete.profiles?.name}`} alt="Avatar" className="w-full h-full object-cover" />
                       </div>
                       <div>
-                        <p className="text-on-surface font-bold uppercase text-sm italic">{checkin.profiles?.name}</p>
-                        <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Check-in: {checkin.class_time}</p>
+                        <p className="text-on-surface font-bold uppercase text-sm italic">{athlete.profiles?.name}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="bg-primary/20 text-primary text-[8px] font-black px-2 py-0.5 rounded-full uppercase">Atleta</span>
+                          <span className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{athlete.time}</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <div className="bg-primary/20 p-2 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                         <Check className="w-4 h-4 text-primary" />
                       </div>
                     </div>
@@ -432,7 +438,7 @@ export default function Coach() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+
       {/* Modal Editar WOD */}
       <AnimatePresence>
         {editingWod && (
@@ -487,5 +493,6 @@ export default function Coach() {
           </div>
         )}
       </AnimatePresence>
+    </div>
   );
 }
