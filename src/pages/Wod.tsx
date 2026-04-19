@@ -48,12 +48,12 @@ export default function Wod() {
     
     const { error } = await supabase
       .from('wod_results')
-      .insert({
+      .upsert({
         user_id: user.id,
         wod_id: currentWod.id,
         result: newResult.result,
         type: newResult.type
-      });
+      }, { onConflict: 'user_id,wod_id' });
 
     if (!error) {
       setIsRegistering(false);

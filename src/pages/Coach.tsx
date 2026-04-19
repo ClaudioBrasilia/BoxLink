@@ -29,7 +29,13 @@ export default function Leaderboard() {
     timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
   }).format(new Date());
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { 
+    fetchAll(); 
+    const channel = supabase.channel('wod-results-coach')
+      .on('postgres_changes', { event: '*', table: 'wod_results' }, () => fetchAll())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -101,17 +107,35 @@ export default function Leaderboard() {
           .from('wod_results').select('*, profiles(name, level)')
           .eq('wod_id', todayWod.id);
         if (wodResults && wodResults.length > 0) {
-          const isTimeBased = ['FOR TIME','TIME','TEMPO'].some(t => (todayWod.type||'').toUpperCase().includes(t));
+          const isTimeBased = ['FOR TIME','TIME','TEMPO','AMRAP'].some(t => (todayWod.type||'').toUpperCase().includes(t)) && !['REPS','REPETIÇÕES','CARGA','WEIGHT'].some(t => (todayWod.type||'').toUpperCase().includes(t));
+          
           const parseResult = (r: string): number => {
-            if (/^\d+:\d+/.test(r)) {
-              const p = r.split(':').map(Number);
-              return p.length === 2 ? p[0]*60+p[1] : p[0]*3600+p[1]*60+p[2];
+            if (!r) return isTimeBased ? 999999 : 0;
+            const str = r.trim().toLowerCase();
+            if (/^(\d+:)+\d+$/.test(str)) {
+              const p = str.split(':').map(Number);
+              if (p.length === 2) return p[0] * 60 + p[1];
+              if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
             }
-            return parseFloat(r.replace(/[^0-9.]/g,'')) || 0;
+            const timeMatch = str.match(/^([\d:]+)\s*(min|s|seg|m)/);
+            if (timeMatch) {
+              const val = timeMatch[1];
+              if (val.includes(':')) {
+                const p = val.split(':').map(Number);
+                return p[0] * 60 + p[1];
+              }
+              return parseFloat(val) * (timeMatch[2].startsWith('m') ? 60 : 1);
+            }
+            return parseFloat(str.replace(/[^0-9.]/g, '')) || (isTimeBased ? 999999 : 0);
           };
-          setWodRanking([...wodResults].sort((a,b) =>
-            isTimeBased ? parseResult(a.result)-parseResult(b.result) : parseResult(b.result)-parseResult(a.result)
-          ).map(r => ({
+
+          const sorted = [...wodResults].sort((a: any, b: any) => {
+            const valA = parseResult(a.result);
+            const valB = parseResult(b.result);
+            return isTimeBased ? valA - valB : valB - valA;
+          });
+
+          setWodRanking(sorted.map((r: any) => ({
             id: r.id, name: r.profiles?.name || 'Atleta',
             result: r.result, type: r.type, level: r.profiles?.level || 1,
           })));
