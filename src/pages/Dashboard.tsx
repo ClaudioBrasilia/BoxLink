@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, X } from 'lucide-react';
+import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, X, Share2, Target } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,30 +20,29 @@ export default function Dashboard() {
   const [schedule, setSchedule] = useState<{ time: string; endTime: string; coach: string }[]>([]);
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [announcements, setAnnouncements] = useState<string[]>([]);
-  // Removed showWodDetails state as we now navigate to /wod page
+  const [showWodDetails, setShowWodDetails] = useState(false);
+  const [activeChallenges, setActiveChallenges] = useState<any[]>([]);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const fetchData = async () => {
-    // Fetch WODs - Filter by today's date in the correct timezone
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
-    const { data: wodsData } = await supabase
-      .from('wods')
-      .select('*')
-      .eq('date', today)
-      .maybeSingle();
-    
-    if (wodsData) {
-      setWod(wodsData);
-    } else {
-      // Fallback: if no WOD for today, get the most recent one (optional, but keeps the UI from being empty if that's preferred)
-      // However, the user specifically complained about old WODs appearing, so we should probably only show today's.
-      setWod(null);
-    }
+    // Fetch WODs
+    const { data: wodsData } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1);
+    if (wodsData) setWod(wodsData[0]);
     
     // Fetch Box Settings
     const { data: settingsData } = await supabase.from('box_settings').select('*').single();
-    if (settingsData?.tv_config?.announcements) {
-      setAnnouncements(settingsData.tv_config.announcements);
+    const rawAnn = settingsData?.announcements || settingsData?.tv_config?.announcements || [];
+    if (Array.isArray(rawAnn) && rawAnn.length > 0) {
+      const annTexts = rawAnn.map((a: any) =>
+        typeof a === 'string' ? a : (a.title ? `${a.title}${a.content ? ': ' + a.content : ''}` : '')
+      ).filter(Boolean);
+      setAnnouncements(annTexts);
     }
+
+    // Fetch active challenges
+    const { data: challengesData } = await supabase
+      .from('challenges').select('*').eq('active', true).limit(3);
+    setActiveChallenges(challengesData || []);
 
     // Fetch Schedule
     const { data: scheduleData } = await supabase.from('schedule').select('*').eq('is_active', true).order('time', { ascending: true });
@@ -201,6 +200,22 @@ export default function Dashboard() {
   const today = new Date().toISOString().split('T')[0];
   const alreadyCheckedIn = user?.checkins.some(c => c.date === today);
 
+  const handleShare = () => {
+    const appUrl = window.location.origin;
+    const text = `💪 Estou treinando no BoxLink! Venha acompanhar meu progresso: ${appUrl}`;
+    if (navigator.share) {
+      navigator.share({ title: 'BoxLink', text, url: appUrl }).catch(() => {});
+    } else {
+      setShowShareModal(true);
+    }
+  };
+
+  const shareViaWhatsApp = () => {
+    const appUrl = window.location.origin;
+    const text = encodeURIComponent(`💪 Estou treinando no BoxLink! Venha acompanhar meu progresso: ${appUrl}`);
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+
   return (
     <div className="flex flex-col gap-6 p-4 pt-8">
       {/* Header */}
@@ -226,6 +241,11 @@ export default function Dashboard() {
             <span className="font-headline font-black text-sm text-on-surface">{user?.coins}</span>
             <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">BC</span>
           </div>
+          <button onClick={handleShare}
+            className="flex items-center gap-1 bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-full hover:bg-primary/20 transition-all">
+            <Share2 className="w-3 h-3 text-primary" />
+            <span className="text-[8px] font-black text-primary uppercase tracking-widest">SHARE</span>
+          </button>
         </div>
       </header>
 
@@ -242,6 +262,41 @@ export default function Dashboard() {
                 • {ann}
               </p>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Desafios Ativos */}
+      {activeChallenges.length > 0 && (
+        <section className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-4 cursor-pointer hover:border-primary/30 transition-all"
+          onClick={() => window.location.href = '/challenges'}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 bg-primary/20 rounded-xl flex items-center justify-center">
+                <Target className="w-4 h-4 text-primary" />
+              </div>
+              <h3 className="text-[10px] font-black text-on-surface uppercase tracking-widest italic">DESAFIOS ATIVOS</h3>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full">{activeChallenges.length}</span>
+              <ChevronRight className="w-4 h-4 text-on-surface-variant" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            {activeChallenges.slice(0,2).map((c) => (
+              <div key={c.id} className="flex items-center justify-between bg-surface-container-highest/50 rounded-2xl px-3 py-2">
+                <p className="text-xs font-bold text-on-surface uppercase italic truncate flex-1">{c.title}</p>
+                <div className="flex items-center gap-2 ml-2 shrink-0">
+                  <span className="text-[9px] font-black text-primary">+{c.xp} XP</span>
+                  <span className="text-[9px] font-black text-secondary">+{c.coins} BC</span>
+                </div>
+              </div>
+            ))}
+            {activeChallenges.length > 2 && (
+              <p className="text-[9px] text-center text-on-surface-variant font-bold uppercase tracking-widest">
+                +{activeChallenges.length - 2} outros desafios
+              </p>
+            )}
           </div>
         </section>
       )}
@@ -297,38 +352,115 @@ export default function Dashboard() {
           <span className="bg-primary/20 text-primary text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">HOJE</span>
         </div>
         <h3 className="font-headline font-black text-2xl text-on-surface mb-1 uppercase italic tracking-tight">WOD DO DIA</h3>
+        <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest mb-4">{wod?.name || 'Carregando...'}</p>
         
-        {wod ? (
-          <>
-            <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest mb-4">{wod.name}</p>
-            
-            <div className="flex gap-4 mb-6">
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</span>
-                <span className="text-sm font-headline font-black text-on-surface uppercase italic">{wod.type}</span>
-              </div>
-              <div className="w-[1px] bg-outline-variant/20"></div>
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Time Cap</span>
-                <span className="text-sm font-headline font-black text-on-surface uppercase italic">20:00</span>
-              </div>
-            </div>
-
-            <button 
-              onClick={() => navigate('/wod')}
-              className="w-full bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary hover:text-background transition-all uppercase italic"
-            >
-              VER DETALHES <ChevronRight className="w-4 h-4" />
-            </button>
-          </>
-        ) : (
-          <div className="py-8 text-center">
-            <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic opacity-50">Nenhum WOD cadastrado para hoje</p>
+        <div className="flex gap-4 mb-6">
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</span>
+            <span className="text-sm font-headline font-black text-on-surface uppercase italic">{wod?.type}</span>
           </div>
-        )}
+          <div className="w-[1px] bg-outline-variant/20"></div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Time Cap</span>
+            <span className="text-sm font-headline font-black text-on-surface uppercase italic">20:00</span>
+          </div>
+        </div>
+
+        <button 
+          onClick={() => setShowWodDetails(true)}
+          className="w-full bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary hover:text-background transition-all uppercase italic"
+        >
+          VER DETALHES <ChevronRight className="w-4 h-4" />
+        </button>
       </section>
 
-      {/* WOD Details Modal removed - navigating to /wod instead */}
+      {/* WOD Details Modal */}
+      <AnimatePresence>
+        {showWodDetails && wod && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowWodDetails(false)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-lg bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto no-scrollbar">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-2xl font-headline font-black text-on-surface uppercase italic tracking-tight">{wod.name}</h2>
+                    <p className="text-primary text-[10px] font-black uppercase tracking-widest mt-1">{wod.type}</p>
+                  </div>
+                  <button 
+                    onClick={() => setShowWodDetails(false)}
+                    className="p-2 bg-surface-container-highest rounded-full text-on-surface-variant hover:text-primary transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  {wod.warmup && (
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-2">
+                        <Timer className="w-3 h-3 text-primary" /> AQUECIMENTO
+                      </h4>
+                      <p className="text-sm text-on-surface font-medium leading-relaxed bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/5">
+                        {wod.warmup}
+                      </p>
+                    </div>
+                  )}
+
+                  {wod.skill && (
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-2">
+                        <Zap className="w-3 h-3 text-primary" /> TÉCNICA / SKILL
+                      </h4>
+                      <p className="text-sm text-on-surface font-medium leading-relaxed bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/5">
+                        {wod.skill}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <h4 className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-2">
+                      <Activity className="w-3 h-3 text-primary" /> WORKOUT (WOD)
+                    </h4>
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10">
+                        <span className="text-[8px] font-black text-primary uppercase tracking-widest mb-1 block">RX</span>
+                        <p className="text-sm text-on-surface font-bold leading-relaxed whitespace-pre-wrap">{wod.rx}</p>
+                      </div>
+                      <div className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/5">
+                        <span className="text-[8px] font-black text-on-surface-variant uppercase tracking-widest mb-1 block">SCALED</span>
+                        <p className="text-sm text-on-surface font-medium leading-relaxed whitespace-pre-wrap">{wod.scaled}</p>
+                      </div>
+                      <div className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/5">
+                        <span className="text-[8px] font-black text-on-surface-variant uppercase tracking-widest mb-1 block">BEGINNER</span>
+                        <p className="text-sm text-on-surface font-medium leading-relaxed whitespace-pre-wrap">{wod.beginner}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 bg-surface-container-highest/50 border-t border-outline-variant/10">
+                <button 
+                  onClick={() => setShowWodDetails(false)}
+                  className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg"
+                >
+                  ENTENDIDO
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Quick Actions */}
       <section className="grid grid-cols-1 gap-4">
@@ -377,6 +509,36 @@ export default function Dashboard() {
           </div>
         </div>
       </section>
+      {/* Modal Compartilhar */}
+      <AnimatePresence>
+        {showShareModal && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-background/80 backdrop-blur-sm"
+            onClick={() => setShowShareModal(false)}>
+            <motion.div
+              initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }}
+              className="w-full max-w-md bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl"
+              onClick={e => e.stopPropagation()}>
+              <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic mb-6 flex items-center gap-3">
+                <Share2 className="w-6 h-6 text-primary" /> COMPARTILHAR APP
+              </h3>
+              <div className="flex flex-col gap-3">
+                <button onClick={shareViaWhatsApp}
+                  className="w-full bg-[#25D366] text-white py-4 rounded-2xl font-headline font-black uppercase italic flex items-center justify-center gap-3">
+                  📱 COMPARTILHAR VIA WHATSAPP
+                </button>
+                <button onClick={() => { navigator.clipboard.writeText(window.location.origin); alert('Link copiado!'); setShowShareModal(false); }}
+                  className="w-full bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-black uppercase italic flex items-center justify-center gap-3">
+                  🔗 COPIAR LINK
+                </button>
+                <button onClick={() => setShowShareModal(false)}
+                  className="w-full text-on-surface-variant py-3 font-headline font-black uppercase italic text-sm">
+                  CANCELAR
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
