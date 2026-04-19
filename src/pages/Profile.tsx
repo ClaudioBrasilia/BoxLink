@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Zap, Coins, Activity, Trophy, Settings, ChevronRight, Medal, Calendar, LogOut, Clock, History, Plus, X, Edit2, Save } from 'lucide-react';
+import { User, Zap, Coins, Activity, Trophy, Settings, ChevronRight, Medal, Calendar, LogOut, Clock, History, Plus, X, Award, Download, Share2, Edit2, Save } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,19 +10,32 @@ import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
 
 export default function Profile() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const [history, setHistory] = useState<RewardEvent[]>([]);
   const [prs, setPrs] = useState<PersonalRecord[]>([]);
   const [checkinCount, setCheckinCount] = useState(0);
   const [isPrModalOpen, setIsPrModalOpen] = useState(false);
+  const [newPr, setNewPr] = useState({ exercise: '', value: '', date: new Date().toISOString().split('T')[0] });
+  const [selectedAchievement, setSelectedAchievement] = useState<any | null>(null);
+  const [duelsWon, setDuelsWon] = useState(0);
+  const [duelsTotal, setDuelsTotal] = useState(0);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
-  const [newPr, setNewPr] = useState({ exercise: '', value: '', date: new Date().toISOString().split('T')[0] });
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
       const fetchData = async () => {
+        // Fetch Duels stats
+        const { data: duelsData } = await supabase
+          .from('duels')
+          .select('winner_id')
+          .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
+          .eq('status', 'finished');
+        setDuelsTotal((duelsData || []).length);
+        setDuelsWon((duelsData || []).filter((d: any) => d.winner_id === user.id).length);
+
         // Fetch History
         const { data: historyData } = await supabase
           .from('reward_history')
@@ -84,17 +97,137 @@ export default function Profile() {
 
   const handleSaveProfile = async () => {
     if (!editName.trim() || !user) return;
-    const { error } = await supabase
-      .from('profiles')
-      .update({ name: editName.trim() })
-      .eq('id', user.id);
-    if (!error) {
-      updateUser({ ...user, name: editName.trim() });
-      setIsEditingProfile(false);
-    } else {
-      alert('Erro ao salvar: ' + error.message);
-    }
+    const { error } = await supabase.from('profiles').update({ name: editName.trim() }).eq('id', user.id);
+    if (!error) { updateUser({ ...user, name: editName.trim() }); setIsEditingProfile(false); }
+    else alert('Erro ao salvar: ' + error.message);
   };
+
+  const handleShareAchievement = async (achievement: any) => {
+    setSharing(true);
+    try {
+      const canvas = document.createElement('canvas');
+      // Square 1080x1080 — ideal for Instagram/WhatsApp
+      canvas.width = 1080; canvas.height = 1080;
+      const ctx = canvas.getContext('2d')!;
+
+      // Dark background
+      const grad = ctx.createLinearGradient(0, 0, 1080, 1080);
+      grad.addColorStop(0, '#0a0a0a');
+      grad.addColorStop(0.5, '#111111');
+      grad.addColorStop(1, '#0a0a0a');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 1080, 1080);
+
+      // Glow circle behind icon
+      const glow = ctx.createRadialGradient(540, 400, 0, 540, 400, 300);
+      glow.addColorStop(0, 'rgba(202,253,0,0.15)');
+      glow.addColorStop(1, 'rgba(202,253,0,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, 1080, 1080);
+
+      // Decorative grid lines
+      ctx.strokeStyle = 'rgba(202,253,0,0.04)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 1080; i += 80) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 1080); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(1080, i); ctx.stroke();
+      }
+
+      // Outer border
+      ctx.strokeStyle = 'rgba(202,253,0,0.5)';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(20, 20, 1040, 1040);
+
+      // Inner border
+      ctx.strokeStyle = 'rgba(202,253,0,0.15)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(35, 35, 1010, 1010);
+
+      // BOXLINK label top
+      ctx.fillStyle = 'rgba(202,253,0,0.6)';
+      ctx.font = 'bold 28px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('BOXLINK', 540, 90);
+
+      // Achievement icon (emoji)
+      ctx.font = '220px serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(achievement.icon, 540, 420);
+
+      // Achievement name
+      ctx.fillStyle = '#CAFD00';
+      ctx.font = 'bold 72px Arial';
+      ctx.fillText(achievement.name.toUpperCase(), 540, 530);
+
+      // Description
+      ctx.fillStyle = 'rgba(255,255,255,0.65)';
+      ctx.font = '38px Arial';
+      ctx.fillText(achievement.description, 540, 600);
+
+      // Separator
+      ctx.strokeStyle = 'rgba(202,253,0,0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(240, 650); ctx.lineTo(840, 650); ctx.stroke();
+
+      // "CONQUISTADO POR" label
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.font = '26px Arial';
+      ctx.letterSpacing = '0.3em';
+      ctx.fillText('CONQUISTADO POR', 540, 710);
+
+      // Athlete name
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 60px Arial';
+      ctx.fillText((user?.name || '').toUpperCase(), 540, 790);
+
+      // Level
+      ctx.fillStyle = 'rgba(202,253,0,0.7)';
+      ctx.font = 'bold 34px Arial';
+      ctx.fillText(`NÍVEL ${user?.level || 1}`, 540, 850);
+
+      // Bottom branding
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.font = '24px Arial';
+      ctx.fillText('boxlink.vercel.app', 540, 1030);
+
+      const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png', 1.0));
+      if (!blob) return;
+
+      if (navigator.share && navigator.canShare?.({ files: [new File([blob], 'conquista.png')] })) {
+        await navigator.share({
+          title: `${achievement.name} — BoxLink`,
+          text: `Desbloqueei a conquista "${achievement.name}" no BoxLink! 💪`,
+          files: [new File([blob], 'conquista.png', { type: 'image/png' })],
+        });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `conquista-${achievement.id}.png`; a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) { console.error(e); }
+    finally { setSharing(false); }
+  };
+
+  // Calculate achievements dynamically
+  const achievements = [
+    { id: 'first_checkin',  name: 'Primeiro Passo',    description: 'Faça seu primeiro check-in',    icon: '👣', category: 'consistency', unlocked: checkinCount >= 1 },
+    { id: 'week_warrior',   name: 'Guerreiro Semanal',  description: '7 check-ins no total',           icon: '📅', category: 'consistency', unlocked: checkinCount >= 7 },
+    { id: 'iron_habit',     name: 'Hábito de Ferro',    description: '30 check-ins no total',          icon: '🔗', category: 'consistency', unlocked: checkinCount >= 30 },
+    { id: 'century',        name: 'Centenário',         description: '100 check-ins no total',         icon: '💯', category: 'consistency', unlocked: checkinCount >= 100 },
+    { id: 'first_pr',       name: 'PR Hunter',          description: 'Registre seu primeiro PR',       icon: '🎯', category: 'performance', unlocked: prs.length >= 1 },
+    { id: 'pr_collector',   name: 'Colecionador',       description: 'Registre 5 PRs',                 icon: '📊', category: 'performance', unlocked: prs.length >= 5 },
+    { id: 'level_5',        name: 'Escalada',           description: 'Alcance nível 5',                icon: '⬆️', category: 'performance', unlocked: (user?.level || 0) >= 5 },
+    { id: 'level_10',       name: 'Elite',              description: 'Alcance nível 10',               icon: '⚡', category: 'performance', unlocked: (user?.level || 0) >= 10 },
+    { id: 'xp_500',         name: 'Acumulador',         description: 'Acumule 500 XP',                 icon: '💫', category: 'performance', unlocked: (user?.xp || 0) >= 500 },
+    { id: 'xp_2000',        name: 'XP Mestre',          description: 'Acumule 2000 XP',                icon: '🌟', category: 'performance', unlocked: (user?.xp || 0) >= 2000 },
+    { id: 'first_duel',     name: 'Desafiante',         description: 'Participe do primeiro duelo',    icon: '⚔️', category: 'social',       unlocked: duelsTotal >= 1 },
+    { id: 'duel_5',         name: 'Gladiador',          description: 'Participe de 5 duelos',          icon: '🛡️', category: 'social',       unlocked: duelsTotal >= 5 },
+    { id: 'first_win',      name: 'Primeira Vitória',   description: 'Vença seu primeiro duelo',       icon: '🏅', category: 'social',       unlocked: duelsWon >= 1 },
+    { id: 'win_5',          name: 'Dominante',          description: 'Vença 5 duelos',                 icon: '👑', category: 'social',       unlocked: duelsWon >= 5 },
+    { id: 'win_10',         name: 'Lenda',              description: 'Vença 10 duelos',                icon: '🏆', category: 'social',       unlocked: duelsWon >= 10 },
+  ];
+  const unlockedCount = achievements.filter(a => a.unlocked).length;
 
   return (
     <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background">
@@ -129,17 +262,10 @@ export default function Profile() {
           <div>
             {isEditingProfile ? (
               <div className="flex gap-2 items-center mb-2">
-                <input type="text" value={editName}
-                  onChange={e => setEditName(e.target.value)}
-                  className="bg-surface-container-highest border border-primary/30 rounded-xl px-3 py-1 font-headline font-black text-on-surface text-lg uppercase italic outline-none"
-                  autoFocus
-                />
-                <button onClick={handleSaveProfile} className="p-2 bg-primary rounded-xl text-background">
-                  <Save className="w-4 h-4" />
-                </button>
-                <button onClick={() => setIsEditingProfile(false)} className="p-2 bg-surface-container-highest rounded-xl text-on-surface-variant">
-                  <X className="w-4 h-4" />
-                </button>
+                <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
+                  className="bg-surface-container-highest border border-primary/30 rounded-xl px-3 py-1 font-headline font-black text-on-surface text-lg uppercase italic outline-none flex-1" autoFocus />
+                <button onClick={handleSaveProfile} className="p-2 bg-primary rounded-xl text-background"><Save className="w-4 h-4" /></button>
+                <button onClick={() => setIsEditingProfile(false)} className="p-2 bg-surface-container-highest rounded-xl"><X className="w-4 h-4" /></button>
               </div>
             ) : (
               <div className="flex items-center gap-2 mb-2">
@@ -333,6 +459,89 @@ export default function Profile() {
           )}
         </div>
       </section>
+
+      {/* ===== CONQUISTAS ===== */}
+      <section className="flex flex-col gap-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-headline font-black text-on-surface uppercase italic flex items-center gap-2">
+            <Award className="w-6 h-6 text-primary" /> CONQUISTAS
+          </h2>
+          <span className="text-[10px] font-black text-primary bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+            {unlockedCount}/{achievements.length} desbloqueadas
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          {achievements.map(a => (
+            <button key={a.id}
+              onClick={() => a.unlocked && setSelectedAchievement(a)}
+              className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${
+                a.unlocked
+                  ? 'bg-surface-container-low border-primary/20 hover:border-primary hover:scale-105 active:scale-95'
+                  : 'bg-surface-container-low/30 border-outline-variant/5 opacity-25 cursor-not-allowed'
+              }`}>
+              <span className="text-3xl">{a.unlocked ? a.icon : '🔒'}</span>
+              <p className={`text-[9px] font-black uppercase italic text-center leading-tight ${a.unlocked ? 'text-on-surface' : 'text-on-surface-variant'}`}>
+                {a.name}
+              </p>
+            </button>
+          ))}
+        </div>
+        <p className="text-center text-[10px] text-on-surface-variant font-bold uppercase tracking-widest italic">
+          Toque em uma conquista desbloqueada para compartilhar
+        </p>
+      </section>
+
+      {/* Modal conquista */}
+      <AnimatePresence>
+        {selectedAchievement && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-background/90 backdrop-blur-sm"
+            onClick={() => setSelectedAchievement(null)}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, y: 40 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 40 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-sm bg-surface-container-low rounded-[2.5rem] border border-primary/30 p-8 flex flex-col items-center gap-5 text-center shadow-[0_0_80px_rgba(202,253,0,0.15)] relative overflow-hidden"
+            >
+              <div className="absolute inset-0 rounded-[2.5rem] bg-primary/3 pointer-events-none" />
+              <div className="relative">
+                <div className="absolute inset-0 blur-2xl bg-primary/20 rounded-full scale-150" />
+                <span className="relative text-8xl">{selectedAchievement.icon}</span>
+              </div>
+              <div>
+                <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-2">CONQUISTA DESBLOQUEADA</p>
+                <h3 className="text-2xl font-headline font-black text-primary uppercase italic">{selectedAchievement.name}</h3>
+                <p className="text-sm text-on-surface-variant font-bold mt-1">{selectedAchievement.description}</p>
+              </div>
+              <div className="w-full h-px bg-outline-variant/20" />
+              <div>
+                <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Conquistado por</p>
+                <p className="text-xl font-headline font-black text-on-surface uppercase italic mt-1">{user?.name}</p>
+                <p className="text-[10px] text-primary font-black uppercase tracking-widest mt-1">Nível {user?.level}</p>
+              </div>
+              <div className="flex gap-3 w-full">
+                <button onClick={() => setSelectedAchievement(null)}
+                  className="flex-1 py-3 bg-surface-container-highest text-on-surface-variant rounded-2xl font-headline font-black text-xs uppercase italic">
+                  FECHAR
+                </button>
+                <button onClick={() => handleShareAchievement(selectedAchievement)} disabled={sharing}
+                  className="flex-1 py-3 bg-primary text-background rounded-2xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2 disabled:opacity-60">
+                  {sharing
+                    ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
+                    : navigator.share
+                      ? <><Share2 className="w-4 h-4" /> COMPARTILHAR</>
+                      : <><Download className="w-4 h-4" /> BAIXAR</>
+                  }
+                </button>
+              </div>
+              <p className="text-[9px] text-on-surface-variant italic">
+                {navigator.share ? 'Compartilhe no WhatsApp, Instagram e mais' : 'Baixe a imagem 1080x1080 e poste nas redes'}
+              </p>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
