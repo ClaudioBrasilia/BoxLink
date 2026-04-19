@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Zap, Coins, Activity, Trophy, Settings, ChevronRight, Medal, Calendar, LogOut, Clock, History, Plus, X } from 'lucide-react';
+import { User, Zap, Coins, Activity, Trophy, Settings, ChevronRight, Medal, Calendar, LogOut, Clock, History, Plus, X, Edit2, Save } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -16,6 +16,8 @@ export default function Profile() {
   const [prs, setPrs] = useState<PersonalRecord[]>([]);
   const [checkinCount, setCheckinCount] = useState(0);
   const [isPrModalOpen, setIsPrModalOpen] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState('');
   const [newPr, setNewPr] = useState({ exercise: '', value: '', date: new Date().toISOString().split('T')[0] });
 
   useEffect(() => {
@@ -80,6 +82,20 @@ export default function Profile() {
     }
   };
 
+  const handleSaveProfile = async () => {
+    if (!editName.trim() || !user) return;
+    const { error } = await supabase
+      .from('profiles')
+      .update({ name: editName.trim() })
+      .eq('id', user.id);
+    if (!error) {
+      updateUser({ ...user, name: editName.trim() });
+      setIsEditingProfile(false);
+    } else {
+      alert('Erro ao salvar: ' + error.message);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background">
       <header className="flex justify-between items-center">
@@ -111,7 +127,29 @@ export default function Profile() {
             </button>
           </div>
           <div>
-            <h2 className="text-3xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none mb-2">{user?.name}</h2>
+            {isEditingProfile ? (
+              <div className="flex gap-2 items-center mb-2">
+                <input type="text" value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  className="bg-surface-container-highest border border-primary/30 rounded-xl px-3 py-1 font-headline font-black text-on-surface text-lg uppercase italic outline-none"
+                  autoFocus
+                />
+                <button onClick={handleSaveProfile} className="p-2 bg-primary rounded-xl text-background">
+                  <Save className="w-4 h-4" />
+                </button>
+                <button onClick={() => setIsEditingProfile(false)} className="p-2 bg-surface-container-highest rounded-xl text-on-surface-variant">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 mb-2">
+                <h2 className="text-3xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none">{user?.name}</h2>
+                <button onClick={() => { setEditName(user?.name || ''); setIsEditingProfile(true); }}
+                  className="p-1.5 bg-primary/20 rounded-lg text-primary hover:bg-primary hover:text-background transition-all">
+                  <Edit2 className="w-3 h-3" />
+                </button>
+              </div>
+            )}
             <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">{user?.email}</p>
             <div className="flex items-center gap-2 mt-3">
               <div className="bg-primary/20 px-3 py-1 rounded-full border border-primary/30">
