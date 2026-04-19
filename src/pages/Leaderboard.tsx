@@ -47,7 +47,7 @@ export default function Leaderboard() {
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
       const todayStr = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
-      }).format(now);
+      }).format(now).replace(/\//g, '-');
 
       // 1. Perfis aprovados
       const { data: allUsers, error: usersError } = await supabase
@@ -116,7 +116,7 @@ export default function Leaderboard() {
           .from('wod_results').select('*, profiles(name, level)')
           .eq('wod_id', todayWod.id);
         if (wodResults && wodResults.length > 0) {
-          const isTimeBased = ['FOR TIME','TIME','TEMPO','AMRAP'].some(t => (todayWod.type||'').toUpperCase().includes(t)) && !['REPS','REPETIÇÕES','CARGA','WEIGHT'].some(t => (todayWod.type||'').toUpperCase().includes(t));
+          const isTimeBased = ['FOR TIME','TIME','TEMPO'].some(t => (todayWod.type||'').toUpperCase().includes(t)) && !['REPS','REPETIÇÕES','CARGA','WEIGHT','AMRAP'].some(t => (todayWod.type||'').toUpperCase().includes(t));
           
           const parseResult = (r: string): number => {
             if (!r) return isTimeBased ? 999999 : 0;
