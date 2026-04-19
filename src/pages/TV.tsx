@@ -411,20 +411,10 @@ export default function TV() {
                     </div>
                   </div>
 
-                  {/* RX / Scaled / Beginner — ocupa todo o espaço */}
-                  <div className="flex-1 grid grid-cols-3 gap-4">
-                    <div className="bg-secondary/10 border-2 border-secondary/40 rounded-[2rem] p-6 flex flex-col">
-                      <span className="text-secondary text-base font-black uppercase tracking-widest mb-4">🔴 RX</span>
-                      <p className="text-white font-headline font-black text-3xl italic leading-snug whitespace-pre-wrap flex-1">{wod.rx}</p>
-                    </div>
-                    <div className="bg-white/5 border border-white/10 rounded-[2rem] p-6 flex flex-col">
-                      <span className="text-white/60 text-base font-black uppercase tracking-widest mb-4">⚪ SCALED</span>
-                      <p className="text-white/90 font-headline font-black text-3xl italic leading-snug whitespace-pre-wrap flex-1">{wod.scaled}</p>
-                    </div>
-                    <div className="bg-white/5 border border-white/10 rounded-[2rem] p-6 flex flex-col">
-                      <span className="text-white/60 text-base font-black uppercase tracking-widest mb-4">🟢 BEGINNER</span>
-                      <p className="text-white/90 font-headline font-black text-3xl italic leading-snug whitespace-pre-wrap flex-1">{wod.beginner}</p>
-                    </div>
+                  {/* RX — ocupa todo o espaço */}
+                  <div className="flex-1 bg-secondary/10 border-2 border-secondary/40 rounded-[2rem] p-8 flex flex-col">
+                    <span className="text-secondary text-lg font-black uppercase tracking-widest mb-6">🔴 RX</span>
+                    <p className="text-white font-headline font-black text-5xl italic leading-snug whitespace-pre-wrap flex-1">{wod.rx}</p>
                   </div>
                 </motion.section>
               )}
