@@ -4,9 +4,12 @@ import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { Wod as WodType } from '../types';
 import { format, addDays, subDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { supabase } from '../lib/supabase';
+
+const TIMEZONE = 'America/Sao_Paulo';
 
 export default function Wod() {
   const { user } = useAuth();
@@ -31,7 +34,7 @@ export default function Wod() {
       const { data } = await supabase.from('wods').select('*');
       setWods(data || []);
       
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      const dateStr = formatInTimeZone(selectedDate, TIMEZONE, 'yyyy-MM-dd');
       const found = (data || []).find((w: any) => w.date === dateStr);
       setCurrentWod(found || null);
       if (found) {
