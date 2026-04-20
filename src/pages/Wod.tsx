@@ -23,17 +23,59 @@ export default function Wod() {
   const [newResult, setNewResult] = useState({ result: '', type: 'RX' });
   const [isSaving, setIsSaving] = useState(false);
 
+  const parseResult = (r: string, isTimeBased: boolean): number => {
+    if (!r) return isTimeBased ? 999999 : 0;
+    const str = r.trim();
+    if (/^\d+:\d+/.test(str)) {
+      const p = str.split(':').map(Number);
+      return p.length === 2 ? p[0] * 60 + p[1] : p[0] * 3600 + p[1] * 60 + p[2];
+    }
+    return parseFloat(str.replace(/[^0-9.]/g, '')) || (isTimeBased ? 999999 : 0);
+  };
+
   const fetchResults = async (wodId: string) => {
+    // Busca o tipo do WOD para saber se é por tempo ou por reps
+    const { data: wod } = await supabase
+      .from('wods')
+      .select('type')
+      .eq('id', wodId)
+      .maybeSingle();
+
     const { data } = await supabase
       .from('wod_results')
       .select('*, profiles(name)')
-      .eq('wod_id', wodId)
-      .order('created_at', { ascending: false });
-    setResults(data || []);
+      .eq('wod_id', wodId);
+
+    const isTimeBased = ['FOR TIME', 'TIME', 'TEMPO'].some(
+      t => (wod?.type || '').toUpperCase().includes(t)
+    );
+
+    // Deduplicar: mantém apenas o melhor resultado por usuário
+    const bestByUser: Record<string, any> = {};
+    (data || []).forEach((r: any) => {
+      const val = parseResult(r.result, isTimeBased);
+      const prev = bestByUser[r.user_id];
+      if (!prev) {
+        bestByUser[r.user_id] = r;
+        return;
+      }
+      const prevVal = parseResult(prev.result, isTimeBased);
+      const isBetter = isTimeBased ? val < prevVal : val > prevVal;
+      if (isBetter) bestByUser[r.user_id] = r;
+    });
+
+    // Ordena por melhor resultado
+    const sorted = Object.values(bestByUser).sort((a: any, b: any) =>
+      isTimeBased
+        ? parseResult(a.result, isTimeBased) - parseResult(b.result, isTimeBased)
+        : parseResult(b.result, isTimeBased) - parseResult(a.result, isTimeBased)
+    );
+
+    setResults(sorted);
 
     // Buscar resultado do usuário atual
     if (user) {
-      const userRes = (data || []).find((r: any) => r.user_id === user.id);
+      const userRes = sorted.find((r: any) => r.user_id === user.id);
       setUserResult(userRes || null);
       if (userRes) {
         setNewResult({ result: userRes.result, type: userRes.type });
@@ -352,4 +394,4 @@ export default function Wod() {
       </AnimatePresence>
     </div>
   );
-}
+        }
