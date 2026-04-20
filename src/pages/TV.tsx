@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Timer, Trophy, Zap, Swords, Maximize, LayoutDashboard, Activity, Users, Play, Pause, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wod, Challenge, Duel, User, BoxSettings } from '../types';
@@ -21,7 +21,12 @@ export default function TV() {
   const [freqRanking, setFreqRanking] = useState<any[]>([]);
   const [wodTabIndex, setWodTabIndex] = useState(0);
 
-  const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const clockInterval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(clockInterval);
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -98,51 +103,64 @@ export default function TV() {
     }
   };
 
+  // Ref para count de atletas — evita recriar intervals quando dados mudam
+  const athleteCountRef = useRef(0);
+  useEffect(() => {
+    const count = data?.checkins?.length > 0
+      ? data.checkins.map((c: any) => c.profiles).filter(Boolean).length
+      : data?.rankings?.length || 0;
+    athleteCountRef.current = count;
+  }, [data?.checkins?.length, data?.rankings?.length]);
+
+  // Setup principal — roda apenas 1 vez
   useEffect(() => {
     fetchData();
+
+    // Polling a cada 30s
     const interval = setInterval(fetchData, 30000);
-    
+
+    // Alterna aba de ranking XP <-> FREQ
     const rankingTabInterval = setInterval(() => {
       setRankingTab(prev => prev === 'xp' ? 'freq' : 'xp');
     }, 8000);
 
+    // Carrossel de atletas usando ref (sem recriar interval)
     const athleteInterval = setInterval(() => {
       setAthleteIndex(prev => {
-        const athletesToDisplay = data?.checkins?.length > 0 
-          ? data.checkins.map((c: any) => c.profiles).filter(Boolean)
-          : data?.rankings || [];
-        const count = athletesToDisplay.length || 1;
+        const count = athleteCountRef.current || 1;
         return (prev + 1) % count;
       });
-    }, 8000);
+    }, 4000);
 
-    let wodInterval: any;
-    if (isWodAutoRotationActive) {
-      wodInterval = setInterval(() => {
-        setWodTabIndex(prev => (prev + 1) % 3);
-      }, 15000);
-    }
-
-    const checkinsChannel = supabase.channel('tv-checkins')
-      .on('postgres_changes', { event: '*', table: 'checkins' }, fetchData)
+    // Realtime: checkins E profiles
+    const realtimeChannel = supabase
+      .channel('tv-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, () => { fetchData(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => { fetchData(); })
       .subscribe();
 
     return () => {
       clearInterval(interval);
       clearInterval(rankingTabInterval);
       clearInterval(athleteInterval);
-      clearInterval(wodInterval);
-      supabase.removeChannel(checkinsChannel);
+      supabase.removeChannel(realtimeChannel);
     };
-  }, [data?.rankings?.length, data?.checkins?.length, isWodAutoRotationActive]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // Rotação automática do WOD — separado para reagir a isWodAutoRotationActive
   useEffect(() => {
-    let interval: any;
-    if (isTimerRunning) {
-      interval = setInterval(() => {
-        setTimer(t => t + 1);
-      }, 1000);
-    }
+    if (!isWodAutoRotationActive) return;
+    const wodInterval = setInterval(() => {
+      setWodTabIndex(prev => (prev + 1) % 3);
+    }, 15000);
+    return () => clearInterval(wodInterval);
+  }, [isWodAutoRotationActive]);
+
+  // Timer de treino
+  useEffect(() => {
+    if (!isTimerRunning) return;
+    const interval = setInterval(() => setTimer(t => t + 1), 1000);
     return () => clearInterval(interval);
   }, [isTimerRunning]);
 
@@ -192,7 +210,7 @@ export default function TV() {
           </div>
           <div className="flex flex-col items-center">
             <span className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">HORA ATUAL</span>
-            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(new Date(), 'HH:mm:ss')}</span>
+            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(now, 'HH:mm:ss')}</span>
           </div>
         </header>
         <div className="flex-1 flex flex-col items-center justify-center bg-[#111] rounded-[3rem] border border-white/5">
@@ -230,7 +248,7 @@ export default function TV() {
         <div className="flex items-center gap-12">
           <div className="flex flex-col items-center">
             <span className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">HORA ATUAL</span>
-            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(new Date(), 'HH:mm:ss')}</span>
+            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(now, 'HH:mm:ss')}</span>
           </div>
           
           <div className="h-12 w-[1px] bg-white/10"></div>
@@ -412,9 +430,18 @@ export default function TV() {
                   </div>
 
                   {/* RX — ocupa todo o espaço */}
-                  <div className="flex-1 bg-secondary/10 border-2 border-secondary/40 rounded-[2rem] p-8 flex flex-col">
-                    <span className="text-secondary text-lg font-black uppercase tracking-widest mb-6">🔴 RX</span>
-                    <p className="text-white font-headline font-black text-5xl italic leading-snug whitespace-pre-wrap flex-1">{wod.rx}</p>
+                  <div className="flex-1 bg-secondary/10 border-2 border-secondary/40 rounded-[2rem] p-8 flex flex-col overflow-hidden">
+                    <span className="text-secondary text-lg font-black uppercase tracking-widest mb-4 shrink-0">🔴 RX</span>
+                    <p className="text-white font-headline font-black italic leading-snug whitespace-pre-wrap overflow-hidden"
+                      style={{
+                        fontSize: wod.rx && wod.rx.length > 200 ? '1.5rem' : wod.rx && wod.rx.length > 100 ? '2rem' : '2.5rem',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 10,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden'
+                      }}>
+                      {wod.rx}
+                    </p>
                   </div>
                 </motion.section>
               )}
@@ -424,8 +451,8 @@ export default function TV() {
 
         {/* Right: CHECK-IN & ATHLETE CARDS */}
         <div className="col-span-4 flex flex-col gap-6">
-          {/* TOP 3 RANKING */}
-          <section className="bg-[#111] rounded-[2.5rem] p-5 border border-white/5 flex flex-col gap-3">
+          {/* TOP 3 RANKING — ocupa mais espaço */}
+          <section className="bg-[#111] rounded-[2.5rem] p-5 border border-white/5 flex flex-col gap-3" style={{flex: '2 1 0'}}>
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-primary" />
@@ -491,8 +518,8 @@ export default function TV() {
             </div>
           </section>
 
-          {/* ATLETAS NA AULA — Carrossel dinâmico */}
-          <section className="bg-[#111] rounded-[2.5rem] border border-white/5 flex-1 relative overflow-hidden flex flex-col">
+          {/* ATLETAS NA AULA — Carrossel dinâmico — compacto */}
+          <section className="bg-[#111] rounded-[2.5rem] border border-white/5 relative overflow-hidden flex flex-col" style={{flex: '1 1 0'}}>
             {/* Header */}
             <div className="flex justify-between items-center px-5 pt-4 pb-2">
               <div className="flex items-center gap-2">
@@ -511,89 +538,35 @@ export default function TV() {
                 </p>
               </div>
             ) : (
-              <>
-                {/* Avatar em destaque — atleta atual */}
-                <AnimatePresence mode="wait">
-                  {(() => {
-                    const c = checkins[athleteIndex % checkins.length];
-                    const profile = c?.profiles;
-                    return (
-                      <motion.div
-                        key={athleteIndex}
-                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 1.05, y: -20 }}
-                        transition={{ duration: 0.5 }}
-                        className="flex flex-col items-center justify-center flex-1 gap-3 pb-2"
-                      >
-                        {/* Avatar grande com glow */}
-                        <div className="relative">
-                          <div className="absolute inset-0 rounded-full bg-primary/20 blur-2xl scale-150" />
-                          <AvatarPreview
-                            equipped={profile?.avatar_equipped}
-                            size="xl"
-                            className="relative border-4 border-primary shadow-[0_0_40px_rgba(202,253,0,0.4)]"
-                          />
-                          {/* Badge check-in */}
-                          <div className="absolute -bottom-2 -right-2 bg-primary text-black text-[9px] font-black px-2 py-0.5 rounded-full uppercase italic shadow-lg">
-                            ✓ CHECK-IN
-                          </div>
-                        </div>
-
-                        {/* Nome e info */}
-                        <div className="text-center px-4">
-                          <h4 className="text-2xl font-headline font-black text-white uppercase italic tracking-tight leading-none">
-                            {profile?.name?.split(' ')[0] || 'Atleta'}
-                          </h4>
-                          <p className="text-primary text-[10px] font-black uppercase tracking-widest mt-1">
-                            {c?.class_time ? `Aula ${c.class_time}` : 'Check-in realizado'}
-                          </p>
-                        </div>
-
-                        {/* Indicadores de paginação */}
-                        <div className="flex gap-1.5 mt-1">
-                          {checkins.slice(0, Math.min(checkins.length, 8)).map((_: any, i: number) => (
-                            <div
-                              key={i}
-                              className={`rounded-full transition-all duration-300 ${
-                                i === athleteIndex % checkins.length
-                                  ? 'w-4 h-1.5 bg-primary'
-                                  : 'w-1.5 h-1.5 bg-white/20'
-                              }`}
-                            />
-                          ))}
-                          {checkins.length > 8 && (
-                            <span className="text-white/30 text-[8px] font-black">+{checkins.length - 8}</span>
-                          )}
-                        </div>
-                      </motion.div>
-                    );
-                  })()}
-                </AnimatePresence>
-
-                {/* Mini lista dos outros atletas */}
-                <div className="border-t border-white/5 px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar">
-                  {checkins.map((c: any, i: number) => {
+              <div className="flex-1 flex flex-col justify-center px-4 py-2 gap-2 overflow-hidden">
+                {/* Grade de avatares compacta */}
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {checkins.slice(0, 12).map((c: any, i: number) => {
                     const profile = c?.profiles;
                     const isActive = i === athleteIndex % checkins.length;
                     return (
                       <div
                         key={c.id}
-                        className={`shrink-0 flex flex-col items-center gap-1 transition-all ${isActive ? 'opacity-100' : 'opacity-40'}`}
+                        className={`flex flex-col items-center gap-0.5 transition-all ${isActive ? 'opacity-100 scale-110' : 'opacity-50'}`}
                       >
                         <AvatarPreview
                           equipped={profile?.avatar_equipped}
                           size="sm"
-                          className={`border-2 transition-all ${isActive ? 'border-primary shadow-[0_0_10px_rgba(202,253,0,0.4)]' : 'border-white/10'}`}
+                          className={`border-2 transition-all ${isActive ? 'border-primary shadow-[0_0_10px_rgba(202,253,0,0.5)]' : 'border-white/10'}`}
                         />
-                        <span className="text-[7px] font-black text-white/60 uppercase truncate max-w-[40px]">
+                        <span className="text-[7px] font-black text-white/70 uppercase truncate max-w-[38px] text-center">
                           {profile?.name?.split(' ')[0] || '?'}
                         </span>
                       </div>
                     );
                   })}
+                  {checkins.length > 12 && (
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/5 border border-white/10">
+                      <span className="text-white/40 text-[9px] font-black">+{checkins.length - 12}</span>
+                    </div>
+                  )}
                 </div>
-              </>
+              </div>
             )}
           </section>
         </div>
