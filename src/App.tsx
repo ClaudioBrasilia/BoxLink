@@ -15,6 +15,7 @@ import Admin from './pages/Admin';
 import Coach from './pages/Coach';
 import TV from './pages/TV';
 import Clans from './pages/Clans';
+import Benchmarks from './pages/Benchmarks';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import DebugFlow from './pages/DebugFlow';
