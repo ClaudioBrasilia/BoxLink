@@ -22,6 +22,7 @@ export default function TV() {
   const [wodTabIndex, setWodTabIndex] = useState(0);
 
   const [now, setNow] = useState(new Date());
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const clockInterval = setInterval(() => setNow(new Date()), 1000);
@@ -538,35 +539,87 @@ export default function TV() {
                 </p>
               </div>
             ) : (
-              <div className="flex-1 flex flex-col justify-center px-4 py-2 gap-2 overflow-hidden">
-                {/* Grade de avatares compacta */}
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {checkins.slice(0, 12).map((c: any, i: number) => {
+              <>
+                {/* Avatar em destaque — tamanho médio */}
+                <AnimatePresence mode="wait">
+                  {(() => {
+                    const c = checkins[athleteIndex % checkins.length];
+                    const profile = c?.profiles;
+                    return (
+                      <motion.div
+                        key={athleteIndex}
+                        initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 1.05, y: -10 }}
+                        transition={{ duration: 0.4 }}
+                        className="flex items-center gap-4 px-5 py-3 flex-1"
+                      >
+                        {/* Avatar md com glow */}
+                        <div className="relative shrink-0">
+                          <div className="absolute inset-0 rounded-full bg-primary/20 blur-xl scale-150" />
+                          <AvatarPreview
+                            equipped={profile?.avatar_equipped}
+                            size="md"
+                            className="relative border-4 border-primary shadow-[0_0_20px_rgba(202,253,0,0.4)]"
+                          />
+                          <div className="absolute -bottom-1 -right-1 bg-primary text-black text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase italic shadow">
+                            ✓
+                          </div>
+                        </div>
+
+                        {/* Nome e info */}
+                        <div className="flex flex-col min-w-0">
+                          <h4 className="text-xl font-headline font-black text-white uppercase italic tracking-tight leading-none truncate">
+                            {profile?.name?.split(' ')[0] || 'Atleta'}
+                          </h4>
+                          <p className="text-primary text-[9px] font-black uppercase tracking-widest mt-1">
+                            {c?.class_time ? `Aula ${c.class_time}` : 'Check-in realizado'}
+                          </p>
+                          {/* Indicadores */}
+                          <div className="flex gap-1 mt-2">
+                            {checkins.slice(0, Math.min(checkins.length, 8)).map((_: any, i: number) => (
+                              <div
+                                key={i}
+                                className={`rounded-full transition-all duration-300 ${
+                                  i === athleteIndex % checkins.length
+                                    ? 'w-3 h-1.5 bg-primary'
+                                    : 'w-1.5 h-1.5 bg-white/20'
+                                }`}
+                              />
+                            ))}
+                            {checkins.length > 8 && (
+                              <span className="text-white/30 text-[8px] font-black ml-1">+{checkins.length - 8}</span>
+                            )}
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })()}
+                </AnimatePresence>
+
+                {/* Mini lista dos outros atletas */}
+                <div className="border-t border-white/5 px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar">
+                  {checkins.map((c: any, i: number) => {
                     const profile = c?.profiles;
                     const isActive = i === athleteIndex % checkins.length;
                     return (
                       <div
                         key={c.id}
-                        className={`flex flex-col items-center gap-0.5 transition-all ${isActive ? 'opacity-100 scale-110' : 'opacity-50'}`}
+                        className={`shrink-0 flex flex-col items-center gap-0.5 transition-all ${isActive ? 'opacity-100' : 'opacity-35'}`}
                       >
                         <AvatarPreview
                           equipped={profile?.avatar_equipped}
                           size="sm"
-                          className={`border-2 transition-all ${isActive ? 'border-primary shadow-[0_0_10px_rgba(202,253,0,0.5)]' : 'border-white/10'}`}
+                          className={`border-2 transition-all ${isActive ? 'border-primary shadow-[0_0_8px_rgba(202,253,0,0.4)]' : 'border-white/10'}`}
                         />
-                        <span className="text-[7px] font-black text-white/70 uppercase truncate max-w-[38px] text-center">
+                        <span className="text-[7px] font-black text-white/60 uppercase truncate max-w-[36px] text-center">
                           {profile?.name?.split(' ')[0] || '?'}
                         </span>
                       </div>
                     );
                   })}
-                  {checkins.length > 12 && (
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/5 border border-white/10">
-                      <span className="text-white/40 text-[9px] font-black">+{checkins.length - 12}</span>
-                    </div>
-                  )}
                 </div>
-              </div>
+              </>
             )}
           </section>
         </div>
