@@ -16,7 +16,7 @@ import { uploadImage } from '../utils/image';
 export default function Admin() {
   const { user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
-  const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'schedule' | 'challenges' | 'store' | 'operation' | 'ranking'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'schedule' | 'challenges' | 'store' | 'operation' | 'ranking' | 'checkins'>('users');
   const [settings, setSettings] = useState<BoxSettings>({
     name: '',
     logo: '',
@@ -86,6 +86,8 @@ export default function Admin() {
   const [uploading, setUploading] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [checkinsDate, setCheckinsDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [checkinsExpanded, setCheckinsExpanded] = useState<Record<string, boolean>>({});
 
   const [newChallenge, setNewChallenge] = useState({
     title: '',
@@ -613,7 +615,7 @@ export default function Admin() {
 
       {/* Tabs */}
       <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10 overflow-x-auto no-scrollbar">
-        {(['users', 'settings', 'schedule', 'challenges', 'store', 'operation', 'ranking'] as const).map((tab) => (
+        {(['users', 'settings', 'schedule', 'challenges', 'store', 'operation', 'ranking', 'checkins'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -628,6 +630,7 @@ export default function Admin() {
              tab === 'challenges' ? 'DESAFIOS' :
              tab === 'store' ? 'LOJA' :
              tab === 'operation' ? 'OPERAÇÃO' :
+             tab === 'checkins' ? 'CHECK-INS' :
              'RANKING'}
           </button>
         ))}
@@ -1745,6 +1748,224 @@ export default function Admin() {
             </div>
           </motion.div>
         )}
+        {activeTab === 'checkins' && (() => {
+          // Compute check-ins for the selected date grouped by schedule slot
+          const dateStr = checkinsDate;
+          const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
+
+          // Slots active on this day
+          const activeSlots = schedule.filter(s => s.isActive && s.days?.includes(dayOfWeek));
+
+          // All checkins on this date
+          const dayCheckins = users.flatMap(u =>
+            u.checkins
+              .filter(c => c.date === dateStr)
+              .map(c => ({ ...c, user: u }))
+          );
+
+          // Summary
+          const totalExpected = activeSlots.reduce((acc, s) => acc + s.capacity, 0);
+          const totalPresent = dayCheckins.length;
+          const totalAbsent = Math.max(0, totalExpected - totalPresent);
+
+          return (
+            <motion.div
+              key="checkins"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="flex flex-col gap-6"
+            >
+              {/* Date picker + summary */}
+              <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-4">
+                <div className="flex justify-between items-center flex-wrap gap-3">
+                  <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
+                    <History className="w-5 h-5 text-primary" /> CHECK-INS DO DIA
+                  </h3>
+                  <input
+                    type="date"
+                    value={checkinsDate}
+                    onChange={e => setCheckinsDate(e.target.value)}
+                    className="bg-surface-container-highest border-none rounded-2xl px-4 py-3 font-headline font-bold text-on-surface text-sm"
+                  />
+                </div>
+
+                {/* Metric cards */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-surface-container-highest rounded-2xl p-4 text-center">
+                    <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Check-ins</p>
+                    <p className="text-2xl font-headline font-black text-primary italic">{totalPresent}</p>
+                  </div>
+                  <div className="bg-surface-container-highest rounded-2xl p-4 text-center">
+                    <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Esperados</p>
+                    <p className="text-2xl font-headline font-black text-on-surface italic">{totalExpected}</p>
+                  </div>
+                  <div className="bg-surface-container-highest rounded-2xl p-4 text-center">
+                    <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Ausências</p>
+                    <p className="text-2xl font-headline font-black text-error italic">{totalAbsent}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Slots */}
+              {activeSlots.length === 0 ? (
+                <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 text-center">
+                  <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50 italic">Nenhuma aula programada para este dia</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activeSlots.map(slot => {
+                    const slotCheckins = dayCheckins.filter(c =>
+                      c.classTime === slot.time ||
+                      (!c.classTime && (() => {
+                        if (!c.timestamp) return false;
+                        const t = new Date(c.timestamp);
+                        const [sh, sm] = slot.time.split(':').map(Number);
+                        const [eh, em] = slot.endTime.split(':').map(Number);
+                        const start = sh * 60 + sm - (slot.checkinWindowMinutes || 60);
+                        const end = eh * 60 + em;
+                        const cur = t.getHours() * 60 + t.getMinutes();
+                        return cur >= start && cur <= end;
+                      })())
+                    );
+                    const pct = slot.capacity > 0 ? Math.round((slotCheckins.length / slot.capacity) * 100) : 0;
+                    const isOpen = !!checkinsExpanded[slot.id || slot.time];
+
+                    return (
+                      <div key={slot.id || slot.time} className="bg-surface-container-low rounded-3xl border border-outline-variant/10 overflow-hidden">
+                        <button
+                          onClick={() => setCheckinsExpanded(prev => ({ ...prev, [slot.id || slot.time]: !prev[slot.id || slot.time] }))}
+                          className="w-full flex justify-between items-center p-4 hover:border-primary/20 transition-all"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="p-3 bg-primary/10 rounded-2xl">
+                              <Clock className="w-5 h-5 text-primary" />
+                            </div>
+                            <div className="text-left">
+                              <p className="text-on-surface font-bold uppercase text-sm italic">{slot.time} – {slot.endTime}</p>
+                              <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Coach: {slot.coach}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {/* Progress bar */}
+                            <div className="hidden sm:flex items-center gap-2">
+                              <div className="w-20 h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all"
+                                  style={{
+                                    width: `${Math.min(pct, 100)}%`,
+                                    background: pct >= 80 ? '#639922' : pct >= 50 ? '#BA7517' : '#E24B4A'
+                                  }}
+                                />
+                              </div>
+                              <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest min-w-[52px] text-right">
+                                {slotCheckins.length}/{slot.capacity}
+                              </span>
+                            </div>
+                            <span className={cn(
+                              "text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-widest",
+                              pct >= 80 ? "bg-primary/20 text-primary" : pct >= 50 ? "bg-secondary/20 text-secondary" : "bg-error-container text-on-error-container"
+                            )}>
+                              {pct}%
+                            </span>
+                            <ChevronDown className={cn("w-4 h-4 text-on-surface-variant transition-transform", isOpen && "rotate-180")} />
+                          </div>
+                        </button>
+
+                        <AnimatePresence>
+                          {isOpen && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="overflow-hidden border-t border-outline-variant/10"
+                            >
+                              <div className="p-4 space-y-2">
+                                {slotCheckins.length === 0 ? (
+                                  <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50 italic text-center py-4">
+                                    Nenhum check-in registrado nesta aula
+                                  </p>
+                                ) : (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {slotCheckins.map((c, idx) => (
+                                      <div key={idx} className="flex items-center gap-3 bg-surface-container-highest/40 px-3 py-2.5 rounded-2xl">
+                                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-headline font-black text-sm flex-shrink-0">
+                                          {(c.user.name || 'S')[0]}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-on-surface font-bold uppercase text-xs truncate">{c.user.name}</p>
+                                          {c.timestamp && (
+                                            <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest">
+                                              {format(new Date(c.timestamp), 'HH:mm')}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Checkins without a matched slot */}
+              {(() => {
+                const matchedUserIds = new Set(
+                  activeSlots.flatMap(slot =>
+                    dayCheckins.filter(c =>
+                      c.classTime === slot.time ||
+                      (!c.classTime && (() => {
+                        if (!c.timestamp) return false;
+                        const t = new Date(c.timestamp);
+                        const [sh, sm] = slot.time.split(':').map(Number);
+                        const [eh, em] = slot.endTime.split(':').map(Number);
+                        const start = sh * 60 + sm - (slot.checkinWindowMinutes || 60);
+                        const end = eh * 60 + em;
+                        const cur = t.getHours() * 60 + t.getMinutes();
+                        return cur >= start && cur <= end;
+                      })())
+                    ).map(c => c.user.id + (c.timestamp || ''))
+                  )
+                );
+                const unmatched = dayCheckins.filter(c => !matchedUserIds.has(c.user.id + (c.timestamp || '')));
+                if (unmatched.length === 0) return null;
+                return (
+                  <div className="bg-surface-container-low rounded-3xl border border-outline-variant/10 overflow-hidden">
+                    <div className="p-4 border-b border-outline-variant/10">
+                      <p className="text-on-surface font-bold uppercase text-sm italic">SEM AULA VINCULADA</p>
+                      <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{unmatched.length} check-in(s)</p>
+                    </div>
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {unmatched.map((c, idx) => (
+                        <div key={idx} className="flex items-center gap-3 bg-surface-container-highest/40 px-3 py-2.5 rounded-2xl">
+                          <div className="w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center text-secondary font-headline font-black text-sm flex-shrink-0">
+                            {(c.user.name || 'S')[0]}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-on-surface font-bold uppercase text-xs truncate">{c.user.name}</p>
+                            {c.timestamp && (
+                              <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest">
+                                {format(new Date(c.timestamp), 'HH:mm')}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </motion.div>
+          );
+        })()}
+
       </AnimatePresence>
 
       {/* Edit WOD Modal */}
