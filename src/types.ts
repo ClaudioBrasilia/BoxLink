@@ -72,6 +72,8 @@ export interface Challenge {
   repeatable: boolean;
   dailyLimit: number;
   difficulty?: 'easy' | 'medium' | 'hard' | 'special';
+  required_days?: number;
+  require_photo?: boolean;
 }
 
 export interface Duel {
