@@ -269,7 +269,7 @@ export default function Dashboard() {
       {/* Desafios Ativos */}
       {activeChallenges.length > 0 && (
         <section className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-4 cursor-pointer hover:border-primary/30 transition-all"
-          onClick={() => window.location.href = '/challenges'}>
+          onClick={() => navigate('/challenges')}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 bg-primary/20 rounded-xl flex items-center justify-center">
@@ -461,25 +461,6 @@ export default function Dashboard() {
           </div>
         )}
       </AnimatePresence>
-
-      {/* Quick Actions */}
-      <section className="grid grid-cols-1 gap-4">
-        <button 
-          onClick={() => navigate('/challenges')}
-          className="bg-secondary/10 border border-secondary/20 p-6 rounded-[2rem] flex items-center justify-between group hover:bg-secondary/20 transition-all"
-        >
-          <div className="flex items-center gap-4">
-            <div className="bg-secondary/20 w-12 h-12 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Zap className="w-6 h-6 text-secondary fill-secondary" />
-            </div>
-            <div className="text-left">
-              <h3 className="font-headline font-black text-xl text-on-surface uppercase italic leading-none mb-1">DESAFIOS</h3>
-              <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Conclua e ganhe recompensas</p>
-            </div>
-          </div>
-          <ChevronRight className="w-6 h-6 text-secondary" />
-        </button>
-      </section>
 
       {/* Quick Stats */}
       <section className="grid grid-cols-2 gap-4">
