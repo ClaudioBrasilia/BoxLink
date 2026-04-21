@@ -33,9 +33,20 @@ export default function Dashboard() {
     const { data: settingsData } = await supabase.from('box_settings').select('*').single();
     const rawAnn = settingsData?.announcements || settingsData?.tv_config?.announcements || [];
     if (Array.isArray(rawAnn) && rawAnn.length > 0) {
-      const annTexts = rawAnn.map((a: any) =>
-        typeof a === 'string' ? a : (a.title ? `${a.title}${a.content ? ': ' + a.content : ''}` : '')
-      ).filter(Boolean);
+      const annTexts = rawAnn
+        .filter((a: any) => a.active !== false)
+        .map((a: any) => {
+          if (typeof a === 'string') {
+            try {
+              const parsed = JSON.parse(a);
+              return parsed.title ? `${parsed.title}${parsed.content ? ': ' + parsed.content : ''}` : a;
+            } catch (e) {
+              return a;
+            }
+          }
+          return a.title ? `${a.title}${a.content ? ': ' + a.content : ''}` : '';
+        })
+        .filter(Boolean);
       setAnnouncements(annTexts);
     }
 
