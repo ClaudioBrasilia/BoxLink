@@ -535,25 +535,35 @@ export default function Admin() {
   };
 
   const handleSystemReset = async () => {
-    const confirmation = prompt('AVISO CRÍTICO: Isso apagará TODOS os check-ins, resultados de WOD, histórico de recompensas, duelos e resetará o XP/Coins de todos os usuários. Digite "RESETAR" para confirmar:');
+    const confirmation = prompt('ATENÇÃO: Isso zerará o XP, nível e moedas de todos os atletas para iniciar uma nova temporada em igualdade. Os check-ins e histórico são mantidos.\n\nDigite "RESETAR" para confirmar:');
     
     if (confirmation !== 'RESETAR') return;
 
     try {
-      // 1. Delete history tables
-      await supabase.from('checkins').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('reward_history').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('wod_results').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('duels').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('domination_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-
-      // 2. Reset user profiles
-      await supabase
+      // Apenas zera XP, level e coins dos atletas — nenhum dado é apagado
+      const { error } = await supabase
         .from('profiles')
-        .update({ xp: 0, coins: 100, level: 1 })
-        .neq('role', 'admin');
+        .update({
+          xp: 0,
+          coins: 100,
+          level: 1,
+          avatar_equipped: {
+            base_outfit: 'default_base',
+            top: null,
+            bottom: null,
+            shoes: null,
+            accessory: null,
+            head_accessory: null,
+            wrist_accessory: null,
+            special: null
+          },
+          avatar_inventory: ['default_base']
+        })
+        .neq('id', '00000000-0000-0000-0000-000000000000');
 
-      alert('Sistema resetado com sucesso! O box está limpo para um novo começo.');
+      if (error) throw error;
+
+      alert('Progresso zerado com sucesso! Todos os atletas estão na mesma largada para a nova temporada.');
       fetchAll();
     } catch (err: any) {
       alert('Erro durante o reset: ' + err.message);
@@ -1706,13 +1716,13 @@ export default function Admin() {
                 <Shield className="w-5 h-5" /> ZONA DE PERIGO
               </h3>
               <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest leading-relaxed">
-                O reset do sistema limpará todos os dados de check-ins, resultados e histórico, mantendo apenas os perfis dos usuários (com XP zerado).
+                Zera o XP, nível e moedas de todos os atletas para iniciar uma nova temporada com todos na mesma largada. Check-ins e histórico são preservados.
               </p>
               <button 
                 onClick={handleSystemReset}
                 className="w-full bg-error text-on-error py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2 hover:bg-error/90 transition-colors"
               >
-                <Trash2 className="w-5 h-5" /> RESETAR SISTEMA PARA NOVA TEMPORADA
+                <Shield className="w-5 h-5" /> ZERAR XP E NÍVEL PARA NOVA TEMPORADA
               </button>
             </div>
           </motion.div>
