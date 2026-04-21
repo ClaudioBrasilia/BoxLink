@@ -99,7 +99,9 @@ export default function Admin() {
     coins: 10,
     repeatable: false,
     dailyLimit: 1,
-    difficulty: 'easy'
+    difficulty: 'easy',
+    required_days: 1,
+    require_photo: false
   });
   
   const [newSchedule, setNewSchedule] = useState<Schedule>({ 
@@ -398,7 +400,9 @@ export default function Admin() {
         coins: newChallenge.coins,
         repeatable: newChallenge.repeatable,
         daily_limit: newChallenge.dailyLimit,
-        difficulty: newChallenge.difficulty
+        difficulty: newChallenge.difficulty,
+        required_days: newChallenge.required_days,
+        require_photo: newChallenge.require_photo
       })
       .select();
 
@@ -414,7 +418,9 @@ export default function Admin() {
         coins: 10,
         repeatable: false,
         dailyLimit: 1,
-        difficulty: 'easy'
+        difficulty: 'easy',
+        required_days: 1,
+        require_photo: false
       });
       alert('Desafio criado com sucesso!');
     } else {
@@ -480,7 +486,9 @@ export default function Admin() {
         coins: editingChallenge.coins,
         repeatable: editingChallenge.repeatable,
         daily_limit: editingChallenge.dailyLimit,
-        difficulty: editingChallenge.difficulty
+        difficulty: editingChallenge.difficulty,
+        required_days: editingChallenge.required_days,
+        require_photo: editingChallenge.require_photo
       })
       .eq('id', editingChallenge.id);
 
@@ -1469,6 +1477,35 @@ export default function Admin() {
                     />
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dias necessários para completar</label>
+                  <input 
+                    type="number" 
+                    min={1}
+                    value={newChallenge.required_days} 
+                    onChange={e => setNewChallenge({...newChallenge, required_days: parseInt(e.target.value) || 1})}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                  />
+                  <p className="text-[9px] text-on-surface-variant opacity-60 uppercase tracking-widest">Aluno precisa marcar OK este número de dias para receber a recompensa</p>
+                </div>
+                <div className="flex items-center justify-between bg-surface-container-highest rounded-2xl px-4 py-3">
+                  <div>
+                    <p className="text-[10px] text-on-surface font-bold uppercase tracking-widest">Exigir foto como prova</p>
+                    <p className="text-[9px] text-on-surface-variant opacity-60 uppercase tracking-widest">Aluno deve enviar foto ao marcar OK</p>
+                  </div>
+                  <button
+                    onClick={() => setNewChallenge({...newChallenge, require_photo: !newChallenge.require_photo})}
+                    className={cn(
+                      "w-12 h-6 rounded-full transition-all relative",
+                      newChallenge.require_photo ? "bg-primary" : "bg-surface-container-low border border-outline-variant/30"
+                    )}
+                  >
+                    <span className={cn(
+                      "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all",
+                      newChallenge.require_photo ? "left-6" : "left-0.5"
+                    )} />
+                  </button>
+                </div>
                 <button 
                   onClick={handleAddChallenge}
                   className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
@@ -2138,6 +2175,36 @@ export default function Admin() {
                     </select>
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dias necessários para completar</label>
+                <input 
+                  type="number" 
+                  min={1}
+                  value={editingChallenge.required_days || 1} 
+                  onChange={e => setEditingChallenge({...editingChallenge, required_days: parseInt(e.target.value) || 1})}
+                  className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                />
+                <p className="text-[9px] text-on-surface-variant opacity-60 uppercase tracking-widest">Aluno precisa marcar OK este número de dias para receber a recompensa</p>
+              </div>
+              <div className="flex items-center justify-between bg-surface-container-highest rounded-2xl px-4 py-3">
+                <div>
+                  <p className="text-[10px] text-on-surface font-bold uppercase tracking-widest">Exigir foto como prova</p>
+                  <p className="text-[9px] text-on-surface-variant opacity-60 uppercase tracking-widest">Aluno deve enviar foto ao marcar OK</p>
+                </div>
+                <button
+                  onClick={() => setEditingChallenge({...editingChallenge, require_photo: !editingChallenge.require_photo})}
+                  className={cn(
+                    "w-12 h-6 rounded-full transition-all relative",
+                    editingChallenge.require_photo ? "bg-primary" : "bg-surface-container-low border border-outline-variant/30"
+                  )}
+                >
+                  <span className={cn(
+                    "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all",
+                    editingChallenge.require_photo ? "left-6" : "left-0.5"
+                  )} />
+                </button>
               </div>
 
               <div className="flex gap-3 pt-4">
