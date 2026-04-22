@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useReducer } from 'react';
 import { Timer, Trophy, Zap, Swords, Maximize, LayoutDashboard, Activity, Users, Play, Pause, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wod, Challenge, Duel, User, BoxSettings } from '../types';
@@ -23,13 +23,15 @@ export default function TV() {
 
   const [now, setNow] = useState(new Date());
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     const clockInterval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(clockInterval);
   }, []);
 
-  const fetchData = async () => {
+  // useCallback garante referência estável — o canal Realtime sempre chama a versão atual
+  const fetchData = useCallback(async () => {
     try {
       const today = formatInTimeZone(new Date(), TIMEZONE, "yyyy-MM-dd");
 
@@ -83,7 +85,6 @@ export default function TV() {
         .slice(0, 3);
       setFreqRanking(freqTop);
 
-      // Mocked stats for the ticker
       setData({
         settings: settings || { name: "CrossCity Hub", logo: "" },
         rewards: economy,
@@ -98,11 +99,12 @@ export default function TV() {
         rankings: rankings || []
       });
       setError(null);
+      setLastUpdated(new Date());
     } catch (err: any) {
       console.error('TV Fetch Error:', err);
       setError(err.message);
     }
-  };
+  }, []); // deps vazias: não usa nenhum state externo
 
   // Ref para count de atletas — evita recriar intervals quando dados mudam
   const athleteCountRef = useRef(0);
@@ -117,7 +119,7 @@ export default function TV() {
   useEffect(() => {
     fetchData();
 
-    // Polling a cada 30s
+    // Polling a cada 30s (fallback caso o realtime falhe)
     const interval = setInterval(fetchData, 30000);
 
     // Alterna aba de ranking XP <-> FREQ
@@ -133,12 +135,24 @@ export default function TV() {
       });
     }, 4000);
 
-    // Realtime: checkins E profiles
-    const realtimeChannel = supabase
-      .channel('tv-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, () => { fetchData(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => { fetchData(); })
-      .subscribe();
+    // Realtime: checkins E profiles — com reconexão automática em caso de falha
+    let realtimeChannel: ReturnType<typeof supabase.channel>;
+
+    const subscribeRealtime = () => {
+      realtimeChannel = supabase
+        .channel('tv-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, () => { fetchData(); })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => { fetchData(); })
+        .subscribe((status) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.warn('[TV] Canal realtime perdido, reconectando em 5s...');
+            supabase.removeChannel(realtimeChannel);
+            setTimeout(subscribeRealtime, 5000);
+          }
+        });
+    };
+
+    subscribeRealtime();
 
     return () => {
       clearInterval(interval);
@@ -146,8 +160,7 @@ export default function TV() {
       clearInterval(athleteInterval);
       supabase.removeChannel(realtimeChannel);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchData]);
 
   // Rotação automática do WOD — separado para reagir a isWodAutoRotationActive
   useEffect(() => {
@@ -196,6 +209,7 @@ export default function TV() {
 
   if (!data) return <div className="min-h-screen bg-black flex items-center justify-center text-primary font-headline font-black text-4xl italic animate-pulse">PREPARANDO ARENA...</div>;
 
+  const isStale = lastUpdated && (Date.now() - lastUpdated.getTime()) > 60000;
   const { wod, checkins, settings, rankings, stats, duels } = data;
   
   if (!wod) {
@@ -278,6 +292,23 @@ export default function TV() {
         </div>
 
         <div className="flex items-center gap-4">
+          {/* Indicador de status de atualização */}
+          {isStale ? (
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-yellow-400 text-[9px] font-black uppercase tracking-widest animate-pulse">⚠ SEM ATUALIZAÇÃO</span>
+              <button onClick={fetchData} className="text-yellow-400/70 text-[8px] font-black uppercase tracking-wider hover:text-yellow-400 transition-colors">
+                RECONECTAR
+              </button>
+            </div>
+          ) : lastUpdated ? (
+            <div className="flex flex-col items-center">
+              <span className="text-green-400/60 text-[8px] font-black uppercase tracking-widest">● AO VIVO</span>
+              <span className="text-white/20 text-[7px] font-black uppercase">{format(lastUpdated, 'HH:mm:ss')}</span>
+            </div>
+          ) : null}
+          {error && (
+            <span className="text-red-400 text-[8px] font-black uppercase tracking-widest animate-pulse">ERRO: {error}</span>
+          )}
           <button onClick={toggleFullscreen} className="p-4 bg-white/5 rounded-2xl border border-white/10 hover:bg-primary hover:text-black transition-all group">
             <Maximize className="w-6 h-6 group-hover:scale-110 transition-transform" />
           </button>
@@ -681,4 +712,4 @@ export default function TV() {
       `}</style>
     </div>
   );
-}
+    }
