@@ -45,14 +45,18 @@ export default function AvatarCustomization() {
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState<keyof AvatarSlot | 'all'>('all');
   const [avatarEnabled, setAvatarEnabled] = useState<boolean | null>(null);
+  const [storeEnabled, setStoreEnabled] = useState<boolean | null>(null);
+  const [economyEnabled, setEconomyEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     const fetchAll = async () => {
       const { data: settingsData } = await supabase
         .from('box_settings')
-        .select('avatar_enabled')
+        .select('avatar_enabled, modules')
         .single();
       setAvatarEnabled(settingsData?.avatar_enabled ?? false);
+      setStoreEnabled(settingsData?.modules?.store ?? true);
+      setEconomyEnabled(settingsData?.modules?.economy ?? true);
 
       const { data: itemsData } = await supabase.from('items').select('*');
       setItems(itemsData || []);
@@ -88,7 +92,7 @@ export default function AvatarCustomization() {
   };
 
   // Loading inicial
-  if (avatarEnabled === null) {
+  if (avatarEnabled === null || storeEnabled === null || economyEnabled === null) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -97,7 +101,7 @@ export default function AvatarCustomization() {
   }
 
   // Avatar desabilitado pelo admin
-  if (!avatarEnabled) {
+  if (!avatarEnabled || !storeEnabled || !economyEnabled) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background gap-6 p-8">
         <Sparkles className="w-16 h-16 text-primary opacity-30" />
