@@ -1,12 +1,41 @@
 import React from 'react';
 import { AvatarSlot } from '../types';
 import { cn } from '../lib/utils';
-import { AvatarLayers } from './AvatarLayers';
 
 interface AvatarPreviewProps {
   equipped: AvatarSlot;
   className?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+}
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const BUCKET = 'avatar-assets';
+
+function getAvatarImageUrl(filename: string): string {
+  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${filename}.png`;
+}
+
+/**
+ * Resolve qual imagem mostrar com base nos itens equipados.
+ * Prioridade: item equipado > base do gênero
+ *
+ * Como cada imagem PNG já contém o personagem completo vestido com aquele item,
+ * mostramos apenas UMA imagem por vez — a do item de maior prioridade visual.
+ * Ordem de prioridade: top > bottom > shoes > especial > base
+ */
+function resolveAvatarImage(equipped: AvatarSlot): string {
+  // Determina gênero pela base
+  const isFemale = equipped.base_outfit === 'base_female' || equipped.base_outfit?.includes('female');
+
+  // Prioridade: top > bottom > shoes > special > base
+  if (equipped.top) return getAvatarImageUrl(equipped.top);
+  if (equipped.bottom) return getAvatarImageUrl(equipped.bottom);
+  if (equipped.shoes) return getAvatarImageUrl(equipped.shoes);
+  if (equipped.special) return getAvatarImageUrl(equipped.special);
+
+  // Fallback: imagem base do gênero
+  const baseImage = isFemale ? 'base_feminina' : 'base_masculina';
+  return getAvatarImageUrl(baseImage);
 }
 
 export default function AvatarPreview({ equipped, className, size = 'md' }: AvatarPreviewProps) {
@@ -17,57 +46,27 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
     xl: 'w-48 h-48',
   };
 
-  const baseId = equipped.base_outfit || 'base_1';
-  const isMale = baseId === 'base_1';
+  const imageUrl = resolveAvatarImage(equipped);
 
   return (
     <div className={cn(
-      "relative rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(202,253,0,0.2)]",
+      'relative rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(202,253,0,0.2)]',
       sizeClasses[size],
       className
     )}>
-      <svg
-        viewBox="0 0 200 300"
-        className="w-full h-full"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        {/* Base Body */}
-        <g className="text-on-surface-variant opacity-30">
-          {isMale ? AvatarLayers.base.male : AvatarLayers.base.female}
-        </g>
-
-        {/* Bottom Layer (Pants) */}
-        {equipped.bottom && (AvatarLayers.bottom as any)[equipped.bottom]?.(equipped.bottom.includes('premium') ? '#1A1A1A' : '#4F46E5')}
-
-        {/* Top Layer (Shirt) */}
-        {equipped.top && (AvatarLayers.top as any)[equipped.top]?.(equipped.top.includes('premium') ? '#000000' : '#CAFD00')}
-
-        {/* Shoes Layer */}
-        {equipped.shoes && (AvatarLayers.shoes as any)[equipped.shoes]?.(equipped.shoes.includes('premium') ? '#111111' : '#FFFFFF')}
-
-        {/* Head Accessory */}
-        {equipped.head_accessory && (AvatarLayers.head_accessory as any)[equipped.head_accessory]?.('#000000')}
-
-        {/* Wrist Accessory (Grips) */}
-        {equipped.wrist_accessory && (AvatarLayers.wrist_accessory as any)[equipped.wrist_accessory]?.('#333333')}
-
-        {/* Accessory (Glasses/Belt) */}
-        {equipped.accessory && (AvatarLayers.accessory as any)[equipped.accessory]?.(equipped.accessory === 'belt_1' ? '#111111' : '#000000')}
-
-        {/* Special Effects */}
-        {equipped.special && (
-          <g>
-            {(AvatarLayers.special as any)[equipped.special]?.('#CAFD00')}
-            <circle cx="100" cy="150" r="80" fill="url(#grad)" className="animate-pulse opacity-30" />
-            <defs>
-              <radialGradient id="grad" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
-                <stop offset="0%" stopColor="#CAFD00" stopOpacity="0.5" />
-                <stop offset="100%" stopColor="#CAFD00" stopOpacity="0" />
-              </radialGradient>
-            </defs>
-          </g>
-        )}
-      </svg>
+      <img
+        src={imageUrl}
+        alt="Avatar"
+        className="w-full h-full object-cover object-top"
+        onError={(e) => {
+          // Fallback para base se a imagem do item não carregar
+          const isFemale = equipped.base_outfit?.includes('female');
+          const fallback = getAvatarImageUrl(isFemale ? 'base_feminina' : 'base_masculina');
+          if (e.currentTarget.src !== fallback) {
+            e.currentTarget.src = fallback;
+          }
+        }}
+      />
     </div>
   );
 }
