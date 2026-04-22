@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Coins, MapPin, Timer, ChevronRight, Trophy, Share2, Target } from 'lucide-react';
+import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, Share2, Target } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -441,4 +441,4 @@ export default function Dashboard() {
       </AnimatePresence>
     </div>
   );
-}
+            }
