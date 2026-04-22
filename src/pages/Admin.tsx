@@ -1313,6 +1313,34 @@ export default function Admin() {
                 </button>
               </div>
 
+              {/* Toggle Módulo Economia */}
+              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
+                <div>
+                  <p className="text-xs font-black text-on-surface uppercase italic">Módulo Economia</p>
+                  <p className="text-[10px] text-on-surface-variant mt-0.5">Ativa/desativa sistema de moedas e XP</p>
+                </div>
+                <button
+                  onClick={() => setSettings({...settings, modules: {...settings.modules, economy: !settings.modules.economy}})}
+                  className={`w-12 h-6 rounded-full transition-all relative ${settings.modules.economy ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${settings.modules.economy ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+
+              {/* Toggle Módulo Loja */}
+              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
+                <div>
+                  <p className="text-xs font-black text-on-surface uppercase italic">Módulo Loja</p>
+                  <p className="text-[10px] text-on-surface-variant mt-0.5">Ativa/desativa loja de avatares para atletas</p>
+                </div>
+                <button
+                  onClick={() => setSettings({...settings, modules: {...settings.modules, store: !settings.modules.store}})}
+                  className={`w-12 h-6 rounded-full transition-all relative ${settings.modules.store ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${settings.modules.store ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+
               {/* Botão Salvar no final */}
               <button
                 onClick={handleSaveSettings}
