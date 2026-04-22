@@ -8,6 +8,14 @@ import { Item, AvatarSlot } from '../types';
 import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const BUCKET = 'avatar-assets';
+
+function getItemImageUrl(imageKey: string): string {
+  if (imageKey.startsWith('http')) return imageKey;
+  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${imageKey}.png`;
+}
+
 const SLOT_ICONS: Record<string, any> = {
   top: Shirt,
   bottom: Footprints,
@@ -55,8 +63,8 @@ export default function AvatarCustomization() {
 
       const { error } = await supabase
         .from('profiles')
-        .update({ 
-          coins: newCoins, 
+        .update({
+          coins: newCoins,
           avatar_inventory: newInventory,
           updated_at: new Date().toISOString()
         })
@@ -82,7 +90,7 @@ export default function AvatarCustomization() {
 
       const { error } = await supabase
         .from('profiles')
-        .update({ 
+        .update({
           avatar_equipped: newEquipped,
           updated_at: new Date().toISOString()
         })
@@ -106,7 +114,10 @@ export default function AvatarCustomization() {
   return (
     <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background pb-24">
       <header className="flex items-center gap-4">
-        <button onClick={() => navigate(-1)} className="p-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 text-on-surface hover:bg-surface-container-highest transition-all">
+        <button
+          onClick={() => navigate(-1)}
+          className="p-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 text-on-surface hover:bg-surface-container-highest transition-all"
+        >
           <ChevronLeft className="w-5 h-5" />
         </button>
         <h1 className="text-3xl font-headline font-black text-on-surface tracking-tight uppercase italic flex items-center gap-3">
@@ -125,42 +136,53 @@ export default function AvatarCustomization() {
         </div>
 
         <AvatarPreview equipped={user?.avatar.equipped!} size="xl" />
-        
+
         <div className="text-center">
-          <h2 className="text-2xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none mb-1">{user?.name}</h2>
-          <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest italic">NÍVEL {user?.level}</p>
+          <h2 className="text-2xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none mb-1">
+            {user?.name}
+          </h2>
+          <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest italic">
+            NÍVEL {user?.level}
+          </p>
         </div>
       </section>
 
-      {/* Tabs & Filters */}
+      {/* Tabs */}
       <div className="flex flex-col gap-4">
         <div className="flex bg-surface-container-low p-1.5 rounded-2xl border border-outline-variant/10">
-          <button 
+          <button
             onClick={() => setActiveTab('inventory')}
             className={cn(
-              "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all",
-              activeTab === 'inventory' ? "bg-primary text-on-primary shadow-lg shadow-primary/20" : "text-on-surface-variant hover:bg-surface-container-highest"
+              'flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all',
+              activeTab === 'inventory'
+                ? 'bg-primary text-on-primary shadow-lg shadow-primary/20'
+                : 'text-on-surface-variant hover:bg-surface-container-highest'
             )}
           >
             <Package className="w-4 h-4" /> MEU ARMÁRIO
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('shop')}
             className={cn(
-              "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all",
-              activeTab === 'shop' ? "bg-secondary text-on-secondary shadow-lg shadow-secondary/20" : "text-on-surface-variant hover:bg-surface-container-highest"
+              'flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all',
+              activeTab === 'shop'
+                ? 'bg-secondary text-on-secondary shadow-lg shadow-secondary/20'
+                : 'text-on-surface-variant hover:bg-surface-container-highest'
             )}
           >
             <ShoppingBag className="w-4 h-4" /> LOJA
           </button>
         </div>
 
+        {/* Filtros por slot */}
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-          <button 
+          <button
             onClick={() => setSelectedSlot('all')}
             className={cn(
-              "px-4 py-2 rounded-full font-bold uppercase text-[8px] tracking-widest whitespace-nowrap border transition-all",
-              selectedSlot === 'all' ? "bg-on-surface text-surface border-on-surface" : "bg-surface-container-low text-on-surface-variant border-outline-variant/10"
+              'px-4 py-2 rounded-full font-bold uppercase text-[8px] tracking-widest whitespace-nowrap border transition-all',
+              selectedSlot === 'all'
+                ? 'bg-on-surface text-surface border-on-surface'
+                : 'bg-surface-container-low text-on-surface-variant border-outline-variant/10'
             )}
           >
             TODOS
@@ -168,12 +190,14 @@ export default function AvatarCustomization() {
           {Object.entries(SLOT_LABELS).map(([slot, label]) => {
             const Icon = SLOT_ICONS[slot];
             return (
-              <button 
+              <button
                 key={slot}
                 onClick={() => setSelectedSlot(slot as keyof AvatarSlot)}
                 className={cn(
-                  "px-4 py-2 rounded-full font-bold uppercase text-[8px] tracking-widest whitespace-nowrap border flex items-center gap-2 transition-all",
-                  selectedSlot === slot ? "bg-on-surface text-surface border-on-surface" : "bg-surface-container-low text-on-surface-variant border-outline-variant/10"
+                  'px-4 py-2 rounded-full font-bold uppercase text-[8px] tracking-widest whitespace-nowrap border flex items-center gap-2 transition-all',
+                  selectedSlot === slot
+                    ? 'bg-on-surface text-surface border-on-surface'
+                    : 'bg-surface-container-low text-on-surface-variant border-outline-variant/10'
                 )}
               >
                 <Icon className="w-3 h-3" /> {label}
@@ -183,98 +207,119 @@ export default function AvatarCustomization() {
         </div>
       </div>
 
+      {/* Loading */}
+      {loading && (
+        <div className="flex justify-center py-12">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+
       {/* Items Grid */}
-      <section className="grid grid-cols-2 gap-4">
-        <AnimatePresence mode="wait">
-          {(activeTab === 'inventory' ? inventoryItems : shopItems).map((item) => {
-            const isEquipped = user?.avatar.equipped[item.slot] === item.id;
-            const canAfford = (user?.coins || 0) >= item.price;
+      {!loading && (
+        <section className="grid grid-cols-2 gap-4">
+          <AnimatePresence mode="wait">
+            {(activeTab === 'inventory' ? inventoryItems : shopItems).map((item) => {
+              const isEquipped = user?.avatar.equipped[item.slot] === item.id;
+              const canAfford = (user?.coins || 0) >= item.price;
+              const imageUrl = getItemImageUrl(item.image);
 
-            return (
-              <motion.div
-                key={item.id}
-                layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className={cn(
-                  "bg-surface-container-low rounded-3xl border p-4 flex flex-col gap-3 transition-all relative group",
-                  isEquipped ? "border-primary bg-primary/5" : "border-outline-variant/10 hover:border-primary/30"
-                )}
-              >
-                {isEquipped && (
-                  <div className="absolute top-3 right-3 bg-primary text-on-primary p-1 rounded-full shadow-lg">
-                    <Check className="w-3 h-3" />
-                  </div>
-                )}
-                
-                <div className="aspect-square rounded-2xl bg-surface-container-highest flex items-center justify-center text-4xl group-hover:scale-110 transition-transform overflow-hidden">
-                  {item.image.startsWith('http') ? (
-                    <img 
-                      src={item.image} 
-                      alt={item.name} 
-                      className="w-full h-full object-contain"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    item.image
+              return (
+                <motion.div
+                  key={item.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className={cn(
+                    'bg-surface-container-low rounded-3xl border p-4 flex flex-col gap-3 transition-all relative group',
+                    isEquipped
+                      ? 'border-primary bg-primary/5'
+                      : 'border-outline-variant/10 hover:border-primary/30'
                   )}
-                </div>
+                >
+                  {isEquipped && (
+                    <div className="absolute top-3 right-3 bg-primary text-on-primary p-1 rounded-full shadow-lg">
+                      <Check className="w-3 h-3" />
+                    </div>
+                  )}
 
-                <div>
-                  <h4 className="text-on-surface font-bold uppercase text-[10px] italic leading-tight">{item.name}</h4>
-                  <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest mt-0.5 opacity-50">
-                    {SLOT_LABELS[item.slot]}
-                  </p>
-                </div>
+                  {/* Thumbnail do item — mostra o personagem completo com o item */}
+                  <div className="aspect-square rounded-2xl bg-surface-container-highest overflow-hidden group-hover:scale-105 transition-transform">
+                    <img
+                      src={imageUrl}
+                      alt={item.name}
+                      className="w-full h-full object-cover object-top"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  </div>
 
-                {activeTab === 'inventory' ? (
-                  <button 
-                    onClick={() => handleEquip(isEquipped ? null : item.id, item.slot)}
-                    className={cn(
-                      "w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all",
-                      isEquipped ? "bg-surface-container-highest text-on-surface-variant" : "bg-primary text-on-primary shadow-lg shadow-primary/20"
-                    )}
-                  >
-                    {isEquipped ? 'REMOVER' : 'EQUIPAR'}
-                  </button>
-                ) : (
-                  <button 
-                    onClick={() => handleBuy(item)}
-                    disabled={!canAfford}
-                    className={cn(
-                      "w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all flex items-center justify-center gap-1.5",
-                      canAfford ? "bg-secondary text-on-secondary shadow-lg shadow-secondary/20" : "bg-surface-container-highest text-on-surface-variant opacity-50 cursor-not-allowed"
-                    )}
-                  >
-                    <Coins className="w-3 h-3" /> {item.price} BC
-                  </button>
-                )}
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
+                  <div>
+                    <h4 className="text-on-surface font-bold uppercase text-[10px] italic leading-tight">
+                      {item.name}
+                    </h4>
+                    <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest mt-0.5 opacity-50">
+                      {SLOT_LABELS[item.slot]}
+                    </p>
+                  </div>
 
-        {activeTab === 'inventory' && inventoryItems.length === 0 && (
-          <div className="col-span-2 bg-surface-container-low p-12 rounded-[2.5rem] border border-outline-variant/10 text-center">
-            <Package className="w-12 h-12 text-on-surface-variant opacity-20 mx-auto mb-4" />
-            <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">Seu armário está vazio</p>
-            <button 
-              onClick={() => setActiveTab('shop')}
-              className="mt-4 text-primary text-[10px] font-black uppercase tracking-widest hover:underline"
-            >
-              VISITAR A LOJA
-            </button>
-          </div>
-        )}
+                  {activeTab === 'inventory' ? (
+                    <button
+                      onClick={() => handleEquip(isEquipped ? null : item.id, item.slot)}
+                      className={cn(
+                        'w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all',
+                        isEquipped
+                          ? 'bg-surface-container-highest text-on-surface-variant'
+                          : 'bg-primary text-on-primary shadow-lg shadow-primary/20'
+                      )}
+                    >
+                      {isEquipped ? 'REMOVER' : 'EQUIPAR'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleBuy(item)}
+                      disabled={!canAfford}
+                      className={cn(
+                        'w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all flex items-center justify-center gap-1.5',
+                        canAfford
+                          ? 'bg-secondary text-on-secondary shadow-lg shadow-secondary/20'
+                          : 'bg-surface-container-highest text-on-surface-variant opacity-50 cursor-not-allowed'
+                      )}
+                    >
+                      <Coins className="w-3 h-3" /> {item.price} BC
+                    </button>
+                  )}
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
 
-        {activeTab === 'shop' && shopItems.length === 0 && (
-          <div className="col-span-2 bg-surface-container-low p-12 rounded-[2.5rem] border border-outline-variant/10 text-center">
-            <ShoppingBag className="w-12 h-12 text-on-surface-variant opacity-20 mx-auto mb-4" />
-            <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">Você já comprou tudo!</p>
-          </div>
-        )}
-      </section>
+          {activeTab === 'inventory' && inventoryItems.length === 0 && !loading && (
+            <div className="col-span-2 bg-surface-container-low p-12 rounded-[2.5rem] border border-outline-variant/10 text-center">
+              <Package className="w-12 h-12 text-on-surface-variant opacity-20 mx-auto mb-4" />
+              <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">
+                Seu armário está vazio
+              </p>
+              <button
+                onClick={() => setActiveTab('shop')}
+                className="mt-4 text-primary text-[10px] font-black uppercase tracking-widest hover:underline"
+              >
+                VISITAR A LOJA
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'shop' && shopItems.length === 0 && !loading && (
+            <div className="col-span-2 bg-surface-container-low p-12 rounded-[2.5rem] border border-outline-variant/10 text-center">
+              <ShoppingBag className="w-12 h-12 text-on-surface-variant opacity-20 mx-auto mb-4" />
+              <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">
+                Você já comprou tudo!
+              </p>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
