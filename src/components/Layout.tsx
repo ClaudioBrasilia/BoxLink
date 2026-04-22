@@ -2,13 +2,27 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity, Users, BarChart3 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../lib/supabase';
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [storeEnabled, setStoreEnabled] = useState(true);
+  const [economyEnabled, setEconomyEnabled] = useState(true);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const { data: settingsData } = await supabase.from('box_settings').select('modules').single();
+      if (settingsData?.modules) {
+        setStoreEnabled(settingsData.modules.store ?? true);
+        setEconomyEnabled(settingsData.modules.economy ?? true);
+      }
+    };
+    fetchSettings();
+  }, []);
 
   const navItems = [
     { icon: Home, label: 'Início', path: '/' },
@@ -23,7 +37,7 @@ export default function Layout() {
     { icon: LineChart, label: 'Evolução', path: '/progress' },
     { icon: Box, label: 'Meu Box', path: '/mybox' },
     { icon: Users, label: 'Times', path: '/clans' },
-    { icon: Sparkles, label: 'Avatar', path: '/avatar' },
+    ...(user?.role === 'admin' || (storeEnabled && economyEnabled) ? [{ icon: Sparkles, label: 'Avatar', path: '/avatar' }] : []),
     { icon: BarChart3, label: 'Benchmarks', path: '/benchmarks' },
     ...(user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Admin', path: '/admin' }] : []),
     ...(user?.role === 'coach' || user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Coach', path: '/coach' }] : []),
