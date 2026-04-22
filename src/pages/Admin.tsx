@@ -121,6 +121,7 @@ export default function Admin() {
     price: 100,
     image: ''
   });
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
 
   const [isManageUsersOpen, setIsManageUsersOpen] = useState(false);
   const [openSections, setOpenSections] = useState<string[]>([]);
@@ -451,6 +452,7 @@ export default function Admin() {
   };
 
   const handleDeleteItem = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este item?')) return;
     const { error } = await supabase
       .from('items')
       .delete()
@@ -460,6 +462,27 @@ export default function Admin() {
       setItems(items.filter(i => i.id !== id));
     } else {
       alert('Erro ao excluir item: ' + error.message);
+    }
+  };
+
+  const handleUpdateItem = async () => {
+    if (!editingItem) return;
+    const { error } = await supabase
+      .from('items')
+      .update({
+        name: editingItem.name,
+        slot: editingItem.slot,
+        price: editingItem.price,
+        image: editingItem.image
+      })
+      .eq('id', editingItem.id);
+
+    if (!error) {
+      setItems(items.map(i => i.id === editingItem.id ? editingItem : i));
+      setEditingItem(null);
+      alert('Item atualizado com sucesso!');
+    } else {
+      alert('Erro ao atualizar item: ' + error.message);
     }
   };
 
@@ -1587,25 +1610,26 @@ export default function Admin() {
           >
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-4">
               <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-primary" /> ADICIONAR ITEM NA LOJA
+                <ShoppingBag className="w-5 h-5 text-primary" /> {editingItem ? 'EDITAR ITEM' : 'ADICIONAR ITEM NA LOJA'}
               </h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">ID do Item</label>
                   <input 
                     type="text" 
-                    value={newItem.id} 
-                    onChange={e => setNewItem({...newItem, id: e.target.value})}
+                    value={editingItem ? editingItem.id : newItem.id} 
+                    onChange={e => editingItem ? setEditingItem({...editingItem, id: e.target.value}) : setNewItem({...newItem, id: e.target.value})}
+                    disabled={!!editingItem}
                     placeholder="ex: cap_red"
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface disabled:opacity-50" 
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome</label>
                   <input 
                     type="text" 
-                    value={newItem.name} 
-                    onChange={e => setNewItem({...newItem, name: e.target.value})}
+                    value={editingItem ? editingItem.name : newItem.name} 
+                    onChange={e => editingItem ? setEditingItem({...editingItem, name: e.target.value}) : setNewItem({...newItem, name: e.target.value})}
                     placeholder="ex: Boné Vermelho"
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                   />
@@ -1615,8 +1639,8 @@ export default function Admin() {
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Slot</label>
                   <select 
-                    value={newItem.slot} 
-                    onChange={e => setNewItem({...newItem, slot: e.target.value as any})}
+                    value={editingItem ? editingItem.slot : newItem.slot} 
+                    onChange={e => editingItem ? setEditingItem({...editingItem, slot: e.target.value as any}) : setNewItem({...newItem, slot: e.target.value as any})}
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer" 
                   >
                     <option value="top">Cabeça</option>
@@ -1630,8 +1654,8 @@ export default function Admin() {
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Preço (Coins)</label>
                   <input 
                     type="number" 
-                    value={newItem.price} 
-                    onChange={e => setNewItem({...newItem, price: parseInt(e.target.value)})}
+                    value={editingItem ? editingItem.price : newItem.price} 
+                    onChange={e => editingItem ? setEditingItem({...editingItem, price: parseInt(e.target.value)}) : setNewItem({...newItem, price: parseInt(e.target.value)})}
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                   />
                 </div>
@@ -1640,29 +1664,59 @@ export default function Admin() {
                 <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">URL da Imagem</label>
                 <input 
                   type="text" 
-                  value={newItem.image} 
-                  onChange={e => setNewItem({...newItem, image: e.target.value})}
+                  value={editingItem ? editingItem.image : newItem.image} 
+                  onChange={e => editingItem ? setEditingItem({...editingItem, image: e.target.value}) : setNewItem({...newItem, image: e.target.value})}
                   placeholder="https://..."
                   className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                 />
               </div>
-              <button 
-                onClick={handleAddItem}
-                className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
-              >
-                <Plus className="w-5 h-5" /> ADICIONAR ITEM
-              </button>
+              <div className="flex gap-2">
+                {editingItem ? (
+                  <>
+                    <button 
+                      onClick={handleUpdateItem}
+                      className="flex-1 bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
+                    >
+                      <Save className="w-5 h-5" /> SALVAR ALTERAÇÕES
+                    </button>
+                    <button 
+                      onClick={() => setEditingItem(null)}
+                      className="flex-1 bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
+                    >
+                      <X className="w-5 h-5" /> CANCELAR
+                    </button>
+                  </>
+                ) : (
+                  <button 
+                    onClick={handleAddItem}
+                    className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-5 h-5" /> ADICIONAR ITEM
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               {items.map((item) => (
                 <div key={item.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-3 group relative">
-                  <button 
-                    onClick={() => handleDeleteItem(item.id)}
-                    className="absolute top-2 right-2 p-2 bg-error-container text-on-error-container rounded-xl opacity-0 group-hover:opacity-100 transition-all z-10"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
+                    <button 
+                      onClick={() => {
+                        setEditingItem(item);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="p-2 bg-primary/20 text-primary rounded-xl hover:bg-primary hover:text-background transition-all"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteItem(item.id)}
+                      className="p-2 bg-error-container text-on-error-container rounded-xl hover:bg-error hover:text-white transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                   <div className="aspect-square rounded-2xl bg-surface-container-highest flex items-center justify-center overflow-hidden">
                     {item.image ? (
                       <img src={item.image} alt={item.name} className="w-full h-full object-contain p-2" />
@@ -1671,10 +1725,10 @@ export default function Admin() {
                     )}
                   </div>
                   <div>
-                    <p className="text-on-surface font-bold uppercase text-[10px] italic truncate">{item.name}</p>
+                    <p className="text-on-surface font-bold uppercase text-sm italic truncate">{item.name}</p>
                     <div className="flex justify-between items-center mt-1">
-                      <span className="text-[8px] font-black text-secondary uppercase tracking-widest">{item.price} COINS</span>
-                      <span className="text-[8px] font-black text-on-surface-variant uppercase tracking-widest opacity-50">{item.slot}</span>
+                      <span className="text-[10px] font-black text-secondary uppercase tracking-widest">{item.price} COINS</span>
+                      <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest opacity-50">{item.slot}</span>
                     </div>
                   </div>
                 </div>
