@@ -312,6 +312,7 @@ export default function Admin() {
         announcements: (settings as any).announcements || [],
         timezone: settings.timezone || 'America/Sao_Paulo',
         clans_enabled: (settings as any).clans_enabled || false,
+        avatar_enabled: (settings as any).avatar_enabled || false,
         max_clan_members: settings.max_clan_members || 10,
         updated_at: new Date().toISOString()
       })
@@ -535,35 +536,25 @@ export default function Admin() {
   };
 
   const handleSystemReset = async () => {
-    const confirmation = prompt('ATENÇÃO: Isso zerará o XP, nível e moedas de todos os atletas para iniciar uma nova temporada em igualdade. Os check-ins e histórico são mantidos.\n\nDigite "RESETAR" para confirmar:');
+    const confirmation = prompt('AVISO CRÍTICO: Isso apagará TODOS os check-ins, resultados de WOD, histórico de recompensas, duelos e resetará o XP/Coins de todos os usuários. Digite "RESETAR" para confirmar:');
     
     if (confirmation !== 'RESETAR') return;
 
     try {
-      // Apenas zera XP, level e coins dos atletas — nenhum dado é apagado
-      const { error } = await supabase
+      // 1. Delete history tables
+      await supabase.from('checkins').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('reward_history').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('wod_results').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('duels').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('domination_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+      // 2. Reset user profiles
+      await supabase
         .from('profiles')
-        .update({
-          xp: 0,
-          coins: 100,
-          level: 1,
-          avatar_equipped: {
-            base_outfit: 'default_base',
-            top: null,
-            bottom: null,
-            shoes: null,
-            accessory: null,
-            head_accessory: null,
-            wrist_accessory: null,
-            special: null
-          },
-          avatar_inventory: ['default_base']
-        })
-        .neq('id', '00000000-0000-0000-0000-000000000000');
+        .update({ xp: 0, coins: 100, level: 1 })
+        .neq('role', 'admin');
 
-      if (error) throw error;
-
-      alert('Progresso zerado com sucesso! Todos os atletas estão na mesma largada para a nova temporada.');
+      alert('Sistema resetado com sucesso! O box está limpo para um novo começo.');
       fetchAll();
     } catch (err: any) {
       alert('Erro durante o reset: ' + err.message);
@@ -1285,6 +1276,20 @@ export default function Admin() {
                 </button>
               </div>
 
+              {/* Toggle Sistema de Avatar */}
+              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
+                <div>
+                  <p className="text-xs font-black text-on-surface uppercase italic">Sistema de Avatar</p>
+                  <p className="text-[10px] text-on-surface-variant mt-0.5">Permite atletas customizar seu personagem na loja</p>
+                </div>
+                <button
+                  onClick={() => setSettings({...settings, avatar_enabled: !(settings as any).avatar_enabled} as any)}
+                  className={`w-12 h-6 rounded-full transition-all relative ${(settings as any)?.avatar_enabled ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
+                >
+                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${(settings as any)?.avatar_enabled ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+
               {/* Botão Salvar no final */}
               <button
                 onClick={handleSaveSettings}
@@ -1716,13 +1721,13 @@ export default function Admin() {
                 <Shield className="w-5 h-5" /> ZONA DE PERIGO
               </h3>
               <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest leading-relaxed">
-                Zera o XP, nível e moedas de todos os atletas para iniciar uma nova temporada com todos na mesma largada. Check-ins e histórico são preservados.
+                O reset do sistema limpará todos os dados de check-ins, resultados e histórico, mantendo apenas os perfis dos usuários (com XP zerado).
               </p>
               <button 
                 onClick={handleSystemReset}
                 className="w-full bg-error text-on-error py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2 hover:bg-error/90 transition-colors"
               >
-                <Shield className="w-5 h-5" /> ZERAR XP E NÍVEL PARA NOVA TEMPORADA
+                <Trash2 className="w-5 h-5" /> RESETAR SISTEMA PARA NOVA TEMPORADA
               </button>
             </div>
           </motion.div>
