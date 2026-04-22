@@ -8,6 +8,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { supabase } from '../lib/supabase';
+import { addReward } from '../utils/rewards';
 
 const TIMEZONE = 'America/Sao_Paulo';
 
@@ -110,6 +111,8 @@ export default function Wod() {
     }
 
     setIsSaving(true);
+    const isFirstTime = !userResult;
+
     try {
       const { error } = await supabase
         .from('wod_results')
@@ -117,14 +120,29 @@ export default function Wod() {
           user_id: user.id,
           wod_id: currentWod.id,
           result: newResult.result,
-          type: newResult.type
+          type: newResult.type,
+          rewarded: isFirstTime ? true : (userResult?.rewarded ?? false)
         }, { onConflict: 'user_id,wod_id' });
 
       if (!error) {
+        // Só dá recompensa no primeiro registro, nunca na edição
+        if (isFirstTime) {
+          const { data: economy } = await supabase
+            .from('avatar_economy_settings')
+            .select('*')
+            .eq('is_active', true)
+            .single();
+          const xp = economy?.xp_per_wod || 30;
+          const coins = economy?.coins_per_wod || 10;
+          await addReward(user.id, 'wod', xp, coins, `WOD: ${currentWod.name}`);
+          alert(`Resultado registrado! +${xp} XP, +${coins} BrazaCoins`);
+        } else {
+          alert('Resultado atualizado com sucesso!');
+        }
+
         setIsRegistering(false);
         setIsEditing(false);
         await fetchResults(currentWod.id);
-        alert(userResult ? 'Resultado atualizado com sucesso!' : 'Resultado registrado com sucesso!');
       } else {
         console.error('Error registering result:', error);
         alert('Erro ao registrar resultado: ' + error.message);
