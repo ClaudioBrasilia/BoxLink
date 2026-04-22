@@ -12,7 +12,8 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const BUCKET = 'avatar-assets';
 
 function getAvatarImageUrl(filename: string): string {
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${filename}.png`;
+  const encoded = encodeURIComponent(filename);
+  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encoded}.png`;
 }
 
 /**
