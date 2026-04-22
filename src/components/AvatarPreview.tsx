@@ -33,8 +33,8 @@ function resolveAvatarImage(equipped: AvatarSlot): string {
   if (equipped.shoes) return getAvatarImageUrl(equipped.shoes);
   if (equipped.special) return getAvatarImageUrl(equipped.special);
 
-  // Fallback: imagem base do gênero
-  const baseImage = isFemale ? 'base_feminina' : 'base_masculina';
+  // Fallback: imagem base do gênero (nomes com espaço conforme Storage)
+  const baseImage = isFemale ? 'base feminina' : 'base masculima';
   return getAvatarImageUrl(baseImage);
 }
 
@@ -61,7 +61,7 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
         onError={(e) => {
           // Fallback para base se a imagem do item não carregar
           const isFemale = equipped.base_outfit?.includes('female');
-          const fallback = getAvatarImageUrl(isFemale ? 'base_feminina' : 'base_masculina');
+          const fallback = getAvatarImageUrl(isFemale ? 'base feminina' : 'base masculima');
           if (e.currentTarget.src !== fallback) {
             e.currentTarget.src = fallback;
           }
