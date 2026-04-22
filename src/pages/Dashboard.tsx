@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, X, Share2, Target } from 'lucide-react';
+import { Zap, Coins, MapPin, Timer, ChevronRight, Trophy, Share2, Target } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,7 +20,6 @@ export default function Dashboard() {
   const [schedule, setSchedule] = useState<{ time: string; endTime: string; coach: string }[]>([]);
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [announcements, setAnnouncements] = useState<string[]>([]);
-  const [showWodDetails, setShowWodDetails] = useState(false);
   const [activeChallenges, setActiveChallenges] = useState<any[]>([]);
   const [showShareModal, setShowShareModal] = useState(false);
 
@@ -357,121 +356,30 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* Daily WOD Preview */}
-      <section className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-6 relative overflow-hidden group">
-        <div className="absolute top-0 right-0 p-4">
-          <span className="bg-primary/20 text-primary text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">HOJE</span>
-        </div>
-        <h3 className="font-headline font-black text-2xl text-on-surface mb-1 uppercase italic tracking-tight">WOD DO DIA</h3>
-        <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest mb-4">{wod?.name || 'Carregando...'}</p>
-        
-        <div className="flex gap-4 mb-6">
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</span>
-            <span className="text-sm font-headline font-black text-on-surface uppercase italic">{wod?.type}</span>
+      {/* Daily WOD Preview - Compact */}
+      <section
+        onClick={() => navigate('/wod')}
+        className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5 flex items-center justify-between cursor-pointer hover:border-primary/40 transition-all group"
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center shrink-0">
+            <Timer className="w-6 h-6 text-primary" />
           </div>
-          <div className="w-[1px] bg-outline-variant/20"></div>
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Time Cap</span>
-            <span className="text-sm font-headline font-black text-on-surface uppercase italic">20:00</span>
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-[8px] font-black text-primary uppercase tracking-widest bg-primary/10 px-2 py-0.5 rounded-full">HOJE</span>
+              <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{wod?.type || '—'}</span>
+            </div>
+            <h3 className="font-headline font-black text-base text-on-surface uppercase italic tracking-tight leading-tight">
+              {wod?.name || 'WOD DO DIA'}
+            </h3>
           </div>
         </div>
-
-        <button 
-          onClick={() => setShowWodDetails(true)}
-          className="w-full bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary hover:text-background transition-all uppercase italic"
-        >
-          VER DETALHES <ChevronRight className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1 text-on-surface-variant group-hover:text-primary transition-colors shrink-0">
+          <span className="text-[9px] font-black uppercase tracking-widest">VER</span>
+          <ChevronRight className="w-4 h-4" />
+        </div>
       </section>
-
-      {/* WOD Details Modal */}
-      <AnimatePresence>
-        {showWodDetails && wod && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowWodDetails(false)}
-              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-lg bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 shadow-2xl overflow-hidden"
-            >
-              <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto no-scrollbar">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h2 className="text-2xl font-headline font-black text-on-surface uppercase italic tracking-tight">{wod.name}</h2>
-                    <p className="text-primary text-[10px] font-black uppercase tracking-widest mt-1">{wod.type}</p>
-                  </div>
-                  <button 
-                    onClick={() => setShowWodDetails(false)}
-                    className="p-2 bg-surface-container-highest rounded-full text-on-surface-variant hover:text-primary transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <div className="space-y-6">
-                  {wod.warmup && (
-                    <div className="space-y-2">
-                      <h4 className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-2">
-                        <Timer className="w-3 h-3 text-primary" /> AQUECIMENTO
-                      </h4>
-                      <p className="text-sm text-on-surface font-medium leading-relaxed bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/5">
-                        {wod.warmup}
-                      </p>
-                    </div>
-                  )}
-
-                  {wod.skill && (
-                    <div className="space-y-2">
-                      <h4 className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-2">
-                        <Zap className="w-3 h-3 text-primary" /> TÉCNICA / SKILL
-                      </h4>
-                      <p className="text-sm text-on-surface font-medium leading-relaxed bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/5">
-                        {wod.skill}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="space-y-4">
-                    <h4 className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-2">
-                      <Activity className="w-3 h-3 text-primary" /> WORKOUT (WOD)
-                    </h4>
-                    <div className="grid grid-cols-1 gap-3">
-                      <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10">
-                        <span className="text-[8px] font-black text-primary uppercase tracking-widest mb-1 block">RX</span>
-                        <p className="text-sm text-on-surface font-bold leading-relaxed whitespace-pre-wrap">{wod.rx}</p>
-                      </div>
-                      <div className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/5">
-                        <span className="text-[8px] font-black text-on-surface-variant uppercase tracking-widest mb-1 block">SCALED</span>
-                        <p className="text-sm text-on-surface font-medium leading-relaxed whitespace-pre-wrap">{wod.scaled}</p>
-                      </div>
-                      <div className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/5">
-                        <span className="text-[8px] font-black text-on-surface-variant uppercase tracking-widest mb-1 block">BEGINNER</span>
-                        <p className="text-sm text-on-surface font-medium leading-relaxed whitespace-pre-wrap">{wod.beginner}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="p-6 bg-surface-container-highest/50 border-t border-outline-variant/10">
-                <button 
-                  onClick={() => setShowWodDetails(false)}
-                  className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg"
-                >
-                  ENTENDIDO
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Quick Stats */}
       <section className="grid grid-cols-2 gap-4">
