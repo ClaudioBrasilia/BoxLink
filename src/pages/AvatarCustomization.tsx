@@ -91,6 +91,17 @@ export default function AvatarCustomization() {
     } catch (err) { console.error(err); }
   };
 
+  const handleBaseChange = async (gender: 'male' | 'female') => {
+    if (!user) return;
+    const base_outfit = gender === 'female' ? 'base_female' : 'base_male';
+    const newEquipped = { ...user.avatar.equipped, base_outfit };
+    const { error } = await supabase
+      .from('profiles')
+      .update({ avatar_equipped: newEquipped, updated_at: new Date().toISOString() })
+      .eq('id', user.id);
+    if (!error) updateUser({ ...user, avatar: { ...user.avatar, equipped: newEquipped } });
+  };
+
   // Loading inicial
   if (avatarEnabled === null || storeEnabled === null || economyEnabled === null) {
     return (
@@ -149,6 +160,37 @@ export default function AvatarCustomization() {
         <div className="text-center">
           <h2 className="text-2xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none mb-1">{user?.name}</h2>
           <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest italic">NÍVEL {user?.level}</p>
+        </div>
+
+        {/* Seleção de base do avatar */}
+        <div className="flex flex-col items-center gap-2 w-full">
+          <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">BASE DO AVATAR</p>
+          <div className="flex gap-3 w-full max-w-xs">
+            <button
+              onClick={() => handleBaseChange('male')}
+              className={cn(
+                'flex-1 flex flex-col items-center gap-2 py-4 rounded-2xl border-2 font-black uppercase text-xs tracking-wider transition-all',
+                !user?.avatar?.equipped?.base_outfit?.includes('female')
+                  ? 'border-primary bg-primary/10 text-primary shadow-[0_0_16px_rgba(202,253,0,0.2)]'
+                  : 'border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:border-primary/30'
+              )}
+            >
+              <span className="text-3xl">♂</span>
+              <span>Masculino</span>
+            </button>
+            <button
+              onClick={() => handleBaseChange('female')}
+              className={cn(
+                'flex-1 flex flex-col items-center gap-2 py-4 rounded-2xl border-2 font-black uppercase text-xs tracking-wider transition-all',
+                user?.avatar?.equipped?.base_outfit?.includes('female')
+                  ? 'border-primary bg-primary/10 text-primary shadow-[0_0_16px_rgba(202,253,0,0.2)]'
+                  : 'border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:border-primary/30'
+              )}
+            >
+              <span className="text-3xl">♀</span>
+              <span>Feminino</span>
+            </button>
+          </div>
         </div>
       </section>
 
@@ -228,4 +270,4 @@ export default function AvatarCustomization() {
       )}
     </div>
   );
-}
+      }
