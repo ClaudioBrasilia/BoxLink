@@ -3,44 +3,13 @@ import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, M
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { useState, useEffect } from 'react';
+import { getSupabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '../lib/supabase';
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [storeEnabled, setStoreEnabled] = useState(true);
-  const [economyEnabled, setEconomyEnabled] = useState(true);
-  const [pendingDuels, setPendingDuels] = useState(0);
-
-  useEffect(() => {
-    const fetchSettings = async () => {
-      const { data: settingsData } = await supabase.from('box_settings').select('modules').single();
-      if (settingsData?.modules) {
-        setStoreEnabled(settingsData.modules.store ?? true);
-        setEconomyEnabled(settingsData.modules.economy ?? true);
-      }
-    };
-    fetchSettings();
-  }, []);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    const fetchPending = async () => {
-      const { count } = await supabase
-        .from('duels')
-        .select('id', { count: 'exact', head: true })
-        .eq('opponent_id', user.id)
-        .eq('status', 'pending');
-      setPendingDuels(count || 0);
-    };
-    fetchPending();
-    const channel = supabase.channel('layout-duels-badge')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'duels' }, fetchPending)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.id]);
 
   const navItems = [
     { icon: Home, label: 'Início', path: '/' },
@@ -50,12 +19,22 @@ export default function Layout() {
     { icon: User, label: 'Perfil', path: '/profile' },
   ];
 
+  const [settings, setSettings] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const { data } = await (getSupabase() as any).from('box_settings').select('avatar_enabled').single();
+      setSettings(data);
+    };
+    fetchSettings();
+  }, []);
+
   const moreItems = [
     { icon: Zap, label: 'Desafios', path: '/challenges' },
     { icon: LineChart, label: 'Evolução', path: '/progress' },
     { icon: Box, label: 'Meu Box', path: '/mybox' },
     { icon: Users, label: 'Times', path: '/clans' },
-    ...(user?.role === 'admin' || (storeEnabled && economyEnabled) ? [{ icon: Sparkles, label: 'Avatar', path: '/avatar' }] : []),
+    ...(settings?.avatar_enabled || user?.role === 'admin' ? [{ icon: Sparkles, label: 'Avatar', path: '/avatar' }] : []),
     { icon: BarChart3, label: 'Benchmarks', path: '/benchmarks' },
     ...(user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Admin', path: '/admin' }] : []),
     ...(user?.role === 'coach' || user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Coach', path: '/coach' }] : []),
@@ -158,14 +137,7 @@ export default function Layout() {
             >
               {({ isActive }) => (
                 <>
-                  <div className="relative">
-                    <item.icon className={cn('w-6 h-6 transition-transform', isActive && 'scale-110')} />
-                    {item.path === '/duels' && pendingDuels > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 bg-secondary text-background text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-lg animate-pulse">
-                        {pendingDuels}
-                      </span>
-                    )}
-                  </div>
+                  <item.icon className={cn('w-6 h-6 transition-transform', isActive && 'scale-110')} />
                   <span className="text-[8px] font-bold uppercase tracking-widest">{item.label}</span>
                   {isActive && (
                     <div className="absolute -top-2 w-1 h-1 bg-primary rounded-full shadow-[0_0_10px_#cafd00]" />
