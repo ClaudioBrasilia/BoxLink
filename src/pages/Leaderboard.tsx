@@ -36,6 +36,9 @@ export default function Leaderboard() {
       const todayStr = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
       }).format(now);
+      
+      // Log para debug se necessário
+      console.log('Fetching WOD for date:', todayStr);
 
       // 1. Perfis aprovados
       const { data: allUsers, error: usersError } = await supabase
@@ -104,7 +107,12 @@ export default function Leaderboard() {
           .from('wod_results').select('*, profiles(name, level)')
           .eq('wod_id', todayWod.id);
         if (wodResults && wodResults.length > 0) {
-          const isTimeBased = ['FOR TIME','TIME','TEMPO'].some(t => (todayWod.type||'').toUpperCase().includes(t));
+          const isTimeBased = ['FOR TIME','TIME','TEMPO','AMRAP'].some(t => {
+            const type = (todayWod.type||'').toUpperCase();
+            if (t === 'AMRAP') return type.includes('AMRAP') || type.includes('REPS') || type.includes('ROUNDS');
+            return type.includes(t);
+          }) && !['AMRAP', 'REPS', 'ROUNDS'].some(t => (todayWod.type||'').toUpperCase().includes(t));
+
           const parseResult = (r: string): number => {
             if (!r) return isTimeBased ? 999999 : 0;
             const str = r.trim();
@@ -114,7 +122,9 @@ export default function Leaderboard() {
               return p.length === 2 ? p[0]*60+p[1] : p[0]*3600+p[1]*60+p[2];
             }
             // Pure number (seconds or reps)
-            return parseFloat(str.replace(/[^0-9.]/g,'')) || (isTimeBased ? 999999 : 0);
+            const num = parseFloat(str.replace(/[^0-9.]/g,''));
+            if (isNaN(num)) return isTimeBased ? 999999 : 0;
+            return num;
           };
           // Deduplica: pega melhor resultado por usuário
           const bestByUser: Record<string, any> = {};
