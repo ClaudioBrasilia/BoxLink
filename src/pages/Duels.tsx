@@ -1,12 +1,56 @@
-import { useState, useEffect } from 'react';
-import { Swords, Zap, UserRound, Plus, Trophy, X, Check, Coins } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Swords, Plus, Trophy, X, Check, ChevronDown, Send } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { Duel, User } from '../types';
+import { User } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
 import { addReward } from '../utils/rewards';
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+const parseTime = (t: string) => {
+  const parts = t.split(':');
+  if (parts.length === 2) return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+  return 0;
+};
+
+const pickWinner = (results: Record<string, string>, ids: string[]): string | null => {
+  const valid = ids.filter(id => results[id]);
+  if (!valid.length) return null;
+  const timeBased = results[valid[0]].includes(':');
+  let winnerId = valid[0];
+  let winnerVal = timeBased ? parseTime(results[valid[0]]) : parseInt(results[valid[0]]);
+  for (let i = 1; i < valid.length; i++) {
+    const val = timeBased ? parseTime(results[valid[i]]) : parseInt(results[valid[i]]);
+    if (timeBased ? val < winnerVal : val > winnerVal) { winnerId = valid[i]; winnerVal = val; }
+  }
+  return winnerId;
+};
+
+const getBetLabel = (duel: any) => {
+  if (!duel.bet_type || duel.bet_type === 'xp') return `${duel.bet_xp ?? (duel.reward_xp || 0) / 2} XP`;
+  if (duel.bet_type === 'coins') return `${duel.bet_coins} BC`;
+  return `${duel.bet_xp} XP + ${duel.bet_coins} BC`;
+};
+
+const getRewardLabel = (duel: any) => {
+  const xp = duel.reward_xp || 0;
+  const coins = duel.reward_coins || 0;
+  if (xp > 0 && coins > 0) return `+${xp} XP + ${coins} BC`;
+  if (xp > 0) return `+${xp} XP`;
+  return `+${coins} BC`;
+};
+
+const getVisibleResult = (duel: any, pid: string) => {
+  const results: Record<string, string> = duel.results || {};
+  const allSubmitted = [duel.challenger_id, duel.opponent_id].every(id => results[id]);
+  if (duel.status === 'finished' || allSubmitted) return results[pid] || '—';
+  return results[pid] ? '✓ Enviado' : 'Aguardando...';
+};
+
+// ─── component ────────────────────────────────────────────────────────────────
 
 export default function Duels() {
   const { user, updateUser } = useAuth();
@@ -16,36 +60,31 @@ export default function Duels() {
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
   const [isChallenging, setIsChallenging] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [submissions, setSubmissions] = useState<Record<string, string>>({});
   const [newDuel, setNewDuel] = useState({
-    opponentId: '',
-    type: 'WOD',
+    opponentId: '', type: 'WOD',
     betType: 'xp' as 'xp' | 'coins' | 'both',
-    betXp: 20,
-    betCoins: 10,
+    betXp: 20, betCoins: 10,
   });
 
-  const fetchDuels = async () => {
+  const fetchDuels = useCallback(async () => {
+    if (!user?.id) return;
     const { data } = await supabase
       .from('duels')
       .select('*, challenger:profiles!challenger_id(name, xp, coins), opponent:profiles!opponent_id(name, xp, coins)')
       .neq('status', 'finished')
-      .or(`challenger_id.eq.${user?.id},opponent_id.eq.${user?.id}`)
+      .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
       .order('created_at', { ascending: false });
-    setDuels((data || []).map(d => {
-      // Garantir que os nomes sejam extraídos corretamente do join
-      const challengerName = d.challenger?.name || 'Atleta';
-      const opponentName = d.opponent?.name || 'Atleta';
-      
-      return {
-        ...d,
-        challengerName,
-        opponentName,
-        reward: { xp: d.reward_xp || 0, coins: d.reward_coins || 0 }
-      };
-    }));
-  };
+    setDuels((data || []).map(d => ({
+      ...d,
+      challengerName: d.challenger?.name || 'Atleta',
+      opponentName: d.opponent?.name || 'Atleta',
+      results: d.results || {},
+    })));
+  }, [user?.id]);
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     if (!user?.id) return;
     const { data } = await supabase
       .from('duels')
@@ -54,36 +93,34 @@ export default function Duels() {
       .eq('status', 'finished')
       .order('created_at', { ascending: false })
       .limit(20);
-    setHistory((data || []).map(d => ({
-      ...d,
-      reward: { xp: d.reward_xp || 0, coins: d.reward_coins || 0 }
-    })));
-  };
+    setHistory(data || []);
+  }, [user?.id]);
 
-  const fetchUsers = async () => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .neq('id', user?.id)
-      .eq('status', 'approved');
+  const fetchUsers = useCallback(async () => {
+    if (!user?.id) return;
+    const { data } = await supabase.from('profiles').select('*').neq('id', user.id).eq('status', 'approved');
     setUsers((data || []).map((u: any) => ({
       ...u,
       avatar: { equipped: u.avatar_equipped, inventory: u.avatar_inventory || [] },
-      checkins: [], paidBonuses: u.paid_bonuses || []
+      checkins: [], paidBonuses: u.paid_bonuses || [],
     })));
-  };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
     fetchDuels(); fetchHistory(); fetchUsers();
-    const channel = supabase.channel('duels_changes')
+
+    const channel = supabase.channel(`duels_rt_${user.id}`)
       .on('postgres_changes', { event: '*', table: 'duels' }, () => {
         fetchDuels(); fetchHistory();
       }).subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [user?.id]);
 
-  // Calcula recompensas baseado na aposta
+    // Fallback polling every 15s
+    const poll = setInterval(() => { fetchDuels(); fetchHistory(); }, 15000);
+
+    return () => { supabase.removeChannel(channel); clearInterval(poll); };
+  }, [user?.id, fetchDuels, fetchHistory, fetchUsers]);
+
   const calcRewards = () => {
     const { betType, betXp, betCoins } = newDuel;
     if (betType === 'xp') return { xp: betXp * 2, coins: 0 };
@@ -93,21 +130,12 @@ export default function Duels() {
 
   const handleCreateDuel = async () => {
     if (!user || !newDuel.opponentId) return;
-
-    // Verifica se tem saldo suficiente para apostar
-    if (newDuel.betType === 'xp' || newDuel.betType === 'both') {
-      if ((user.xp || 0) < newDuel.betXp) {
-        alert(`Você não tem XP suficiente! Você tem ${user.xp} XP.`);
-        return;
-      }
+    if ((newDuel.betType === 'xp' || newDuel.betType === 'both') && (user.xp || 0) < newDuel.betXp) {
+      alert(`XP insuficiente! Você tem ${user.xp} XP.`); return;
     }
-    if (newDuel.betType === 'coins' || newDuel.betType === 'both') {
-      if ((user.coins || 0) < newDuel.betCoins) {
-        alert(`Você não tem BrazaCoins suficientes! Você tem ${user.coins} BrazaCoins.`);
-        return;
-      }
+    if ((newDuel.betType === 'coins' || newDuel.betType === 'both') && (user.coins || 0) < newDuel.betCoins) {
+      alert(`BrazaCoins insuficientes! Você tem ${user.coins} BC.`); return;
     }
-
     setLoading(true);
     try {
       const rewards = calcRewards();
@@ -120,100 +148,87 @@ export default function Duels() {
         bet_coins: newDuel.betType !== 'xp' ? newDuel.betCoins : 0,
         reward_xp: rewards.xp,
         reward_coins: rewards.coins,
-        status: 'pending'
+        status: 'pending',
+        results: {},
       });
-      if (error) { alert('Erro ao criar duelo: ' + error.message); return; }
+      if (error) { alert('Erro: ' + error.message); return; }
       setIsChallenging(false);
       setNewDuel({ opponentId: '', type: 'WOD', betType: 'xp', betXp: 20, betCoins: 10 });
       alert('Desafio enviado! Aguarde o oponente aceitar.');
-    } finally {
-      setLoading(false);
-    }
+      fetchDuels();
+    } finally { setLoading(false); }
   };
 
   const handleRespond = async (duelId: string, status: 'accepted' | 'rejected') => {
     if (status === 'accepted') {
-      // Verifica saldo do oponente ao aceitar
       const duel = duels.find(d => d.id === duelId);
       if (duel) {
         if ((duel.bet_type === 'xp' || duel.bet_type === 'both') && (user?.xp || 0) < duel.bet_xp) {
-          alert(`Você não tem XP suficiente para aceitar! Você tem ${user?.xp} XP, precisa de ${duel.bet_xp} XP.`);
-          return;
+          alert(`XP insuficiente!`); return;
         }
         if ((duel.bet_type === 'coins' || duel.bet_type === 'both') && (user?.coins || 0) < duel.bet_coins) {
-          alert(`Você não tem BrazaCoins suficientes! Você tem ${user?.coins} BrazaCoins, precisa de ${duel.bet_coins}.`);
-          return;
+          alert(`BrazaCoins insuficientes!`); return;
         }
       }
     }
     setLoading(true);
     try {
       await supabase.from('duels').update({ status }).eq('id', duelId);
-    } finally {
-      setLoading(false);
-    }
+      fetchDuels();
+    } finally { setLoading(false); }
   };
 
-  const handleFinish = async (duelId: string, winnerId: string) => {
+  const handleSubmitResult = async (duel: any) => {
     if (!user) return;
+    const result = submissions[duel.id]?.trim();
+    if (!result) { alert('Digite seu resultado.'); return; }
+
+    const newResults = { ...(duel.results || {}), [user.id]: result };
+    const participants = [duel.challenger_id, duel.opponent_id];
+    const allSubmitted = participants.every(id => newResults[id]);
+
     setLoading(true);
     try {
-      const { data: duel } = await supabase.from('duels').select('*').eq('id', duelId).single();
-      if (!duel) return;
+      if (allSubmitted) {
+        const winnerId = pickWinner(newResults as Record<string, string>, participants);
+        const loserId = participants.find(id => id !== winnerId) || '';
 
-      await supabase.from('duels').update({ status: 'finished', winner_id: winnerId }).eq('id', duelId);
+        await supabase.from('duels').update({
+          results: newResults,
+          status: 'finished',
+          winner_id: winnerId,
+        }).eq('id', duel.id);
 
-      const isWinner = user.id === winnerId;
-      const loserId = duel.challenger_id === winnerId ? duel.opponent_id : duel.challenger_id;
+        if (winnerId) {
+          await addReward(winnerId, 'duel', duel.reward_xp || 40, duel.reward_coins || 0, `Vitória no duelo (${duel.type})`);
+          if (loserId) {
+            const loseXp = duel.bet_xp > 0 ? -duel.bet_xp : 0;
+            const loseCoins = duel.bet_coins > 0 ? -duel.bet_coins : 0;
+            await addReward(loserId, 'duel', loseXp, loseCoins, `Derrota no duelo (${duel.type})`);
+          }
 
-      // Vencedor recebe o dobro apostado
-      const winXp = duel.reward_xp || 40;
-      const winCoins = duel.reward_coins || 10;
+          if (winnerId === user.id) {
+            confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#CAFD00', '#fff'] });
+            alert(`🏆 Você venceu! +${duel.reward_xp || 40} XP${duel.reward_coins ? ` e +${duel.reward_coins} BC` : ''}!`);
+          } else {
+            const winnerName = duel.challenger_id === winnerId ? duel.challengerName : duel.opponentName;
+            alert(`Duelo finalizado. ${winnerName} venceu.`);
+          }
 
-      // Perdedor perde o que apostou (XP mínimo de 5 para não zerar)
-      const loseXp = duel.bet_xp > 0 ? -Math.min(duel.bet_xp, 5) : 0;
-      const loseCoins = duel.bet_coins > 0 ? -duel.bet_coins : 0;
-
-      if (isWinner) {
-        await addReward(user.id, 'duel', winXp, winCoins, `Vitória no duelo vs ${duel.opponent_id === user.id ? 'oponente' : 'desafiante'}`);
-        await addReward(loserId, 'duel', loseXp, loseCoins, 'Derrota no duelo — aposta perdida');
-        confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#CAFD00', '#fff'] });
-        alert(`🏆 Parabéns! Você venceu! +${winXp} XP e +${winCoins} BrazaCoins!`);
+          const { data: prof } = await supabase.from('profiles').select('xp, coins, level').eq('id', user.id).maybeSingle();
+          if (prof) updateUser({ ...user, xp: prof.xp, coins: prof.coins, level: prof.level });
+        }
       } else {
-        await addReward(loserId, 'duel', winXp, winCoins, 'Vitória no duelo');
-        await addReward(user.id, 'duel', loseXp, loseCoins, 'Derrota no duelo — aposta perdida');
-        alert(`Duelo finalizado. Você perdeu${loseXp < 0 ? ` ${loseXp} XP` : ''}${loseCoins < 0 ? ` e ${loseCoins} BrazaCoins` : ''}.`);
+        await supabase.from('duels').update({ results: newResults }).eq('id', duel.id);
+        alert('Resultado enviado! Aguardando o oponente enviar o dele para revelar o vencedor.');
       }
 
-      // Refresh profile
-      const { data: updatedProfile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
-      if (updatedProfile) {
-        updateUser({
-          ...user,
-          xp: updatedProfile.xp,
-          coins: updatedProfile.coins,
-          level: updatedProfile.level
-        });
-      }
+      setSubmissions(prev => ({ ...prev, [duel.id]: '' }));
+      fetchDuels(); fetchHistory();
     } catch (e) {
       console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getBetLabel = (duel: any) => {
-    if (!duel.bet_type || duel.bet_type === 'xp') return `${duel.bet_xp || duel.reward_xp / 2} XP`;
-    if (duel.bet_type === 'coins') return `${duel.bet_coins} BrazaCoins`;
-    return `${duel.bet_xp} XP + ${duel.bet_coins} BC`;
-  };
-
-  const getRewardLabel = (duel: any) => {
-    const xp = duel.reward_xp || 0;
-    const coins = duel.reward_coins || 0;
-    if (xp > 0 && coins > 0) return `+${xp} XP + ${coins} BC`;
-    if (xp > 0) return `+${xp} XP`;
-    return `+${coins} BC`;
+      alert('Erro ao enviar resultado.');
+    } finally { setLoading(false); }
   };
 
   const rewards = calcRewards();
@@ -224,7 +239,6 @@ export default function Duels() {
         <h1 className="text-3xl font-headline font-black text-on-surface tracking-tight uppercase italic flex items-center gap-3">
           <Swords className="w-8 h-8 text-secondary" /> ARENA DE DUELOS
         </h1>
-        {/* Saldo */}
         <div className="flex gap-3 text-right">
           <div>
             <p className="text-[8px] text-on-surface-variant font-black uppercase tracking-widest">XP</p>
@@ -237,22 +251,18 @@ export default function Duels() {
         </div>
       </header>
 
-      <button
-        onClick={() => setIsChallenging(true)}
-        className="w-full bg-secondary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-[0_10px_30px_rgba(255,116,57,0.2)] hover:scale-[0.98] active:scale-95 transition-all uppercase italic tracking-tight flex items-center justify-center gap-2"
-      >
+      <button onClick={() => setIsChallenging(true)}
+        className="w-full bg-secondary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-[0_10px_30px_rgba(255,116,57,0.2)] hover:scale-[0.98] active:scale-95 transition-all uppercase italic tracking-tight flex items-center justify-center gap-2">
         NOVO DESAFIO <Plus className="w-5 h-5 fill-current" />
       </button>
 
-      {/* Tabs */}
       <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10">
         {(['active', 'history'] as const).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
-            className={cn(
-              "flex-1 py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all",
-              activeTab === tab ? "bg-secondary text-background shadow-lg" : "text-on-surface-variant hover:text-on-surface"
-            )}
-          >{tab === 'active' ? 'ATIVOS' : 'HISTÓRICO'}</button>
+            className={cn("flex-1 py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all",
+              activeTab === tab ? "bg-secondary text-background shadow-lg" : "text-on-surface-variant hover:text-on-surface")}>
+            {tab === 'active' ? 'ATIVOS' : 'HISTÓRICO'}
+          </button>
         ))}
       </div>
 
@@ -265,87 +275,129 @@ export default function Duels() {
                 <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">Nenhum duelo ativo</p>
               </div>
             )}
-            {duels.map(duel => (
-              <div key={duel.id} className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 relative overflow-hidden">
-                {/* Status badge */}
-                <div className="absolute top-4 right-4">
-                  <span className={cn(
-                    "text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest border",
-                    duel.status === 'accepted' ? "bg-primary/20 text-primary border-primary/30" : "bg-secondary/20 text-secondary border-secondary/30"
-                  )}>
-                    {duel.status === 'accepted' ? 'ATIVO' : 'PENDENTE'}
-                  </span>
-                </div>
+            {duels.map(duel => {
+              const isExpanded = expandedId === duel.id;
+              const participants = [duel.challenger_id, duel.opponent_id];
+              const myResult = (duel.results || {})[user?.id || ''];
+              const allSubmitted = participants.every(id => (duel.results || {})[id]);
 
-                {/* VS */}
-                <div className="flex justify-between items-center mb-5 mt-2">
-                  <div className="flex flex-col items-center gap-2 flex-1">
-                    <div className="w-14 h-14 rounded-full border-2 border-primary bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-primary">
-                      {duel.challengerName ? duel.challengerName[0] : '?'}
-                    </div>
-                    <span className="text-[10px] font-bold text-on-surface uppercase italic truncate max-w-[70px]">
-                      {duel.challenger_id === user?.id ? 'VOCÊ' : (duel.challengerName ? duel.challengerName.split(' ')[0] : 'ATLETA')}
+              return (
+                <div key={duel.id} className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 relative overflow-hidden">
+                  <div className="absolute top-4 right-4 flex items-center gap-2">
+                    <span className={cn("text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest border",
+                      duel.status === 'accepted' ? "bg-primary/20 text-primary border-primary/30" : "bg-secondary/20 text-secondary border-secondary/30")}>
+                      {duel.status === 'accepted' ? 'ATIVO' : 'PENDENTE'}
                     </span>
+                    <button onClick={() => setExpandedId(isExpanded ? null : duel.id)}>
+                      <ChevronDown className={cn("w-4 h-4 text-on-surface-variant transition-transform", isExpanded && "rotate-180")} />
+                    </button>
                   </div>
-                  <div className="flex flex-col items-center gap-1 px-2">
-                    <span className="text-on-surface-variant font-headline font-black text-2xl italic opacity-30">VS</span>
+
+                  <div className="flex justify-between items-center mb-5 mt-2">
+                    {[
+                      { id: duel.challenger_id, name: duel.challengerName, color: 'primary' },
+                      { id: duel.opponent_id, name: duel.opponentName, color: 'secondary' },
+                    ].map((p, i) => (
+                      <div key={p.id} className="flex flex-col items-center gap-2 flex-1">
+                        {i === 1 && <span className="absolute text-on-surface-variant font-headline font-black text-2xl italic opacity-30">VS</span>}
+                        <div className={`w-14 h-14 rounded-full border-2 border-${p.color} bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-${p.color}`}>
+                          {p.name?.[0] || '?'}
+                        </div>
+                        <span className="text-[10px] font-bold text-on-surface uppercase italic truncate max-w-[70px]">
+                          {p.id === user?.id ? 'VOCÊ' : p.name?.split(' ')[0] || 'ATLETA'}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex flex-col items-center gap-2 flex-1">
-                    <div className="w-14 h-14 rounded-full border-2 border-secondary bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-secondary">
-                      {duel.opponentName ? duel.opponentName[0] : '?'}
+
+                  <div className="bg-surface-container-highest/50 rounded-2xl p-4 grid grid-cols-3 gap-2 mb-4">
+                    <div>
+                      <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</p>
+                      <p className="text-xs font-headline font-black text-on-surface uppercase italic">{duel.type}</p>
                     </div>
-                    <span className="text-[10px] font-bold text-on-surface uppercase italic truncate max-w-[70px]">
-                      {duel.opponent_id === user?.id ? 'VOCÊ' : (duel.opponentName ? duel.opponentName.split(' ')[0] : 'ATLETA')}
-                    </span>
+                    <div>
+                      <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Aposta</p>
+                      <p className="text-xs font-headline font-black text-secondary uppercase italic">{getBetLabel(duel)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Prêmio</p>
+                      <p className="text-xs font-headline font-black text-primary uppercase italic">{getRewardLabel(duel)}</p>
+                    </div>
                   </div>
-                </div>
 
-                {/* Info */}
-                <div className="bg-surface-container-highest/50 rounded-2xl p-4 grid grid-cols-3 gap-2 mb-4">
-                  <div>
-                    <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</p>
-                    <p className="text-xs font-headline font-black text-on-surface uppercase italic">{duel.type}</p>
-                  </div>
-                  <div>
-                    <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Aposta</p>
-                    <p className="text-xs font-headline font-black text-secondary uppercase italic">{getBetLabel(duel)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Prêmio</p>
-                    <p className="text-xs font-headline font-black text-primary uppercase italic">{getRewardLabel(duel)}</p>
-                  </div>
-                </div>
+                  {/* Results panel (expanded) */}
+                  {isExpanded && duel.status === 'accepted' && (
+                    <div className="mb-4 bg-surface-container-highest/30 rounded-2xl p-4 space-y-2">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Resultados</p>
+                      {participants.map(pid => {
+                        const name = pid === duel.challenger_id ? duel.challengerName : duel.opponentName;
+                        const vis = getVisibleResult(duel, pid);
+                        return (
+                          <div key={pid} className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-on-surface uppercase italic">
+                              {pid === user?.id ? 'VOCÊ' : name?.split(' ')[0] || 'ATLETA'}
+                            </span>
+                            <span className={cn("text-xs font-headline font-black",
+                              vis === 'Aguardando...' ? "text-outline-variant" :
+                              vis === '✓ Enviado' ? "text-primary" : "text-on-surface")}>
+                              {vis}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {!allSubmitted && (
+                        <p className="text-[9px] text-on-surface-variant italic mt-1">
+                          Resultados revelados quando ambos enviarem.
+                        </p>
+                      )}
+                    </div>
+                  )}
 
-                {/* Actions */}
-                {duel.status === 'accepted' && (
-                  <div className="flex gap-3">
-                    <button onClick={() => handleFinish(duel.id, user?.id || '')} disabled={loading}
-                      className="flex-1 bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
-                      EU VENCI <Trophy className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleFinish(duel.id, duel.challenger_id === user?.id ? duel.opponent_id : duel.challenger_id)} disabled={loading}
-                      className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
-                      EU PERDI <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-                {duel.status === 'pending' && duel.opponent_id === user?.id && (
-                  <div className="flex gap-3">
-                    <button onClick={() => handleRespond(duel.id, 'accepted')} disabled={loading}
-                      className="flex-1 bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
-                      ACEITAR <Check className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleRespond(duel.id, 'rejected')} disabled={loading}
-                      className="flex-1 bg-error-container text-on-error-container py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
-                      REJEITAR <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-                {duel.status === 'pending' && duel.challenger_id === user?.id && (
-                  <p className="text-center text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Aguardando resposta do oponente...</p>
-                )}
-              </div>
-            ))}
+                  {/* Submit result */}
+                  {duel.status === 'accepted' && !myResult && (
+                    <div className="flex gap-2 mt-2">
+                      <input
+                        type="text"
+                        placeholder="Seu resultado (ex: 12:34 ou 15 rounds)"
+                        value={submissions[duel.id] || ''}
+                        onChange={e => setSubmissions(prev => ({ ...prev, [duel.id]: e.target.value }))}
+                        className="flex-1 bg-surface-container-highest border-none rounded-2xl px-4 py-3 font-headline font-bold text-on-surface text-sm placeholder:text-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-secondary/50"
+                      />
+                      <button
+                        onClick={() => handleSubmitResult(duel)}
+                        disabled={loading || !submissions[duel.id]?.trim()}
+                        className="bg-primary text-background px-5 rounded-2xl font-headline font-black text-xs uppercase italic disabled:opacity-50 flex items-center gap-2">
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                  {duel.status === 'accepted' && myResult && !allSubmitted && (
+                    <p className="text-center text-[10px] text-primary font-black uppercase tracking-widest mt-2">
+                      ✓ Resultado enviado — aguardando oponente...
+                    </p>
+                  )}
+
+                  {/* Pending: accept/reject */}
+                  {duel.status === 'pending' && duel.opponent_id === user?.id && (
+                    <div className="flex gap-3 mt-2">
+                      <button onClick={() => handleRespond(duel.id, 'accepted')} disabled={loading}
+                        className="flex-1 bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
+                        ACEITAR <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleRespond(duel.id, 'rejected')} disabled={loading}
+                        className="flex-1 bg-error-container text-on-error-container py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
+                        REJEITAR <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                  {duel.status === 'pending' && duel.challenger_id === user?.id && (
+                    <p className="text-center text-[10px] text-on-surface-variant font-black uppercase tracking-widest mt-2">
+                      Aguardando resposta do oponente...
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </motion.div>
         )}
 
@@ -358,6 +410,11 @@ export default function Duels() {
             ) : history.map(duel => {
               const isWinner = duel.winner_id === user?.id;
               const opponent = duel.challenger_id === user?.id ? duel.opponent : duel.challenger;
+              const myResult = (duel.results || {})[user?.id || ''];
+              const oppResult = duel.challenger_id === user?.id
+                ? (duel.results || {})[duel.opponent_id]
+                : (duel.results || {})[duel.challenger_id];
+
               return (
                 <div key={duel.id} className="bg-surface-container-low/50 p-5 rounded-3xl border border-outline-variant/10 flex items-center justify-between">
                   <div className="flex items-center gap-4">
@@ -369,13 +426,18 @@ export default function Duels() {
                         {isWinner ? 'Venceu' : 'Perdeu'} vs {opponent?.name || 'Atleta'}
                       </p>
                       <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">
-                        {new Date(duel.created_at).toLocaleDateString('pt-BR')} • {duel.type} • apostou {getBetLabel(duel)}
+                        {new Date(duel.created_at).toLocaleDateString('pt-BR')} • {duel.type}
                       </p>
+                      {myResult && (
+                        <p className="text-on-surface-variant text-[9px] mt-0.5">
+                          Você: {myResult}{oppResult ? ` · Oponente: ${oppResult}` : ''}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
                     <p className={cn("font-headline font-black text-xs", isWinner ? "text-primary" : "text-error")}>
-                      {isWinner ? `+${duel.reward_xp} XP` : `-${duel.bet_xp || 0} XP`}
+                      {isWinner ? `+${duel.reward_xp || 0} XP` : `-${duel.bet_xp || 0} XP`}
                     </p>
                     {(duel.reward_coins > 0 || duel.bet_coins > 0) && (
                       <p className={cn("font-headline font-black text-[10px]", isWinner ? "text-secondary" : "text-error")}>
@@ -395,11 +457,8 @@ export default function Duels() {
         {isChallenging && (
           <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-background/80 backdrop-blur-sm">
             <motion.div
-              initial={{ opacity: 0, y: 100 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 100 }}
-              className="w-full max-w-md bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl"
-            >
+              initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }}
+              className="w-full max-w-md bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">DESAFIAR ATLETA</h3>
                 <button onClick={() => setIsChallenging(false)} className="p-2 hover:bg-surface-container-highest rounded-xl transition-all">
@@ -408,20 +467,18 @@ export default function Duels() {
               </div>
 
               <div className="space-y-4">
-                {/* Oponente */}
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Oponente</label>
-                  <select value={newDuel.opponentId} onChange={e => setNewDuel({...newDuel, opponentId: e.target.value})}
+                  <select value={newDuel.opponentId} onChange={e => setNewDuel({ ...newDuel, opponentId: e.target.value })}
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface">
                     <option value="">Selecione um atleta</option>
                     {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 </div>
 
-                {/* Tipo de duelo */}
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo de Duelo</label>
-                  <select value={newDuel.type} onChange={e => setNewDuel({...newDuel, type: e.target.value})}
+                  <select value={newDuel.type} onChange={e => setNewDuel({ ...newDuel, type: e.target.value })}
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface">
                     <option value="WOD">WOD do Dia</option>
                     <option value="BURPEES">Máximo de Burpees (1 min)</option>
@@ -431,7 +488,6 @@ export default function Duels() {
                   </select>
                 </div>
 
-                {/* Tipo de aposta */}
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">O que apostar?</label>
                   <div className="grid grid-cols-3 gap-2">
@@ -440,20 +496,17 @@ export default function Duels() {
                       { key: 'coins', label: 'BrazaCoins', icon: '🪙' },
                       { key: 'both', label: 'Ambos', icon: '🔥' },
                     ] as const).map(({ key, label, icon }) => (
-                      <button key={key} onClick={() => setNewDuel({...newDuel, betType: key})}
-                        className={cn(
-                          "py-3 rounded-2xl font-headline font-black text-[10px] uppercase italic transition-all border",
+                      <button key={key} onClick={() => setNewDuel({ ...newDuel, betType: key })}
+                        className={cn("py-3 rounded-2xl font-headline font-black text-[10px] uppercase italic transition-all border",
                           newDuel.betType === key
                             ? "bg-secondary text-background border-secondary"
-                            : "bg-surface-container-highest text-on-surface-variant border-outline-variant/20 hover:border-secondary/50"
-                        )}>
+                            : "bg-surface-container-highest text-on-surface-variant border-outline-variant/20 hover:border-secondary/50")}>
                         {icon} {label}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Valor da aposta XP */}
                 {(newDuel.betType === 'xp' || newDuel.betType === 'both') && (
                   <div className="space-y-2">
                     <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest flex justify-between">
@@ -461,18 +514,15 @@ export default function Duels() {
                       <span className="text-primary">Você tem: {user?.xp || 0} XP</span>
                     </label>
                     <div className="flex items-center gap-3">
-                      <button onClick={() => setNewDuel({...newDuel, betXp: Math.max(5, newDuel.betXp - 5)})}
+                      <button onClick={() => setNewDuel({ ...newDuel, betXp: Math.max(5, newDuel.betXp - 5) })}
                         className="w-10 h-10 rounded-xl bg-surface-container-highest font-black text-lg text-on-surface flex items-center justify-center">−</button>
-                      <div className="flex-1 bg-surface-container-highest rounded-2xl p-3 text-center font-headline font-black text-on-surface text-lg">
-                        {newDuel.betXp} XP
-                      </div>
-                      <button onClick={() => setNewDuel({...newDuel, betXp: Math.min(user?.xp || 0, newDuel.betXp + 5)})}
+                      <div className="flex-1 bg-surface-container-highest rounded-2xl p-3 text-center font-headline font-black text-on-surface text-lg">{newDuel.betXp} XP</div>
+                      <button onClick={() => setNewDuel({ ...newDuel, betXp: Math.min(user?.xp || 0, newDuel.betXp + 5) })}
                         className="w-10 h-10 rounded-xl bg-surface-container-highest font-black text-lg text-on-surface flex items-center justify-center">+</button>
                     </div>
                   </div>
                 )}
 
-                {/* Valor da aposta Coins */}
                 {(newDuel.betType === 'coins' || newDuel.betType === 'both') && (
                   <div className="space-y-2">
                     <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest flex justify-between">
@@ -480,18 +530,15 @@ export default function Duels() {
                       <span className="text-secondary">Você tem: {user?.coins || 0} BC</span>
                     </label>
                     <div className="flex items-center gap-3">
-                      <button onClick={() => setNewDuel({...newDuel, betCoins: Math.max(5, newDuel.betCoins - 5)})}
+                      <button onClick={() => setNewDuel({ ...newDuel, betCoins: Math.max(5, newDuel.betCoins - 5) })}
                         className="w-10 h-10 rounded-xl bg-surface-container-highest font-black text-lg text-on-surface flex items-center justify-center">−</button>
-                      <div className="flex-1 bg-surface-container-highest rounded-2xl p-3 text-center font-headline font-black text-on-surface text-lg">
-                        {newDuel.betCoins} BC
-                      </div>
-                      <button onClick={() => setNewDuel({...newDuel, betCoins: Math.min(user?.coins || 0, newDuel.betCoins + 5)})}
+                      <div className="flex-1 bg-surface-container-highest rounded-2xl p-3 text-center font-headline font-black text-on-surface text-lg">{newDuel.betCoins} BC</div>
+                      <button onClick={() => setNewDuel({ ...newDuel, betCoins: Math.min(user?.coins || 0, newDuel.betCoins + 5) })}
                         className="w-10 h-10 rounded-xl bg-surface-container-highest font-black text-lg text-on-surface flex items-center justify-center">+</button>
                     </div>
                   </div>
                 )}
 
-                {/* Resumo da aposta */}
                 <div className="bg-secondary/10 p-4 rounded-2xl border border-secondary/20 space-y-1">
                   <p className="text-[10px] text-secondary font-black uppercase tracking-widest">RESUMO DA APOSTA</p>
                   <p className="text-xs text-on-surface font-bold">
@@ -502,7 +549,7 @@ export default function Duels() {
                       {rewards.xp > 0 && `+${rewards.xp} XP`}{rewards.xp > 0 && rewards.coins > 0 && ' + '}{rewards.coins > 0 && `+${rewards.coins} BC`}
                     </span>
                   </p>
-                  <p className="text-[10px] text-on-surface-variant italic">O perdedor perde o valor apostado</p>
+                  <p className="text-[10px] text-on-surface-variant italic">Vencedor determinado automaticamente quando ambos enviarem o resultado</p>
                 </div>
 
                 <button onClick={handleCreateDuel} disabled={loading || !newDuel.opponentId}
@@ -516,4 +563,4 @@ export default function Duels() {
       </AnimatePresence>
     </div>
   );
-                                                         }
+}
