@@ -12,6 +12,7 @@ export default function Layout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [storeEnabled, setStoreEnabled] = useState(true);
   const [economyEnabled, setEconomyEnabled] = useState(true);
+  const [pendingDuels, setPendingDuels] = useState(0);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -23,6 +24,23 @@ export default function Layout() {
     };
     fetchSettings();
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchPending = async () => {
+      const { count } = await supabase
+        .from('duels')
+        .select('id', { count: 'exact', head: true })
+        .eq('opponent_id', user.id)
+        .eq('status', 'pending');
+      setPendingDuels(count || 0);
+    };
+    fetchPending();
+    const channel = supabase.channel('layout-duels-badge')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'duels' }, fetchPending)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id]);
 
   const navItems = [
     { icon: Home, label: 'Início', path: '/' },
@@ -140,7 +158,14 @@ export default function Layout() {
             >
               {({ isActive }) => (
                 <>
-                  <item.icon className={cn('w-6 h-6 transition-transform', isActive && 'scale-110')} />
+                  <div className="relative">
+                    <item.icon className={cn('w-6 h-6 transition-transform', isActive && 'scale-110')} />
+                    {item.path === '/duels' && pendingDuels > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 bg-secondary text-background text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-lg animate-pulse">
+                        {pendingDuels}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[8px] font-bold uppercase tracking-widest">{item.label}</span>
                   {isActive && (
                     <div className="absolute -top-2 w-1 h-1 bg-primary rounded-full shadow-[0_0_10px_#cafd00]" />
