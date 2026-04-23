@@ -8,6 +8,109 @@ import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
 import { addReward } from '../utils/rewards';
 
+function DuelCard({ duel, userId, loading, onFinish, onRespond, isOpen }: {
+  key?: any; duel: any; userId: any; loading: any; isOpen: boolean;
+  onFinish: (id: string, winnerId: string) => any;
+  onRespond: (id: string, status: 'accepted' | 'rejected') => any;
+}) {
+  const isChallenger = duel.challenger_id === userId;
+  const isOpponent = duel.opponent_id === userId;
+  const isMine = isChallenger || isOpponent;
+
+  const getBetLabel = (d: any) => {
+    if (!d.bet_type || d.bet_type === 'xp') return d.bet_xp + ' XP';
+    if (d.bet_type === 'coins') return d.bet_coins + ' BC';
+    return d.bet_xp + ' XP + ' + d.bet_coins + ' BC';
+  };
+  const getRewardLabel = (d: any) => {
+    const xp = d.reward_xp || 0; const coins = d.reward_coins || 0;
+    if (xp > 0 && coins > 0) return '+' + xp + ' XP + ' + coins + ' BC';
+    if (xp > 0) return '+' + xp + ' XP';
+    return '+' + coins + ' BC';
+  };
+
+  return (
+    <div className={cn(
+      "bg-surface-container-low rounded-[2.5rem] border p-6 relative overflow-hidden",
+      isOpen ? "border-secondary/30" : "border-outline-variant/10"
+    )}>
+      <div className="absolute top-4 right-4">
+        <span className={cn(
+          "text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest border",
+          duel.status === 'accepted' ? "bg-primary/20 text-primary border-primary/30" : "bg-secondary/20 text-secondary border-secondary/30"
+        )}>
+          {duel.status === 'accepted' ? 'ATIVO' : isOpen ? 'ABERTO' : 'PENDENTE'}
+        </span>
+      </div>
+
+      <div className="flex justify-between items-center mb-5 mt-2">
+        <div className="flex flex-col items-center gap-2 flex-1">
+          <div className="w-14 h-14 rounded-full border-2 border-primary bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-primary">
+            {duel.challengerName[0]}
+          </div>
+          <span className="text-[10px] font-bold text-on-surface uppercase italic truncate max-w-[70px]">
+            {isChallenger ? 'VOCE' : duel.challengerName.split(' ')[0]}
+          </span>
+        </div>
+        <span className="text-on-surface-variant font-headline font-black text-2xl italic opacity-30">VS</span>
+        <div className="flex flex-col items-center gap-2 flex-1">
+          <div className="w-14 h-14 rounded-full border-2 border-secondary bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-secondary">
+            {isOpen ? '?' : duel.opponentName[0]}
+          </div>
+          <span className="text-[10px] font-bold text-on-surface uppercase italic truncate max-w-[70px]">
+            {isOpponent ? 'VOCE' : isOpen ? 'ABERTO' : duel.opponentName.split(' ')[0]}
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-surface-container-highest/50 rounded-2xl p-4 grid grid-cols-3 gap-2 mb-4">
+        <div>
+          <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</p>
+          <p className="text-xs font-headline font-black text-on-surface uppercase italic">{duel.type}</p>
+        </div>
+        <div>
+          <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Aposta</p>
+          <p className="text-xs font-headline font-black text-secondary uppercase italic">{getBetLabel(duel)}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Premio</p>
+          <p className="text-xs font-headline font-black text-primary uppercase italic">{getRewardLabel(duel)}</p>
+        </div>
+      </div>
+
+      {duel.status === 'accepted' && isMine && (
+        <div className="flex gap-3">
+          <button onClick={() => onFinish(duel.id, userId)} disabled={loading}
+            className="flex-1 bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
+            EU VENCI <Trophy className="w-4 h-4" />
+          </button>
+          <button onClick={() => onFinish(duel.id, isChallenger ? duel.opponent_id : duel.challenger_id)} disabled={loading}
+            className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
+            EU PERDI <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+      {duel.status === 'pending' && (isOpponent || isOpen) && (
+        <div className="flex gap-3">
+          <button onClick={() => onRespond(duel.id, 'accepted')} disabled={loading}
+            className="flex-1 bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
+            ACEITAR <Check className="w-4 h-4" />
+          </button>
+          {!isOpen && (
+            <button onClick={() => onRespond(duel.id, 'rejected')} disabled={loading}
+              className="flex-1 bg-error-container text-on-error-container py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
+              REJEITAR <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
+      {duel.status === 'pending' && isChallenger && (
+        <p className="text-center text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Aguardando resposta...</p>
+      )}
+    </div>
+  );
+}
+
 export default function Duels() {
   const { user, updateUser } = useAuth();
   const [duels, setDuels] = useState<any[]>([]);
@@ -15,6 +118,7 @@ export default function Duels() {
   const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
   const [isChallenging, setIsChallenging] = useState(false);
+  const [openDuels, setOpenDuels] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [newDuel, setNewDuel] = useState({
     opponentId: '',
@@ -25,17 +129,32 @@ export default function Duels() {
   });
 
   const fetchDuels = async () => {
-    const { data } = await supabase
+    if (!user?.id) return;
+    // Busca duelos onde o usuário é participante (pendente ou aceito)
+    const { data: myDuels } = await supabase
       .from('duels')
       .select('*, challenger:profiles!challenger_id(name, xp, coins), opponent:profiles!opponent_id(name, xp, coins)')
+      .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
       .in('status', ['pending', 'accepted'])
-      .or(`challenger_id.eq.${user?.id},opponent_id.eq.${user?.id}`);
-    setDuels((data || []).map(d => ({
+      .order('created_at', { ascending: false });
+
+    // Busca duelos abertos de outros atletas (pendente, onde o usuário NÃO é o desafiante)
+    const { data: openDuels } = await supabase
+      .from('duels')
+      .select('*, challenger:profiles!challenger_id(name, xp, coins), opponent:profiles!opponent_id(name, xp, coins)')
+      .neq('challenger_id', user.id)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    const mapDuel = (d: any) => ({
       ...d,
       challengerName: d.challenger?.name || 'Atleta',
       opponentName: d.opponent?.name || 'Atleta',
       reward: { xp: d.reward_xp || 0, coins: d.reward_coins || 0 }
-    })));
+    });
+
+    setDuels((myDuels || []).map(mapDuel));
+    setOpenDuels((openDuels || []).filter(d => d.opponent_id !== user.id).map(mapDuel));
   };
 
   const fetchHistory = async () => {
@@ -124,13 +243,13 @@ export default function Duels() {
     }
   };
 
-  const handleRespond = async (duelId: string, status: 'accepted' | 'rejected') => {
+  const handleRespond = async (duelId: string, status: 'accepted' | 'rejected', isOpen = false) => {
     if (status === 'accepted') {
-      // Verifica saldo do oponente ao aceitar
-      const duel = duels.find(d => d.id === duelId);
+      const allDuels = [...duels, ...openDuels];
+      const duel = allDuels.find(d => d.id === duelId);
       if (duel) {
         if ((duel.bet_type === 'xp' || duel.bet_type === 'both') && (user?.xp || 0) < duel.bet_xp) {
-          alert(`Você não tem XP suficiente para aceitar! Você tem ${user?.xp} XP, precisa de ${duel.bet_xp} XP.`);
+          alert(`Você não tem XP suficiente! Você tem ${user?.xp} XP, precisa de ${duel.bet_xp} XP.`);
           return;
         }
         if ((duel.bet_type === 'coins' || duel.bet_type === 'both') && (user?.coins || 0) < duel.bet_coins) {
@@ -141,7 +260,12 @@ export default function Duels() {
     }
     setLoading(true);
     try {
-      await supabase.from('duels').update({ status }).eq('id', duelId);
+      const updateData: any = { status };
+      // Se é um duelo aberto, assume o papel de oponente
+      if (isOpen && status === 'accepted' && user?.id) {
+        updateData.opponent_id = user.id;
+      }
+      await supabase.from('duels').update(updateData).eq('id', duelId);
     } finally {
       setLoading(false);
     }
@@ -256,93 +380,51 @@ export default function Duels() {
       <AnimatePresence mode="wait">
         {activeTab === 'active' && (
           <motion.div key="active" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="flex flex-col gap-4">
-            {duels.length === 0 && (
+
+            {/* Meus Duelos */}
+            {duels.length === 0 && openDuels.length === 0 && (
               <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 text-center">
                 <Swords className="w-12 h-12 mx-auto mb-3 text-outline-variant opacity-30" />
                 <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">Nenhum duelo ativo</p>
               </div>
             )}
-            {duels.map(duel => (
-              <div key={duel.id} className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 relative overflow-hidden">
-                {/* Status badge */}
-                <div className="absolute top-4 right-4">
-                  <span className={cn(
-                    "text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest border",
-                    duel.status === 'accepted' ? "bg-primary/20 text-primary border-primary/30" : "bg-secondary/20 text-secondary border-secondary/30"
-                  )}>
-                    {duel.status === 'accepted' ? 'ATIVO' : 'PENDENTE'}
-                  </span>
-                </div>
 
-                {/* VS */}
-                <div className="flex justify-between items-center mb-5 mt-2">
-                  <div className="flex flex-col items-center gap-2 flex-1">
-                    <div className="w-14 h-14 rounded-full border-2 border-primary bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-primary">
-                      {duel.challengerName[0]}
-                    </div>
-                    <span className="text-[10px] font-bold text-on-surface uppercase italic truncate max-w-[70px]">
-                      {duel.challenger_id === user?.id ? 'VOCÊ' : duel.challengerName.split(' ')[0]}
-                    </span>
-                  </div>
-                  <div className="flex flex-col items-center gap-1 px-2">
-                    <span className="text-on-surface-variant font-headline font-black text-2xl italic opacity-30">VS</span>
-                  </div>
-                  <div className="flex flex-col items-center gap-2 flex-1">
-                    <div className="w-14 h-14 rounded-full border-2 border-secondary bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-secondary">
-                      {duel.opponentName[0]}
-                    </div>
-                    <span className="text-[10px] font-bold text-on-surface uppercase italic truncate max-w-[70px]">
-                      {duel.opponent_id === user?.id ? 'VOCÊ' : duel.opponentName.split(' ')[0]}
-                    </span>
-                  </div>
-                </div>
+            {duels.length > 0 && (
+              <>
+                <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest px-1">Meus Duelos</p>
+                {duels.map(duel => (
+                  <DuelCard
+                    key={duel.id}
+                    duel={duel}
+                    userId={user?.id || ''}
+                    loading={loading}
+                    onFinish={handleFinish}
+                    onRespond={(id, status) => handleRespond(id, status, false)}
+                    isOpen={false}
+                  />
+                ))}
+              </>
+            )}
 
-                {/* Info */}
-                <div className="bg-surface-container-highest/50 rounded-2xl p-4 grid grid-cols-3 gap-2 mb-4">
-                  <div>
-                    <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</p>
-                    <p className="text-xs font-headline font-black text-on-surface uppercase italic">{duel.type}</p>
-                  </div>
-                  <div>
-                    <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Aposta</p>
-                    <p className="text-xs font-headline font-black text-secondary uppercase italic">{getBetLabel(duel)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Prêmio</p>
-                    <p className="text-xs font-headline font-black text-primary uppercase italic">{getRewardLabel(duel)}</p>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                {duel.status === 'accepted' && (
-                  <div className="flex gap-3">
-                    <button onClick={() => handleFinish(duel.id, user?.id || '')} disabled={loading}
-                      className="flex-1 bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
-                      EU VENCI <Trophy className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleFinish(duel.id, duel.challenger_id === user?.id ? duel.opponent_id : duel.challenger_id)} disabled={loading}
-                      className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
-                      EU PERDI <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-                {duel.status === 'pending' && duel.opponent_id === user?.id && (
-                  <div className="flex gap-3">
-                    <button onClick={() => handleRespond(duel.id, 'accepted')} disabled={loading}
-                      className="flex-1 bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
-                      ACEITAR <Check className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleRespond(duel.id, 'rejected')} disabled={loading}
-                      className="flex-1 bg-error-container text-on-error-container py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
-                      REJEITAR <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-                {duel.status === 'pending' && duel.challenger_id === user?.id && (
-                  <p className="text-center text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Aguardando resposta do oponente...</p>
-                )}
-              </div>
-            ))}
+            {/* Duelos Abertos — qualquer atleta pode aceitar */}
+            {openDuels.length > 0 && (
+              <>
+                <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest px-1 mt-2">
+                  Duelos Abertos <span className="text-secondary">— entre nessa!</span>
+                </p>
+                {openDuels.map(duel => (
+                  <DuelCard
+                    key={duel.id}
+                    duel={duel}
+                    userId={user?.id || ''}
+                    loading={loading}
+                    onFinish={handleFinish}
+                    onRespond={(id, status) => handleRespond(id, status, true)}
+                    isOpen={true}
+                  />
+                ))}
+              </>
+            )}
           </motion.div>
         )}
 
@@ -513,4 +595,4 @@ export default function Duels() {
       </AnimatePresence>
     </div>
   );
-      }
+}
