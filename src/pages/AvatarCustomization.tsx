@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
-import { ShoppingBag, Package, Check, Coins, ChevronLeft, Sparkles, Shirt, Footprints, Glasses, GraduationCap, Watch } from 'lucide-react';
+import { ShoppingBag, Package, Check, Coins, ChevronLeft, Sparkles, Shirt, Footprints, Glasses, GraduationCap, Watch, X, Eye } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Item, AvatarSlot } from '../types';
-import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -15,6 +14,12 @@ function getItemImageUrl(imageKey: string): string {
   if (imageKey.startsWith('http')) return imageKey;
   const encoded = encodeURIComponent(imageKey);
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encoded}.png`;
+}
+
+function getBaseImageUrl(equipped: AvatarSlot): string {
+  const isFemale = equipped?.base_outfit === 'base_female' || equipped?.base_outfit?.includes('female');
+  const base = isFemale ? 'base feminina' : 'base masculima';
+  return getItemImageUrl(base);
 }
 
 const SLOT_ICONS: Record<string, any> = {
@@ -37,6 +42,151 @@ const SLOT_LABELS: Record<string, string> = {
   special: 'Especial',
 };
 
+// Modal de preview — mostra avatar de corpo inteiro com o item "experimentado"
+function ItemPreviewModal({
+  item,
+  equipped,
+  items,
+  onClose,
+  onBuy,
+  onEquip,
+  inInventory,
+  canAfford,
+}: {
+  item: Item;
+  equipped: AvatarSlot;
+  items: Item[];
+  onClose: () => void;
+  onBuy: (item: Item) => void;
+  onEquip: (itemId: string | null, slot: keyof AvatarSlot) => void;
+  inInventory: boolean;
+  canAfford: boolean;
+}) {
+  const isEquipped = equipped[item.slot] === item.id;
+
+  // Monta o equipped "simulado" — troca apenas o slot do item visualizado
+  const previewEquipped: AvatarSlot = { ...equipped, [item.slot]: item.id };
+
+  // Resolve a imagem de preview: usa a imagem do item sendo visualizado
+  const previewImageUrl = getItemImageUrl(item.image);
+
+  // Lista de outros itens equipados (excluindo o slot atual)
+  const otherEquippedItems = items.filter(i =>
+    i.slot !== item.slot && equipped[i.slot] === i.id
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-background/80 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, y: 60 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 60 }}
+        className="w-full sm:max-w-sm bg-surface-container-low rounded-t-[2.5rem] sm:rounded-[2.5rem] border border-outline-variant/10 shadow-2xl overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 pb-0">
+          <div>
+            <h3 className="text-lg font-headline font-black text-on-surface italic uppercase leading-none">
+              {item.name}
+            </h3>
+            <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mt-0.5">
+              {SLOT_LABELS[item.slot]}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 bg-surface-container-highest rounded-xl text-on-surface-variant hover:text-on-surface transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Avatar corpo inteiro */}
+        <div className="relative mx-6 mt-4 rounded-3xl bg-surface-container-highest overflow-hidden flex items-center justify-center" style={{ height: '320px' }}>
+          {/* Imagem do item sendo visualizado (corpo inteiro) */}
+          <img
+            src={previewImageUrl}
+            alt={item.name}
+            className="h-full w-full object-contain object-top"
+            onError={(e) => {
+              e.currentTarget.src = getBaseImageUrl(equipped);
+            }}
+          />
+
+          {/* Badge do item */}
+          <div className="absolute top-3 left-3 bg-primary/90 text-on-primary px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest flex items-center gap-1">
+            <Eye className="w-3 h-3" /> PREVIEW
+          </div>
+
+          {isEquipped && (
+            <div className="absolute top-3 right-3 bg-primary text-on-primary p-1.5 rounded-full shadow-lg">
+              <Check className="w-4 h-4" />
+            </div>
+          )}
+        </div>
+
+        {/* Itens atualmente equipados no restante dos slots */}
+        {otherEquippedItems.length > 0 && (
+          <div className="mx-6 mt-3">
+            <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest mb-2">Também equipado:</p>
+            <div className="flex gap-2 flex-wrap">
+              {otherEquippedItems.map(i => (
+                <div key={i.id} className="flex items-center gap-1.5 bg-surface-container-highest px-2 py-1 rounded-full">
+                  <img
+                    src={getItemImageUrl(i.image)}
+                    alt={i.name}
+                    className="w-5 h-5 object-contain rounded-full"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                  <span className="text-[8px] font-black text-on-surface-variant uppercase tracking-widest">{i.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Preço e ações */}
+        <div className="p-6 pt-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 bg-secondary/20 px-4 py-2 rounded-full border border-secondary/30">
+              <Coins className="w-4 h-4 text-secondary" />
+              <span className="text-secondary font-black italic">{item.price} BC</span>
+            </div>
+          </div>
+
+          {inInventory ? (
+            <button
+              onClick={() => { onEquip(isEquipped ? null : item.id, item.slot); onClose(); }}
+              className={cn(
+                'w-full py-3 rounded-2xl font-black uppercase text-sm tracking-widest transition-all',
+                isEquipped
+                  ? 'bg-surface-container-highest text-on-surface-variant'
+                  : 'bg-primary text-on-primary shadow-lg shadow-primary/20'
+              )}
+            >
+              {isEquipped ? 'REMOVER' : 'EQUIPAR'}
+            </button>
+          ) : (
+            <button
+              onClick={() => { if (canAfford) { onBuy(item); onClose(); } }}
+              disabled={!canAfford}
+              className={cn(
+                'w-full py-3 rounded-2xl font-black uppercase text-sm tracking-widest transition-all flex items-center justify-center gap-2',
+                canAfford
+                  ? 'bg-secondary text-on-secondary shadow-lg shadow-secondary/20'
+                  : 'bg-surface-container-highest text-on-surface-variant opacity-50 cursor-not-allowed'
+              )}
+            >
+              <Coins className="w-4 h-4" />
+              {canAfford ? `COMPRAR POR ${item.price} BC` : 'COINS INSUFICIENTES'}
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function AvatarCustomization() {
   const { user, updateUser } = useAuth();
   const navigate = useNavigate();
@@ -45,6 +195,7 @@ export default function AvatarCustomization() {
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState<keyof AvatarSlot | 'all'>('all');
   const [avatarEnabled, setAvatarEnabled] = useState<boolean | null>(null);
+  const [previewItem, setPreviewItem] = useState<Item | null>(null);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -87,7 +238,6 @@ export default function AvatarCustomization() {
     } catch (err) { console.error(err); }
   };
 
-  // Loading inicial
   if (avatarEnabled === null) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -96,23 +246,15 @@ export default function AvatarCustomization() {
     );
   }
 
-  // Avatar desabilitado pelo admin (Admin ainda pode acessar)
-  if (!avatarEnabled && user?.role !== 'admin') {
+  if (!avatarEnabled) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background gap-6 p-8">
         <Sparkles className="w-16 h-16 text-primary opacity-30" />
         <div className="text-center">
-          <h2 className="text-2xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none mb-2">
-            Em breve!
-          </h2>
-          <p className="text-on-surface-variant text-sm">
-            O sistema de avatar está sendo preparado. Volte em breve!
-          </p>
+          <h2 className="text-2xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none mb-2">Em breve!</h2>
+          <p className="text-on-surface-variant text-sm">O sistema de avatar está sendo preparado. Volte em breve!</p>
         </div>
-        <button
-          onClick={() => navigate(-1)}
-          className="px-6 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 text-on-surface font-bold uppercase text-xs tracking-widest hover:bg-surface-container-highest transition-all"
-        >
+        <button onClick={() => navigate(-1)} className="px-6 py-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 text-on-surface font-bold uppercase text-xs tracking-widest hover:bg-surface-container-highest transition-all">
           Voltar
         </button>
       </div>
@@ -122,6 +264,17 @@ export default function AvatarCustomization() {
   const filteredItems = items.filter(item => selectedSlot === 'all' || item.slot === selectedSlot);
   const inventoryItems = filteredItems.filter(item => user?.avatar.inventory.includes(item.id));
   const shopItems = filteredItems.filter(item => !user?.avatar.inventory.includes(item.id));
+
+  // Avatar preview — mostra imagem do item equipado ou base
+  const equippedImageUrl = (() => {
+    const eq = user?.avatar.equipped;
+    if (!eq) return getBaseImageUrl({} as AvatarSlot);
+    if (eq.top) return getItemImageUrl(items.find(i => i.id === eq.top)?.image || eq.top);
+    if (eq.bottom) return getItemImageUrl(items.find(i => i.id === eq.bottom)?.image || eq.bottom);
+    if (eq.shoes) return getItemImageUrl(items.find(i => i.id === eq.shoes)?.image || eq.shoes);
+    if (eq.special) return getItemImageUrl(items.find(i => i.id === eq.special)?.image || eq.special);
+    return getBaseImageUrl(eq);
+  })();
 
   return (
     <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background pb-24">
@@ -134,20 +287,52 @@ export default function AvatarCustomization() {
         </h1>
       </header>
 
-      <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 flex flex-col items-center gap-6 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-6">
+      {/* Avatar Preview Section — corpo inteiro */}
+      <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 flex gap-6 relative overflow-hidden items-center">
+        <div className="absolute top-0 right-0 p-4">
           <div className="bg-secondary/20 px-4 py-2 rounded-full border border-secondary/30 flex items-center gap-2">
             <Coins className="w-4 h-4 text-secondary" />
             <span className="text-secondary text-sm font-black italic">{user?.coins} BC</span>
           </div>
         </div>
-        <AvatarPreview equipped={user?.avatar.equipped!} size="xl" />
-        <div className="text-center">
-          <h2 className="text-2xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none mb-1">{user?.name}</h2>
+
+        {/* Avatar corpo inteiro */}
+        <div className="w-32 h-48 rounded-3xl bg-surface-container-highest overflow-hidden flex-shrink-0 border-2 border-primary/30">
+          <img
+            src={equippedImageUrl}
+            alt="Avatar"
+            className="w-full h-full object-contain object-top"
+            onError={(e) => { e.currentTarget.src = getBaseImageUrl(user?.avatar.equipped || {} as AvatarSlot); }}
+          />
+        </div>
+
+        <div className="flex flex-col gap-2 flex-1 pt-8">
+          <h2 className="text-xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none">{user?.name}</h2>
           <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest italic">NÍVEL {user?.level}</p>
+
+          {/* Itens equipados */}
+          <div className="flex flex-col gap-1 mt-2">
+            {Object.entries(user?.avatar.equipped || {})
+              .filter(([slot, id]) => id && slot !== 'base_outfit')
+              .map(([slot, id]) => {
+                const item = items.find(i => i.id === id);
+                if (!item) return null;
+                return (
+                  <div key={slot} className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    <span className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest">{item.name}</span>
+                  </div>
+                );
+              })
+            }
+            {Object.values(user?.avatar.equipped || {}).filter(v => v && v !== user?.avatar.equipped?.base_outfit).length === 0 && (
+              <p className="text-[9px] text-on-surface-variant opacity-40 uppercase tracking-widest italic">Nenhum item equipado</p>
+            )}
+          </div>
         </div>
       </section>
 
+      {/* Tabs */}
       <div className="flex flex-col gap-4">
         <div className="flex bg-surface-container-low p-1.5 rounded-2xl border border-outline-variant/10">
           <button onClick={() => setActiveTab('inventory')} className={cn('flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all', activeTab === 'inventory' ? 'bg-primary text-on-primary shadow-lg shadow-primary/20' : 'text-on-surface-variant hover:bg-surface-container-highest')}>
@@ -181,23 +366,57 @@ export default function AvatarCustomization() {
             {(activeTab === 'inventory' ? inventoryItems : shopItems).map((item) => {
               const isEquipped = user?.avatar.equipped[item.slot] === item.id;
               const canAfford = (user?.coins || 0) >= item.price;
+              const inInventory = user?.avatar.inventory.includes(item.id) || false;
               const imageUrl = getItemImageUrl(item.image);
+
               return (
-                <motion.div key={item.id} layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className={cn('bg-surface-container-low rounded-3xl border p-4 flex flex-col gap-3 transition-all relative group', isEquipped ? 'border-primary bg-primary/5' : 'border-outline-variant/10 hover:border-primary/30')}>
-                  {isEquipped && <div className="absolute top-3 right-3 bg-primary text-on-primary p-1 rounded-full shadow-lg"><Check className="w-3 h-3" /></div>}
+                <motion.div
+                  key={item.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className={cn(
+                    'bg-surface-container-low rounded-3xl border p-4 flex flex-col gap-3 transition-all relative group cursor-pointer',
+                    isEquipped ? 'border-primary bg-primary/5' : 'border-outline-variant/10 hover:border-primary/30'
+                  )}
+                  onClick={() => setPreviewItem(item)}
+                >
+                  {isEquipped && (
+                    <div className="absolute top-3 right-3 bg-primary text-on-primary p-1 rounded-full shadow-lg z-10">
+                      <Check className="w-3 h-3" />
+                    </div>
+                  )}
+
+                  {/* Thumbnail */}
                   <div className="aspect-square rounded-2xl bg-surface-container-highest overflow-hidden group-hover:scale-105 transition-transform">
-                    <img src={imageUrl} alt={item.name} className="w-full h-full object-cover object-top" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                    <img
+                      src={imageUrl}
+                      alt={item.name}
+                      className="w-full h-full object-cover object-top"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
                   </div>
+
                   <div>
                     <h4 className="text-on-surface font-bold uppercase text-[10px] italic leading-tight">{item.name}</h4>
                     <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest mt-0.5 opacity-50">{SLOT_LABELS[item.slot]}</p>
                   </div>
+
+                  {/* Botão rápido */}
                   {activeTab === 'inventory' ? (
-                    <button onClick={() => handleEquip(isEquipped ? null : item.id, item.slot)} className={cn('w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all', isEquipped ? 'bg-surface-container-highest text-on-surface-variant' : 'bg-primary text-on-primary shadow-lg shadow-primary/20')}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleEquip(isEquipped ? null : item.id, item.slot); }}
+                      className={cn('w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all', isEquipped ? 'bg-surface-container-highest text-on-surface-variant' : 'bg-primary text-on-primary shadow-lg shadow-primary/20')}
+                    >
                       {isEquipped ? 'REMOVER' : 'EQUIPAR'}
                     </button>
                   ) : (
-                    <button onClick={() => handleBuy(item)} disabled={!canAfford} className={cn('w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all flex items-center justify-center gap-1.5', canAfford ? 'bg-secondary text-on-secondary shadow-lg shadow-secondary/20' : 'bg-surface-container-highest text-on-surface-variant opacity-50 cursor-not-allowed')}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleBuy(item); }}
+                      disabled={!canAfford}
+                      className={cn('w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all flex items-center justify-center gap-1.5', canAfford ? 'bg-secondary text-on-secondary shadow-lg shadow-secondary/20' : 'bg-surface-container-highest text-on-surface-variant opacity-50 cursor-not-allowed')}
+                    >
                       <Coins className="w-3 h-3" /> {item.price} BC
                     </button>
                   )}
@@ -222,6 +441,22 @@ export default function AvatarCustomization() {
           )}
         </section>
       )}
+
+      {/* Modal de preview */}
+      <AnimatePresence>
+        {previewItem && (
+          <ItemPreviewModal
+            item={previewItem}
+            equipped={user?.avatar.equipped || {} as AvatarSlot}
+            items={items}
+            onClose={() => setPreviewItem(null)}
+            onBuy={handleBuy}
+            onEquip={handleEquip}
+            inInventory={user?.avatar.inventory.includes(previewItem.id) || false}
+            canAfford={(user?.coins || 0) >= previewItem.price}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
-    }
+}
