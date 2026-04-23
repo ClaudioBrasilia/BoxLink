@@ -106,6 +106,7 @@ export default function Profile() {
     else alert('Erro ao salvar: ' + error.message);
   };
 
+
   const handleShareAchievement = async (achievement: any) => {
     setSharing(true);
     try {
@@ -281,6 +282,7 @@ export default function Profile() {
               </div>
             )}
             <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">{user?.email}</p>
+
             <div className="flex items-center gap-2 mt-3">
               <div className="bg-primary/20 px-3 py-1 rounded-full border border-primary/30">
                 <span className="text-primary text-[10px] font-black uppercase tracking-widest">NÍVEL {user?.level}</span>
@@ -673,4 +675,4 @@ export default function Profile() {
       </AnimatePresence>
     </div>
   );
-}
+        }
