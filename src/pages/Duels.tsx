@@ -28,7 +28,7 @@ export default function Duels() {
     const { data } = await supabase
       .from('duels')
       .select('*, challenger:profiles!challenger_id(name, xp, coins), opponent:profiles!opponent_id(name, xp, coins)')
-      .neq('status', 'finished')
+      .in('status', ['pending', 'accepted'])
       .or(`challenger_id.eq.${user?.id},opponent_id.eq.${user?.id}`);
     setDuels((data || []).map(d => ({
       ...d,
@@ -70,7 +70,7 @@ export default function Duels() {
     if (!user?.id) return;
     fetchDuels(); fetchHistory(); fetchUsers();
     const channel = supabase.channel('duels_changes')
-      .on('postgres_changes', { event: '*', table: 'duels' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'duels' }, () => {
         fetchDuels(); fetchHistory();
       }).subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -153,6 +153,10 @@ export default function Duels() {
     try {
       const { data: duel } = await supabase.from('duels').select('*').eq('id', duelId).single();
       if (!duel) return;
+      if (duel.status === 'finished') {
+        alert('Este duelo já foi finalizado.');
+        return;
+      }
 
       await supabase.from('duels').update({ status: 'finished', winner_id: winnerId }).eq('id', duelId);
 
@@ -164,7 +168,7 @@ export default function Duels() {
       const winCoins = duel.reward_coins || 10;
 
       // Perdedor perde o que apostou (XP mínimo de 5 para não zerar)
-      const loseXp = duel.bet_xp > 0 ? -Math.min(duel.bet_xp, 5) : 0;
+      const loseXp = duel.bet_xp > 0 ? -duel.bet_xp : 0;
       const loseCoins = duel.bet_coins > 0 ? -duel.bet_coins : 0;
 
       if (isWinner) {
@@ -196,7 +200,7 @@ export default function Duels() {
   };
 
   const getBetLabel = (duel: any) => {
-    if (!duel.bet_type || duel.bet_type === 'xp') return `${duel.bet_xp || duel.reward_xp / 2} XP`;
+    if (!duel.bet_type || duel.bet_type === 'xp') return `${duel.bet_xp || 0} XP`;
     if (duel.bet_type === 'coins') return `${duel.bet_coins} BrazaCoins`;
     return `${duel.bet_xp} XP + ${duel.bet_coins} BC`;
   };
@@ -509,4 +513,4 @@ export default function Duels() {
       </AnimatePresence>
     </div>
   );
-}
+      }
