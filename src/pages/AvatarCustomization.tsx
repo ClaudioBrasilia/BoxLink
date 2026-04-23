@@ -45,18 +45,14 @@ export default function AvatarCustomization() {
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState<keyof AvatarSlot | 'all'>('all');
   const [avatarEnabled, setAvatarEnabled] = useState<boolean | null>(null);
-  const [storeEnabled, setStoreEnabled] = useState<boolean | null>(null);
-  const [economyEnabled, setEconomyEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     const fetchAll = async () => {
       const { data: settingsData } = await supabase
         .from('box_settings')
-        .select('avatar_enabled, modules')
+        .select('avatar_enabled')
         .single();
       setAvatarEnabled(settingsData?.avatar_enabled ?? false);
-      setStoreEnabled(settingsData?.modules?.store ?? true);
-      setEconomyEnabled(settingsData?.modules?.economy ?? true);
 
       const { data: itemsData } = await supabase.from('items').select('*');
       setItems(itemsData || []);
@@ -91,19 +87,8 @@ export default function AvatarCustomization() {
     } catch (err) { console.error(err); }
   };
 
-  const handleBaseChange = async (gender: 'male' | 'female') => {
-    if (!user) return;
-    const base_outfit = gender === 'female' ? 'base_female' : 'base_male';
-    const newEquipped = { ...user.avatar.equipped, base_outfit };
-    const { error } = await supabase
-      .from('profiles')
-      .update({ avatar_equipped: newEquipped, updated_at: new Date().toISOString() })
-      .eq('id', user.id);
-    if (!error) updateUser({ ...user, avatar: { ...user.avatar, equipped: newEquipped } });
-  };
-
   // Loading inicial
-  if (avatarEnabled === null || storeEnabled === null || economyEnabled === null) {
+  if (avatarEnabled === null) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -111,8 +96,8 @@ export default function AvatarCustomization() {
     );
   }
 
-  // Avatar desabilitado pelo admin
-  if (!avatarEnabled || !storeEnabled || !economyEnabled) {
+  // Avatar desabilitado pelo admin (Admin ainda pode acessar)
+  if (!avatarEnabled && user?.role !== 'admin') {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background gap-6 p-8">
         <Sparkles className="w-16 h-16 text-primary opacity-30" />
@@ -160,33 +145,6 @@ export default function AvatarCustomization() {
         <div className="text-center">
           <h2 className="text-2xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none mb-1">{user?.name}</h2>
           <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest italic">NÍVEL {user?.level}</p>
-        </div>
-
-        {/* Seleção de base do avatar */}
-        <div className="flex items-center gap-2">
-          <span className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Base:</span>
-          <button
-            onClick={() => handleBaseChange('male')}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-black uppercase text-[10px] tracking-wider transition-all',
-              !user?.avatar?.equipped?.base_outfit?.includes('female')
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:border-primary/30'
-            )}
-          >
-            ♂ Masculino
-          </button>
-          <button
-            onClick={() => handleBaseChange('female')}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-black uppercase text-[10px] tracking-wider transition-all',
-              user?.avatar?.equipped?.base_outfit?.includes('female')
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:border-primary/30'
-            )}
-          >
-            ♀ Feminino
-          </button>
         </div>
       </section>
 
@@ -266,4 +224,4 @@ export default function AvatarCustomization() {
       )}
     </div>
   );
-          }
+    }
