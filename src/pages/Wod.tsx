@@ -1,3 +1,4 @@
+// Wod.tsx corrigido - substitua todo o conteúdo do seu arquivo Wod.tsx por este código
 import { useState, useEffect } from 'react';
 import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Info, X, Edit2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +24,7 @@ export default function Wod() {
   const [isEditing, setIsEditing] = useState(false);
   const [newResult, setNewResult] = useState({ result: '', type: 'RX' });
   const [isSaving, setIsSaving] = useState(false);
+  const [hasCheckedExisting, setHasCheckedExisting] = useState(false); // NOVO
 
   const parseResult = (r: string, isTimeBased: boolean): number => {
     if (!r) return isTimeBased ? 999999 : 0;
@@ -35,7 +37,6 @@ export default function Wod() {
   };
 
   const fetchResults = async (wodId: string) => {
-    // Busca o tipo do WOD para saber se é por tempo ou por reps
     const { data: wod } = await supabase
       .from('wods')
       .select('type')
@@ -51,7 +52,6 @@ export default function Wod() {
       t => (wod?.type || '').toUpperCase().includes(t)
     );
 
-    // Deduplicar: mantém apenas o melhor resultado por usuário
     const bestByUser: Record<string, any> = {};
     (data || []).forEach((r: any) => {
       const val = parseResult(r.result, isTimeBased);
@@ -65,7 +65,6 @@ export default function Wod() {
       if (isBetter) bestByUser[r.user_id] = r;
     });
 
-    // Ordena por melhor resultado
     const sorted = Object.values(bestByUser).sort((a: any, b: any) =>
       isTimeBased
         ? parseResult(a.result, isTimeBased) - parseResult(b.result, isTimeBased)
@@ -74,7 +73,6 @@ export default function Wod() {
 
     setResults(sorted);
 
-    // Buscar resultado do usuário atual
     if (user) {
       const userRes = sorted.find((r: any) => r.user_id === user.id);
       setUserResult(userRes || null);
@@ -83,6 +81,7 @@ export default function Wod() {
       } else {
         setNewResult({ result: '', type: 'RX' });
       }
+      setHasCheckedExisting(true); // MARCA QUE JÁ VERIFICAMOS
     }
   };
 
@@ -94,6 +93,7 @@ export default function Wod() {
       const dateStr = formatInTimeZone(selectedDate, TIMEZONE, 'yyyy-MM-dd');
       const found = (data || []).find((w: any) => w.date === dateStr);
       setCurrentWod(found || null);
+      setHasCheckedExisting(false); // RESETA AO MUDAR DE DATA
       if (found) {
         fetchResults(found.id);
       } else {
@@ -110,53 +110,54 @@ export default function Wod() {
       return;
     }
 
+    // BLOQUEIO IMEDIATO para prevenir duplicação
+    if (isSaving) {
+      console.log('Operação já em andamento, ignorando...');
+      return;
+    }
+
     setIsSaving(true);
     const isFirstTime = !userResult;
 
     try {
       let error: any = null;
 
-      if (isFirstTime) {
-        // Verificação extra: checar se já existe registro antes de inserir
-        const { data: existing } = await supabase
-          .from('wod_results')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('wod_id', currentWod.id)
-          .maybeSingle();
+      // BUSCA ATUALIZADA para garantir que não houve inserção concorrente
+      const { data: existing, error: fetchError } = await supabase
+        .from('wod_results')
+        .select('id, result, type')
+        .eq('user_id', user.id)
+        .eq('wod_id', currentWod.id)
+        .maybeSingle();
 
-        if (existing) {
-          // Já existe — atualiza em vez de inserir
-          const { error: updateError } = await supabase
-            .from('wod_results')
-            .update({ result: newResult.result, type: newResult.type })
-            .eq('id', existing.id);
-          error = updateError;
-        } else {
-          // Primeiro registro — insere
-          const { error: insertError } = await supabase
-            .from('wod_results')
-            .insert({
-              user_id: user.id,
-              wod_id: currentWod.id,
-              result: newResult.result,
-              type: newResult.type,
-              rewarded: true
-            });
-          error = insertError;
-        }
-      } else {
-        // Edição — atualiza pelo id do resultado existente
+      if (fetchError) throw fetchError;
+
+      if (existing) {
+        // ATUALIZA o existente (NUNCA cria duplicado)
         const { error: updateError } = await supabase
           .from('wod_results')
           .update({ result: newResult.result, type: newResult.type })
-          .eq('id', userResult.id);
+          .eq('id', existing.id);
         error = updateError;
-      }
-
-      if (!error) {
-        // Só dá recompensa no primeiro registro real, nunca na edição
-        if (isFirstTime) {
+        
+        if (!error && !isFirstTime) {
+          alert('Resultado atualizado com sucesso!');
+        }
+      } else {
+        // INSERE apenas se NÃO existir
+        const { error: insertError } = await supabase
+          .from('wod_results')
+          .insert({
+            user_id: user.id,
+            wod_id: currentWod.id,
+            result: newResult.result,
+            type: newResult.type,
+            rewarded: true
+          });
+        error = insertError;
+        
+        if (!error && isFirstTime) {
+          // Só recompensa no PRIMEIRO registro
           const { data: economy } = await supabase
             .from('avatar_economy_settings')
             .select('*')
@@ -166,10 +167,12 @@ export default function Wod() {
           const coins = economy?.coins_per_wod || 10;
           await addReward(user.id, 'wod', xp, coins, `WOD: ${currentWod.name}`);
           alert(`Resultado registrado! +${xp} XP, +${coins} BrazaCoins`);
-        } else {
-          alert('Resultado atualizado com sucesso!');
+        } else if (!error && !isFirstTime) {
+          alert('Resultado registrado com sucesso!');
         }
+      }
 
+      if (!error) {
         setIsRegistering(false);
         setIsEditing(false);
         await fetchResults(currentWod.id);
@@ -177,6 +180,9 @@ export default function Wod() {
         console.error('Error registering result:', error);
         alert('Erro ao registrar resultado: ' + error.message);
       }
+    } catch (err: any) {
+      console.error('Unexpected error:', err);
+      alert('Erro inesperado: ' + (err.message || 'Tente novamente'));
     } finally {
       setIsSaving(false);
     }
@@ -283,7 +289,7 @@ export default function Wod() {
               </div>
 
               {/* Seu Resultado (se já registrou) */}
-              {userResult && !isEditing && (
+              {userResult && !isEditing && hasCheckedExisting && (
                 <div className="space-y-4">
                   <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
                     <Trophy className="w-5 h-5 text-primary" /> SEU RESULTADO
@@ -302,7 +308,8 @@ export default function Wod() {
                     </div>
                     <button
                       onClick={handleEditClick}
-                      className="p-3 bg-primary/20 hover:bg-primary/30 rounded-xl transition-all flex items-center gap-2 text-primary font-headline font-bold text-sm uppercase"
+                      disabled={isSaving}
+                      className="p-3 bg-primary/20 hover:bg-primary/30 rounded-xl transition-all flex items-center gap-2 text-primary font-headline font-bold text-sm uppercase disabled:opacity-50"
                     >
                       <Edit2 className="w-4 h-4" /> EDITAR
                     </button>
@@ -344,11 +351,12 @@ export default function Wod() {
                 </div>
               </div>
 
-              {/* Action Button */}
-              {!userResult && !isEditing && (
+              {/* Action Button - CORRIGIDO: só aparece se NÃO tem resultado e NÃO está editando */}
+              {!userResult && !isEditing && hasCheckedExisting && (
                 <button 
                   onClick={() => setIsRegistering(true)}
-                  className="w-full bg-primary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-lg uppercase italic tracking-tight flex items-center justify-center gap-2 mt-4"
+                  disabled={isSaving}
+                  className="w-full bg-primary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-lg uppercase italic tracking-tight flex items-center justify-center gap-2 mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   REGISTRAR RESULTADO <ChevronRight className="w-5 h-5" />
                 </button>
@@ -422,8 +430,14 @@ export default function Wod() {
                 <button 
                   onClick={handleRegisterResult}
                   disabled={isSaving}
-                  className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={cn(
+                    "w-full py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg mt-4 transition-all flex items-center justify-center gap-2",
+                    isSaving 
+                      ? "bg-surface-container-highest text-on-surface-variant cursor-not-allowed" 
+                      : "bg-primary text-background hover:opacity-90"
+                  )}
                 >
+                  {isSaving && <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />}
                   {isSaving ? 'SALVANDO...' : isEditing ? 'ATUALIZAR RESULTADO' : 'SALVAR RESULTADO'}
                 </button>
                 {isEditing && (
@@ -442,4 +456,4 @@ export default function Wod() {
       </AnimatePresence>
     </div>
   );
-        }
+}
