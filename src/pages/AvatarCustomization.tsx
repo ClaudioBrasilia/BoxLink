@@ -300,51 +300,31 @@ export default function AvatarCustomization() {
       </header>
 
       {/* Seletor de Base — Feminino ou Masculino */}
-      <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-5 flex flex-col gap-3">
-        <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest text-center">Base do Avatar</p>
-        <div className="flex gap-3">
+      <div className="flex items-center gap-3 px-1">
+        <span className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest whitespace-nowrap">Base:</span>
+        <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10 gap-1">
           {(['base_female', 'base_male'] as const).map((gender) => {
             const isActive = (user?.avatar.equipped?.base_outfit === gender) ||
               (!user?.avatar.equipped?.base_outfit && gender === 'base_male');
             const label = gender === 'base_female' ? '♀ Feminino' : '♂ Masculino';
-            const baseImg = gender === 'base_female'
-              ? getItemImageUrl('base feminina')
-              : getItemImageUrl('base masculima');
             return (
               <button
                 key={gender}
                 onClick={() => handleBaseChange(gender)}
                 className={cn(
-                  'flex-1 flex flex-col items-center gap-2 p-3 rounded-3xl border-2 transition-all',
+                  'px-4 py-2 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all flex items-center gap-1.5',
                   isActive
-                    ? 'border-primary bg-primary/10 shadow-lg shadow-primary/10'
-                    : 'border-outline-variant/20 bg-surface-container-highest hover:border-primary/40'
+                    ? 'bg-primary text-on-primary shadow-md shadow-primary/20'
+                    : 'text-on-surface-variant hover:bg-surface-container-highest'
                 )}
               >
-                <div className="w-16 h-24 rounded-2xl overflow-hidden bg-surface-container-low">
-                  <img
-                    src={baseImg}
-                    alt={label}
-                    className="w-full h-full object-contain object-top"
-                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                  />
-                </div>
-                <span className={cn(
-                  'text-[10px] font-black uppercase tracking-widest',
-                  isActive ? 'text-primary' : 'text-on-surface-variant'
-                )}>
-                  {label}
-                </span>
-                {isActive && (
-                  <div className="bg-primary text-on-primary p-1 rounded-full">
-                    <Check className="w-3 h-3" />
-                  </div>
-                )}
+                {isActive && <Check className="w-3 h-3" />}
+                {label}
               </button>
             );
           })}
         </div>
-      </section>
+      </div>
 
       {/* Avatar Preview Section — corpo inteiro */}
       <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 flex gap-6 relative overflow-hidden items-center">
