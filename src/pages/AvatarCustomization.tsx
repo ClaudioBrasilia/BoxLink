@@ -26,7 +26,7 @@ function getBaseImageUrl(equipped: AvatarSlot): string {
                     equipped?.base_outfit?.includes('female') ||
                     equipped?.base_outfit?.toLowerCase().includes('feminina');
   
-  const base = isFemale ? 'base_female' : 'base_male';
+  const base = isFemale ? 'base_feminina' : 'base_masculina';
   return getItemImageUrl(base);
 }
 
