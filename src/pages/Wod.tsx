@@ -114,18 +114,48 @@ export default function Wod() {
     const isFirstTime = !userResult;
 
     try {
-      const { error } = await supabase
-        .from('wod_results')
-        .upsert({
-          user_id: user.id,
-          wod_id: currentWod.id,
-          result: newResult.result,
-          type: newResult.type,
-          rewarded: isFirstTime ? true : (userResult?.rewarded ?? false)
-        }, { onConflict: 'user_id,wod_id' });
+      let error: any = null;
+
+      if (isFirstTime) {
+        // Verificação extra: checar se já existe registro antes de inserir
+        const { data: existing } = await supabase
+          .from('wod_results')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('wod_id', currentWod.id)
+          .maybeSingle();
+
+        if (existing) {
+          // Já existe — atualiza em vez de inserir
+          const { error: updateError } = await supabase
+            .from('wod_results')
+            .update({ result: newResult.result, type: newResult.type })
+            .eq('id', existing.id);
+          error = updateError;
+        } else {
+          // Primeiro registro — insere
+          const { error: insertError } = await supabase
+            .from('wod_results')
+            .insert({
+              user_id: user.id,
+              wod_id: currentWod.id,
+              result: newResult.result,
+              type: newResult.type,
+              rewarded: true
+            });
+          error = insertError;
+        }
+      } else {
+        // Edição — atualiza pelo id do resultado existente
+        const { error: updateError } = await supabase
+          .from('wod_results')
+          .update({ result: newResult.result, type: newResult.type })
+          .eq('id', userResult.id);
+        error = updateError;
+      }
 
       if (!error) {
-        // Só dá recompensa no primeiro registro, nunca na edição
+        // Só dá recompensa no primeiro registro real, nunca na edição
         if (isFirstTime) {
           const { data: economy } = await supabase
             .from('avatar_economy_settings')
