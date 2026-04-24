@@ -10,62 +10,24 @@ import { supabase } from '../lib/supabase';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const BUCKET = 'avatar-assets';
 
-// CORRIGIDA: função para obter URL da imagem com fallback
+// Função para obter URL da imagem com fallback
 function getItemImageUrl(imageKey: string | undefined): string {
   if (!imageKey) return '';
   if (imageKey.startsWith('http')) return imageKey;
   
-  // Tenta formatar corretamente o nome do arquivo
-  // Remove espaços e caracteres especiais
-  let cleanKey = imageKey.toLowerCase().replace(/\s+/g, '_');
+  const cleanKey = imageKey.toLowerCase().replace(/\s+/g, '_');
   
-  // URLs possíveis para tentar
-  const possibleUrls = [
-    `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${cleanKey}.png`,
-    `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${imageKey}.png`,
-    `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${cleanKey}`,
-    `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${imageKey}`,
-  ];
-  
-  // Retorna a primeira tentativa (se falhar, será tratado pelo onError)
-  return possibleUrls[0];
+  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${cleanKey}.png`;
 }
 
-// CORRIGIDA: função para obter imagem base (avatar sem itens)
+// Função para obter imagem base (avatar sem itens)
 function getBaseImageUrl(equipped: AvatarSlot): string {
-  // Tenta identificar se é feminino ou masculino
   const isFemale = equipped?.base_outfit === 'base_female' || 
                     equipped?.base_outfit?.includes('female') ||
                     equipped?.base_outfit?.toLowerCase().includes('feminina');
   
-  // Nomes de arquivo corrigidos (sem espaços)
   const base = isFemale ? 'base_female' : 'base_male';
-  
-  // Retorna URL para o storage
   return getItemImageUrl(base);
-}
-
-// Função para carregar avatar com fallback para imagem placeholder
-function AvatarImage({ src, alt, className, onError }: { src: string; alt: string; className?: string; onError?: () => void }) {
-  const [imgSrc, setImgSrc] = useState(src);
-  const [hasError, setHasError] = useState(false);
-  
-  const handleError = () => {
-    if (!hasError) {
-      setHasError(true);
-      setImgSrc(`https://api.dicebear.com/7.x/avataaars/svg?seed=${alt || 'avatar'}`);
-      if (onError) onError();
-    }
-  };
-  
-  return (
-    <img
-      src={imgSrc}
-      alt={alt}
-      className={className}
-      onError={handleError}
-    />
-  );
 }
 
 const SLOT_ICONS: Record<string, any> = {
@@ -88,7 +50,7 @@ const SLOT_LABELS: Record<string, string> = {
   special: 'Especial',
 };
 
-// Modal de preview — mostra avatar de corpo inteiro com o item "experimentado"
+// Modal de preview
 function ItemPreviewModal({
   item,
   equipped,
@@ -318,11 +280,9 @@ export default function AvatarCustomization() {
   const inventoryItems = filteredItems.filter(item => user?.avatar.inventory.includes(item.id));
   const shopItems = filteredItems.filter(item => !user?.avatar.inventory.includes(item.id));
 
-  // CORRIGIDA: preview do avatar com fallback para DiceBear
   const getAvatarPreviewUrl = () => {
     const eq = user?.avatar.equipped;
     
-    // Tenta encontrar o primeiro item equipado que tenha imagem
     if (eq) {
       const slots: (keyof AvatarSlot)[] = ['top', 'bottom', 'shoes', 'special', 'accessory', 'head_accessory', 'wrist_accessory'];
       for (const slot of slots) {
@@ -336,7 +296,6 @@ export default function AvatarCustomization() {
       }
     }
     
-    // Fallback: usa a imagem base
     return getBaseImageUrl(eq || {} as AvatarSlot);
   };
   
@@ -353,7 +312,7 @@ export default function AvatarCustomization() {
         </h1>
       </header>
 
-      {/* Seletor de Base — Feminino ou Masculino */}
+      {/* Seletor de Base */}
       <div className="flex items-center gap-3 px-1">
         <span className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest whitespace-nowrap">Base:</span>
         <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10 gap-1">
@@ -380,7 +339,7 @@ export default function AvatarCustomization() {
         </div>
       </div>
 
-      {/* Avatar Preview Section — CORRIGIDA */}
+      {/* Avatar Preview Section */}
       <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 flex gap-6 relative overflow-hidden items-center">
         <div className="absolute top-0 right-0 p-4">
           <div className="bg-secondary/20 px-4 py-2 rounded-full border border-secondary/30 flex items-center gap-2">
@@ -389,7 +348,6 @@ export default function AvatarCustomization() {
           </div>
         </div>
 
-        {/* Avatar corpo inteiro */}
         <div className="w-32 h-48 rounded-3xl bg-surface-container-highest overflow-hidden flex-shrink-0 border-2 border-primary/30 flex items-center justify-center">
           {!avatarImageError && avatarPreviewUrl ? (
             <img
@@ -414,7 +372,6 @@ export default function AvatarCustomization() {
           <h2 className="text-xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none">{user?.name}</h2>
           <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest italic">NÍVEL {user?.level}</p>
 
-          {/* Itens equipados */}
           <div className="flex flex-col gap-1 mt-2">
             {Object.entries(user?.avatar.equipped || {})
               .filter(([slot, id]) => id && slot !== 'base_outfit')
@@ -472,7 +429,6 @@ export default function AvatarCustomization() {
               const canAfford = (user?.coins || 0) >= item.price;
               const inInventory = user?.avatar.inventory.includes(item.id) || false;
               const imageUrl = getItemImageUrl(item.image);
-              const [imgError, setImgError] = useState(false);
 
               return (
                 <motion.div
@@ -494,12 +450,15 @@ export default function AvatarCustomization() {
                   )}
 
                   <div className="aspect-square rounded-2xl bg-surface-container-highest overflow-hidden group-hover:scale-105 transition-transform flex items-center justify-center">
-                    {!imgError && imageUrl ? (
+                    {imageUrl ? (
                       <img
                         src={imageUrl}
                         alt={item.name}
                         className="w-full h-full object-cover object-top"
-                        onError={() => setImgError(true)}
+                        onError={(e) => {
+                          e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${item.name}`;
+                          e.currentTarget.onerror = null;
+                        }}
                       />
                     ) : (
                       <ShoppingBag className="w-8 h-8 text-on-surface-variant/30" />
