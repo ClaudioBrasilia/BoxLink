@@ -563,4 +563,4 @@ export default function Duels() {
       </AnimatePresence>
     </div>
   );
-}
+    }
