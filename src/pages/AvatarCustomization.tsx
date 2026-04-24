@@ -238,6 +238,18 @@ export default function AvatarCustomization() {
     } catch (err) { console.error(err); }
   };
 
+  const handleBaseChange = async (gender: 'base_female' | 'base_male') => {
+    if (!user) return;
+    try {
+      const newEquipped = { ...user.avatar.equipped, base_outfit: gender };
+      const { error } = await supabase
+        .from('profiles')
+        .update({ avatar_equipped: newEquipped, updated_at: new Date().toISOString() })
+        .eq('id', user.id);
+      if (!error) updateUser({ ...user, avatar: { ...user.avatar, equipped: newEquipped } });
+    } catch (err) { console.error(err); }
+  };
+
   if (avatarEnabled === null) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -286,6 +298,53 @@ export default function AvatarCustomization() {
           <Sparkles className="w-8 h-8 text-primary" /> CUSTOMIZAR
         </h1>
       </header>
+
+      {/* Seletor de Base — Feminino ou Masculino */}
+      <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-5 flex flex-col gap-3">
+        <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest text-center">Base do Avatar</p>
+        <div className="flex gap-3">
+          {(['base_female', 'base_male'] as const).map((gender) => {
+            const isActive = (user?.avatar.equipped?.base_outfit === gender) ||
+              (!user?.avatar.equipped?.base_outfit && gender === 'base_male');
+            const label = gender === 'base_female' ? '♀ Feminino' : '♂ Masculino';
+            const baseImg = gender === 'base_female'
+              ? getItemImageUrl('base feminina')
+              : getItemImageUrl('base masculima');
+            return (
+              <button
+                key={gender}
+                onClick={() => handleBaseChange(gender)}
+                className={cn(
+                  'flex-1 flex flex-col items-center gap-2 p-3 rounded-3xl border-2 transition-all',
+                  isActive
+                    ? 'border-primary bg-primary/10 shadow-lg shadow-primary/10'
+                    : 'border-outline-variant/20 bg-surface-container-highest hover:border-primary/40'
+                )}
+              >
+                <div className="w-16 h-24 rounded-2xl overflow-hidden bg-surface-container-low">
+                  <img
+                    src={baseImg}
+                    alt={label}
+                    className="w-full h-full object-contain object-top"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                </div>
+                <span className={cn(
+                  'text-[10px] font-black uppercase tracking-widest',
+                  isActive ? 'text-primary' : 'text-on-surface-variant'
+                )}>
+                  {label}
+                </span>
+                {isActive && (
+                  <div className="bg-primary text-on-primary p-1 rounded-full">
+                    <Check className="w-3 h-3" />
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Avatar Preview Section — corpo inteiro */}
       <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 flex gap-6 relative overflow-hidden items-center">
