@@ -10,16 +10,62 @@ import { supabase } from '../lib/supabase';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const BUCKET = 'avatar-assets';
 
-function getItemImageUrl(imageKey: string): string {
+// CORRIGIDA: função para obter URL da imagem com fallback
+function getItemImageUrl(imageKey: string | undefined): string {
+  if (!imageKey) return '';
   if (imageKey.startsWith('http')) return imageKey;
-  const encoded = encodeURIComponent(imageKey);
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encoded}.png`;
+  
+  // Tenta formatar corretamente o nome do arquivo
+  // Remove espaços e caracteres especiais
+  let cleanKey = imageKey.toLowerCase().replace(/\s+/g, '_');
+  
+  // URLs possíveis para tentar
+  const possibleUrls = [
+    `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${cleanKey}.png`,
+    `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${imageKey}.png`,
+    `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${cleanKey}`,
+    `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${imageKey}`,
+  ];
+  
+  // Retorna a primeira tentativa (se falhar, será tratado pelo onError)
+  return possibleUrls[0];
 }
 
+// CORRIGIDA: função para obter imagem base (avatar sem itens)
 function getBaseImageUrl(equipped: AvatarSlot): string {
-  const isFemale = equipped?.base_outfit === 'base_female' || equipped?.base_outfit?.includes('female');
-  const base = isFemale ? 'base feminina' : 'base masculima';
+  // Tenta identificar se é feminino ou masculino
+  const isFemale = equipped?.base_outfit === 'base_female' || 
+                    equipped?.base_outfit?.includes('female') ||
+                    equipped?.base_outfit?.toLowerCase().includes('feminina');
+  
+  // Nomes de arquivo corrigidos (sem espaços)
+  const base = isFemale ? 'base_female' : 'base_male';
+  
+  // Retorna URL para o storage
   return getItemImageUrl(base);
+}
+
+// Função para carregar avatar com fallback para imagem placeholder
+function AvatarImage({ src, alt, className, onError }: { src: string; alt: string; className?: string; onError?: () => void }) {
+  const [imgSrc, setImgSrc] = useState(src);
+  const [hasError, setHasError] = useState(false);
+  
+  const handleError = () => {
+    if (!hasError) {
+      setHasError(true);
+      setImgSrc(`https://api.dicebear.com/7.x/avataaars/svg?seed=${alt || 'avatar'}`);
+      if (onError) onError();
+    }
+  };
+  
+  return (
+    <img
+      src={imgSrc}
+      alt={alt}
+      className={className}
+      onError={handleError}
+    />
+  );
 }
 
 const SLOT_ICONS: Record<string, any> = {
@@ -63,14 +109,9 @@ function ItemPreviewModal({
   canAfford: boolean;
 }) {
   const isEquipped = equipped[item.slot] === item.id;
-
-  // Monta o equipped "simulado" — troca apenas o slot do item visualizado
-  const previewEquipped: AvatarSlot = { ...equipped, [item.slot]: item.id };
-
-  // Resolve a imagem de preview: usa a imagem do item sendo visualizado
   const previewImageUrl = getItemImageUrl(item.image);
+  const [imgError, setImgError] = useState(false);
 
-  // Lista de outros itens equipados (excluindo o slot atual)
   const otherEquippedItems = items.filter(i =>
     i.slot !== item.slot && equipped[i.slot] === i.id
   );
@@ -83,7 +124,6 @@ function ItemPreviewModal({
         exit={{ opacity: 0, y: 60 }}
         className="w-full sm:max-w-sm bg-surface-container-low rounded-t-[2.5rem] sm:rounded-[2.5rem] border border-outline-variant/10 shadow-2xl overflow-hidden"
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-6 pb-0">
           <div>
             <h3 className="text-lg font-headline font-black text-on-surface italic uppercase leading-none">
@@ -101,19 +141,21 @@ function ItemPreviewModal({
           </button>
         </div>
 
-        {/* Avatar corpo inteiro */}
         <div className="relative mx-6 mt-4 rounded-3xl bg-surface-container-highest overflow-hidden flex items-center justify-center" style={{ height: '320px' }}>
-          {/* Imagem do item sendo visualizado (corpo inteiro) */}
-          <img
-            src={previewImageUrl}
-            alt={item.name}
-            className="h-full w-full object-contain object-top"
-            onError={(e) => {
-              e.currentTarget.src = getBaseImageUrl(equipped);
-            }}
-          />
+          {!imgError && previewImageUrl ? (
+            <img
+              src={previewImageUrl}
+              alt={item.name}
+              className="h-full w-full object-contain object-top"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-2">
+              <ShoppingBag className="w-16 h-16 text-on-surface-variant/30" />
+              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Item sem prévia</p>
+            </div>
+          )}
 
-          {/* Badge do item */}
           <div className="absolute top-3 left-3 bg-primary/90 text-on-primary px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest flex items-center gap-1">
             <Eye className="w-3 h-3" /> PREVIEW
           </div>
@@ -125,7 +167,6 @@ function ItemPreviewModal({
           )}
         </div>
 
-        {/* Itens atualmente equipados no restante dos slots */}
         {otherEquippedItems.length > 0 && (
           <div className="mx-6 mt-3">
             <p className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest mb-2">Também equipado:</p>
@@ -145,7 +186,6 @@ function ItemPreviewModal({
           </div>
         )}
 
-        {/* Preço e ações */}
         <div className="p-6 pt-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 bg-secondary/20 px-4 py-2 rounded-full border border-secondary/30">
@@ -196,6 +236,7 @@ export default function AvatarCustomization() {
   const [selectedSlot, setSelectedSlot] = useState<keyof AvatarSlot | 'all'>('all');
   const [avatarEnabled, setAvatarEnabled] = useState<boolean | null>(null);
   const [previewItem, setPreviewItem] = useState<Item | null>(null);
+  const [avatarImageError, setAvatarImageError] = useState(false);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -277,16 +318,29 @@ export default function AvatarCustomization() {
   const inventoryItems = filteredItems.filter(item => user?.avatar.inventory.includes(item.id));
   const shopItems = filteredItems.filter(item => !user?.avatar.inventory.includes(item.id));
 
-  // Avatar preview — mostra imagem do item equipado ou base
-  const equippedImageUrl = (() => {
+  // CORRIGIDA: preview do avatar com fallback para DiceBear
+  const getAvatarPreviewUrl = () => {
     const eq = user?.avatar.equipped;
-    if (!eq) return getBaseImageUrl({} as AvatarSlot);
-    if (eq.top) return getItemImageUrl(items.find(i => i.id === eq.top)?.image || eq.top);
-    if (eq.bottom) return getItemImageUrl(items.find(i => i.id === eq.bottom)?.image || eq.bottom);
-    if (eq.shoes) return getItemImageUrl(items.find(i => i.id === eq.shoes)?.image || eq.shoes);
-    if (eq.special) return getItemImageUrl(items.find(i => i.id === eq.special)?.image || eq.special);
-    return getBaseImageUrl(eq);
-  })();
+    
+    // Tenta encontrar o primeiro item equipado que tenha imagem
+    if (eq) {
+      const slots: (keyof AvatarSlot)[] = ['top', 'bottom', 'shoes', 'special', 'accessory', 'head_accessory', 'wrist_accessory'];
+      for (const slot of slots) {
+        const itemId = eq[slot];
+        if (itemId) {
+          const item = items.find(i => i.id === itemId);
+          if (item?.image) {
+            return getItemImageUrl(item.image);
+          }
+        }
+      }
+    }
+    
+    // Fallback: usa a imagem base
+    return getBaseImageUrl(eq || {} as AvatarSlot);
+  };
+  
+  const avatarPreviewUrl = getAvatarPreviewUrl();
 
   return (
     <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background pb-24">
@@ -326,7 +380,7 @@ export default function AvatarCustomization() {
         </div>
       </div>
 
-      {/* Avatar Preview Section — corpo inteiro */}
+      {/* Avatar Preview Section — CORRIGIDA */}
       <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 flex gap-6 relative overflow-hidden items-center">
         <div className="absolute top-0 right-0 p-4">
           <div className="bg-secondary/20 px-4 py-2 rounded-full border border-secondary/30 flex items-center gap-2">
@@ -336,13 +390,24 @@ export default function AvatarCustomization() {
         </div>
 
         {/* Avatar corpo inteiro */}
-        <div className="w-32 h-48 rounded-3xl bg-surface-container-highest overflow-hidden flex-shrink-0 border-2 border-primary/30">
-          <img
-            src={equippedImageUrl}
-            alt="Avatar"
-            className="w-full h-full object-contain object-top"
-            onError={(e) => { e.currentTarget.src = getBaseImageUrl(user?.avatar.equipped || {} as AvatarSlot); }}
-          />
+        <div className="w-32 h-48 rounded-3xl bg-surface-container-highest overflow-hidden flex-shrink-0 border-2 border-primary/30 flex items-center justify-center">
+          {!avatarImageError && avatarPreviewUrl ? (
+            <img
+              src={avatarPreviewUrl}
+              alt="Avatar"
+              className="w-full h-full object-contain object-top"
+              onError={() => setAvatarImageError(true)}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-1">
+              <img
+                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name || 'avatar'}`}
+                alt="Avatar Fallback"
+                className="w-20 h-20 rounded-full"
+              />
+              <p className="text-[8px] text-on-surface-variant font-black uppercase tracking-widest">Avatar</p>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 flex-1 pt-8">
@@ -407,6 +472,7 @@ export default function AvatarCustomization() {
               const canAfford = (user?.coins || 0) >= item.price;
               const inInventory = user?.avatar.inventory.includes(item.id) || false;
               const imageUrl = getItemImageUrl(item.image);
+              const [imgError, setImgError] = useState(false);
 
               return (
                 <motion.div
@@ -427,14 +493,17 @@ export default function AvatarCustomization() {
                     </div>
                   )}
 
-                  {/* Thumbnail */}
-                  <div className="aspect-square rounded-2xl bg-surface-container-highest overflow-hidden group-hover:scale-105 transition-transform">
-                    <img
-                      src={imageUrl}
-                      alt={item.name}
-                      className="w-full h-full object-cover object-top"
-                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                    />
+                  <div className="aspect-square rounded-2xl bg-surface-container-highest overflow-hidden group-hover:scale-105 transition-transform flex items-center justify-center">
+                    {!imgError && imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt={item.name}
+                        className="w-full h-full object-cover object-top"
+                        onError={() => setImgError(true)}
+                      />
+                    ) : (
+                      <ShoppingBag className="w-8 h-8 text-on-surface-variant/30" />
+                    )}
                   </div>
 
                   <div>
@@ -442,7 +511,6 @@ export default function AvatarCustomization() {
                     <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest mt-0.5 opacity-50">{SLOT_LABELS[item.slot]}</p>
                   </div>
 
-                  {/* Botão rápido */}
                   {activeTab === 'inventory' ? (
                     <button
                       onClick={(e) => { e.stopPropagation(); handleEquip(isEquipped ? null : item.id, item.slot); }}
