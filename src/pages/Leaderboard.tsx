@@ -104,14 +104,9 @@ export default function Leaderboard() {
         })).sort((a, b) => b.energy - a.energy));
       }
 
-      // 6. WOD do dia (ALTERAÇÃO AQUI - usando a função RPC)
-      const { data: activeWodData, error: wodError } = await supabase
-        .rpc('get_active_wod', { target_date: todayStr })
-        .limit(1)
-        .maybeSingle();
-      if (wodError) console.error('Erro ao buscar WOD:', wodError);
-
-      const activeWod = activeWodData || null;
+      // 6. WOD do dia
+      const { data: wodList } = await supabase.from('wods').select('*');
+      const activeWod = (wodList || []).find((w: any) => w.date === todayStr) || null;
       setWodInfo(activeWod);
 
       if (activeWod) {
@@ -123,15 +118,12 @@ export default function Leaderboard() {
           const parseResult = (r: string): number => {
             if (!r) return isTimeBased ? 999999 : 0;
             const str = r.trim();
-            // MM:SS or HH:MM:SS
             if (/^\d+:\d+/.test(str)) {
               const p = str.split(':').map(Number);
               return p.length === 2 ? p[0] * 60 + p[1] : p[0] * 3600 + p[1] * 60 + p[2];
             }
-            // Pure number (seconds or reps)
             return parseFloat(str.replace(/[^0-9.]/g, '')) || (isTimeBased ? 999999 : 0);
           };
-          // Deduplica: pega melhor resultado por usuário
           const bestByUser: Record<string, any> = {};
           wodResults.forEach((r: any) => {
             const uid = r.user_id;
@@ -369,4 +361,4 @@ export default function Leaderboard() {
       )}
     </div>
   );
-}
+  }
