@@ -1,20 +1,19 @@
-// Wod.tsx corrigido - substitua todo o conteúdo do seu arquivo Wod.tsx por este código
 import { useState, useEffect } from 'react';
-import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Info, X, Edit2 } from 'lucide-react';
+import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Info, X, Edit2, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
-import { Wod as WodType } from '../types';
-import { format, addDays, subDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
+import { Wod as WodType, User } from '../types';
+import { format, addDays, subDays, eachDayOfInterval, isSameDay } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { motion, AnimatePresence } from 'framer-motion';
+import confetti from 'canvas-confetti';
 
 import { supabase } from '../lib/supabase';
-import { addReward } from '../utils/rewards';
 
 const TIMEZONE = 'America/Sao_Paulo';
 
 export default function Wod() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [wods, setWods] = useState<WodType[]>([]);
   const [currentWod, setCurrentWod] = useState<WodType | null>(null);
@@ -24,7 +23,7 @@ export default function Wod() {
   const [isEditing, setIsEditing] = useState(false);
   const [newResult, setNewResult] = useState({ result: '', type: 'RX' });
   const [isSaving, setIsSaving] = useState(false);
-  const [hasCheckedExisting, setHasCheckedExisting] = useState(false); // NOVO
+  const [hasCheckedExisting, setHasCheckedExisting] = useState(false);
 
   const parseResult = (r: string, isTimeBased: boolean): number => {
     if (!r) return isTimeBased ? 999999 : 0;
@@ -45,27 +44,14 @@ export default function Wod() {
 
     const { data } = await supabase
       .from('wod_results')
-      .select('*, profiles(name)')
+      .select('*, profiles(name, level)')
       .eq('wod_id', wodId);
 
     const isTimeBased = ['FOR TIME', 'TIME', 'TEMPO'].some(
       t => (wod?.type || '').toUpperCase().includes(t)
     );
 
-    const bestByUser: Record<string, any> = {};
-    (data || []).forEach((r: any) => {
-      const val = parseResult(r.result, isTimeBased);
-      const prev = bestByUser[r.user_id];
-      if (!prev) {
-        bestByUser[r.user_id] = r;
-        return;
-      }
-      const prevVal = parseResult(prev.result, isTimeBased);
-      const isBetter = isTimeBased ? val < prevVal : val > prevVal;
-      if (isBetter) bestByUser[r.user_id] = r;
-    });
-
-    const sorted = Object.values(bestByUser).sort((a: any, b: any) =>
+    const sorted = (data || []).sort((a: any, b: any) =>
       isTimeBased
         ? parseResult(a.result, isTimeBased) - parseResult(b.result, isTimeBased)
         : parseResult(b.result, isTimeBased) - parseResult(a.result, isTimeBased)
@@ -81,7 +67,7 @@ export default function Wod() {
       } else {
         setNewResult({ result: '', type: 'RX' });
       }
-      setHasCheckedExisting(true); // MARCA QUE JÁ VERIFICAMOS
+      setHasCheckedExisting(true);
     }
   };
 
@@ -93,7 +79,7 @@ export default function Wod() {
       const dateStr = formatInTimeZone(selectedDate, TIMEZONE, 'yyyy-MM-dd');
       const found = (data || []).find((w: any) => w.date === dateStr);
       setCurrentWod(found || null);
-      setHasCheckedExisting(false); // RESETA AO MUDAR DE DATA
+      setHasCheckedExisting(false);
       if (found) {
         fetchResults(found.id);
       } else {
@@ -102,6 +88,18 @@ export default function Wod() {
       }
     };
     fetchWods();
+
+    // Realtime for results
+    const channel = supabase
+      .channel('wod_results_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wod_results' }, () => {
+        if (currentWod) fetchResults(currentWod.id);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [selectedDate, user]);
 
   const handleRegisterResult = async () => {
@@ -110,94 +108,79 @@ export default function Wod() {
       return;
     }
 
-    // BLOQUEIO IMEDIATO para prevenir duplicação
-    if (isSaving) {
-      console.log('Operação já em andamento, ignorando...');
-      return;
-    }
-
+    if (isSaving) return;
     setIsSaving(true);
-    const isFirstTime = !userResult;
 
     try {
-      let error: any = null;
-
-      // BUSCA ATUALIZADA para garantir que não houve inserção concorrente
-      const { data: existing, error: fetchError } = await supabase
-        .from('wod_results')
-        .select('id, result, type')
-        .eq('user_id', user.id)
-        .eq('wod_id', currentWod.id)
-        .maybeSingle();
-
-      if (fetchError) throw fetchError;
-
-      if (existing) {
-        // ATUALIZA o existente (NUNCA cria duplicado)
-        const { error: updateError } = await supabase
+      if (isEditing && userResult) {
+        // Simple update for editing (no rewards again)
+        const { error } = await supabase
           .from('wod_results')
           .update({ result: newResult.result, type: newResult.type })
-          .eq('id', existing.id);
-        error = updateError;
+          .eq('id', userResult.id);
         
-        if (!error && !isFirstTime) {
-          alert('Resultado atualizado com sucesso!');
-        }
-      } else {
-        // INSERE apenas se NÃO existir
-        const { error: insertError } = await supabase
-          .from('wod_results')
-          .insert({
-            user_id: user.id,
-            wod_id: currentWod.id,
-            result: newResult.result,
-            type: newResult.type,
-            rewarded: true
-          });
-        error = insertError;
-        
-        if (!error && isFirstTime) {
-          // Só recompensa no PRIMEIRO registro
-          const { data: economy } = await supabase
-            .from('avatar_economy_settings')
-            .select('*')
-            .eq('is_active', true)
-            .single();
-          const xp = economy?.xp_per_wod || 30;
-          const coins = economy?.coins_per_wod || 10;
-          await addReward(user.id, 'wod', xp, coins, `WOD: ${currentWod.name}`);
-          alert(`Resultado registrado! +${xp} XP, +${coins} BrazaCoins`);
-        } else if (!error && !isFirstTime) {
-          alert('Resultado registrado com sucesso!');
-        }
-      }
-
-      if (!error) {
-        setIsRegistering(false);
+        if (error) throw error;
+        alert('Resultado atualizado com sucesso!');
         setIsEditing(false);
-        await fetchResults(currentWod.id);
       } else {
-        console.error('Error registering result:', error);
-        alert('Erro ao registrar resultado: ' + error.message);
+        // Use Edge Function for new registration to handle rewards safely
+        const { data, error } = await supabase.functions.invoke('register-wod-result', {
+          body: { wodId: currentWod.id, result: newResult.result, type: newResult.type }
+        });
+
+        if (error) throw error;
+
+        if (data.alreadyRegistered) {
+          alert('Você já registrou um resultado para este WOD.');
+        } else if (data.success) {
+          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+          alert(`Resultado registrado! +${data.xp} XP, +${data.coins} BrazaCoins`);
+          
+          if (data.levelUp) {
+            setTimeout(() => {
+              confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] });
+            }, 500);
+          }
+
+          // Refresh user profile in context
+          const { data: updatedProfile } = await supabase
+            .from('profiles').select('*').eq('id', user.id).maybeSingle();
+          const { data: updatedCheckins } = await supabase
+            .from('checkins').select('*').eq('user_id', user.id);
+
+          if (updatedProfile) {
+            const mappedUser: User = {
+              id: updatedProfile.id,
+              email: updatedProfile.email,
+              name: updatedProfile.name,
+              role: updatedProfile.role,
+              status: updatedProfile.status,
+              xp: updatedProfile.xp || 0,
+              coins: updatedProfile.coins || 0,
+              level: updatedProfile.level || 1,
+              avatar: {
+                equipped: updatedProfile.avatar_equipped,
+                inventory: updatedProfile.avatar_inventory || []
+              },
+              checkins: (updatedCheckins || []).map((c: any) => ({
+                date: c.date,
+                timestamp: c.timestamp,
+                classTime: c.class_time
+              })),
+              paidBonuses: updatedProfile.paid_bonuses || [],
+              createdAt: updatedProfile.created_at
+            };
+            updateUser(mappedUser);
+          }
+          setIsRegistering(false);
+        }
       }
+      await fetchResults(currentWod.id);
     } catch (err: any) {
-      console.error('Unexpected error:', err);
-      alert('Erro inesperado: ' + (err.message || 'Tente novamente'));
+      console.error('Error:', err);
+      alert('Erro ao processar: ' + (err.message || 'Tente novamente'));
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleEditClick = () => {
-    setIsEditing(true);
-  };
-
-  const handleCancelEdit = () => {
-    setIsEditing(false);
-    if (userResult) {
-      setNewResult({ result: userResult.result, type: userResult.type });
-    } else {
-      setNewResult({ result: '', type: 'RX' });
     }
   };
 
@@ -276,8 +259,8 @@ export default function Wod() {
                 
                 <div className="space-y-3">
                   {[
-                    { label: 'RX', content: currentWod.rx, color: 'text-primary', bg: 'bg-primary/10' },
-                    { label: 'SCALED', content: currentWod.scaled, color: 'text-secondary', bg: 'bg-secondary/10' },
+                    { label: 'RX', content: currentWod.rx, color: 'text-primary', bg: 'bg-primary/5' },
+                    { label: 'SCALED', content: currentWod.scaled, color: 'text-secondary', bg: 'bg-secondary/5' },
                     { label: 'BEGINNER', content: currentWod.beginner, color: 'text-on-surface-variant', bg: 'bg-surface-container-highest/30' },
                   ].map((item) => (
                     <div key={item.label} className={cn("p-6 rounded-3xl border border-outline-variant/10", item.bg)}>
@@ -292,7 +275,7 @@ export default function Wod() {
               {userResult && !isEditing && hasCheckedExisting && (
                 <div className="space-y-4">
                   <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
-                    <Trophy className="w-5 h-5 text-primary" /> SEU RESULTADO
+                    <CheckCircle2 className="w-5 h-5 text-primary" /> SEU RESULTADO
                   </h3>
                   <div className="bg-primary/10 border-2 border-primary/30 p-6 rounded-2xl flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -307,7 +290,7 @@ export default function Wod() {
                       </div>
                     </div>
                     <button
-                      onClick={handleEditClick}
+                      onClick={() => setIsEditing(true)}
                       disabled={isSaving}
                       className="p-3 bg-primary/20 hover:bg-primary/30 rounded-xl transition-all flex items-center gap-2 text-primary font-headline font-bold text-sm uppercase disabled:opacity-50"
                     >
@@ -351,7 +334,6 @@ export default function Wod() {
                 </div>
               </div>
 
-              {/* Action Button - CORRIGIDO: só aparece se NÃO tem resultado e NÃO está editando */}
               {!userResult && !isEditing && hasCheckedExisting && (
                 <button 
                   onClick={() => setIsRegistering(true)}
@@ -371,7 +353,7 @@ export default function Wod() {
         </motion.div>
       </AnimatePresence>
 
-      {/* Register Modal */}
+      {/* Register/Edit Modal */}
       <AnimatePresence>
         {(isRegistering || isEditing) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
@@ -388,7 +370,7 @@ export default function Wod() {
                 <button 
                   onClick={() => {
                     setIsRegistering(false);
-                    handleCancelEdit();
+                    setIsEditing(false);
                   }} 
                   className="p-2 hover:bg-surface-container-highest rounded-xl transition-all"
                   disabled={isSaving}
@@ -440,9 +422,12 @@ export default function Wod() {
                   {isSaving && <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />}
                   {isSaving ? 'SALVANDO...' : isEditing ? 'ATUALIZAR RESULTADO' : 'SALVAR RESULTADO'}
                 </button>
-                {isEditing && (
+                {(isRegistering || isEditing) && (
                   <button 
-                    onClick={handleCancelEdit}
+                    onClick={() => {
+                      setIsRegistering(false);
+                      setIsEditing(false);
+                    }}
                     disabled={isSaving}
                     className="w-full bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-bold uppercase italic shadow-sm disabled:opacity-50"
                   >
