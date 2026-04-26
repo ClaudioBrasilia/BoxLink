@@ -261,7 +261,7 @@ export default function Profile() {
         </div>
         
         <div className="flex items-center gap-6 mb-8">
-          <div className="relative w-24 h-36">
+          <div className="relative w-24 h-24 rounded-full border-2 border-primary shadow-[0_0_20px_rgba(202,253,0,0.5)] bg-surface-container-highest overflow-hidden shrink-0">
             <AvatarPreview equipped={user?.avatar.equipped ?? {} as any} items={items} size="lg" />
             <button 
               onClick={() => navigate('/avatar')}

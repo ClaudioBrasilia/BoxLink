@@ -4,7 +4,7 @@ import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, Share2, Targ
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wod, User } from '../types';
+import { Wod, User, Item } from '../types';
 import confetti from 'canvas-confetti';
 import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
@@ -22,6 +22,7 @@ export default function Dashboard() {
   const [announcements, setAnnouncements] = useState<string[]>([]);
   const [activeChallenges, setActiveChallenges] = useState<any[]>([]);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [avatarItems, setAvatarItems] = useState<Item[]>([]);
 
   const fetchData = async () => {
     // Fetch WODs
@@ -72,6 +73,10 @@ export default function Dashboard() {
       const current = (mappedSchedule || []).find((s: any) => now >= s.time && now <= s.endTime);
       if (current) setSelectedClass(current.time);
     }
+
+    // Fetch avatar items
+    const { data: itemsData } = await supabase.from('items').select('*');
+    setAvatarItems(itemsData || []);
   };
 
   useEffect(() => {
@@ -231,7 +236,9 @@ export default function Dashboard() {
       {/* Header */}
       <header className="flex justify-between items-start">
         <div className="flex items-center gap-4">
-          <AvatarPreview equipped={user?.avatar.equipped!} size="sm" className="border-2" />
+          <div className="relative w-16 h-16 rounded-full border-2 border-primary shadow-[0_0_16px_rgba(202,253,0,0.5)] bg-surface-container-highest overflow-hidden shrink-0">
+            <AvatarPreview equipped={user?.avatar.equipped ?? {} as any} items={avatarItems} size="sm" />
+          </div>
           <div>
             <h1 className="text-2xl font-headline font-black text-on-surface tracking-tight uppercase italic leading-none">
               OLÁ, <span className="text-primary">{user?.name.split(' ')[0]}</span>
