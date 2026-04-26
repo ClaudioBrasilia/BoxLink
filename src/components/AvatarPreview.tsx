@@ -64,7 +64,7 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
 
   const isFemale = equipped?.base_outfit === 'base_female' ||
     equipped?.base_outfit?.includes('female');
-  const baseImage = isFemale ? 'base feminina' : 'base masculina';
+  const baseImage = isFemale ? 'base_feminina' : 'base_masculina';
 
   // Monta as camadas a renderizar
   const layers: Array<{ key: string; url: string; pos: typeof BLOCK_POSITIONS[string] }> = [];
