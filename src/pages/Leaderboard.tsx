@@ -31,15 +31,11 @@ export default function Leaderboard() {
     fetchAll();
 
     const channel = supabase
-      .channel('leaderboard_rt')
+      .channel('leaderboard_wod')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wod_results' }, () => fetchAll())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchAll())
       .subscribe();
 
-    // Fallback polling a cada 20s caso Realtime não esteja ativo na tabela
-    const poll = setInterval(() => fetchAll(), 20000);
-
-    return () => { supabase.removeChannel(channel); clearInterval(poll); };
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const fetchAll = async () => {
@@ -78,7 +74,7 @@ export default function Leaderboard() {
       (rewardHistory || []).forEach((r: any) => {
         if (r.xp > 0) monthXpByUser[r.user_id] = (monthXpByUser[r.user_id] || 0) + r.xp;
       });
-           setXpMonthly([...(allUsers || [])]
+      setXpMonthly([...(allUsers || [])]
         .map(u => mapUser(u, { monthXp: monthXpByUser[u.id] || 0 }))
         .filter(u => (u.monthXp || 0) > 0)
         .sort((a, b) => (b.monthXp || 0) - (a.monthXp || 0))
@@ -94,7 +90,7 @@ export default function Leaderboard() {
       setFreqRank([...(allUsers || [])]
         .map(u => mapUser(u, { monthCheckinCount: checkinCounts[u.id] || 0 }))
         .filter(u => (u.monthCheckinCount || 0) > 0)
-        .sort((a, b) => (b.monthCheckinCount||0)-(a.monthCheckinCount||0)).slice(0,50));
+        .sort((a, b) => (b.monthCheckinCount || 0) - (a.monthCheckinCount || 0)).slice(0, 50));
 
       // 5. Times ranking
       const { data: clansData } = await supabase.from('clans').select('*').eq('is_active', true);
@@ -103,78 +99,51 @@ export default function Leaderboard() {
       if (clansData) {
         setClanRankings(clansData.map(clan => ({
           ...clan,
-          energy: (eventsData||[]).filter(e => e.clan_id === clan.id).reduce((s,e) => s+e.energy, 0),
-          memberCount: (membershipsData||[]).filter(m => m.clan_id === clan.id).length,
-        })).sort((a,b) => b.energy - a.energy));
+          energy: (eventsData || []).filter(e => e.clan_id === clan.id).reduce((s, e) => s + e.energy, 0),
+          memberCount: (membershipsData || []).filter(m => m.clan_id === clan.id).length,
+        })).sort((a, b) => b.energy - a.energy));
       }
 
-      // 6. WOD do dia — tenta hoje, senão pega o mais recente
-      const { data: todayWod } = await supabase
-        .from('wods').select('*').eq('date', todayStr).maybeSingle();
-
-      const { data: latestWods } = !todayWod
-        ? await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1)
-        : { data: null };
-
-      const activeWod = todayWod || (latestWods?.[0] ?? null);
+      // 6. WOD do dia
+      const { data: wodList } = await supabase.from('wods').select('*');
+      const activeWod = (wodList || []).find((w: any) => w.date === todayStr) || null;
       setWodInfo(activeWod);
 
-      const parseResult = (r: string, timeBased: boolean): number => {
-        if (!r) return timeBased ? 999999 : 0;
-        const str = r.trim();
-        if (/^\d+:\d+/.test(str)) {
-          const p = str.split(':').map(Number);
-          return p.length === 2 ? p[0]*60+p[1] : p[0]*3600+p[1]*60+p[2];
-        }
-        return parseFloat(str.replace(/[^0-9.]/g,'')) || (timeBased ? 999999 : 0);
-      };
-
-      const processWodResults = (wodResults: any[], wodType: string) => {
-        const isTimeBased = ['FOR TIME','TIME','TEMPO'].some(t => (wodType||'').toUpperCase().includes(t));
-        const bestByUser: Record<string, any> = {};
-        wodResults.forEach((r: any) => {
-          const uid = r.user_id;
-          const val = parseResult(r.result, isTimeBased);
-          const prev = bestByUser[uid];
-          if (!prev) { bestByUser[uid] = r; return; }
-          const prevVal = parseResult(prev.result, isTimeBased);
-          if (isTimeBased ? val < prevVal : val > prevVal) bestByUser[uid] = r;
-        });
-        return Object.values(bestByUser)
-          .sort((a: any, b: any) => isTimeBased
-            ? parseResult(a.result, isTimeBased) - parseResult(b.result, isTimeBased)
-            : parseResult(b.result, isTimeBased) - parseResult(a.result, isTimeBased))
-          .map((r: any) => ({
-            id: r.id, name: r.profiles?.name || 'Atleta',
-            result: r.result, type: r.type, level: r.profiles?.level || 1,
-          }));
-      };
-
       if (activeWod) {
-        // Tenta buscar por wod_id primeiro
         const { data: wodResults } = await supabase
           .from('wod_results').select('*, profiles(name, level)')
           .eq('wod_id', activeWod.id);
-
         if (wodResults && wodResults.length > 0) {
-          setWodRanking(processWodResults(wodResults, activeWod.type));
-        } else {
-          // Fallback: busca por data de hoje (caso wod_id não bata)
-          const todayStart = todayStr + 'T00:00:00';
-          const todayEnd = todayStr + 'T23:59:59';
-          const { data: todayResults } = await supabase
-            .from('wod_results').select('*, profiles(name, level)')
-            .gte('created_at', todayStart).lte('created_at', todayEnd);
-          if (todayResults && todayResults.length > 0) {
-            setWodRanking(processWodResults(todayResults, activeWod.type));
-          } else {
-            setWodRanking([]);
-          }
-        }
-      } else {
-        setWodRanking([]);
-      }
-    } catch(err: any) { setError(err.message); }
+          const isTimeBased = ['FOR TIME', 'TIME', 'TEMPO'].some(t => (activeWod.type || '').toUpperCase().includes(t));
+          const parseResult = (r: string): number => {
+            if (!r) return isTimeBased ? 999999 : 0;
+            const str = r.trim();
+            if (/^\d+:\d+/.test(str)) {
+              const p = str.split(':').map(Number);
+              return p.length === 2 ? p[0] * 60 + p[1] : p[0] * 3600 + p[1] * 60 + p[2];
+            }
+            return parseFloat(str.replace(/[^0-9.]/g, '')) || (isTimeBased ? 999999 : 0);
+          };
+          const bestByUser: Record<string, any> = {};
+          wodResults.forEach((r: any) => {
+            const uid = r.user_id;
+            const val = parseResult(r.result);
+            const prev = bestByUser[uid];
+            if (!prev) { bestByUser[uid] = r; return; }
+            const prevVal = parseResult(prev.result);
+            const isBetter = isTimeBased ? val < prevVal : val > prevVal;
+            if (isBetter) bestByUser[uid] = r;
+          });
+          const deduped = Object.values(bestByUser);
+          setWodRanking(deduped.sort((a: any, b: any) =>
+            isTimeBased ? parseResult(a.result) - parseResult(b.result) : parseResult(b.result) - parseResult(a.result)
+          ).map((r: any) => ({
+            id: r.id, name: r.profiles?.name || 'Atleta',
+            result: r.result, type: r.type, level: r.profiles?.level || 1,
+          })));
+        } else { setWodRanking([]); }
+      } else { setWodRanking([]); }
+    } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
   };
 
@@ -186,9 +155,9 @@ export default function Leaderboard() {
 
   const getScore = (u: any) => {
     if (activeTab === 'xp_total') return `${u.xp} XP`;
-    if (activeTab === 'xp_mes') return `${u.monthXp||0} XP`;
-    if (activeTab === 'freq') return `${u.monthCheckinCount||0} check-ins`;
-    if (activeTab === 'clans') return `${u.energy||0} ⚡`;
+    if (activeTab === 'xp_mes') return `${u.monthXp || 0} XP`;
+    if (activeTab === 'freq') return `${u.monthCheckinCount || 0} check-ins`;
+    if (activeTab === 'clans') return `${u.energy || 0} ⚡`;
     return '';
   };
 
@@ -259,7 +228,7 @@ export default function Leaderboard() {
               <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">WOD de Hoje</p>
               <p className="text-sm font-headline font-black text-primary uppercase italic">{wodInfo.name} — {wodInfo.type}</p>
               <p className="text-[10px] text-on-surface-variant mt-1">
-                {['FOR TIME','TIME','TEMPO'].some(t => (wodInfo.type||'').toUpperCase().includes(t))
+                {['FOR TIME', 'TIME', 'TEMPO'].some(t => (wodInfo.type || '').toUpperCase().includes(t))
                   ? '⏱ Menor tempo = melhor resultado'
                   : '🔁 Maior número = melhor resultado'}
               </p>
@@ -270,12 +239,12 @@ export default function Leaderboard() {
             <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-4 italic">Nenhum resultado registrado ainda</p>
           )}
           {wodRanking.map((r, i) => (
-            <motion.div key={r.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i*0.05 }}
+            <motion.div key={r.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
               className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between hover:border-primary/30 transition-all">
               <div className="flex items-center gap-3">
-                <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i+1}</span>
+                <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i + 1}</span>
                 <div className={cn("w-9 h-9 rounded-full flex items-center justify-center font-headline font-black text-sm",
-                  i===0?"bg-primary text-background":i===1?"bg-outline-variant/40 text-on-surface":i===2?"bg-secondary/30 text-on-surface":"bg-surface-container-highest text-on-surface")}>
+                  i === 0 ? "bg-primary text-background" : i === 1 ? "bg-outline-variant/40 text-on-surface" : i === 2 ? "bg-secondary/30 text-on-surface" : "bg-surface-container-highest text-on-surface")}>
                   {r.name[0]}
                 </div>
                 <div>
@@ -299,7 +268,7 @@ export default function Leaderboard() {
             <div className="flex flex-col items-center gap-2">
               <div className="relative">
                 <div className="w-16 h-16 rounded-full border-4 border-outline-variant/30 bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-on-surface">
-                  {isClans ? (top3[1].name?.[0]||'T') : top3[1].name[0]}
+                  {isClans ? (top3[1].name?.[0] || 'T') : top3[1].name[0]}
                 </div>
                 <div className="absolute -top-2 -right-2 bg-outline-variant/40 text-on-surface text-[10px] font-black px-2 py-0.5 rounded-full">#2</div>
               </div>
@@ -316,7 +285,7 @@ export default function Leaderboard() {
             <div className="flex flex-col items-center gap-2 -mt-8">
               <div className="relative">
                 <div className="w-24 h-24 rounded-full border-4 border-primary bg-surface-container-highest shadow-[0_0_30px_rgba(202,253,0,0.3)] flex items-center justify-center font-headline font-black text-3xl text-primary">
-                  {isClans ? (top3[0].name?.[0]||'T') : top3[0].name[0]}
+                  {isClans ? (top3[0].name?.[0] || 'T') : top3[0].name[0]}
                 </div>
                 <div className="absolute -top-3 -right-3 bg-primary text-background text-xs font-black px-3 py-1 rounded-full shadow-lg">#1</div>
               </div>
@@ -333,7 +302,7 @@ export default function Leaderboard() {
             <div className="flex flex-col items-center gap-2">
               <div className="relative">
                 <div className="w-16 h-16 rounded-full border-4 border-secondary/30 bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-on-surface">
-                  {isClans ? (top3[2].name?.[0]||'T') : top3[2].name[0]}
+                  {isClans ? (top3[2].name?.[0] || 'T') : top3[2].name[0]}
                 </div>
                 <div className="absolute -top-2 -right-2 bg-secondary/30 text-on-surface text-[10px] font-black px-2 py-0.5 rounded-full">#3</div>
               </div>
@@ -362,12 +331,12 @@ export default function Leaderboard() {
           </div>
           <div className={cn("space-y-3 transition-all duration-500 overflow-hidden", isExpanded ? "max-h-[2000px]" : "max-h-[300px]")}>
             {others.map((u, i) => (
-              <motion.div key={u.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i*0.03 }}
+              <motion.div key={u.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
                 className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between hover:border-primary/30 transition-all">
                 <div className="flex items-center gap-4">
-                  <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i+4}</span>
+                  <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i + 4}</span>
                   <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-sm border border-outline-variant/10">
-                    {(u.name||'?')[0]}
+                    {(u.name || '?')[0]}
                   </div>
                   <div>
                     <p className="text-on-surface font-bold uppercase text-sm italic">{u.name}</p>
@@ -392,4 +361,4 @@ export default function Leaderboard() {
       )}
     </div>
   );
-}
+  }
