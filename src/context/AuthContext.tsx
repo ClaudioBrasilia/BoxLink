@@ -56,16 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         coins: data.coins || 0,
         level: data.level || 1,
         avatar: {
-          equipped: data.avatar_equipped || {
-            base_outfit: 'base_male',
-            top: null,
-            bottom: null,
-            shoes: null,
-            accessory: null,
-            head_accessory: null,
-            wrist_accessory: null,
-            special: null
-          },
+          equipped: data.avatar_equipped,
           inventory: data.avatar_inventory || []
         },
         checkins: (checkinsData || []).map((c: any) => ({

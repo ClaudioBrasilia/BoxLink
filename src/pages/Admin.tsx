@@ -263,7 +263,7 @@ export default function Admin() {
 
   const handleRoleUpdate = async (userId: string) => {
     const role = selectedRoles[userId] || 'athlete';
-    const user = (users || []).find(u => u.id === userId);
+    const user = users.find(u => u.id === userId);
     if (!user) return;
     
     const { error } = await supabase

@@ -60,7 +60,7 @@ export default function Wod() {
     setResults(sorted);
 
     if (user) {
-      const userRes = (sorted || []).find((r: any) => r.user_id === user.id);
+      const userRes = sorted.find((r: any) => r.user_id === user.id);
       setUserResult(userRes || null);
       if (userRes) {
         setNewResult({ result: userRes.result, type: userRes.type });
@@ -77,7 +77,7 @@ export default function Wod() {
       setWods(data || []);
       
       const dateStr = formatInTimeZone(selectedDate, TIMEZONE, 'yyyy-MM-dd');
-      const found = (data || []).find((w: any) => w && w.date === dateStr);
+      const found = (data || []).find((w: any) => w.date === dateStr);
       setCurrentWod(found || null);
       setHasCheckedExisting(false);
       if (found) {

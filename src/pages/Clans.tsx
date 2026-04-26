@@ -117,7 +117,7 @@ export default function Clans() {
         setMyMembership(myMembershipData);
 
         if (myMembershipData) {
-          const myClanData = (clansData || []).find(c => c.id === myMembershipData.clan_id) || null;
+          const myClanData = clansData?.find(c => c.id === myMembershipData.clan_id) || null;
           setMyClan(myClanData);
         }
       }
@@ -272,7 +272,7 @@ export default function Clans() {
         <div className="flex flex-col gap-3">
           {leaderboard.map((item, idx) => {
             const isMine = myClan?.id === item.clan.id;
-            const myMembershipForClan = (memberships || []).find(m => m.user_id === user?.id && m.clan_id === item.clan.id);
+            const myMembershipForClan = memberships.find(m => m.user_id === user?.id && m.clan_id === item.clan.id);
             const alreadyRequested = !!myMembershipForClan;
 
             return (
