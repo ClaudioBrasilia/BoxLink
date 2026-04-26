@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { RewardEvent, PersonalRecord } from '../types';
+import { RewardEvent, PersonalRecord, Item } from '../types';
 import AvatarPreview from '../components/AvatarPreview';
 
 import { supabase } from '../lib/supabase';
@@ -13,6 +13,7 @@ export default function Profile() {
   const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const [history, setHistory] = useState<RewardEvent[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
   const [prs, setPrs] = useState<PersonalRecord[]>([]);
   const [checkinCount, setCheckinCount] = useState(0);
   const [checkinDates, setCheckinDates] = useState<string[]>([]);
@@ -66,6 +67,10 @@ export default function Profile() {
           .order('date', { ascending: false });
         setCheckinCount(count || 0);
         setCheckinDates((checkinsData || []).map((c: any) => c.date));
+
+        // Fetch store items (needed to render avatar with equipped clothes)
+        const { data: itemsData } = await supabase.from('items').select('*');
+        setItems(itemsData || []);
       };
       fetchData();
     }
@@ -256,8 +261,8 @@ export default function Profile() {
         </div>
         
         <div className="flex items-center gap-6 mb-8">
-          <div className="relative">
-            <AvatarPreview equipped={user?.avatar.equipped!} size="lg" />
+          <div className="relative w-24 h-36">
+            <AvatarPreview equipped={user?.avatar.equipped ?? {} as any} items={items} size="lg" />
             <button 
               onClick={() => navigate('/avatar')}
               className="absolute -bottom-2 -right-2 bg-primary text-on-primary p-2 rounded-xl shadow-lg border-2 border-surface-container-low hover:scale-110 transition-transform"
