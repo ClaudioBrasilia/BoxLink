@@ -277,8 +277,8 @@ export default function AvatarCustomization() {
   }
 
   const filteredItems = items.filter(item => selectedSlot === 'all' || item.slot === selectedSlot);
-  const inventoryItems = filteredItems.filter(item => user?.avatar.inventory.includes(item.id));
-  const shopItems = filteredItems.filter(item => !user?.avatar.inventory.includes(item.id));
+  const inventoryItems = filteredItems.filter(item => (user?.avatar?.inventory || []).includes(item.id));
+  const shopItems = filteredItems.filter(item => !(user?.avatar?.inventory || []).includes(item.id));
 
   const getAvatarPreviewUrl = () => {
     const eq = user?.avatar.equipped;
@@ -425,9 +425,9 @@ export default function AvatarCustomization() {
         <section className="grid grid-cols-2 gap-4">
           <AnimatePresence mode="wait">
             {(activeTab === 'inventory' ? inventoryItems : shopItems).map((item) => {
-              const isEquipped = user?.avatar.equipped[item.slot] === item.id;
+              const isEquipped = user?.avatar?.equipped?.[item.slot] === item.id;
               const canAfford = (user?.coins || 0) >= item.price;
-              const inInventory = user?.avatar.inventory.includes(item.id) || false;
+              const inInventory = (user?.avatar?.inventory || []).includes(item.id) || false;
               const imageUrl = getItemImageUrl(item.image);
 
               return (
@@ -518,7 +518,7 @@ export default function AvatarCustomization() {
             onClose={() => setPreviewItem(null)}
             onBuy={handleBuy}
             onEquip={handleEquip}
-            inInventory={user?.avatar.inventory.includes(previewItem.id) || false}
+            inInventory={(user?.avatar?.inventory || []).includes(previewItem.id) || false}
             canAfford={(user?.coins || 0) >= previewItem.price}
           />
         )}

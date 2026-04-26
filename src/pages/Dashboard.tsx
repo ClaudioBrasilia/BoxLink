@@ -208,7 +208,7 @@ export default function Dashboard() {
   };
 
   const today = new Date().toISOString().split('T')[0];
-  const alreadyCheckedIn = user?.checkins.some(c => c.date === today);
+  const alreadyCheckedIn = (user?.checkins || []).some(c => c.date === today);
 
   const handleShare = () => {
     const appUrl = window.location.origin;
@@ -390,7 +390,7 @@ export default function Dashboard() {
           <div>
             <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Check-ins Semana</p>
             <p className="text-2xl font-headline font-black text-on-surface">
-              {user?.checkins.filter(c => {
+              {(user?.checkins || []).filter(c => {
                 const checkinDate = new Date(c.timestamp);
                 const now = new Date();
                 const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
