@@ -220,7 +220,8 @@ export default function AvatarCustomization() {
     if (user.coins < item.price) return;
     try {
       const newCoins = user.coins - item.price;
-      const newInventory = [...(user.avatar?.inventory || []), item.id];
+      const currentInventory = user.avatar?.inventory || [];
+      const newInventory = [...currentInventory, item.id];
       const { error } = await supabase
         .from('profiles')
         .update({ coins: newCoins, avatar_inventory: newInventory, updated_at: new Date().toISOString() })
@@ -232,7 +233,17 @@ export default function AvatarCustomization() {
   const handleEquip = async (itemId: string | null, slot: keyof AvatarSlot) => {
     if (!user) return;
     try {
-      const newEquipped = { ...user.avatar.equipped, [slot]: itemId };
+      const currentEquipped = user.avatar?.equipped || {
+        base_outfit: 'base_male',
+        top: null,
+        bottom: null,
+        shoes: null,
+        accessory: null,
+        head_accessory: null,
+        wrist_accessory: null,
+        special: null
+      };
+      const newEquipped = { ...currentEquipped, [slot]: itemId };
       const { error } = await supabase
         .from('profiles')
         .update({ avatar_equipped: newEquipped, updated_at: new Date().toISOString() })
@@ -244,7 +255,17 @@ export default function AvatarCustomization() {
   const handleBaseChange = async (gender: 'base_female' | 'base_male') => {
     if (!user) return;
     try {
-      const newEquipped = { ...user.avatar.equipped, base_outfit: gender };
+      const currentEquipped = user.avatar?.equipped || {
+        base_outfit: 'base_male',
+        top: null,
+        bottom: null,
+        shoes: null,
+        accessory: null,
+        head_accessory: null,
+        wrist_accessory: null,
+        special: null
+      };
+      const newEquipped = { ...currentEquipped, base_outfit: gender };
       const { error } = await supabase
         .from('profiles')
         .update({ avatar_equipped: newEquipped, updated_at: new Date().toISOString() })
@@ -276,17 +297,18 @@ export default function AvatarCustomization() {
     );
   }
 
+  const inventory = user?.avatar?.inventory || [];
+  const equipped = user?.avatar?.equipped || {} as AvatarSlot;
+
   const filteredItems = items.filter(item => selectedSlot === 'all' || item.slot === selectedSlot);
-  const inventoryItems = filteredItems.filter(item => user?.avatar.inventory.includes(item.id));
-  const shopItems = filteredItems.filter(item => !user?.avatar.inventory.includes(item.id));
+  const inventoryItems = filteredItems.filter(item => inventory.includes(item.id));
+  const shopItems = filteredItems.filter(item => !inventory.includes(item.id));
 
   const getAvatarPreviewUrl = () => {
-    const eq = user?.avatar.equipped;
-    
-    if (eq) {
+    if (equipped) {
       const slots: (keyof AvatarSlot)[] = ['top', 'bottom', 'shoes', 'special', 'accessory', 'head_accessory', 'wrist_accessory'];
       for (const slot of slots) {
-        const itemId = eq[slot];
+        const itemId = equipped[slot];
         if (itemId) {
           const item = items.find(i => i.id === itemId);
           if (item?.image) {
@@ -296,7 +318,7 @@ export default function AvatarCustomization() {
       }
     }
     
-    return getBaseImageUrl(eq || {} as AvatarSlot);
+    return getBaseImageUrl(equipped);
   };
   
   const avatarPreviewUrl = getAvatarPreviewUrl();
@@ -317,8 +339,8 @@ export default function AvatarCustomization() {
         <span className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest whitespace-nowrap">Base:</span>
         <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10 gap-1">
           {(['base_female', 'base_male'] as const).map((gender) => {
-            const isActive = (user?.avatar.equipped?.base_outfit === gender) ||
-              (!user?.avatar.equipped?.base_outfit && gender === 'base_male');
+            const isActive = (equipped?.base_outfit === gender) ||
+              (!equipped?.base_outfit && gender === 'base_male');
             const label = gender === 'base_female' ? '♀ Feminino' : '♂ Masculino';
             return (
               <button
@@ -373,7 +395,7 @@ export default function AvatarCustomization() {
           <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest italic">NÍVEL {user?.level}</p>
 
           <div className="flex flex-col gap-1 mt-2">
-            {Object.entries(user?.avatar.equipped || {})
+            {Object.entries(equipped)
               .filter(([slot, id]) => id && slot !== 'base_outfit')
               .map(([slot, id]) => {
                 const item = items.find(i => i.id === id);
@@ -386,7 +408,7 @@ export default function AvatarCustomization() {
                 );
               })
             }
-            {Object.values(user?.avatar.equipped || {}).filter(v => v && v !== user?.avatar.equipped?.base_outfit).length === 0 && (
+            {Object.values(equipped).filter(v => v && v !== equipped?.base_outfit).length === 0 && (
               <p className="text-[9px] text-on-surface-variant opacity-40 uppercase tracking-widest italic">Nenhum item equipado</p>
             )}
           </div>
@@ -425,9 +447,9 @@ export default function AvatarCustomization() {
         <section className="grid grid-cols-2 gap-4">
           <AnimatePresence mode="wait">
             {(activeTab === 'inventory' ? inventoryItems : shopItems).map((item) => {
-              const isEquipped = user?.avatar.equipped[item.slot] === item.id;
+              const isEquipped = equipped[item.slot] === item.id;
               const canAfford = (user?.coins || 0) >= item.price;
-              const inInventory = user?.avatar.inventory.includes(item.id) || false;
+              const inInventory = inventory.includes(item.id);
               const imageUrl = getItemImageUrl(item.image);
 
               return (
@@ -513,12 +535,12 @@ export default function AvatarCustomization() {
         {previewItem && (
           <ItemPreviewModal
             item={previewItem}
-            equipped={user?.avatar.equipped || {} as AvatarSlot}
+            equipped={equipped}
             items={items}
             onClose={() => setPreviewItem(null)}
             onBuy={handleBuy}
             onEquip={handleEquip}
-            inInventory={user?.avatar.inventory.includes(previewItem.id) || false}
+            inInventory={inventory.includes(previewItem.id)}
             canAfford={(user?.coins || 0) >= previewItem.price}
           />
         )}
