@@ -263,7 +263,7 @@ export default function Admin() {
 
   const handleRoleUpdate = async (userId: string) => {
     const role = selectedRoles[userId] || 'athlete';
-    const user = users.find(u => u.id === userId);
+    const user = (users || []).find(u => u.id === userId);
     if (!user) return;
     
     const { error } = await supabase
@@ -625,7 +625,7 @@ export default function Admin() {
   const approvedUsers = filteredUsers.filter(u => u.status === 'approved');
 
   const historicalFrequencyRanking = approvedUsers.map(u => {
-    const periodCheckins = u.checkins.filter(c => {
+    const periodCheckins = (u.checkins || []).filter(c => {
       const checkinDate = new Date(c.date + 'T12:00:00'); // Use noon to avoid timezone shifts
       return checkinDate.getMonth() === selectedMonth && checkinDate.getFullYear() === selectedYear;
     });
@@ -1891,8 +1891,8 @@ export default function Admin() {
           const activeSlots = schedule.filter(s => s.isActive && s.days?.includes(dayOfWeek));
 
           // All checkins on this date
-          const dayCheckins = users.flatMap(u =>
-            u.checkins
+          const dayCheckins = (users || []).flatMap(u =>
+            (u.checkins || [])
               .filter(c => c.date === dateStr)
               .map(c => ({ ...c, user: u }))
           );

@@ -75,7 +75,7 @@ export default function AvatarPreview({
   const layers = LAYER_ORDER.map((slot) => {
     const itemId = resolvedEquipped[slot];
     if (!itemId) return null;
-    const item = items.find((i) => i.id === itemId);
+    const item = (items || []).find((i) => i.id === itemId);
     if (!item?.image) return null;
     return { slot, url: getItemImageUrl(item.image) };
   }).filter(Boolean) as { slot: keyof AvatarSlot; url: string }[];

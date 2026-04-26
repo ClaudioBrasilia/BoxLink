@@ -288,7 +288,7 @@ export default function AvatarCustomization() {
       for (const slot of slots) {
         const itemId = eq[slot];
         if (itemId) {
-          const item = items.find(i => i.id === itemId);
+          const item = (items || []).find(i => i.id === itemId);
           if (item?.image) {
             return getItemImageUrl(item.image);
           }
@@ -376,7 +376,7 @@ export default function AvatarCustomization() {
             {Object.entries(user?.avatar.equipped || {})
               .filter(([slot, id]) => id && slot !== 'base_outfit')
               .map(([slot, id]) => {
-                const item = items.find(i => i.id === id);
+                const item = (items || []).find(i => i.id === id);
                 if (!item) return null;
                 return (
                   <div key={slot} className="flex items-center gap-2">
