@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AvatarSlot } from '../types';
 import { cn } from '../lib/utils';
+import { AvatarLayers } from './AvatarLayers';
+import { supabase } from '../lib/supabase';
 
 interface AvatarPreviewProps {
   equipped: AvatarSlot;
@@ -8,48 +10,47 @@ interface AvatarPreviewProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const BUCKET = 'avatar-assets';
 
 function getUrl(filename: string): string {
   if (!filename) return '';
   if (filename.startsWith('http')) return filename;
   
-  // Normaliza o nome do arquivo para o padrão do Storage (lowercase e underscores)
   const cleanKey = filename.toLowerCase().trim().replace(/\s+/g, '_');
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${cleanKey}.png`;
+  
+  try {
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(
+      cleanKey.endsWith('.png') ? cleanKey : `${cleanKey}.png`
+    );
+    return data.publicUrl;
+  } catch (e) {
+    return '';
+  }
 }
 
-/**
- * Sistema de blocos (layered sprites).
- * 
- * Cada peça é um PNG do tamanho exato do seu bloco, posicionado
- * com `absolute` + `top` percentual sobre o container do avatar.
- */
 const BLOCK_POSITIONS: Record<string, { top: string; height: string }> = {
   base:            { top: '0%',      height: '100%'  },
   special:         { top: '0%',      height: '100%'  },
-  head_accessory:  { top: '1.56%',   height: '17.32%' },
-  top:             { top: '15.62%',  height: '36.46%' },
-  bottom:          { top: '47.27%',  height: '24.35%' },
-  shoes:           { top: '85.35%',  height: '11.46%' },
-  wrist_accessory: { top: '40%',     height: '20%'   },
+  top:             { top: '0%',      height: '50%'   },
+  bottom:          { top: '40%',     height: '60%'   },
+  outerwear:       { top: '0%',      height: '100%'  },
+  head:            { top: '0%',      height: '40%'   },
   accessory:       { top: '10%',     height: '15%'   },
 };
 
-// Ordem de renderização (de baixo para cima)
 const LAYER_ORDER: Array<keyof AvatarSlot | 'base'> = [
   'base',
   'bottom',
-  'shoes',
   'top',
-  'wrist_accessory',
+  'outerwear',
+  'head',
   'accessory',
-  'head_accessory',
-  'special',
+  'special'
 ];
 
 export default function AvatarPreview({ equipped, className, size = 'md' }: AvatarPreviewProps) {
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+
   const sizeClasses = {
     sm: 'w-12 h-12',
     md: 'w-24 h-24',
@@ -57,16 +58,13 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
     xl: 'w-48 h-48',
   };
 
-  // Detecção da base
   const isFemale = equipped?.base_outfit === 'base_female' || 
                    equipped?.base_outfit?.includes('female') ||
                    equipped?.base_outfit?.toLowerCase().includes('feminina');
-  
-  // Se for 'default_base' ou não estiver definido, usamos a base masculina como padrão
+
   const baseImage = isFemale ? 'base_feminina' : 'base_masculina';
 
-  // Monta as camadas a renderizar
-  const layers: Array<{ key: string; url: string; pos: typeof BLOCK_POSITIONS[string] }> = [];
+  const layers: Array<{ key: string; url: string; pos: typeof BLOCK_POSITIONS[string]; value: string }> = [];
 
   for (const slot of LAYER_ORDER) {
     if (slot === 'base') {
@@ -74,6 +72,7 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
         key: 'base',
         url: getUrl(baseImage),
         pos: BLOCK_POSITIONS.base,
+        value: isFemale ? 'female' : 'male'
       });
       continue;
     }
@@ -82,29 +81,52 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
     if (!value) continue;
 
     const pos = BLOCK_POSITIONS[slot] ?? BLOCK_POSITIONS.base;
-    layers.push({ key: slot, url: getUrl(value), pos });
+    layers.push({ key: slot, url: getUrl(String(value)), pos, value: String(value) });
   }
+
+  const handleImageError = (key: string) => {
+    setImageErrors(prev => ({ ...prev, [key]: true }));
+  };
 
   return (
     <div
       className={cn(
-        'relative rounded-full overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(202,253,0,0.2)] bg-surface-container-highest',
+        "relative flex items-center justify-center bg-surface-container-low rounded-2xl overflow-hidden",
         sizeClasses[size],
         className
       )}
     >
-      {layers.map(({ key, url, pos }) => (
-        <img
-          key={key}
-          src={url}
-          alt={key}
-          className="absolute left-0 w-full object-contain object-top"
-          style={{ top: pos.top, height: pos.height }}
-          onError={(e) => {
-            e.currentTarget.style.display = 'none';
-          }}
-        />
-      ))}
+      {/* SVG Fallback System - Desenha as formas básicas se a imagem falhar */}
+      <svg viewBox="0 0 200 300" className="absolute inset-0 w-full h-full text-on-surface-variant opacity-20">
+        {layers.map(({ key, value }) => {
+          if (key === 'base') {
+            return isFemale ? AvatarLayers.base.female : AvatarLayers.base.male;
+          }
+          const slotLayers = (AvatarLayers as any)[key];
+          if (slotLayers && slotLayers[value]) {
+            return typeof slotLayers[value] === 'function' 
+              ? slotLayers[value]('currentColor') 
+              : slotLayers[value];
+          }
+          return null;
+        })}
+      </svg>
+
+      {/* Camadas de Imagem Reais do Storage */}
+      {layers.map(({ key, url, pos }) => {
+        if (imageErrors[key]) return null;
+        
+        return (
+          <img
+            key={key}
+            src={url}
+            alt={key}
+            className="absolute left-0 w-full object-contain object-top"
+            style={{ top: pos.top, height: pos.height }}
+            onError={() => handleImageError(key)}
+          />
+        );
+      })}
     </div>
   );
 }
