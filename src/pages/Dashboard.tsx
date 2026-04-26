@@ -69,7 +69,7 @@ export default function Dashboard() {
       }));
       setSchedule(mappedSchedule);
       const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
-      const current = mappedSchedule.find((s: any) => now >= s.time && now <= s.endTime);
+      const current = (mappedSchedule || []).find((s: any) => now >= s.time && now <= s.endTime);
       if (current) setSelectedClass(current.time);
     }
   };

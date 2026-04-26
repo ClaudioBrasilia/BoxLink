@@ -166,7 +166,7 @@ export default function Coach() {
     }
   };
 
-  const historyWod = wods.find(w => w.date === selectedHistoryDate);
+  const historyWod = (wods || []).find(w => w && w.date === selectedHistoryDate);
 
   return (
     <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background">

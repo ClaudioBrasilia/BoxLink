@@ -106,7 +106,7 @@ export default function Leaderboard() {
 
       // 6. WOD do dia
       const { data: wodList } = await supabase.from('wods').select('*');
-      const activeWod = (wodList || []).find((w: any) => w.date === todayStr) || null;
+      const activeWod = (wodList || []).find((w: any) => w && w.date === todayStr) || null;
       setWodInfo(activeWod);
 
       if (activeWod) {

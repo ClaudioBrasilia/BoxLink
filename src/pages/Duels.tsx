@@ -158,7 +158,7 @@ export default function Duels() {
       setIsChallenging(false);
       setNewDuel({ opponentId: '', type: 'WOD', betType: 'xp', betXp: 20, betCoins: 10 });
       // Notifica o oponente
-      const opponent = users.find(u => u.id === newDuel.opponentId);
+      const opponent = (users || []).find(u => u.id === newDuel.opponentId);
       await createNotification(
         newDuel.opponentId,
         'duel_challenge',
@@ -174,7 +174,7 @@ export default function Duels() {
   /** Oponente aceita o duelo */
   const handleAccept = async (duelId: string) => {
     if (!user) return;
-    const duel = duels.find(d => d.id === duelId);
+    const duel = (duels || []).find(d => d.id === duelId);
     if (!duel) return;
     if ((duel.bet_type === 'xp' || duel.bet_type === 'both') && (user.xp || 0) < duel.bet_xp) {
       alert(`XP insuficiente! Você tem ${user.xp} XP.`); return;
@@ -199,7 +199,7 @@ export default function Duels() {
   /** Qualquer participante cancela/recusa o duelo */
   const handleCancel = async (duelId: string) => {
     if (!user) return;
-    const duel = duels.find(d => d.id === duelId);
+    const duel = (duels || []).find(d => d.id === duelId);
     if (!duel) return;
     const isChallenger = duel.challenger_id === user.id;
     const isOpponent = duel.opponent_id === user.id;
@@ -238,7 +238,7 @@ export default function Duels() {
     try {
       if (allSubmitted) {
         const winnerId = pickWinner(newResults as Record<string, string>, participants);
-        const loserId = participants.find(id => id !== winnerId) || '';
+        const loserId = (participants || []).find(id => id !== winnerId) || '';
 
         await supabase.from('duels').update({
           results: newResults,
