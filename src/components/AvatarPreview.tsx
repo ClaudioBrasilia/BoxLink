@@ -18,6 +18,7 @@ function getUrl(filename: string): string {
   
   const cleanKey = filename.toLowerCase().trim().replace(/\s+/g, '_');
   
+  // Usar o cliente supabase para obter a URL pública de forma robusta
   try {
     const { data } = supabase.storage.from(BUCKET).getPublicUrl(
       cleanKey.endsWith('.png') ? cleanKey : `${cleanKey}.png`
@@ -31,10 +32,10 @@ function getUrl(filename: string): string {
 const BLOCK_POSITIONS: Record<string, { top: string; height: string }> = {
   base:            { top: '0%',      height: '100%'  },
   special:         { top: '0%',      height: '100%'  },
-  top:             { top: '0%',      height: '50%'   },
+  body:            { top: '0%',      height: '100%'  },
+  top:             { top: '0%',      height: '60%'   },
   bottom:          { top: '40%',     height: '60%'   },
-  outerwear:       { top: '0%',      height: '100%'  },
-  head:            { top: '0%',      height: '40%'   },
+  hair:            { top: '0%',      height: '40%'   },
   accessory:       { top: '10%',     height: '15%'   },
 };
 
@@ -42,8 +43,7 @@ const LAYER_ORDER: Array<keyof AvatarSlot | 'base'> = [
   'base',
   'bottom',
   'top',
-  'outerwear',
-  'head',
+  'hair',
   'accessory',
   'special'
 ];
@@ -81,7 +81,7 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
     if (!value) continue;
 
     const pos = BLOCK_POSITIONS[slot] ?? BLOCK_POSITIONS.base;
-    layers.push({ key: slot, url: getUrl(String(value)), pos, value: String(value) });
+    layers.push({ key: slot, url: getUrl(value), pos, value });
   }
 
   const handleImageError = (key: string) => {
@@ -91,12 +91,12 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
   return (
     <div
       className={cn(
-        "relative flex items-center justify-center bg-surface-container-low rounded-2xl overflow-hidden",
+        "relative rounded-full overflow-hidden bg-surface-container-highest",
         sizeClasses[size],
         className
       )}
     >
-      {/* SVG Fallback System - Desenha as formas básicas se a imagem falhar */}
+      {/* SVG Fallback System - Desenhos caso a imagem falhe */}
       <svg viewBox="0 0 200 300" className="absolute inset-0 w-full h-full text-on-surface-variant opacity-20">
         {layers.map(({ key, value }) => {
           if (key === 'base') {
@@ -112,7 +112,7 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
         })}
       </svg>
 
-      {/* Camadas de Imagem Reais do Storage */}
+      {/* Image Layers - As imagens reais vindas do Supabase */}
       {layers.map(({ key, url, pos }) => {
         if (imageErrors[key]) return null;
         
