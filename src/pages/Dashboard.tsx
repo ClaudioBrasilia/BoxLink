@@ -236,9 +236,7 @@ export default function Dashboard() {
       {/* Header */}
       <header className="flex justify-between items-start">
         <div className="flex items-center gap-4">
-          <div className="relative w-16 h-16 rounded-full border-2 border-primary shadow-[0_0_16px_rgba(202,253,0,0.5)] bg-surface-container-highest overflow-hidden shrink-0">
-            <AvatarPreview equipped={user?.avatar.equipped ?? {} as any} items={avatarItems} size="sm" />
-          </div>
+          <AvatarPreview equipped={user?.avatar.equipped ?? {} as any} size="sm" />
           <div>
             <h1 className="text-2xl font-headline font-black text-on-surface tracking-tight uppercase italic leading-none">
               OLÁ, <span className="text-primary">{user?.name.split(' ')[0]}</span>
