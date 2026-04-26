@@ -236,6 +236,13 @@ export default function Duels() {
       setWods(loadedWods);
       if (loadedWods[0] && !wodId) setWodId(loadedWods[0].id);
       setUsers(profilesRes.data || []);
+      // Auto-switch to pending tab if user has duels awaiting response
+      const myPending = loadedDuels.filter(d =>
+        d.status === 'pending' &&
+        (d.opponentIds || []).includes(user.id) &&
+        !(d.acceptedBy || []).includes(user.id)
+      );
+      if (myPending.length > 0) setActiveTab('pending');
     } finally {
       setInitialLoading(false);
     }

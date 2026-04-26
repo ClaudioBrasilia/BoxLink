@@ -3,13 +3,37 @@ import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, M
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { useState, useEffect } from 'react';
-import { getSupabase } from '../lib/supabase';
+import { getSupabase, supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [pendingDuelsCount, setPendingDuelsCount] = useState(0);
+
+  // Badge: duelos pendentes aguardando resposta do usuário
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchPending = async () => {
+      const { data } = await supabase
+        .from('duels')
+        .select('id, opponent_id, opponent_ids, status, accepted_by')
+        .eq('status', 'pending');
+      const count = (data || []).filter(d => {
+        const opponentIds = Array.isArray(d.opponent_ids) ? d.opponent_ids : (d.opponent_id ? [d.opponent_id] : []);
+        const acceptedBy = Array.isArray(d.accepted_by) ? d.accepted_by : [];
+        return opponentIds.includes(user.id) && !acceptedBy.includes(user.id);
+      }).length;
+      setPendingDuelsCount(count);
+    };
+    fetchPending();
+    const channel = supabase
+      .channel(`layout_duels_${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'duels' }, fetchPending)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id]);
 
   const navItems = [
     { icon: Home, label: 'Início', path: '/' },
@@ -137,7 +161,14 @@ export default function Layout() {
             >
               {({ isActive }) => (
                 <>
-                  <item.icon className={cn('w-6 h-6 transition-transform', isActive && 'scale-110')} />
+                  <div className="relative">
+                    <item.icon className={cn('w-6 h-6 transition-transform', isActive && 'scale-110')} />
+                    {item.path === '/duels' && pendingDuelsCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-secondary text-background rounded-full text-[9px] font-black flex items-center justify-center shadow-lg">
+                        {pendingDuelsCount}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[8px] font-bold uppercase tracking-widest">{item.label}</span>
                   {isActive && (
                     <div className="absolute -top-2 w-1 h-1 bg-primary rounded-full shadow-[0_0_10px_#cafd00]" />
