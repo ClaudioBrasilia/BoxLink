@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { AvatarSlot } from '../types';
 import { cn } from '../lib/utils';
 import { AvatarLayers } from './AvatarLayers';
-import { supabase } from '../lib/supabase';
 
 interface AvatarPreviewProps {
   equipped: AvatarSlot;
@@ -10,48 +9,7 @@ interface AvatarPreviewProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
-const BUCKET = 'avatar-assets';
-
-function getUrl(filename: string): string {
-  if (!filename) return '';
-  if (filename.startsWith('http')) return filename;
-  
-  // Normaliza o nome do arquivo (remove espaços e garante .png)
-  const cleanKey = filename.toLowerCase().trim().replace(/\s+/g, '_');
-  const path = cleanKey.endsWith('.png') ? cleanKey : `${cleanKey}.png`;
-  
-  try {
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-    return data.publicUrl;
-  } catch (e) {
-    console.error("Erro ao buscar URL do avatar:", e);
-    return '';
-  }
-}
-
-const BLOCK_POSITIONS: Record<string, { top: string; height: string }> = {
-  base:            { top: '0%',      height: '100%'  },
-  special:         { top: '0%',      height: '100%'  },
-  bottom:          { top: '45%',     height: '55%'   },
-  top:             { top: '15%',     height: '45%'   },
-  shoes:           { top: '80%',     height: '20%'   },
-  hair:            { top: '0%',      height: '35%'   },
-  accessory:       { top: '10%',     height: '15%'   },
-};
-
-const LAYER_ORDER: Array<keyof AvatarSlot | 'base'> = [
-  'base',
-  'bottom',
-  'shoes',
-  'top',
-  'hair',
-  'accessory',
-  'special'
-];
-
 export default function AvatarPreview({ equipped, className, size = 'md' }: AvatarPreviewProps) {
-  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
-
   const sizeClasses = {
     sm: 'w-12 h-12',
     md: 'w-24 h-24',
@@ -59,73 +17,57 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
     xl: 'w-48 h-48',
   };
 
-  const isFemale = equipped?.base_outfit === 'base_female' || 
-                   equipped?.base_outfit?.includes('female') ||
-                   equipped?.base_outfit?.toLowerCase() === 'feminina';
-
-  const baseImage = isFemale ? 'base_feminina' : 'base_masculina';
-
-  const layers: Array<{ key: string; url: string; pos: typeof BLOCK_POSITIONS[string]; value: string }> = [];
-
-  for (const slot of LAYER_ORDER) {
-    if (slot === 'base') {
-      layers.push({
-        key: 'base',
-        url: getUrl(baseImage),
-        pos: BLOCK_POSITIONS.base,
-        value: isFemale ? 'female' : 'male'
-      });
-      continue;
-    }
-
-    const value = equipped?.[slot as keyof AvatarSlot];
-    if (!value) continue;
-
-    const pos = BLOCK_POSITIONS[slot] ?? BLOCK_POSITIONS.base;
-    layers.push({ key: slot, url: getUrl(value as string), pos, value: value as string });
-  }
-
-  const handleImageError = (key: string) => {
-    setImageErrors(prev => ({ ...prev, [key]: true }));
-  };
+  const baseId = equipped.base_outfit || 'base_1';
+  const isMale = baseId === 'base_1';
 
   return (
-    <div
-      className={cn(
-        "relative rounded-full overflow-hidden bg-surface-container-low border-2 border-primary/20",
-        sizeClasses[size],
-        className
-      )}
-    >
-      {/* Sistema de Fallback (SVG) caso a imagem do Supabase falhe */}
-      <svg viewBox="0 0 200 300" className="absolute inset-0 w-full h-full text-primary/10">
-        {layers.map(({ key, value }) => {
-          if (key === 'base') return isFemale ? AvatarLayers.base.female : AvatarLayers.base.male;
-          const slotLayers = (AvatarLayers as any)[key];
-          if (slotLayers && slotLayers[value]) {
-            return typeof slotLayers[value] === 'function' 
-              ? slotLayers[value]('currentColor') 
-              : slotLayers[value];
-          }
-          return null;
-        })}
-      </svg>
+    <div className={cn(
+      "relative rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(202,253,0,0.2)]",
+      sizeClasses[size],
+      className
+    )}>
+      <svg
+        viewBox="0 0 200 300"
+        className="w-full h-full"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        {/* Base Body */}
+        <g className="text-on-surface-variant opacity-30">
+          {isMale ? AvatarLayers.base.male : AvatarLayers.base.female}
+        </g>
 
-      {/* Camadas de Imagem Reais */}
-      {layers.map(({ key, url, pos }) => {
-        if (imageErrors[key]) return null;
-        
-        return (
-          <img
-            key={key}
-            src={url}
-            alt={key}
-            className="absolute left-0 w-full h-full object-contain object-top"
-            style={{ top: pos.top, height: pos.height }}
-            onError={() => handleImageError(key)}
-          />
-        );
-      })}
+        {/* Bottom Layer (Pants) */}
+        {equipped.bottom && (AvatarLayers.bottom as any)[equipped.bottom]?.(equipped.bottom.includes('premium') ? '#1A1A1A' : '#4F46E5')}
+
+        {/* Top Layer (Shirt) */}
+        {equipped.top && (AvatarLayers.top as any)[equipped.top]?.(equipped.top.includes('premium') ? '#000000' : '#CAFD00')}
+
+        {/* Shoes Layer */}
+        {equipped.shoes && (AvatarLayers.shoes as any)[equipped.shoes]?.(equipped.shoes.includes('premium') ? '#111111' : '#FFFFFF')}
+
+        {/* Head Accessory */}
+        {equipped.head_accessory && (AvatarLayers.head_accessory as any)[equipped.head_accessory]?.('#000000')}
+
+        {/* Wrist Accessory (Grips) */}
+        {equipped.wrist_accessory && (AvatarLayers.wrist_accessory as any)[equipped.wrist_accessory]?.('#333333')}
+
+        {/* Accessory (Glasses/Belt) */}
+        {equipped.accessory && (AvatarLayers.accessory as any)[equipped.accessory]?.(equipped.accessory === 'belt_1' ? '#111111' : '#000000')}
+
+        {/* Special Effects */}
+        {equipped.special && (
+          <g>
+            {(AvatarLayers.special as any)[equipped.special]?.('#CAFD00')}
+            <circle cx="100" cy="150" r="80" fill="url(#grad)" className="animate-pulse opacity-30" />
+            <defs>
+              <radialGradient id="grad" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+                <stop offset="0%" stopColor="#CAFD00" stopOpacity="0.5" />
+                <stop offset="100%" stopColor="#CAFD00" stopOpacity="0" />
+              </radialGradient>
+            </defs>
+          </g>
+        )}
+      </svg>
     </div>
   );
 }

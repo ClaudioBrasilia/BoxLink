@@ -1,199 +1,280 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { 
-  ChevronLeft, 
-  Sparkles, 
-  Crown, 
-  Coins, 
-  Save, 
-  Image as ImageIcon,
-  Check,
-  History,
-  Lock,
-  ArrowRight
-} from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { ShoppingBag, Package, Check, Coins, ChevronLeft, Sparkles, Shirt, Footprints, Glasses, GraduationCap, Watch } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabase';
-import { AvatarSlot, User } from '../types';
 import { cn } from '../lib/utils';
-import confetti from 'canvas-confetti';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { Item, AvatarSlot } from '../types';
 import AvatarPreview from '../components/AvatarPreview';
+import { supabase } from '../lib/supabase';
 
-const BUCKET = 'avatar-assets';
+const SLOT_ICONS: Record<string, any> = {
+  top: Shirt,
+  bottom: Footprints,
+  shoes: Footprints,
+  accessory: Glasses,
+  head_accessory: GraduationCap,
+  wrist_accessory: Watch,
+  special: Sparkles,
+};
 
-// Itens disponíveis para customização (Exemplo de estrutura)
-const CATEGORIES = [
-  { id: 'base', label: 'Corpo', icon: ImageIcon },
-  { id: 'hair', label: 'Cabelo', icon: Sparkles },
-  { id: 'top', label: 'Camisa', icon: Sparkles },
-  { id: 'bottom', label: 'Calça', icon: Sparkles },
-  { id: 'accessory', label: 'Acessório', icon: Sparkles },
-  { id: 'special', label: 'Especial', icon: Crown },
-];
+const SLOT_LABELS: Record<string, string> = {
+  top: 'Camiseta',
+  bottom: 'Calça/Short',
+  shoes: 'Tênis',
+  accessory: 'Acessório',
+  head_accessory: 'Cabeça',
+  wrist_accessory: 'Pulso',
+  special: 'Especial',
+};
 
 export default function AvatarCustomization() {
+  const { user, updateUser } = useAuth();
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
-  const [activeTab, setActiveTab] = useState('base');
-  const [isSaving, setIsSaving] = useState(false);
-  const [equipped, setEquipped] = useState<AvatarSlot>(user?.avatar.equipped || {} as AvatarSlot);
+  const [activeTab, setActiveTab] = useState<'inventory' | 'shop'>('inventory');
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedSlot, setSelectedSlot] = useState<keyof AvatarSlot | 'all'>('all');
 
-  // Sincroniza o estado local quando o usuário carregar
   useEffect(() => {
-    if (user?.avatar.equipped) {
-      setEquipped(user.avatar.equipped);
-    }
-  }, [user]);
+    const fetchItems = async () => {
+      const { data } = await supabase.from('items').select('*');
+      setItems(data || []);
+      setLoading(false);
+    };
+    fetchItems();
+  }, []);
 
-  const handleSelectItem = (category: string, itemKey: string) => {
-    setEquipped(prev => ({
-      ...prev,
-      [category]: itemKey
-    }));
-  };
-
-  const handleSave = async () => {
+  const handleBuy = async (item: Item) => {
     if (!user) return;
-    setIsSaving(true);
-    
+    if (user.coins < item.price) return;
+
     try {
+      const newCoins = user.coins - item.price;
+      const newInventory = [...(user.avatar?.inventory || []), item.id];
+
       const { error } = await supabase
         .from('profiles')
-        .update({
-          avatar: {
-            ...user.avatar,
-            equipped: equipped
-          }
+        .update({ 
+          coins: newCoins, 
+          avatar_inventory: newInventory,
+          updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
 
-      if (error) throw error;
-      
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#00FF9D', '#00E5FF', '#FFFFFF']
-      });
-      
-      await refreshUser();
-      setTimeout(() => navigate('/profile'), 1500);
+      if (!error) {
+        updateUser({
+          ...user,
+          coins: newCoins,
+          avatar: { ...user.avatar, inventory: newInventory }
+        });
+      }
     } catch (err) {
-      console.error('Erro ao salvar avatar:', err);
-    } finally {
-      setIsSaving(false);
+      console.error(err);
     }
   };
 
+  const handleEquip = async (itemId: string | null, slot: keyof AvatarSlot) => {
+    if (!user) return;
+
+    try {
+      const newEquipped = { ...user.avatar.equipped, [slot]: itemId };
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          avatar_equipped: newEquipped,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
+
+      if (!error) {
+        updateUser({
+          ...user,
+          avatar: { ...user.avatar, equipped: newEquipped }
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const filteredItems = items.filter(item => selectedSlot === 'all' || item.slot === selectedSlot);
+  const inventoryItems = filteredItems.filter(item => user?.avatar.inventory.includes(item.id));
+  const shopItems = filteredItems.filter(item => !user?.avatar.inventory.includes(item.id));
+
   return (
-    <div className="min-h-screen bg-background pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md px-4 py-4 flex items-center gap-4">
-        <button 
-          onClick={() => navigate(-1)}
-          className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-on-surface"
-        >
-          <ChevronLeft className="w-6 h-6" />
+    <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background pb-24">
+      <header className="flex items-center gap-4">
+        <button onClick={() => navigate(-1)} className="p-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 text-on-surface hover:bg-surface-container-highest transition-all">
+          <ChevronLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-xl font-black italic tracking-tighter text-on-background uppercase">
-          Customização
+        <h1 className="text-3xl font-headline font-black text-on-surface tracking-tight uppercase italic flex items-center gap-3">
+          <Sparkles className="w-8 h-8 text-primary" />
+          CUSTOMIZAR
         </h1>
       </header>
 
-      <div className="px-4 max-w-lg mx-auto">
-        {/* Preview Area */}
-        <div className="relative aspect-square rounded-3xl bg-surface-container-low overflow-hidden border-2 border-primary/20 p-8 flex items-center justify-center mb-8">
-          <AvatarPreview 
-            equipped={equipped} 
-            size="xl" 
-            className="w-64 h-64 bg-transparent shadow-2xl scale-125"
-          />
-          
-          <div className="absolute top-4 right-4 bg-primary/10 px-3 py-1 rounded-full border border-primary/20 backdrop-blur-sm">
-            <span className="text-[10px] font-black text-primary uppercase">Estilo Atual</span>
+      {/* Avatar Preview Section */}
+      <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 flex flex-col items-center gap-6 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-6 flex flex-col items-end gap-2">
+          <div className="bg-secondary/20 px-4 py-2 rounded-full border border-secondary/30 flex items-center gap-2">
+            <Coins className="w-4 h-4 text-secondary" />
+            <span className="text-secondary text-sm font-black italic">{user?.coins} BC</span>
           </div>
         </div>
 
-        {/* Categories */}
-        <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar mb-6">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveTab(cat.id)}
-              className={cn(
-                "flex-shrink-0 px-4 py-3 rounded-2xl flex items-center gap-2 transition-all duration-300",
-                activeTab === cat.id 
-                  ? "bg-primary text-primary-fixed block-shadow" 
-                  : "bg-surface-container-highest text-on-surface-variant hover:bg-surface-container-high"
-              )}
-            >
-              <cat.icon className="w-5 h-5" />
-              <span className="text-sm font-bold uppercase tracking-tight">{cat.label}</span>
-            </button>
-          ))}
+        <AvatarPreview equipped={user?.avatar.equipped!} size="xl" />
+        
+        <div className="text-center">
+          <h2 className="text-2xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none mb-1">{user?.name}</h2>
+          <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest italic">NÍVEL {user?.level}</p>
         </div>
+      </section>
 
-        {/* Item Selection (Exemplo simplificado de itens) */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
-          {/* Aqui você pode mapear os itens que tem no seu banco de dados ou lista fixa */}
-          {/* Abaixo um botão de exemplo para remover o item da categoria */}
-          <button
-            onClick={() => handleSelectItem(activeTab, '')}
-            className="aspect-square rounded-2xl border-2 border-dashed border-outline-variant flex flex-col items-center justify-center gap-1 text-on-surface-variant"
+      {/* Tabs & Filters */}
+      <div className="flex flex-col gap-4">
+        <div className="flex bg-surface-container-low p-1.5 rounded-2xl border border-outline-variant/10">
+          <button 
+            onClick={() => setActiveTab('inventory')}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all",
+              activeTab === 'inventory' ? "bg-primary text-on-primary shadow-lg shadow-primary/20" : "text-on-surface-variant hover:bg-surface-container-highest"
+            )}
           >
-            <span className="text-[10px] font-black uppercase">Nenhum</span>
+            <Package className="w-4 h-4" /> MEU ARMÁRIO
           </button>
-          
-          {/* Exemplo de item: Se for Masculino/Feminino trocamos a base */}
-          {activeTab === 'base' && (
-            <>
-              <button
-                onClick={() => handleSelectItem('base_outfit', 'base_masculina')}
+          <button 
+            onClick={() => setActiveTab('shop')}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all",
+              activeTab === 'shop' ? "bg-secondary text-on-secondary shadow-lg shadow-secondary/20" : "text-on-surface-variant hover:bg-surface-container-highest"
+            )}
+          >
+            <ShoppingBag className="w-4 h-4" /> LOJA
+          </button>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+          <button 
+            onClick={() => setSelectedSlot('all')}
+            className={cn(
+              "px-4 py-2 rounded-full font-bold uppercase text-[8px] tracking-widest whitespace-nowrap border transition-all",
+              selectedSlot === 'all' ? "bg-on-surface text-surface border-on-surface" : "bg-surface-container-low text-on-surface-variant border-outline-variant/10"
+            )}
+          >
+            TODOS
+          </button>
+          {Object.entries(SLOT_LABELS).map(([slot, label]) => {
+            const Icon = SLOT_ICONS[slot];
+            return (
+              <button 
+                key={slot}
+                onClick={() => setSelectedSlot(slot as keyof AvatarSlot)}
                 className={cn(
-                  "aspect-square rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition-all",
-                  equipped.base_outfit === 'base_masculina' ? "border-primary bg-primary/10" : "border-transparent bg-surface-container"
+                  "px-4 py-2 rounded-full font-bold uppercase text-[8px] tracking-widest whitespace-nowrap border flex items-center gap-2 transition-all",
+                  selectedSlot === slot ? "bg-on-surface text-surface border-on-surface" : "bg-surface-container-low text-on-surface-variant border-outline-variant/10"
                 )}
               >
-                <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
-                  <ArrowRight className="w-6 h-6 text-blue-400" />
-                </div>
-                <span className="text-[10px] font-black uppercase">Masculino</span>
+                <Icon className="w-3 h-3" /> {label}
               </button>
-              <button
-                onClick={() => handleSelectItem('base_outfit', 'base_feminina')}
-                className={cn(
-                  "aspect-square rounded-2xl border-2 flex flex-col items-center justify-center gap-2 transition-all",
-                  equipped.base_outfit === 'base_feminina' ? "border-primary bg-primary/10" : "border-transparent bg-surface-container"
-                )}
-              >
-                <div className="w-12 h-12 rounded-full bg-pink-500/20 flex items-center justify-center">
-                  <ArrowRight className="w-6 h-6 text-pink-400" />
-                </div>
-                <span className="text-[10px] font-black uppercase">Feminino</span>
-              </button>
-            </>
-          )}
+            );
+          })}
         </div>
       </div>
 
-      {/* Footer Save Button */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md border-t border-outline-variant/30 flex justify-center">
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="w-full max-w-lg h-14 bg-primary text-primary-fixed rounded-2xl font-black uppercase tracking-widest block-shadow flex items-center justify-center gap-3 disabled:opacity-50"
-        >
-          {isSaving ? (
-            <div className="w-6 h-6 border-4 border-primary-fixed/30 border-t-primary-fixed rounded-full animate-spin" />
-          ) : (
-            <>
-              <Save className="w-6 h-6" />
-              <span>Salvar Alterações</span>
-            </>
-          )}
-        </button>
-      </div>
+      {/* Items Grid */}
+      <section className="grid grid-cols-2 gap-4">
+        <AnimatePresence mode="wait">
+          {(activeTab === 'inventory' ? inventoryItems : shopItems).map((item) => {
+            const isEquipped = user?.avatar.equipped[item.slot] === item.id;
+            const canAfford = (user?.coins || 0) >= item.price;
+
+            return (
+              <motion.div
+                key={item.id}
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className={cn(
+                  "bg-surface-container-low rounded-3xl border p-4 flex flex-col gap-3 transition-all relative group",
+                  isEquipped ? "border-primary bg-primary/5" : "border-outline-variant/10 hover:border-primary/30"
+                )}
+              >
+                {isEquipped && (
+                  <div className="absolute top-3 right-3 bg-primary text-on-primary p-1 rounded-full shadow-lg">
+                    <Check className="w-3 h-3" />
+                  </div>
+                )}
+                
+                <div className="aspect-square rounded-2xl bg-surface-container-highest flex items-center justify-center text-4xl group-hover:scale-110 transition-transform overflow-hidden">
+                  {item.image.startsWith('http') ? (
+                    <img 
+                      src={item.image} 
+                      alt={item.name} 
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    item.image
+                  )}
+                </div>
+
+                <div>
+                  <h4 className="text-on-surface font-bold uppercase text-[10px] italic leading-tight">{item.name}</h4>
+                  <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest mt-0.5 opacity-50">
+                    {SLOT_LABELS[item.slot]}
+                  </p>
+                </div>
+
+                {activeTab === 'inventory' ? (
+                  <button 
+                    onClick={() => handleEquip(isEquipped ? null : item.id, item.slot)}
+                    className={cn(
+                      "w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all",
+                      isEquipped ? "bg-surface-container-highest text-on-surface-variant" : "bg-primary text-on-primary shadow-lg shadow-primary/20"
+                    )}
+                  >
+                    {isEquipped ? 'REMOVER' : 'EQUIPAR'}
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => handleBuy(item)}
+                    disabled={!canAfford}
+                    className={cn(
+                      "w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all flex items-center justify-center gap-1.5",
+                      canAfford ? "bg-secondary text-on-secondary shadow-lg shadow-secondary/20" : "bg-surface-container-highest text-on-surface-variant opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    <Coins className="w-3 h-3" /> {item.price} BC
+                  </button>
+                )}
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+
+        {activeTab === 'inventory' && inventoryItems.length === 0 && (
+          <div className="col-span-2 bg-surface-container-low p-12 rounded-[2.5rem] border border-outline-variant/10 text-center">
+            <Package className="w-12 h-12 text-on-surface-variant opacity-20 mx-auto mb-4" />
+            <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">Seu armário está vazio</p>
+            <button 
+              onClick={() => setActiveTab('shop')}
+              className="mt-4 text-primary text-[10px] font-black uppercase tracking-widest hover:underline"
+            >
+              VISITAR A LOJA
+            </button>
+          </div>
+        )}
+
+        {activeTab === 'shop' && shopItems.length === 0 && (
+          <div className="col-span-2 bg-surface-container-low p-12 rounded-[2.5rem] border border-outline-variant/10 text-center">
+            <ShoppingBag className="w-12 h-12 text-on-surface-variant opacity-20 mx-auto mb-4" />
+            <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">Você já comprou tudo!</p>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

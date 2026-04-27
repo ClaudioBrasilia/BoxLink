@@ -61,23 +61,15 @@ export async function addReward(userId: string, type: string, xp: number, coins:
     .insert(insertData);
 
   if (historyError) {
-    // Handle unique constraint violation (duplicate reward)
-    if (historyError.code === '23505') {
-      console.warn('Duplicate reward detected and blocked by database');
-      return { levelUp: false, duplicate: true };
-    }
-
     // If challenge_id doesn't exist, try without it
     if (historyError.message.includes('column "challenge_id" of relation "reward_history" does not exist')) {
-      const { error: retryError } = await supabase.from('reward_history').insert({ 
+      await supabase.from('reward_history').insert({ 
         user_id: userId, 
         type, 
         xp, 
         coins, 
         description: `${description} [ID: ${referenceId}]`
       });
-      
-      if (retryError?.code === '23505') return { levelUp: false, duplicate: true };
     } else {
       console.error('Error inserting reward history:', historyError);
     }

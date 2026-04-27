@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, MapPin, Calendar, Megaphone, Plus, Settings, 
   ChevronRight, ChevronDown, Activity, Check, X, Shield, UserPlus, 
   ImageIcon, ShoppingBag, Tv, Trophy, History, Search, Filter,
-  Clock, ToggleLeft, ToggleRight, Trash2, Edit2, Save, Camera
+  Clock, ToggleLeft, ToggleRight, Trash2, Edit2, Save
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User, BoxSettings, Schedule, Item, Duel, Wod } from '../types';
@@ -11,12 +11,11 @@ import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '../lib/supabase';
-import { uploadImage } from '../utils/image';
 
 export default function Admin() {
   const { user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
-  const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'schedule' | 'challenges' | 'store' | 'operation' | 'ranking' | 'checkins'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'schedule' | 'challenges' | 'store' | 'operation' | 'ranking'>('users');
   const [settings, setSettings] = useState<BoxSettings>({
     name: '',
     logo: '',
@@ -58,16 +57,15 @@ export default function Admin() {
       duel_win_coins: 10
     },
     isActive: true,
-    announcements: [] as any[],
+    announcements: [],
     timezone: 'America/Sao_Paulo',
     modules: {
       economy: true,
       store: true,
       duels: true,
-      challenges: true,
-      clans: true
+      challenges: true
     },
-    max_clan_members: 10
+    clans_enabled: false
   });
   const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
   const [schedule, setSchedule] = useState<Schedule[]>([]);
@@ -76,18 +74,10 @@ export default function Admin() {
   const [duels, setDuels] = useState<Duel[]>([]);
   const [wods, setWods] = useState<Wod[]>([]);
   const [editingWod, setEditingWod] = useState<Wod | null>(null);
-  const [clans, setClans] = useState<any[]>([]);
-  const [editingChallenge, setEditingChallenge] = useState<any | null>(null);
-  const [isEditingChallenge, setIsEditingChallenge] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
-  const [uploading, setUploading] = useState<string | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [checkinsDate, setCheckinsDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
-  const [checkinsExpanded, setCheckinsExpanded] = useState<Record<string, boolean>>({});
 
   const [newChallenge, setNewChallenge] = useState({
     title: '',
@@ -99,9 +89,7 @@ export default function Admin() {
     coins: 10,
     repeatable: false,
     dailyLimit: 1,
-    difficulty: 'easy',
-    required_days: 1,
-    require_photo: false
+    difficulty: 'easy'
   });
   
   const [newSchedule, setNewSchedule] = useState<Schedule>({ 
@@ -121,7 +109,6 @@ export default function Admin() {
     price: 100,
     image: ''
   });
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
 
   const [isManageUsersOpen, setIsManageUsersOpen] = useState(false);
   const [openSections, setOpenSections] = useState<string[]>([]);
@@ -133,94 +120,111 @@ export default function Admin() {
   };
 
   const fetchAll = async () => {
-    // Fetch Users
-    const { data: usersData } = await supabase.from('profiles').select('*');
-    const { data: allCheckins } = await supabase.from('checkins').select('*');
-    if (usersData) {
-      const mappedUsers = usersData.map((u: any) => ({
-        id: u.id,
-        email: u.email || '',
-        name: u.name || 'Sem Nome',
-        role: u.role || 'athlete',
-        status: u.status || 'pending',
-        xp: u.xp || 0,
-        coins: u.coins || 0,
-        level: u.level || 1,
-        avatar: {
-          equipped: u.avatar_equipped,
-          inventory: u.avatar_inventory || []
-        },
-        checkins: (allCheckins || []).filter((c: any) => c.user_id === u.id).map((c: any) => ({
-          date: c.date,
-          timestamp: c.timestamp,
-          classTime: c.class_time
-        })),
-        paidBonuses: u.paid_bonuses || [],
-        createdAt: u.created_at
-      }));
-      setUsers(mappedUsers);
-      const roles: Record<string, string> = {};
-      mappedUsers.forEach((u: User) => {
-        roles[u.id] = u.role;
-      });
-      setSelectedRoles(roles);
+    try {
+      // Fetch Users with a try-catch for the join
+      let { data: usersData, error: usersError } = await supabase.from('profiles').select('*, checkins(*)');
+      
+      // If error (like relationship not found), try fetching users only
+      if (usersError) {
+        console.warn('Failed to fetch users with checkins, retrying without join:', usersError);
+        const { data: simpleUsers, error: simpleError } = await supabase.from('profiles').select('*');
+        if (simpleError) throw simpleError;
+        usersData = simpleUsers;
+      }
+
+      if (usersData) {
+        const mappedUsers = usersData.map((u: any) => ({
+          id: u.id,
+          email: u.email,
+          name: u.name,
+          role: u.role,
+          status: u.status,
+          xp: u.xp || 0,
+          coins: u.coins || 0,
+          level: u.level || 1,
+          avatar: {
+            equipped: u.avatar_equipped,
+            inventory: u.avatar_inventory || []
+          },
+          checkins: (u.checkins || []).map((c: any) => ({
+            date: c.date,
+            timestamp: c.timestamp,
+            classTime: c.class_time
+          })),
+          paidBonuses: u.paid_bonuses || [],
+          createdAt: u.created_at
+        }));
+        setUsers(mappedUsers);
+        const roles: Record<string, string> = {};
+        mappedUsers.forEach((u: User) => {
+          roles[u.id] = u.role;
+        });
+        setSelectedRoles(roles);
+      }
+
+      // Fetch Box Settings
+      const { data: settingsData, error: settingsError } = await supabase.from('box_settings').select('*').single();
+
+      if (settingsError && settingsError.code !== 'PGRST116') {
+        console.error('Error fetching settings:', settingsError);
+      }
+
+      if (settingsData) {
+        setSettings(prev => ({
+          ...prev,
+          ...settingsData,
+          id: settingsData.id,
+          institutionalPhoto: settingsData.institutional_photo,
+          topBanner: settingsData.top_banner,
+          location: { lat: settingsData.lat, lng: settingsData.lng },
+          rewards: settingsData.rewards || prev.rewards,
+          tvConfig: settingsData.tv_config || (prev as any).tvConfig || {},
+          modules: settingsData.modules || prev.modules,
+          announcements: settingsData.announcements || prev.announcements,
+          timezone: settingsData.timezone || prev.timezone,
+          clans_enabled: settingsData.clans_enabled || false
+        }));
+      }
+
+      // Fetch Schedule
+      const { data: scheduleData, error: scheduleError } = await supabase.from('schedule').select('*').order('time', { ascending: true });
+      if (scheduleError) console.error('Error fetching schedule:', scheduleError);
+      if (scheduleData) {
+        const mappedSchedule = scheduleData.map((s: any) => ({
+          id: s.id,
+          time: s.time,
+          endTime: s.end_time,
+          coach: s.coach,
+          capacity: s.capacity,
+          days: s.days,
+          isActive: s.is_active,
+          checkinWindowMinutes: s.checkin_window_minutes
+        }));
+        setSchedule(mappedSchedule);
+      }
+
+      // Fetch Challenges
+      const { data: challengesData, error: challengesError } = await supabase.from('challenges').select('*').order('created_at', { ascending: false });
+      if (challengesError) console.error('Error fetching challenges:', challengesError);
+      if (challengesData) setChallenges(challengesData);
+
+      // Fetch Items
+      const { data: itemsData, error: itemsError } = await supabase.from('items').select('*');
+      if (itemsError) console.error('Error fetching items:', itemsError);
+      if (itemsData) setItems(itemsData);
+
+      // Fetch Duels
+      const { data: duelsData, error: duelsError } = await supabase.from('duels').select('*').order('created_at', { ascending: false });
+      if (duelsError) console.error('Error fetching duels:', duelsError);
+      if (duelsData) setDuels(duelsData);
+
+      // Fetch WODs
+      const { data: wodsData, error: wodsError } = await supabase.from('wods').select('*').order('date', { ascending: false });
+      if (wodsError) console.error('Error fetching WODs:', wodsError);
+      if (wodsData) setWods(wodsData);
+    } catch (err) {
+      console.error('Error in fetchAll:', err);
     }
-
-    // Fetch Box Settings
-    const { data: settingsData } = await supabase.from('box_settings').select('*').maybeSingle();
-
-    if (settingsData) {
-      setSettings(prev => ({
-        ...prev,
-        ...settingsData,
-        id: settingsData.id,
-        institutionalPhoto: settingsData.institutional_photo,
-        topBanner: settingsData.top_banner,
-        location: { lat: settingsData.lat, lng: settingsData.lng },
-        rewards: settingsData.rewards || prev.rewards,
-        tvConfig: settingsData.tv_config || (prev as any).tvConfig || {},
-        modules: settingsData.modules || prev.modules,
-        announcements: (settingsData.announcements || prev.announcements || []) as any[],
-        timezone: settingsData.timezone || prev.timezone,
-        max_clan_members: settingsData.max_clan_members || 10
-      }));
-    }
-
-    // Fetch Schedule
-    const { data: scheduleData } = await supabase.from('schedule').select('*').order('time', { ascending: true });
-    if (scheduleData) {
-      const mappedSchedule = scheduleData.map((s: any) => ({
-        id: s.id,
-        time: s.time,
-        endTime: s.end_time,
-        coach: s.coach,
-        capacity: s.capacity,
-        days: s.days,
-        isActive: s.is_active,
-        checkinWindowMinutes: s.checkin_window_minutes
-      }));
-      setSchedule(mappedSchedule);
-    }
-
-    // Fetch Challenges
-    const { data: challengesData } = await supabase.from('challenges').select('*').order('created_at', { ascending: false });
-    if (challengesData) setChallenges(challengesData);
-
-    // Fetch Items
-    const { data: itemsData } = await supabase.from('items').select('*');
-    if (itemsData) setItems(itemsData);
-
-    // Fetch Duels
-    const { data: duelsData } = await supabase.from('duels').select('*').order('created_at', { ascending: false });
-    if (duelsData) setDuels(duelsData);
-
-    // Fetch WODs
-    const { data: wodsData } = await supabase.from('wods').select('*').order('date', { ascending: false });
-    if (wodsData) setWods(wodsData);
-
-    // Fetch Clans
-    const { data: clansData } = await supabase.from('clans').select('*').eq('is_active', true);
-    if (clansData) setClans(clansData);
   };
 
   useEffect(() => {
@@ -235,7 +239,6 @@ export default function Admin() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'duels' }, () => fetchAll())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchAll())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'box_settings' }, () => fetchAll())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clans' }, () => fetchAll())
       .subscribe();
 
     return () => {
@@ -244,7 +247,7 @@ export default function Admin() {
   }, []);
 
   const handleStatusChange = async (userId: string, status: string) => {
-    const role = selectedRoles[userId] || 'athlete';
+    const role = selectedRoles[userId];
     const { error } = await supabase
       .from('profiles')
       .update({ status, role })
@@ -262,8 +265,8 @@ export default function Admin() {
   };
 
   const handleRoleUpdate = async (userId: string) => {
-    const role = selectedRoles[userId] || 'athlete';
-    const user = (users || []).find(u => u.id === userId);
+    const role = selectedRoles[userId];
+    const user = users.find(u => u.id === userId);
     if (!user) return;
     
     const { error } = await supabase
@@ -279,47 +282,30 @@ export default function Admin() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'logo' | 'institutionalPhoto' | 'topBanner') => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(field);
-    try {
-      const fileName = `${field}_${Date.now()}.jpg`;
-      const publicUrl = await uploadImage(file, 'box-assets', fileName);
-      setSettings(s => ({ ...s, [field]: publicUrl }));
-    } catch (error: any) {
-      alert('Erro ao fazer upload: ' + error.message);
-    } finally {
-      setUploading(null);
-    }
-  };
-
   const handleSaveSettings = async () => {
-    if (!settings) return;
     const { data, error } = await supabase
       .from('box_settings')
-      .update({
+      .upsert({
+        id: (settings as any).id,
         name: settings.name,
         logo: settings.logo,
         description: settings.description,
+        institutional_photo: settings.institutionalPhoto,
+        top_banner: settings.topBanner,
         lat: settings.location?.lat,
         lng: settings.location?.lng,
         radius: settings.radius,
         is_active: settings.isActive,
         rewards: settings.rewards || {},
-        tv_config: (settings as any).tvConfig || (settings as any).tv_config || {},
+        tv_config: settings.tvConfig || (settings as any).tv_config || {},
         modules: settings.modules || {},
-        announcements: (settings as any).announcements || [],
+        announcements: settings.announcements || [],
         timezone: settings.timezone || 'America/Sao_Paulo',
-        clans_enabled: (settings as any).clans_enabled || false,
-        avatar_enabled: (settings as any).avatar_enabled || false,
-        max_clan_members: settings.max_clan_members || 10,
+        clans_enabled: settings.clans_enabled || false,
         updated_at: new Date().toISOString()
-      })
-      .eq('is_active', true)
+      }, { onConflict: 'is_active' })
       .select()
-      .maybeSingle();
+      .single();
 
     if (!error && data) {
       fetchAll();
@@ -402,9 +388,7 @@ export default function Admin() {
         coins: newChallenge.coins,
         repeatable: newChallenge.repeatable,
         daily_limit: newChallenge.dailyLimit,
-        difficulty: newChallenge.difficulty,
-        required_days: newChallenge.required_days,
-        require_photo: newChallenge.require_photo
+        difficulty: newChallenge.difficulty
       })
       .select();
 
@@ -420,9 +404,7 @@ export default function Admin() {
         coins: 10,
         repeatable: false,
         dailyLimit: 1,
-        difficulty: 'easy',
-        required_days: 1,
-        require_photo: false
+        difficulty: 'easy'
       });
       alert('Desafio criado com sucesso!');
     } else {
@@ -452,7 +434,6 @@ export default function Admin() {
   };
 
   const handleDeleteItem = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este item?')) return;
     const { error } = await supabase
       .from('items')
       .delete()
@@ -462,125 +443,6 @@ export default function Admin() {
       setItems(items.filter(i => i.id !== id));
     } else {
       alert('Erro ao excluir item: ' + error.message);
-    }
-  };
-
-  const handleUpdateItem = async () => {
-    if (!editingItem) return;
-    const { error } = await supabase
-      .from('items')
-      .update({
-        name: editingItem.name,
-        slot: editingItem.slot,
-        price: editingItem.price,
-        image: editingItem.image
-      })
-      .eq('id', editingItem.id);
-
-    if (!error) {
-      setItems(items.map(i => i.id === editingItem.id ? editingItem : i));
-      setEditingItem(null);
-      alert('Item atualizado com sucesso!');
-    } else {
-      alert('Erro ao atualizar item: ' + error.message);
-    }
-  };
-
-  const handleEditChallenge = (challenge: any) => {
-    setEditingChallenge({
-      ...challenge,
-      startDate: challenge.start_date,
-      endDate: challenge.end_date
-    });
-    setIsEditingChallenge(true);
-  };
-
-  const handleUpdateChallenge = async () => {
-    if (!editingChallenge || !editingChallenge.title || !editingChallenge.description) return;
-    
-    const { error } = await supabase
-      .from('challenges')
-      .update({
-        title: editingChallenge.title,
-        description: editingChallenge.description,
-        active: editingChallenge.active,
-        start_date: editingChallenge.startDate,
-        end_date: editingChallenge.endDate,
-        xp: editingChallenge.xp,
-        coins: editingChallenge.coins,
-        repeatable: editingChallenge.repeatable,
-        daily_limit: editingChallenge.dailyLimit,
-        difficulty: editingChallenge.difficulty,
-        required_days: editingChallenge.required_days,
-        require_photo: editingChallenge.require_photo
-      })
-      .eq('id', editingChallenge.id);
-
-    if (!error) {
-      setChallenges(challenges.map(c => c.id === editingChallenge.id ? editingChallenge : c));
-      setEditingChallenge(null);
-      setIsEditingChallenge(false);
-      alert('Desafio atualizado com sucesso!');
-    } else {
-      alert('Erro ao atualizar desafio: ' + error.message);
-    }
-  };
-
-  const handleDeleteChallenge = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este desafio permanentemente?')) return;
-    
-    const { error } = await supabase
-      .from('challenges')
-      .delete()
-      .eq('id', id);
-    
-    if (!error) {
-      setChallenges(challenges.filter(c => c.id !== id));
-      alert('Desafio excluído com sucesso!');
-    } else {
-      alert('Erro ao excluir desafio: ' + error.message);
-    }
-  };
-
-  const handleDeleteClan = async (clanId: string) => {
-    if (!confirm('Tem certeza que deseja excluir este time permanentemente?')) return;
-    
-    const { error } = await supabase
-      .from('clans')
-      .delete()
-      .eq('id', clanId);
-    
-    if (!error) {
-      alert('Time excluído com sucesso!');
-      fetchAll();
-    } else {
-      alert('Erro ao excluir time: ' + error.message);
-    }
-  };
-
-  const handleSystemReset = async () => {
-    const confirmation = prompt('AVISO CRÍTICO: Isso apagará TODOS os check-ins, resultados de WOD, histórico de recompensas, duelos e resetará o XP/Coins de todos os usuários. Digite "RESETAR" para confirmar:');
-    
-    if (confirmation !== 'RESETAR') return;
-
-    try {
-      // 1. Delete history tables
-      await supabase.from('checkins').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('reward_history').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('wod_results').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('duels').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('domination_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-
-      // 2. Reset user profiles
-      await supabase
-        .from('profiles')
-        .update({ xp: 0, coins: 100, level: 1 })
-        .neq('role', 'admin');
-
-      alert('Sistema resetado com sucesso! O box está limpo para um novo começo.');
-      fetchAll();
-    } catch (err: any) {
-      alert('Erro durante o reset: ' + err.message);
     }
   };
 
@@ -610,30 +472,19 @@ export default function Admin() {
   };
 
   const filteredUsers = users.filter(u => {
-    const matchesSearch = (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (u.email || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || u.status === statusFilter;
     const matchesRole = roleFilter === 'all' || u.role === roleFilter;
     return matchesSearch && matchesStatus && matchesRole;
   });
 
   const pendingUsers = users.filter(u => {
-    const matchesSearch = (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (u.email || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRole = roleFilter === 'all' || u.role === roleFilter;
     return matchesSearch && matchesRole && u.status === 'pending';
   });
 
   const approvedUsers = filteredUsers.filter(u => u.status === 'approved');
-
-  const historicalFrequencyRanking = approvedUsers.map(u => {
-    const periodCheckins = (u.checkins || []).filter(c => {
-      const checkinDate = new Date(c.date + 'T12:00:00'); // Use noon to avoid timezone shifts
-      return checkinDate.getMonth() === selectedMonth && checkinDate.getFullYear() === selectedYear;
-    });
-    return {
-      ...u,
-      periodCount: periodCheckins.length
-    };
-  }).sort((a, b) => b.periodCount - a.periodCount);
   const rejectedUsers = filteredUsers.filter(u => u.status === 'rejected');
 
   return (
@@ -647,7 +498,7 @@ export default function Admin() {
 
       {/* Tabs */}
       <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10 overflow-x-auto no-scrollbar">
-        {(['users', 'settings', 'schedule', 'challenges', 'store', 'operation', 'ranking', 'checkins'] as const).map((tab) => (
+        {(['users', 'settings', 'schedule', 'challenges', 'store', 'operation', 'ranking'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -662,7 +513,6 @@ export default function Admin() {
              tab === 'challenges' ? 'DESAFIOS' :
              tab === 'store' ? 'LOJA' :
              tab === 'operation' ? 'OPERAÇÃO' :
-             tab === 'checkins' ? 'CHECK-INS' :
              'RANKING'}
           </button>
         ))}
@@ -680,13 +530,13 @@ export default function Admin() {
             {/* Search and Filters */}
             <div className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 space-y-4">
               <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-on-surface-variant" />
-                <input 
-                  type="text" 
-                  placeholder="BUSCAR POR NOME OU EMAIL..." 
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant" />
+                <input
+                  type="text"
+                  placeholder="BUSCAR POR NOME OU EMAIL..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-surface-container-highest border-none rounded-2xl py-4 pl-12 pr-4 font-headline font-bold text-xs text-on-surface placeholder:text-on-surface-variant/50"
+                  className="w-full bg-surface-container-highest border-none rounded-2xl pl-12 pr-4 py-4 font-headline font-bold text-on-surface text-xs uppercase tracking-widest"
                 />
               </div>
               <div className="flex gap-2 overflow-x-auto no-scrollbar">
@@ -730,7 +580,7 @@ export default function Admin() {
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-xl">
-                        {(u.name || 'S')[0]}
+                        {u.name[0]}
                       </div>
                       <div>
                         <p className="text-on-surface font-bold uppercase text-sm">{u.name}</p>
@@ -816,7 +666,7 @@ export default function Admin() {
                           <div className="flex justify-between items-start">
                             <div className="flex items-center gap-4">
                               <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-headline font-black text-xl">
-                                {(u.name || 'S')[0]}
+                                {u.name[0]}
                               </div>
                               <div>
                                 <p className="text-on-surface font-bold uppercase text-sm">{u.name}</p>
@@ -878,16 +728,16 @@ export default function Admin() {
                 {rejectedUsers.map((u) => (
                   <div key={u.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex justify-between items-center opacity-60 grayscale">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface-variant font-headline font-black text-lg">
-                        {(u.name || 'S')[0]}
+                      <div className="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-xl">
+                        {u.name[0]}
                       </div>
                       <div>
-                        <p className="text-on-surface font-bold uppercase text-xs">{u.name}</p>
-                        <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest">{u.email}</p>
+                        <p className="text-on-surface font-bold uppercase text-sm">{u.name}</p>
+                        <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{u.email}</p>
                       </div>
                     </div>
-                    <button onClick={() => handleStatusChange(u.id, 'pending')} className="text-[8px] font-black text-primary uppercase tracking-widest hover:underline">
-                      RECONSIDERAR
+                    <button onClick={() => handleStatusChange(u.id, 'pending')} className="p-2 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-background transition-all">
+                      <UserPlus className="w-5 h-5" />
                     </button>
                   </div>
                 ))}
@@ -904,132 +754,154 @@ export default function Admin() {
             exit={{ opacity: 0, y: 20 }}
             className="flex flex-col gap-6"
           >
-            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-8">
-              <div className="flex justify-between items-center">
-                <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">CONFIGURAÇÕES DO BOX</h3>
-                <button 
-                  onClick={handleSaveSettings}
-                  className="bg-primary text-background px-6 py-2 rounded-xl font-headline font-black text-xs uppercase italic shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
-                >
-                  <Save className="w-4 h-4" /> SALVAR ALTERAÇÕES
-                </button>
-              </div>
-
-              {/* Basic Info Section */}
+            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-6">
+              {/* General Section */}
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-primary">
-                  <Settings className="w-4 h-4" />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Informações Básicas</span>
-                </div>
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome do Box</label>
-                    <input 
-                      type="text" 
-                      value={settings.name} 
-                      onChange={e => setSettings({...settings, name: e.target.value})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Descrição</label>
-                    <textarea 
-                      value={settings.description} 
-                      onChange={e => setSettings({...settings, description: e.target.value})}
-                      rows={3}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Assets Section */}
-              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
-                <div className="flex items-center gap-2 text-primary">
-                  <ImageIcon className="w-4 h-4" />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Imagens e Identidade</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                  {/* Logo */}
-                  <div className="space-y-3">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Logo do Box</label>
-                    <div className="relative group aspect-square rounded-3xl bg-surface-container-highest overflow-hidden border-2 border-dashed border-outline-variant/20 flex items-center justify-center">
-                      {settings.logo ? (
-                        <img src={settings.logo} alt="Logo" className="w-full h-full object-contain p-4" />
-                      ) : (
-                        <ImageIcon className="w-8 h-8 text-on-surface-variant/30" />
-                      )}
-                      <label className="absolute inset-0 flex items-center justify-center bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                        <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'logo')} accept="image/*" />
-                        <div className="flex flex-col items-center gap-2">
-                          <Camera className="w-6 h-6 text-primary" />
-                          <span className="text-[8px] font-black text-on-surface uppercase tracking-widest">ALTERAR LOGO</span>
-                        </div>
-                      </label>
-                      {uploading === 'logo' && <div className="absolute inset-0 bg-background/60 flex items-center justify-center"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>}
-                    </div>
-                  </div>
-
-                  {/* Institutional Photo */}
-                  <div className="space-y-3">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Foto Institucional</label>
-                    <div className="relative group aspect-square rounded-3xl bg-surface-container-highest overflow-hidden border-2 border-dashed border-outline-variant/20 flex items-center justify-center">
-                      {settings.institutionalPhoto ? (
-                        <img src={settings.institutionalPhoto} alt="Institucional" className="w-full h-full object-cover" />
-                      ) : (
-                        <ImageIcon className="w-8 h-8 text-on-surface-variant/30" />
-                      )}
-                      <label className="absolute inset-0 flex items-center justify-center bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                        <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'institutionalPhoto')} accept="image/*" />
-                        <div className="flex flex-col items-center gap-2">
-                          <Camera className="w-6 h-6 text-primary" />
-                          <span className="text-[8px] font-black text-on-surface uppercase tracking-widest">ALTERAR FOTO</span>
-                        </div>
-                      </label>
-                      {uploading === 'institutionalPhoto' && <div className="absolute inset-0 bg-background/60 flex items-center justify-center"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>}
-                    </div>
-                  </div>
-
-                  {/* Top Banner */}
-                  <div className="space-y-3">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Banner Superior</label>
-                    <div className="relative group aspect-square rounded-3xl bg-surface-container-highest overflow-hidden border-2 border-dashed border-outline-variant/20 flex items-center justify-center">
-                      {settings.topBanner ? (
-                        <img src={settings.topBanner} alt="Banner" className="w-full h-full object-cover" />
-                      ) : (
-                        <ImageIcon className="w-8 h-8 text-on-surface-variant/30" />
-                      )}
-                      <label className="absolute inset-0 flex items-center justify-center bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                        <input type="file" className="hidden" onChange={e => handleFileUpload(e, 'topBanner')} accept="image/*" />
-                        <div className="flex flex-col items-center gap-2">
-                          <Camera className="w-6 h-6 text-primary" />
-                          <span className="text-[8px] font-black text-on-surface uppercase tracking-widest">ALTERAR BANNER</span>
-                        </div>
-                      </label>
-                      {uploading === 'topBanner' && <div className="absolute inset-0 bg-background/60 flex items-center justify-center"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Rewards Section */}
-              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
                 <button 
-                  onClick={() => toggleSection('rewards')}
+                  onClick={() => toggleSection('general')}
                   className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10"
                 >
-                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">RECOMPENSAS PADRÃO</h3>
-                  {openSections.includes('rewards') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic flex items-center gap-2">
+                    <LayoutDashboard className="w-4 h-4 text-primary" /> GERAL
+                  </h3>
+                  {openSections.includes('general') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 </button>
-
+                
                 <AnimatePresence>
-                  {openSections.includes('rewards') && (
+                  {openSections.includes('general') && (
                     <motion.div 
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden px-2 space-y-6"
+                      className="overflow-hidden px-2 space-y-4"
                     >
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome do Box</label>
+                        <input 
+                          type="text" 
+                          value={settings.name} 
+                          onChange={e => setSettings(s => ({...s, name: e.target.value}))}
+                          className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">URL da Logo</label>
+                        <div className="flex gap-4 items-center">
+                          <input 
+                            type="text" 
+                            value={settings.logo} 
+                            onChange={e => setSettings(s => ({...s, logo: e.target.value}))}
+                            className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                          />
+                          {settings.logo && (
+                            <img src={settings.logo} alt="Preview" className="w-12 h-12 rounded-xl object-cover border border-outline-variant/20" />
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Descrição do Box</label>
+                        <textarea 
+                          rows={3}
+                          value={settings.description} 
+                          onChange={e => setSettings(s => ({...s, description: e.target.value}))}
+                          className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Foto Institucional (URL)</label>
+                        <div className="flex gap-4 items-center">
+                          <input 
+                            type="text" 
+                            value={settings.institutionalPhoto} 
+                            onChange={e => setSettings(s => ({...s, institutionalPhoto: e.target.value}))}
+                            className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                          />
+                          {settings.institutionalPhoto && (
+                            <img src={settings.institutionalPhoto} alt="Preview" className="w-12 h-12 rounded-xl object-cover border border-outline-variant/20" />
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Banner Superior (URL)</label>
+                        <div className="flex gap-4 items-center">
+                          <input 
+                            type="text" 
+                            value={settings.topBanner} 
+                            onChange={e => setSettings(s => ({...s, topBanner: e.target.value}))}
+                            className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                          />
+                          {settings.topBanner && (
+                            <img src={settings.topBanner} alt="Preview" className="w-12 h-12 rounded-xl object-cover border border-outline-variant/20" />
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Localização (Lat, Lng)</label>
+                        <div className="flex gap-4">
+                          <input 
+                            type="text" 
+                            value={settings.location.lat} 
+                            onChange={e => setSettings(s => ({...s, location: {...s.location, lat: parseFloat(e.target.value) || 0}}))}
+                            className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                          />
+                          <input 
+                            type="text" 
+                            value={settings.location.lng} 
+                            onChange={e => setSettings(s => ({...s, location: {...s.location, lng: parseFloat(e.target.value) || 0}}))}
+                            className="flex-1 bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Raio de Check-in (metros)</label>
+                        <input 
+                          type="number" 
+                          value={settings.radius} 
+                          onChange={e => {
+                            const val = e.target.value === '' ? 0 : parseInt(e.target.value);
+                            setSettings(s => ({...s, radius: val}));
+                          }}
+                          className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Check-in Section */}
+              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                <button 
+                  onClick={() => toggleSection('checkin')}
+                  className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10"
+                >
+                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">RECOMPENSAS POR CHECK-IN</h3>
+                  {openSections.includes('checkin') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+
+                <AnimatePresence>
+                  {openSections.includes('checkin') && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden px-2 space-y-4"
+                    >
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Sistema Ativo</label>
+                        <button 
+                          onClick={() => setSettings(s => ({...s, isActive: !s.isActive}))}
+                          className={cn(
+                            "w-10 h-6 rounded-full transition-all relative",
+                            settings.isActive ? "bg-primary" : "bg-surface-container-highest"
+                          )}
+                        >
+                          <div className={cn(
+                            "absolute top-1 w-4 h-4 rounded-full bg-background transition-all",
+                            settings.isActive ? "right-1" : "left-1"
+                          )} />
+                        </button>
+                      </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP por Check-in</label>
@@ -1222,7 +1094,7 @@ export default function Admin() {
                   onClick={() => toggleSection('announcements')}
                   className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10"
                 >
-                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">AVISOS DO BOX</h3>
+                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">COMUNICADOS / NOVIDADES</h3>
                   {openSections.includes('announcements') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 </button>
 
@@ -1234,124 +1106,320 @@ export default function Admin() {
                       exit={{ height: 0, opacity: 0 }}
                       className="overflow-hidden px-2 space-y-4"
                     >
-                      <div className="space-y-4">
-                        <button 
-                          onClick={() => setSettings(s => ({...s, announcements: [...s.announcements, { id: Date.now().toString(), title: '', content: '', date: new Date().toISOString(), active: true }]}))}
-                          className="w-full py-3 border-2 border-dashed border-outline-variant/20 rounded-2xl text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:border-primary/30 hover:text-primary transition-all flex items-center justify-center gap-2"
+                      {settings.announcements?.map((ann, idx) => (
+                        <div key={idx} className="flex gap-2">
+                          <input 
+                            value={ann}
+                            onChange={(e) => {
+                              const newAnn = [...(settings.announcements || [])];
+                              newAnn[idx] = e.target.value;
+                              setSettings(s => ({ ...s, announcements: newAnn }));
+                            }}
+                            placeholder="Digite o comunicado..."
+                            className="flex-1 bg-surface-container-highest border-none rounded-xl px-4 py-3 text-on-surface text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+                          />
+                          <button 
+                            onClick={() => {
+                              const newAnn = settings.announcements?.filter((_, i) => i !== idx);
+                              setSettings(s => ({ ...s, announcements: newAnn }));
+                            }}
+                            className="p-3 bg-error-container text-on-error-container rounded-xl"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                      <button 
+                        onClick={() => setSettings(s => ({ ...s, announcements: [...(s.announcements || []), ''] }))}
+                        className="w-full py-3 border-2 border-dashed border-outline-variant/20 rounded-xl text-on-surface-variant text-[10px] font-bold uppercase tracking-widest hover:border-primary/50 hover:text-primary transition-all"
+                      >
+                        + ADICIONAR COMUNICADO
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* TV Config Section */}
+              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                <button 
+                  onClick={() => toggleSection('tv')}
+                  className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10"
+                >
+                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic flex items-center gap-2">
+                    <Tv className="w-4 h-4 text-primary" /> CONFIGURAÇÃO TV
+                  </h3>
+                  {openSections.includes('tv') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+
+                <AnimatePresence>
+                  {openSections.includes('tv') && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden px-2 space-y-4"
+                    >
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Layout da TV</label>
+                        <div className="flex gap-4">
+                          {(['new', 'old'] as const).map(layout => (
+                            <button 
+                              key={layout}
+                              onClick={() => setSettings(s => ({...s, tvLayout: layout}))}
+                              className={cn(
+                                "flex-1 py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all",
+                                settings.tvLayout === layout ? "bg-primary text-background shadow-lg" : "bg-surface-container-highest text-on-surface"
+                              )}
+                            >
+                              {layout === 'new' ? 'MODERNO' : 'CLÁSSICO'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Bloco Direito</label>
+                        <select 
+                          value={settings.tvConfig?.rightBlock || 'ranking'}
+                          onChange={e => setSettings(s => ({...s, tvConfig: {...(s.tvConfig || {}), rightBlock: e.target.value as any}}))}
+                          className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
                         >
-                          <Plus className="w-4 h-4" /> ADICIONAR NOVO AVISO
-                        </button>
-                        
-                        {settings.announcements.map((ann, idx) => (
-                          <div key={ann.id} className="p-4 bg-surface-container-highest/30 rounded-2xl border border-outline-variant/10 space-y-4">
-                            <div className="flex justify-between items-center">
-                              <span className="text-[10px] text-primary font-black uppercase tracking-widest">AVISO #{idx + 1}</span>
-                              <button 
-                                onClick={() => setSettings(s => ({...s, announcements: s.announcements.filter(a => a.id !== ann.id)}))}
-                                className="text-error hover:scale-110 transition-transform"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                            <div className="space-y-3">
-                              <input 
-                                type="text" 
-                                placeholder="TÍTULO DO AVISO"
-                                value={ann.title}
-                                onChange={e => {
-                                  const newAnn = [...settings.announcements];
-                                  newAnn[idx].title = e.target.value;
-                                  setSettings({...settings, announcements: newAnn});
-                                }}
-                                className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm"
-                              />
-                              <textarea 
-                                placeholder="CONTEÚDO DO AVISO"
-                                value={ann.content}
-                                onChange={e => {
-                                  const newAnn = [...settings.announcements];
-                                  newAnn[idx].content = e.target.value;
-                                  setSettings({...settings, announcements: newAnn});
-                                }}
-                                rows={2}
-                                className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-xs resize-none"
-                              />
-                            </div>
-                          </div>
-                        ))}
+                          <option value="ranking">RANKING DO DIA</option>
+                          <option value="checkins">CHECK-INS RECENTES</option>
+                          <option value="announcements">COMUNICADOS</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Bloco Superior</label>
+                        <select 
+                          value={settings.tvConfig?.topBlock || 'wod'}
+                          onChange={e => setSettings(s => ({...s, tvConfig: {...(s.tvConfig || {}), topBlock: e.target.value as any}}))}
+                          className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
+                        >
+                          <option value="wod">WOD DO DIA</option>
+                          <option value="timer">CRONÔMETRO</option>
+                          <option value="announcements">COMUNICADOS</option>
+                        </select>
                       </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
 
-              {/* Toggle Sistema de Times */}
-              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
-                <div>
-                  <p className="text-xs font-black text-on-surface uppercase italic">Sistema de Times</p>
-                  <p className="text-[10px] text-on-surface-variant mt-0.5">Ativa disputa por territórios entre times</p>
-                </div>
-                <button
-                  onClick={() => setSettings({...settings, clans_enabled: !(settings as any).clans_enabled} as any)}
-                  className={`w-12 h-6 rounded-full transition-all relative ${(settings as any)?.clans_enabled ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
+              {/* System Section */}
+              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                <button 
+                  onClick={() => toggleSection('system')}
+                  className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10"
                 >
-                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${(settings as any)?.clans_enabled ? 'right-0.5' : 'left-0.5'}`} />
+                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic flex items-center gap-2">
+                    <Settings className="w-4 h-4 text-primary" /> SISTEMA
+                  </h3>
+                  {openSections.includes('system') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 </button>
+
+                <AnimatePresence>
+                  {openSections.includes('system') && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden px-2 space-y-4"
+                    >
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Fuso Horário</label>
+                        <select 
+                          value={settings.timezone || 'America/Sao_Paulo'}
+                          onChange={e => setSettings(s => ({...s, timezone: e.target.value}))}
+                          className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
+                        >
+                          <option value="America/Sao_Paulo">Brasília (GMT-3)</option>
+                          <option value="America/New_York">New York (GMT-5)</option>
+                          <option value="UTC">UTC</option>
+                        </select>
+                      </div>
+                      <div className="space-y-4">
+                        <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Módulos Ativos</label>
+                        <div className="grid grid-cols-2 gap-4">
+                          {(['economy', 'store', 'duels', 'challenges'] as const).map(module => (
+                            <button 
+                              key={module}
+                              onClick={() => setSettings(s => ({...s, modules: {...(s.modules || {}), [module]: !s.modules?.[module]}}))}
+                              className={cn(
+                                "flex items-center justify-between p-4 rounded-2xl border transition-all",
+                                settings.modules?.[module] 
+                                  ? "bg-primary/10 border-primary text-primary" 
+                                  : "bg-surface-container-highest border-outline-variant/10 text-on-surface-variant"
+                              )}
+                            >
+                              <span className="text-[10px] font-black uppercase tracking-widest">{module === 'economy' ? 'ECONOMIA' : module === 'store' ? 'LOJA' : module === 'duels' ? 'DUELOS' : 'DESAFIOS'}</span>
+                              {settings.modules?.[module] ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
-              {/* Toggle Sistema de Avatar */}
-              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
-                <div>
-                  <p className="text-xs font-black text-on-surface uppercase italic">Sistema de Avatar</p>
-                  <p className="text-[10px] text-on-surface-variant mt-0.5">Permite atletas customizar seu personagem na loja</p>
-                </div>
-                <button
-                  onClick={() => setSettings({...settings, avatar_enabled: !(settings as any).avatar_enabled} as any)}
-                  className={`w-12 h-6 rounded-full transition-all relative ${(settings as any)?.avatar_enabled ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
-                >
-                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${(settings as any)?.avatar_enabled ? 'right-0.5' : 'left-0.5'}`} />
-                </button>
-              </div>
-
-              {/* Toggle Módulo Economia */}
-              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
-                <div>
-                  <p className="text-xs font-black text-on-surface uppercase italic">Módulo Economia</p>
-                  <p className="text-[10px] text-on-surface-variant mt-0.5">Ativa/desativa sistema de moedas e XP</p>
-                </div>
-                <button
-                  onClick={() => setSettings({...settings, modules: {...settings.modules, economy: !settings.modules.economy}})}
-                  className={`w-12 h-6 rounded-full transition-all relative ${settings.modules.economy ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
-                >
-                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${settings.modules.economy ? 'right-0.5' : 'left-0.5'}`} />
-                </button>
-              </div>
-
-              {/* Toggle Módulo Loja */}
-              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
-                <div>
-                  <p className="text-xs font-black text-on-surface uppercase italic">Módulo Loja</p>
-                  <p className="text-[10px] text-on-surface-variant mt-0.5">Ativa/desativa loja de avatares para atletas</p>
-                </div>
-                <button
-                  onClick={() => setSettings({...settings, modules: {...settings.modules, store: !settings.modules.store}})}
-                  className={`w-12 h-6 rounded-full transition-all relative ${settings.modules.store ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
-                >
-                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${settings.modules.store ? 'right-0.5' : 'left-0.5'}`} />
-                </button>
-              </div>
-
-              {/* Botão Salvar no final */}
-              <button
+              <button 
                 onClick={handleSaveSettings}
-                className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-lg uppercase italic shadow-lg hover:scale-[0.98] active:scale-95 transition-all flex items-center justify-center gap-2"
+                className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg"
               >
-                <Save className="w-5 h-5" /> SALVAR AJUSTES
+                SALVAR AJUSTES
               </button>
             </div>
           </motion.div>
         )}
+        {activeTab === 'challenges' && (
+          <motion.div
+            key="challenges"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="flex flex-col gap-6"
+          >
+            {/* Add Challenge Form */}
+            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-4">
+              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">CRIAR DESAFIO</h3>
+              <div className="space-y-2">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Título</label>
+                <input 
+                  type="text" 
+                  value={newChallenge.title} 
+                  onChange={e => setNewChallenge({...newChallenge, title: e.target.value})}
+                  placeholder="ex: 100 Burpees"
+                  className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Descrição</label>
+                <textarea 
+                  rows={3}
+                  value={newChallenge.description} 
+                  onChange={e => setNewChallenge({...newChallenge, description: e.target.value})}
+                  placeholder="Descreva o desafio..."
+                  className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Início</label>
+                  <input 
+                    type="date" 
+                    value={newChallenge.startDate} 
+                    onChange={e => setNewChallenge({...newChallenge, startDate: e.target.value})}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Fim</label>
+                  <input 
+                    type="date" 
+                    value={newChallenge.endDate} 
+                    onChange={e => setNewChallenge({...newChallenge, endDate: e.target.value})}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP</label>
+                  <input 
+                    type="number" 
+                    value={newChallenge.xp} 
+                    onChange={e => setNewChallenge({...newChallenge, xp: parseInt(e.target.value)})}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Coins</label>
+                  <input 
+                    type="number" 
+                    value={newChallenge.coins} 
+                    onChange={e => setNewChallenge({...newChallenge, coins: parseInt(e.target.value)})}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dificuldade</label>
+                  <select 
+                    value={newChallenge.difficulty} 
+                    onChange={e => setNewChallenge({...newChallenge, difficulty: e.target.value})}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
+                  >
+                    <option value="easy">Fácil</option>
+                    <option value="medium">Médio</option>
+                    <option value="hard">Difícil</option>
+                    <option value="special">Especial</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={newChallenge.repeatable} 
+                    onChange={e => setNewChallenge({...newChallenge, repeatable: e.target.checked})}
+                    className="w-5 h-5 rounded border-outline-variant/30 text-primary focus:ring-primary bg-surface-container-highest"
+                  />
+                  <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Repetível</span>
+                </label>
+                {newChallenge.repeatable && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Limite Diário:</label>
+                    <input 
+                      type="number" 
+                      value={newChallenge.dailyLimit} 
+                      onChange={e => setNewChallenge({...newChallenge, dailyLimit: parseInt(e.target.value)})}
+                      className="w-16 bg-surface-container-highest border-none rounded-xl p-2 font-headline font-bold text-on-surface text-center" 
+                    />
+                  </div>
+                )}
+              </div>
+              <button 
+                onClick={handleAddChallenge}
+                className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
+              >
+                <Plus className="w-5 h-5" /> CRIAR DESAFIO
+              </button>
+            </div>
 
+            {/* Challenges List */}
+            <div className="space-y-3">
+              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">DESAFIOS ATIVOS</h3>
+              {challenges.map((c) => (
+                <div key={c.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-3 group hover:border-primary/30 transition-all">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="text-on-surface font-bold uppercase text-sm italic">{c.title}</h4>
+                      <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{c.description}</p>
+                    </div>
+                    <span className={cn(
+                      "text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest",
+                      c.difficulty === 'easy' ? "bg-green-500/20 text-green-500" :
+                      c.difficulty === 'medium' ? "bg-yellow-500/20 text-yellow-500" :
+                      c.difficulty === 'hard' ? "bg-orange-500/20 text-orange-500" :
+                      "bg-primary/20 text-primary"
+                    )}>
+                      {c.difficulty}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-outline-variant/10">
+                    <div className="flex gap-3">
+                      <span className="text-[10px] font-black text-primary uppercase tracking-widest">{c.xp} XP</span>
+                      <span className="text-[10px] font-black text-secondary uppercase tracking-widest">{c.coins} COINS</span>
+                    </div>
+                    <span className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">
+                      {format(new Date(c.start_date), 'dd/MM')} - {format(new Date(c.end_date), 'dd/MM')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
         {activeTab === 'schedule' && (
           <motion.div
             key="schedule"
@@ -1493,141 +1561,6 @@ export default function Admin() {
             </div>
           </motion.div>
         )}
-
-        {activeTab === 'challenges' && (
-          <motion.div
-            key="challenges"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="flex flex-col gap-6"
-          >
-            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-4">
-              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">CRIAR NOVO DESAFIO</h3>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Título</label>
-                  <input 
-                    type="text" 
-                    value={newChallenge.title} 
-                    onChange={e => setNewChallenge({...newChallenge, title: e.target.value})}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Descrição</label>
-                  <textarea 
-                    value={newChallenge.description} 
-                    onChange={e => setNewChallenge({...newChallenge, description: e.target.value})}
-                    rows={3}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP</label>
-                    <input 
-                      type="number" 
-                      value={newChallenge.xp} 
-                      onChange={e => setNewChallenge({...newChallenge, xp: parseInt(e.target.value)})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Coins</label>
-                    <input 
-                      type="number" 
-                      value={newChallenge.coins} 
-                      onChange={e => setNewChallenge({...newChallenge, coins: parseInt(e.target.value)})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dias necessários para completar</label>
-                  <input 
-                    type="number" 
-                    min={1}
-                    value={newChallenge.required_days} 
-                    onChange={e => setNewChallenge({...newChallenge, required_days: parseInt(e.target.value) || 1})}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                  />
-                  <p className="text-[9px] text-on-surface-variant opacity-60 uppercase tracking-widest">Aluno precisa marcar OK este número de dias para receber a recompensa</p>
-                </div>
-                <div className="flex items-center justify-between bg-surface-container-highest rounded-2xl px-4 py-3">
-                  <div>
-                    <p className="text-[10px] text-on-surface font-bold uppercase tracking-widest">Exigir foto como prova</p>
-                    <p className="text-[9px] text-on-surface-variant opacity-60 uppercase tracking-widest">Aluno deve enviar foto ao marcar OK</p>
-                  </div>
-                  <button
-                    onClick={() => setNewChallenge({...newChallenge, require_photo: !newChallenge.require_photo})}
-                    className={cn(
-                      "w-12 h-6 rounded-full transition-all relative",
-                      newChallenge.require_photo ? "bg-primary" : "bg-surface-container-low border border-outline-variant/30"
-                    )}
-                  >
-                    <span className={cn(
-                      "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all",
-                      newChallenge.require_photo ? "left-6" : "left-0.5"
-                    )} />
-                  </button>
-                </div>
-                <button 
-                  onClick={handleAddChallenge}
-                  className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
-                >
-                  <Plus className="w-5 h-5" /> CRIAR DESAFIO
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">DESAFIOS ATIVOS</h3>
-              {challenges.map((c) => (
-                <div key={c.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 space-y-3 group relative">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <h4 className="text-on-surface font-bold uppercase text-sm italic">{c.title}</h4>
-                      <p className="text-on-surface-variant text-[10px] mt-1">{c.description}</p>
-                    </div>
-                    <div className="flex gap-2 ml-2">
-                      <button
-                        onClick={() => handleEditChallenge(c)}
-                        className="p-2 bg-primary/20 text-primary rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-primary/30"
-                        title="Editar desafio"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteChallenge(c.id)}
-                        className="p-2 bg-error-container text-on-error-container rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-error/30"
-                        title="Excluir desafio"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <span className={cn(
-                      "text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest whitespace-nowrap ml-2",
-                      c.active ? "bg-primary/20 text-primary" : "bg-surface-container-highest text-on-surface-variant"
-                    )}>
-                      {c.active ? 'ATIVO' : 'INATIVO'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center pt-2 border-t border-outline-variant/10">
-                    <div className="flex gap-3">
-                      <span className="text-[10px] font-black text-primary uppercase tracking-widest">{c.xp} XP</span>
-                      <span className="text-[10px] font-black text-secondary uppercase tracking-widest">{c.coins} COINS</span>
-                    </div>
-                    <span className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">
-                      {format(new Date(c.start_date), 'dd/MM')} - {format(new Date(c.end_date), 'dd/MM')}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
         {activeTab === 'store' && (
           <motion.div
             key="store"
@@ -1638,26 +1571,25 @@ export default function Admin() {
           >
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-4">
               <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-primary" /> {editingItem ? 'EDITAR ITEM' : 'ADICIONAR ITEM NA LOJA'}
+                <ShoppingBag className="w-5 h-5 text-primary" /> ADICIONAR ITEM NA LOJA
               </h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">ID do Item</label>
                   <input 
                     type="text" 
-                    value={editingItem ? editingItem.id : newItem.id} 
-                    onChange={e => editingItem ? setEditingItem({...editingItem, id: e.target.value}) : setNewItem({...newItem, id: e.target.value})}
-                    disabled={!!editingItem}
+                    value={newItem.id} 
+                    onChange={e => setNewItem({...newItem, id: e.target.value})}
                     placeholder="ex: cap_red"
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface disabled:opacity-50" 
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome</label>
                   <input 
                     type="text" 
-                    value={editingItem ? editingItem.name : newItem.name} 
-                    onChange={e => editingItem ? setEditingItem({...editingItem, name: e.target.value}) : setNewItem({...newItem, name: e.target.value})}
+                    value={newItem.name} 
+                    onChange={e => setNewItem({...newItem, name: e.target.value})}
                     placeholder="ex: Boné Vermelho"
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                   />
@@ -1667,96 +1599,74 @@ export default function Admin() {
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Slot</label>
                   <select 
-                    value={editingItem ? editingItem.slot : newItem.slot} 
-                    onChange={e => editingItem ? setEditingItem({...editingItem, slot: e.target.value as any}) : setNewItem({...newItem, slot: e.target.value as any})}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer" 
+                    value={newItem.slot} 
+                    onChange={e => setNewItem({...newItem, slot: e.target.value as any})}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
                   >
-                    <option value="top">Cabeça</option>
-                    <option value="body">Corpo</option>
-                    <option value="legs">Pernas</option>
-                    <option value="feet">Pés</option>
-                    <option value="accessory">Acessório</option>
+                    <option value="top">CABEÇA</option>
+                    <option value="middle">CORPO</option>
+                    <option value="bottom">PERNAS</option>
+                    <option value="shoes">PÉS</option>
+                    <option value="accessory">ACESSÓRIO</option>
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Preço (Coins)</label>
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Preço (BrazaCoins)</label>
                   <input 
                     type="number" 
-                    value={editingItem ? editingItem.price : newItem.price} 
-                    onChange={e => editingItem ? setEditingItem({...editingItem, price: parseInt(e.target.value)}) : setNewItem({...newItem, price: parseInt(e.target.value)})}
+                    value={newItem.price} 
+                    onChange={e => {
+                      const val = e.target.value === '' ? 0 : parseInt(e.target.value);
+                      setNewItem({...newItem, price: val});
+                    }}
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                   />
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">URL da Imagem</label>
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Imagem (URL)</label>
                 <input 
                   type="text" 
-                  value={editingItem ? editingItem.image : newItem.image} 
-                  onChange={e => editingItem ? setEditingItem({...editingItem, image: e.target.value}) : setNewItem({...newItem, image: e.target.value})}
+                  value={newItem.image} 
+                  onChange={e => setNewItem({...newItem, image: e.target.value})}
                   placeholder="https://..."
                   className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
                 />
               </div>
-              <div className="flex gap-2">
-                {editingItem ? (
-                  <>
-                    <button 
-                      onClick={handleUpdateItem}
-                      className="flex-1 bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
-                    >
-                      <Save className="w-5 h-5" /> SALVAR ALTERAÇÕES
-                    </button>
-                    <button 
-                      onClick={() => setEditingItem(null)}
-                      className="flex-1 bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
-                    >
-                      <X className="w-5 h-5" /> CANCELAR
-                    </button>
-                  </>
-                ) : (
-                  <button 
-                    onClick={handleAddItem}
-                    className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
-                  >
-                    <Plus className="w-5 h-5" /> ADICIONAR ITEM
-                  </button>
-                )}
-              </div>
+              <button 
+                onClick={handleAddItem}
+                className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
+              >
+                <Plus className="w-5 h-5" /> ADICIONAR ITEM
+              </button>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {items.map((item) => (
-                <div key={item.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-3 group relative">
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
-                    <button 
-                      onClick={() => {
-                        setEditingItem(item);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="p-2 bg-primary/20 text-primary rounded-xl hover:bg-primary hover:text-background transition-all"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => handleDeleteItem(item.id)}
-                      className="p-2 bg-error-container text-on-error-container rounded-xl hover:bg-error hover:text-white transition-all"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="aspect-square rounded-2xl bg-surface-container-highest flex items-center justify-center overflow-hidden">
+              {items.map(item => (
+                <div key={item.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-3 group">
+                  <div className="aspect-square bg-surface-container-highest rounded-2xl flex items-center justify-center overflow-hidden border border-outline-variant/5 text-2xl">
                     {item.image ? (
-                      <img src={item.image} alt={item.name} className="w-full h-full object-contain p-2" />
+                      item.image.startsWith('http') ? (
+                        <img 
+                          src={item.image} 
+                          alt={item.name} 
+                          className="w-full h-full object-contain"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        item.image
+                      )
                     ) : (
-                      <ShoppingBag className="w-8 h-8 text-on-surface-variant/30" />
+                      <ShoppingBag className="w-8 h-8 text-on-surface-variant/20" />
                     )}
                   </div>
                   <div>
-                    <p className="text-on-surface font-bold uppercase text-sm italic truncate">{item.name}</p>
+                    <p className="text-on-surface font-bold uppercase text-[10px] italic truncate">{item.name}</p>
                     <div className="flex justify-between items-center mt-1">
-                      <span className="text-[10px] font-black text-secondary uppercase tracking-widest">{item.price} COINS</span>
-                      <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest opacity-50">{item.slot}</span>
+                      <span className="text-secondary font-black text-[10px]">{item.price} BC</span>
+                      <button onClick={() => handleDeleteItem(item.id)} className="text-error hover:scale-110 transition-transform">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1773,44 +1683,176 @@ export default function Admin() {
             exit={{ opacity: 0, y: 20 }}
             className="flex flex-col gap-6"
           >
-            {/* WOD Management */}
-            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-6">
-              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
-                <Activity className="w-5 h-5 text-primary" /> GERENCIAR WODS
-              </h3>
-              
-              <div className="space-y-4">
-                {wods.slice(0, 5).map((wod) => (
-                  <div key={wod.id} className="p-4 bg-surface-container-highest/30 rounded-2xl border border-outline-variant/10 flex justify-between items-center">
+            {/* WOD History Section */}
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
+                  <History className="w-5 h-5 text-primary" /> HISTÓRICO DE WODS
+                </h3>
+              </div>
+
+              {editingWod && (
+                <div className="bg-surface-container-low p-6 rounded-[2rem] border border-primary/30 space-y-4 mb-6">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-headline font-bold text-on-surface uppercase italic">EDITAR WOD</h4>
+                    <button onClick={() => setEditingWod(null)} className="text-on-surface-variant hover:text-error">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Título</label>
+                      <input 
+                        type="text" 
+                        value={editingWod.name} 
+                        onChange={e => setEditingWod({...editingWod, name: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data</label>
+                      <input 
+                        type="date" 
+                        value={editingWod.date} 
+                        onChange={e => setEditingWod({...editingWod, date: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo (ex: AMRAP, EMOM, FOR TIME)</label>
+                    <input 
+                      type="text" 
+                      value={editingWod.type} 
+                      onChange={e => setEditingWod({...editingWod, type: e.target.value})}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Warmup</label>
+                      <textarea 
+                        rows={3}
+                        value={editingWod.warmup} 
+                        onChange={e => setEditingWod({...editingWod, warmup: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Skill</label>
+                      <textarea 
+                        rows={3}
+                        value={editingWod.skill} 
+                        onChange={e => setEditingWod({...editingWod, skill: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">RX</label>
+                      <textarea 
+                        rows={4}
+                        value={editingWod.rx} 
+                        onChange={e => setEditingWod({...editingWod, rx: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Scaled</label>
+                      <textarea 
+                        rows={4}
+                        value={editingWod.scaled} 
+                        onChange={e => setEditingWod({...editingWod, scaled: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Beginner</label>
+                      <textarea 
+                        rows={4}
+                        value={editingWod.beginner} 
+                        onChange={e => setEditingWod({...editingWod, beginner: e.target.value})}
+                        className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
+                      />
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={handleUpdateWod}
+                    className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
+                  >
+                    <Save className="w-5 h-5" /> SALVAR ALTERAÇÕES
+                  </button>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {wods.length > 0 ? wods.map(wod => (
+                  <div key={wod.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex justify-between items-center">
                     <div>
                       <p className="text-on-surface font-bold uppercase text-sm italic">{wod.name}</p>
-                      <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{format(new Date(wod.date), 'dd/MM/yyyy')} • {wod.type}</p>
+                      <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{format(parseISO(wod.date), 'dd/MM/yyyy')}</p>
                     </div>
                     <button 
                       onClick={() => setEditingWod(wod)}
-                      className="p-2 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-background transition-all"
+                      className="p-2 text-on-surface-variant hover:text-primary transition-colors"
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 className="w-5 h-5" />
                     </button>
                   </div>
-                ))}
+                )) : (
+                  <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 text-center">
+                    <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50 italic">Nenhum WOD encontrado</p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* System Reset */}
-            <div className="bg-error-container/10 p-6 rounded-[2rem] border border-error/20 space-y-4">
-              <h3 className="font-headline font-bold text-lg text-error uppercase italic flex items-center gap-2">
-                <Shield className="w-5 h-5" /> ZONA DE PERIGO
-              </h3>
-              <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest leading-relaxed">
-                O reset do sistema limpará todos os dados de check-ins, resultados e histórico, mantendo apenas os perfis dos usuários (com XP zerado).
-              </p>
-              <button 
-                onClick={handleSystemReset}
-                className="w-full bg-error text-on-error py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2 hover:bg-error/90 transition-colors"
-              >
-                <Trash2 className="w-5 h-5" /> RESETAR SISTEMA PARA NOVA TEMPORADA
-              </button>
+            {/* Duels History Section */}
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-primary" /> DUELOS ATIVOS
+                </h3>
+              </div>
+              <div className="space-y-3">
+                {duels.length > 0 ? duels.map(duel => (
+                  <div key={duel.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className={cn(
+                        "text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest",
+                        duel.status === 'pending' ? "bg-yellow-500/20 text-yellow-500" :
+                        duel.status === 'accepted' ? "bg-primary/20 text-primary" :
+                        duel.status === 'completed' ? "bg-green-500/20 text-green-500" :
+                        "bg-error-container text-on-error-container"
+                      )}>
+                        {duel.status === 'pending' ? 'PENDENTE' : 
+                         duel.status === 'accepted' ? 'EM ANDAMENTO' : 
+                         duel.status === 'completed' ? 'FINALIZADO' : 'CANCELADO'}
+                      </span>
+                      <span className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">{format(parseISO(duel.created_at), 'dd/MM HH:mm')}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 text-center">
+                        <p className="text-on-surface font-bold text-xs uppercase truncate">{(duel as any).challenger_name}</p>
+                      </div>
+                      <div className="text-primary font-black italic text-sm">VS</div>
+                      <div className="flex-1 text-center">
+                        <p className="text-on-surface font-bold text-xs uppercase truncate">{(duel as any).opponent_name}</p>
+                      </div>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 text-center">
+                    <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50 italic">Nenhum duelo ativo</p>
+                  </div>
+                )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -1824,502 +1866,37 @@ export default function Admin() {
             className="flex flex-col gap-6"
           >
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-6">
-              <div className="flex justify-between items-center">
-                <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-primary" /> RANKING DE FREQUÊNCIA
-                </h3>
-              </div>
-
+              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
+                <Activity className="w-5 h-5 text-primary" /> MONITORAMENTO DE PRESENÇA
+              </h3>
+              
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Mês</label>
-                  <select 
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer"
-                  >
-                    {['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'].map((month, idx) => (
-                      <option key={idx} value={idx}>{month}</option>
-                    ))}
-                  </select>
+                <div className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 text-center">
+                  <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Check-ins Hoje</p>
+                  <p className="text-3xl font-headline font-black text-primary italic">24</p>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Ano</label>
-                  <select 
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer"
-                  >
-                    {[2024, 2025, 2026].map(year => (
-                      <option key={year} value={year}>{year}</option>
-                    ))}
-                  </select>
+                <div className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 text-center">
+                  <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Média Semanal</p>
+                  <p className="text-3xl font-headline font-black text-secondary italic">18</p>
                 </div>
               </div>
 
-              <div className="space-y-3">
-                {historicalFrequencyRanking.map((u, idx) => (
-                  <div key={u.id} className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                      <span className={cn(
-                        "w-6 text-center font-headline font-black italic",
-                        idx < 3 ? "text-primary text-lg" : "text-on-surface-variant text-sm"
-                      )}>
-                        {idx + 1}º
-                      </span>
-                      <div>
-                        <p className="text-on-surface font-bold uppercase text-xs">{u.name}</p>
-                        <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest">{u.role === 'admin' ? 'ADMIN' : u.role === 'coach' ? 'COACH' : 'ALUNO'}</p>
+              <div className="space-y-4">
+                <h4 className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">RANKING DE FREQUÊNCIA (MÊS)</h4>
+                <div className="space-y-2">
+                  {approvedUsers.slice(0, 5).map((u, idx) => (
+                    <div key={u.id} className="flex items-center justify-between p-3 bg-surface-container-highest/20 rounded-xl border border-outline-variant/5">
+                      <div className="flex items-center gap-3">
+                        <span className="w-5 text-[10px] font-black text-primary italic">#{idx + 1}</span>
+                        <p className="text-xs font-bold text-on-surface uppercase">{u.name}</p>
                       </div>
+                      <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">{20 - idx} PRESENÇAS</span>
                     </div>
-                    <div className="text-right">
-                      <p className="text-primary font-headline font-black text-lg italic">{u.periodCount}</p>
-                      <p className="text-on-surface-variant text-[8px] font-black uppercase tracking-widest">CHECK-INS</p>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           </motion.div>
-        )}
-        {activeTab === 'checkins' && (() => {
-          // Compute check-ins for the selected date grouped by schedule slot
-          const dateStr = checkinsDate;
-          const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
-
-          // Slots active on this day
-          const activeSlots = schedule.filter(s => s.isActive && s.days?.includes(dayOfWeek));
-
-          // All checkins on this date
-          const dayCheckins = (users || []).flatMap(u =>
-            (u.checkins || [])
-              .filter(c => c.date === dateStr)
-              .map(c => ({ ...c, user: u }))
-          );
-
-          // Summary
-          const totalExpected = activeSlots.reduce((acc, s) => acc + s.capacity, 0);
-          const totalPresent = dayCheckins.length;
-          const totalAbsent = Math.max(0, totalExpected - totalPresent);
-
-          return (
-            <motion.div
-              key="checkins"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="flex flex-col gap-6"
-            >
-              {/* Date picker + summary */}
-              <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-4">
-                <div className="flex justify-between items-center flex-wrap gap-3">
-                  <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
-                    <History className="w-5 h-5 text-primary" /> CHECK-INS DO DIA
-                  </h3>
-                  <input
-                    type="date"
-                    value={checkinsDate}
-                    onChange={e => setCheckinsDate(e.target.value)}
-                    className="bg-surface-container-highest border-none rounded-2xl px-4 py-3 font-headline font-bold text-on-surface text-sm"
-                  />
-                </div>
-
-                {/* Metric cards */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-surface-container-highest rounded-2xl p-4 text-center">
-                    <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Check-ins</p>
-                    <p className="text-2xl font-headline font-black text-primary italic">{totalPresent}</p>
-                  </div>
-                  <div className="bg-surface-container-highest rounded-2xl p-4 text-center">
-                    <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Esperados</p>
-                    <p className="text-2xl font-headline font-black text-on-surface italic">{totalExpected}</p>
-                  </div>
-                  <div className="bg-surface-container-highest rounded-2xl p-4 text-center">
-                    <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Ausências</p>
-                    <p className="text-2xl font-headline font-black text-error italic">{totalAbsent}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Slots */}
-              {activeSlots.length === 0 ? (
-                <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 text-center">
-                  <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50 italic">Nenhuma aula programada para este dia</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {activeSlots.map(slot => {
-                    const slotCheckins = dayCheckins.filter(c =>
-                      c.classTime === slot.time ||
-                      (!c.classTime && (() => {
-                        if (!c.timestamp) return false;
-                        const t = new Date(c.timestamp);
-                        const [sh, sm] = slot.time.split(':').map(Number);
-                        const [eh, em] = slot.endTime.split(':').map(Number);
-                        const start = sh * 60 + sm - (slot.checkinWindowMinutes || 60);
-                        const end = eh * 60 + em;
-                        const cur = t.getHours() * 60 + t.getMinutes();
-                        return cur >= start && cur <= end;
-                      })())
-                    );
-                    const pct = slot.capacity > 0 ? Math.round((slotCheckins.length / slot.capacity) * 100) : 0;
-                    const isOpen = !!checkinsExpanded[slot.id || slot.time];
-
-                    return (
-                      <div key={slot.id || slot.time} className="bg-surface-container-low rounded-3xl border border-outline-variant/10 overflow-hidden">
-                        <button
-                          onClick={() => setCheckinsExpanded(prev => ({ ...prev, [slot.id || slot.time]: !prev[slot.id || slot.time] }))}
-                          className="w-full flex justify-between items-center p-4 hover:border-primary/20 transition-all"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="p-3 bg-primary/10 rounded-2xl">
-                              <Clock className="w-5 h-5 text-primary" />
-                            </div>
-                            <div className="text-left">
-                              <p className="text-on-surface font-bold uppercase text-sm italic">{slot.time} – {slot.endTime}</p>
-                              <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Coach: {slot.coach}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {/* Progress bar */}
-                            <div className="hidden sm:flex items-center gap-2">
-                              <div className="w-20 h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
-                                <div
-                                  className="h-full rounded-full transition-all"
-                                  style={{
-                                    width: `${Math.min(pct, 100)}%`,
-                                    background: pct >= 80 ? '#639922' : pct >= 50 ? '#BA7517' : '#E24B4A'
-                                  }}
-                                />
-                              </div>
-                              <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest min-w-[52px] text-right">
-                                {slotCheckins.length}/{slot.capacity}
-                              </span>
-                            </div>
-                            <span className={cn(
-                              "text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-widest",
-                              pct >= 80 ? "bg-primary/20 text-primary" : pct >= 50 ? "bg-secondary/20 text-secondary" : "bg-error-container text-on-error-container"
-                            )}>
-                              {pct}%
-                            </span>
-                            <ChevronDown className={cn("w-4 h-4 text-on-surface-variant transition-transform", isOpen && "rotate-180")} />
-                          </div>
-                        </button>
-
-                        <AnimatePresence>
-                          {isOpen && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: 'auto', opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              className="overflow-hidden border-t border-outline-variant/10"
-                            >
-                              <div className="p-4 space-y-2">
-                                {slotCheckins.length === 0 ? (
-                                  <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50 italic text-center py-4">
-                                    Nenhum check-in registrado nesta aula
-                                  </p>
-                                ) : (
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {slotCheckins.map((c, idx) => (
-                                      <div key={idx} className="flex items-center gap-3 bg-surface-container-highest/40 px-3 py-2.5 rounded-2xl">
-                                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-headline font-black text-sm flex-shrink-0">
-                                          {(c.user.name || 'S')[0]}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-on-surface font-bold uppercase text-xs truncate">{c.user.name}</p>
-                                          {c.timestamp && (
-                                            <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest">
-                                              {format(new Date(c.timestamp), 'HH:mm')}
-                                            </p>
-                                          )}
-                                        </div>
-                                        <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Checkins without a matched slot */}
-              {(() => {
-                const matchedUserIds = new Set(
-                  activeSlots.flatMap(slot =>
-                    dayCheckins.filter(c =>
-                      c.classTime === slot.time ||
-                      (!c.classTime && (() => {
-                        if (!c.timestamp) return false;
-                        const t = new Date(c.timestamp);
-                        const [sh, sm] = slot.time.split(':').map(Number);
-                        const [eh, em] = slot.endTime.split(':').map(Number);
-                        const start = sh * 60 + sm - (slot.checkinWindowMinutes || 60);
-                        const end = eh * 60 + em;
-                        const cur = t.getHours() * 60 + t.getMinutes();
-                        return cur >= start && cur <= end;
-                      })())
-                    ).map(c => c.user.id + (c.timestamp || ''))
-                  )
-                );
-                const unmatched = dayCheckins.filter(c => !matchedUserIds.has(c.user.id + (c.timestamp || '')));
-                if (unmatched.length === 0) return null;
-                return (
-                  <div className="bg-surface-container-low rounded-3xl border border-outline-variant/10 overflow-hidden">
-                    <div className="p-4 border-b border-outline-variant/10">
-                      <p className="text-on-surface font-bold uppercase text-sm italic">SEM AULA VINCULADA</p>
-                      <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{unmatched.length} check-in(s)</p>
-                    </div>
-                    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {unmatched.map((c, idx) => (
-                        <div key={idx} className="flex items-center gap-3 bg-surface-container-highest/40 px-3 py-2.5 rounded-2xl">
-                          <div className="w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center text-secondary font-headline font-black text-sm flex-shrink-0">
-                            {(c.user.name || 'S')[0]}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-on-surface font-bold uppercase text-xs truncate">{c.user.name}</p>
-                            {c.timestamp && (
-                              <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest">
-                                {format(new Date(c.timestamp), 'HH:mm')}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-            </motion.div>
-          );
-        })()}
-
-      </AnimatePresence>
-
-      {/* Edit WOD Modal */}
-      <AnimatePresence>
-        {editingWod && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="w-full max-w-lg bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto"
-            >
-              <div className="flex justify-between items-center">
-                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">EDITAR WOD</h3>
-                <button onClick={() => setEditingWod(null)} className="p-2 text-on-surface-variant hover:text-on-surface transition-colors">
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome do WOD</label>
-                  <input 
-                    type="text" 
-                    value={editingWod.name} 
-                    onChange={e => setEditingWod({...editingWod, name: e.target.value})}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</label>
-                    <input 
-                      type="text" 
-                      value={editingWod.type} 
-                      onChange={e => setEditingWod({...editingWod, type: e.target.value})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data</label>
-                    <input 
-                      type="date" 
-                      value={editingWod.date} 
-                      onChange={e => setEditingWod({...editingWod, date: e.target.value})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">RX</label>
-                  <textarea 
-                    value={editingWod.rx} 
-                    onChange={e => setEditingWod({...editingWod, rx: e.target.value})}
-                    rows={3}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
-                  />
-                </div>
-                <button 
-                  onClick={handleUpdateWod}
-                  className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
-                >
-                  <Save className="w-5 h-5" /> SALVAR WOD
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Edit Challenge Modal */}
-      <AnimatePresence>
-        {isEditingChallenge && editingChallenge && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="w-full max-w-lg bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto"
-            >
-              <div className="flex justify-between items-center">
-                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">EDITAR DESAFIO</h3>
-                <button onClick={() => { setEditingChallenge(null); setIsEditingChallenge(false); }} className="p-2 text-on-surface-variant hover:text-on-surface transition-colors">
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Título</label>
-                  <input 
-                    type="text" 
-                    value={editingChallenge.title} 
-                    onChange={e => setEditingChallenge({...editingChallenge, title: e.target.value})}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Descrição</label>
-                  <textarea 
-                    value={editingChallenge.description} 
-                    onChange={e => setEditingChallenge({...editingChallenge, description: e.target.value})}
-                    rows={3}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" 
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Inicial</label>
-                    <input 
-                      type="date" 
-                      value={editingChallenge.startDate} 
-                      onChange={e => setEditingChallenge({...editingChallenge, startDate: e.target.value})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Final</label>
-                    <input 
-                      type="date" 
-                      value={editingChallenge.endDate} 
-                      onChange={e => setEditingChallenge({...editingChallenge, endDate: e.target.value})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP</label>
-                    <input 
-                      type="number" 
-                      value={editingChallenge.xp} 
-                      onChange={e => setEditingChallenge({...editingChallenge, xp: parseInt(e.target.value)})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Coins</label>
-                    <input 
-                      type="number" 
-                      value={editingChallenge.coins} 
-                      onChange={e => setEditingChallenge({...editingChallenge, coins: parseInt(e.target.value)})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dificuldade</label>
-                    <select 
-                      value={editingChallenge.difficulty} 
-                      onChange={e => setEditingChallenge({...editingChallenge, difficulty: e.target.value})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer" 
-                    >
-                      <option value="easy">Fácil</option>
-                      <option value="medium">Médio</option>
-                      <option value="hard">Difícil</option>
-                      <option value="special">Especial</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Status</label>
-                    <select 
-                      value={editingChallenge.active ? 'true' : 'false'} 
-                      onChange={e => setEditingChallenge({...editingChallenge, active: e.target.value === 'true'})}
-                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer" 
-                    >
-                      <option value="true">Ativo</option>
-                      <option value="false">Inativo</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dias necessários para completar</label>
-                <input 
-                  type="number" 
-                  min={1}
-                  value={editingChallenge.required_days || 1} 
-                  onChange={e => setEditingChallenge({...editingChallenge, required_days: parseInt(e.target.value) || 1})}
-                  className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
-                />
-                <p className="text-[9px] text-on-surface-variant opacity-60 uppercase tracking-widest">Aluno precisa marcar OK este número de dias para receber a recompensa</p>
-              </div>
-              <div className="flex items-center justify-between bg-surface-container-highest rounded-2xl px-4 py-3">
-                <div>
-                  <p className="text-[10px] text-on-surface font-bold uppercase tracking-widest">Exigir foto como prova</p>
-                  <p className="text-[9px] text-on-surface-variant opacity-60 uppercase tracking-widest">Aluno deve enviar foto ao marcar OK</p>
-                </div>
-                <button
-                  onClick={() => setEditingChallenge({...editingChallenge, require_photo: !editingChallenge.require_photo})}
-                  className={cn(
-                    "w-12 h-6 rounded-full transition-all relative",
-                    editingChallenge.require_photo ? "bg-primary" : "bg-surface-container-low border border-outline-variant/30"
-                  )}
-                >
-                  <span className={cn(
-                    "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all",
-                    editingChallenge.require_photo ? "left-6" : "left-0.5"
-                  )} />
-                </button>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button 
-                  onClick={() => { setEditingChallenge(null); setIsEditingChallenge(false); }}
-                  className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-bold uppercase italic transition-colors hover:bg-surface-container-highest/80"
-                >
-                  CANCELAR
-                </button>
-                <button 
-                  onClick={handleUpdateChallenge}
-                  className="flex-1 bg-primary text-background py-3 rounded-2xl font-headline font-bold uppercase italic flex items-center justify-center gap-2 transition-colors hover:bg-primary/90"
-                >
-                  <Save className="w-5 h-5" /> SALVAR
-                </button>
-              </div>
-            </motion.div>
-          </div>
         )}
       </AnimatePresence>
     </div>

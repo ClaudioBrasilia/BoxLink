@@ -51,7 +51,7 @@ create table public.avatar_economy_settings (
 -- 3. Check-ins
 create table public.checkins (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid references auth.users(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete cascade,
   date date not null,
   timestamp timestamptz default now(),
   class_time text,
@@ -183,6 +183,8 @@ create table public.box_settings (
     "duels": true,
     "challenges": true
   }',
+  announcements text[] default array[]::text[],
+  rewards jsonb default '{}',
   is_active boolean default true,
   updated_at timestamptz default now()
 );
@@ -235,21 +237,49 @@ alter table public.checkins enable row level security;
 alter table public.reward_history enable row level security;
 alter table public.wod_results enable row level security;
 alter table public.personal_records enable row level security;
+alter table public.schedule enable row level security;
+alter table public.box_settings enable row level security;
+alter table public.challenges enable row level security;
+alter table public.items enable row level security;
+alter table public.wods enable row level security;
+alter table public.duels enable row level security;
+alter table public.clans enable row level security;
+alter table public.clan_memberships enable row level security;
+alter table public.territories enable row level security;
+alter table public.domination_events enable row level security;
 
 -- Policies
 create policy "Public profiles are viewable by everyone" on public.profiles for select using (true);
-create policy "Users can update their own profile" on public.profiles for update using (auth.uid() = id);
+create policy "Users can update their own profile" on public.profiles for update using (auth.uid() = id or (select role from public.profiles where id = auth.uid()) = 'admin');
 
-create policy "Users can view their own checkins" on public.checkins for select using (auth.uid() = user_id);
+create policy "Users can view their own checkins" on public.checkins for select using (auth.uid() = user_id or (select role from public.profiles where id = auth.uid()) = 'admin');
 create policy "Users can insert their own checkins" on public.checkins for insert with check (auth.uid() = user_id);
 
-create policy "Users can view their own rewards" on public.reward_history for select using (auth.uid() = user_id);
+create policy "Users can view their own rewards" on public.reward_history for select using (auth.uid() = user_id or (select role from public.profiles where id = auth.uid()) = 'admin');
 
 create policy "WOD results are viewable by everyone" on public.wod_results for select using (true);
 create policy "Users can insert their own WOD results" on public.wod_results for insert with check (auth.uid() = user_id);
 
-create policy "Users can view their own PRs" on public.personal_records for select using (auth.uid() = user_id);
-create policy "Users can manage their own PRs" on public.personal_records for all using (auth.uid() = user_id);
+create policy "Users can view their own PRs" on public.personal_records for select using (auth.uid() = user_id or (select role from public.profiles where id = auth.uid()) = 'admin');
+create policy "Users can manage their own PRs" on public.personal_records for all using (auth.uid() = user_id or (select role from public.profiles where id = auth.uid()) = 'admin');
+
+create policy "Admins can manage schedule" on public.schedule for all using ((select role from public.profiles where id = auth.uid()) = 'admin');
+create policy "Schedule is viewable by everyone" on public.schedule for select using (true);
+
+create policy "Admins can manage box settings" on public.box_settings for all using ((select role from public.profiles where id = auth.uid()) = 'admin');
+create policy "Box settings are viewable by everyone" on public.box_settings for select using (true);
+
+create policy "Admins can manage challenges" on public.challenges for all using ((select role from public.profiles where id = auth.uid()) = 'admin');
+create policy "Challenges are viewable by everyone" on public.challenges for select using (true);
+
+create policy "Admins can manage items" on public.items for all using ((select role from public.profiles where id = auth.uid()) = 'admin');
+create policy "Items are viewable by everyone" on public.items for select using (true);
+
+create policy "Admins can manage wods" on public.wods for all using ((select role from public.profiles where id = auth.uid()) = 'admin');
+create policy "Wods are viewable by everyone" on public.wods for select using (true);
+
+create policy "Admins can manage duels" on public.duels for all using ((select role from public.profiles where id = auth.uid()) = 'admin');
+create policy "Duels are viewable by everyone" on public.duels for select using (true);
 
 -- Clans Policies
 create policy "Clans are viewable by everyone" on public.clans for select using (true);

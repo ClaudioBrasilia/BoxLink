@@ -46,7 +46,6 @@ export interface User {
   paidBonuses: string[];
   createdAt: string;
   monthCheckinCount?: number;
-  avatar_equipped?: any; // Para compatibilidade com queries do banco
 }
 
 export interface Wod {
@@ -73,29 +72,88 @@ export interface Challenge {
   repeatable: boolean;
   dailyLimit: number;
   difficulty?: 'easy' | 'medium' | 'hard' | 'special';
-  required_days?: number;
-  require_photo?: boolean;
 }
 
 export interface Duel {
   id: string;
   challengerId: string;
-  opponentIds: string[];
-  wodId: string | null;
-  wodName: string;
-  category: 'rx' | 'scaled' | 'beginner';
-  results: Record<string, string | null>;
-  status: 'pending' | 'accepted' | 'active' | 'finished' | 'cancelled';
-  winnerId: string | null;
-  betMode: boolean;
-  betType: 'xp' | 'coins' | 'both' | null;
-  betXpAmount: number | null;
-  betCoinAmount: number | null;
-  acceptedBy: string[];
-  betReserved: boolean;
-  betReservedAt?: number | null;
-  betSettledAt?: number | null;
-  betCanceledAt?: number | null;
-  createdAt: string | number;
+  opponentId: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'active' | 'finished' | 'cancelled';
+  winnerId?: string;
+  reward: { xp: number; coins: number };
+  type: string;
+  createdAt: string;
 }
-// ... (outras interfacesRewardEvent, Schedule, BoxSettings, etc permanecem as mesmas)
+
+export interface RewardEvent {
+  id: string;
+  userId: string;
+  type: 'checkin' | 'challenge' | 'duel' | 'weekly_bonus' | 'level_up';
+  xp: number;
+  coins: number;
+  description: string;
+  createdAt: string;
+}
+
+export interface Schedule {
+  id?: string;
+  time: string;
+  endTime: string;
+  coach: string;
+  capacity: number;
+  days: number[]; // 0-6 (Sunday-Saturday)
+  isActive: boolean;
+  checkinWindowMinutes: number;
+}
+
+export interface BoxSettings {
+  name: string;
+  logo: string;
+  description?: string;
+  institutionalPhoto?: string;
+  topBanner?: string;
+  location: { lat: number; lng: number };
+  radius: number;
+  tvLayout: 'old' | 'new';
+  tvConfig: {
+    showCheckins: boolean;
+    showRanking: boolean;
+    showDuels: boolean;
+    showChallenges: boolean;
+    rightBlockContent: 'ranking' | 'duels' | 'challenges' | 'announcements';
+    topBlockContent: 'logo' | 'wod' | 'timer';
+  };
+  rewards: {
+    xp_per_checkin: number;
+    coins_per_checkin: number;
+    weekly_bonus_3_xp: number;
+    weekly_bonus_3_coins: number;
+    weekly_bonus_4_xp: number;
+    weekly_bonus_4_coins: number;
+    weekly_bonus_5_xp: number;
+    weekly_bonus_5_coins: number;
+    weekly_bonus_6_xp: number;
+    weekly_bonus_6_coins: number;
+    level_up_bonus_coins: number;
+    challenge_easy_xp: number;
+    challenge_easy_coins: number;
+    challenge_medium_xp: number;
+    challenge_medium_coins: number;
+    challenge_hard_xp: number;
+    challenge_hard_coins: number;
+    challenge_special_xp: number;
+    challenge_special_coins: number;
+    duel_win_xp: number;
+    duel_win_coins: number;
+  };
+  isActive: boolean;
+  announcements?: string[];
+  timezone: string;
+  modules: {
+    economy: boolean;
+    store: boolean;
+    duels: boolean;
+    challenges: boolean;
+  };
+  clans_enabled?: boolean;
+}
