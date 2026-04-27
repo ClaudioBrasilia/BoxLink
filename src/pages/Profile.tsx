@@ -25,6 +25,7 @@ export default function Profile() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [sharing, setSharing] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -428,8 +429,25 @@ export default function Profile() {
           <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
             <History className="w-5 h-5 text-primary" /> HISTÓRICO DE RECOMPENSAS
           </h3>
+          <button
+            onClick={() => setIsHistoryOpen(v => !v)}
+            className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-on-surface-variant hover:text-primary transition-colors"
+          >
+            {isHistoryOpen ? 'OCULTAR' : `VER TODOS${history.length > 0 ? ` (${history.length})` : ''}`}
+            <ChevronRight className={`w-3 h-3 transition-transform ${isHistoryOpen ? 'rotate-90' : ''}`} />
+          </button>
         </div>
-        
+
+        <AnimatePresence initial={false}>
+          {isHistoryOpen && (
+            <motion.div
+              key="history-list"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+              className="overflow-hidden"
+            >
         <div className="space-y-3">
           {history.length > 0 ? history.map((event) => (
             <div key={event.id} className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between group hover:border-primary/30 transition-all">
@@ -464,6 +482,9 @@ export default function Profile() {
             </div>
           )}
         </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </section>
 
       {/* ===== CALENDÁRIO DE CHECK-INS ===== */}
