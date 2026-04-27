@@ -68,8 +68,8 @@ class ErrorBoundary extends React.Component<
 }
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
-  const { user, loading, logout } = useAuth();
-  if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO...</div>;
+  const { user, loading, initializing, logout } = useAuth();
+  if (initializing || loading) return <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO...</div>;
   if (!user) return <Navigate to="/login" />;
   
   if (user.status !== 'approved') {
