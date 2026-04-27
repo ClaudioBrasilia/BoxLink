@@ -16,15 +16,15 @@ function getUrl(filename: string): string {
   if (!filename) return '';
   if (filename.startsWith('http')) return filename;
   
+  // Normaliza o nome do arquivo (remove espaços e garante .png)
   const cleanKey = filename.toLowerCase().trim().replace(/\s+/g, '_');
+  const path = cleanKey.endsWith('.png') ? cleanKey : `${cleanKey}.png`;
   
-  // Usar o cliente supabase para obter a URL pública de forma robusta
   try {
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(
-      cleanKey.endsWith('.png') ? cleanKey : `${cleanKey}.png`
-    );
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
     return data.publicUrl;
   } catch (e) {
+    console.error("Erro ao buscar URL do avatar:", e);
     return '';
   }
 }
@@ -32,16 +32,17 @@ function getUrl(filename: string): string {
 const BLOCK_POSITIONS: Record<string, { top: string; height: string }> = {
   base:            { top: '0%',      height: '100%'  },
   special:         { top: '0%',      height: '100%'  },
-  body:            { top: '0%',      height: '100%'  },
-  top:             { top: '0%',      height: '60%'   },
-  bottom:          { top: '40%',     height: '60%'   },
-  hair:            { top: '0%',      height: '40%'   },
+  bottom:          { top: '45%',     height: '55%'   },
+  top:             { top: '15%',     height: '45%'   },
+  shoes:           { top: '80%',     height: '20%'   },
+  hair:            { top: '0%',      height: '35%'   },
   accessory:       { top: '10%',     height: '15%'   },
 };
 
 const LAYER_ORDER: Array<keyof AvatarSlot | 'base'> = [
   'base',
   'bottom',
+  'shoes',
   'top',
   'hair',
   'accessory',
@@ -60,7 +61,7 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
 
   const isFemale = equipped?.base_outfit === 'base_female' || 
                    equipped?.base_outfit?.includes('female') ||
-                   equipped?.base_outfit?.toLowerCase().includes('feminina');
+                   equipped?.base_outfit?.toLowerCase() === 'feminina';
 
   const baseImage = isFemale ? 'base_feminina' : 'base_masculina';
 
@@ -81,7 +82,7 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
     if (!value) continue;
 
     const pos = BLOCK_POSITIONS[slot] ?? BLOCK_POSITIONS.base;
-    layers.push({ key: slot, url: getUrl(value), pos, value });
+    layers.push({ key: slot, url: getUrl(value as string), pos, value: value as string });
   }
 
   const handleImageError = (key: string) => {
@@ -91,17 +92,15 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
   return (
     <div
       className={cn(
-        "relative rounded-full overflow-hidden bg-surface-container-highest",
+        "relative rounded-full overflow-hidden bg-surface-container-low border-2 border-primary/20",
         sizeClasses[size],
         className
       )}
     >
-      {/* SVG Fallback System - Desenhos caso a imagem falhe */}
-      <svg viewBox="0 0 200 300" className="absolute inset-0 w-full h-full text-on-surface-variant opacity-20">
+      {/* Sistema de Fallback (SVG) caso a imagem do Supabase falhe */}
+      <svg viewBox="0 0 200 300" className="absolute inset-0 w-full h-full text-primary/10">
         {layers.map(({ key, value }) => {
-          if (key === 'base') {
-            return isFemale ? AvatarLayers.base.female : AvatarLayers.base.male;
-          }
+          if (key === 'base') return isFemale ? AvatarLayers.base.female : AvatarLayers.base.male;
           const slotLayers = (AvatarLayers as any)[key];
           if (slotLayers && slotLayers[value]) {
             return typeof slotLayers[value] === 'function' 
@@ -112,7 +111,7 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
         })}
       </svg>
 
-      {/* Image Layers - As imagens reais vindas do Supabase */}
+      {/* Camadas de Imagem Reais */}
       {layers.map(({ key, url, pos }) => {
         if (imageErrors[key]) return null;
         
@@ -121,7 +120,7 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
             key={key}
             src={url}
             alt={key}
-            className="absolute left-0 w-full object-contain object-top"
+            className="absolute left-0 w-full h-full object-contain object-top"
             style={{ top: pos.top, height: pos.height }}
             onError={() => handleImageError(key)}
           />
