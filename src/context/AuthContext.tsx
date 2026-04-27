@@ -1,39 +1,35 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { User, AvatarSlot } from '../types';
+import { User } from '../types';
 import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
+  login: (email: string, password: string) => Promise<{ error: any }>;
+  signup: (email: string, password: string, name: string) => Promise<{ error: any }>;
+  logout: () => Promise<void>;
+  updateUser: (userData: User) => void;
   loading: boolean;
   initializing: boolean;
-  setUser: (user: User | null) => void;
-  fetchUserProfile: (userId: string) => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const fetchingRef = useRef(false);
 
-  const fetchUserProfile = async (userId: string) => {
+  const fetchUserProfile = async (userId: string): Promise<User | null> => {
     if (fetchingRef.current) return null;
     fetchingRef.current = true;
 
     try {
-      const [{ data, error }, { data: checkinsData }] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .maybeSingle(),
-        supabase
-          .from('checkins')
-          .select('*')
-          .eq('user_id', userId)
-      ]);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
 
       if (error) {
         console.error('Supabase query error:', error);
@@ -41,134 +37,138 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (!data) {
-        console.log('No profile found for UID:', userId);
+        console.warn('Profile not found for user:', userId);
         return null;
       }
 
-      // Avatar padrão se nenhum estiver equipado
-      const defaultAvatar: AvatarSlot = {
-        base_outfit: 'base_light',
-        top: null,
-        bottom: null,
-        shoes: null,
-        accessory: null,
-        head_accessory: null,
-        wrist_accessory: null,
-        special: null
-      };
+      const { data: checkinsData } = await supabase
+        .from('checkins')
+        .select('*')
+        .eq('user_id', userId);
 
       const mappedUser: User = {
         id: data.id,
-        email: data.email || '',
-        name: data.name || 'Atleta',
-        role: data.role || 'aluno',
+        email: data.email,
+        name: data.name ?? 'Atleta',
+        role: data.role,
+        status: data.status ?? 'pending',
         xp: data.xp || 0,
         coins: data.coins || 0,
         level: data.level || 1,
         avatar: {
-          equipped: data.avatar_equipped || defaultAvatar,
+          equipped: data.avatar_equipped,
           inventory: data.avatar_inventory || []
         },
         checkins: (checkinsData || []).map((c: any) => ({
           date: c.date,
-          workoutId: c.workout_id
+          timestamp: c.timestamp,
+          classTime: c.class_time
         })),
-        stats: data.stats || {}
+        paidBonuses: data.paid_bonuses || [],
+        createdAt: data.created_at
       };
 
       setUser(mappedUser);
       return mappedUser;
     } catch (err) {
-      console.error('Fetch error:', err);
+      console.error('Error fetching user profile:', err);
       return null;
     } finally {
       fetchingRef.current = false;
-      setLoading(false);
     }
   };
 
   useEffect(() => {
     let isMounted = true;
-    let profileSubscription: any = null;
 
-    const setupAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!isMounted) return;
-
-        if (session?.user) {
-          await fetchUserProfile(session.user.id);
-          
-          // Setup real-time listener para o perfil
-          profileSubscription = supabase
-            .channel(`profile_changes_${session.user.id}`)
-            .on(
-              'postgres_changes',
-              {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'profiles',
-                filter: `id=eq.${session.user.id}`
-              },
-              () => {
-                fetchUserProfile(session.user.id);
-              }
-            )
-            .subscribe();
-        }
-      } catch (error) {
-        console.error('Auth setup error:', error);
-      } finally {
-        if (isMounted) setInitializing(false);
-      }
-    };
-
-    setupAuth();
-
-    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!isMounted) return;
-
-      if (event === 'SIGNED_IN' && session?.user) {
+      if (session?.user) {
         await fetchUserProfile(session.user.id);
-        
-        if (!profileSubscription) {
-          profileSubscription = supabase
-            .channel(`profile_changes_${session.user.id}`)
-            .on(
-              'postgres_changes',
-              {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'profiles',
-                filter: `id=eq.${session.user.id}`
-              },
-              () => {
-                fetchUserProfile(session.user.id);
-              }
-            )
-            .subscribe();
-        }
-      } else if (event === 'SIGNED_OUT' || !session) {
+      }
+      if (isMounted) setInitializing(false);
+    }).catch(() => {
+      if (isMounted) setInitializing(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
+      if (event === 'SIGNED_OUT' || !session) {
         setUser(null);
         setLoading(false);
-        if (profileSubscription) {
-          supabase.removeChannel(profileSubscription);
-          profileSubscription = null;
-        }
+      } else if (event === 'SIGNED_IN' && session?.user && !fetchingRef.current) {
+        await fetchUserProfile(session.user.id);
       }
     });
 
     return () => {
       isMounted = false;
-      authSubscription.unsubscribe();
-      if (profileSubscription) {
-        supabase.removeChannel(profileSubscription);
-      }
+      subscription.unsubscribe();
     };
   }, []);
 
+  const login = async (email: string, password: string) => {
+    setLoading(true);
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (authError) {
+        setLoading(false);
+        return { error: authError };
+      }
+
+      if (authData.user) {
+        const profile = await fetchUserProfile(authData.user.id);
+        if (!profile) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const retry = await fetchUserProfile(authData.user.id);
+          if (!retry) {
+            setLoading(false);
+            return { error: { message: 'Perfil não encontrado. Verifique se sua conta foi aprovada.' } };
+          }
+        }
+      }
+
+      setLoading(false);
+      return { error: null };
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setLoading(false);
+      return { error: { message: 'Erro ao conectar com o servidor' } };
+    }
+  };
+
+  const signup = async (email: string, password: string, name: string) => {
+    setLoading(true);
+    try {
+      const { error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { name } }
+      });
+
+      if (authError) {
+        setLoading(false);
+        return { error: authError };
+      }
+
+      setLoading(false);
+      return { error: null };
+    } catch (err: any) {
+      setLoading(false);
+      return { error: { message: 'Erro ao conectar com o servidor' } };
+    }
+  };
+
+  const logout = async () => {
+    setUser(null);
+    await supabase.auth.signOut();
+  };
+
+  const updateUser = (userData: User) => setUser(userData);
+
   return (
-    <AuthContext.Provider value={{ user, loading, initializing, setUser, fetchUserProfile }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, updateUser, loading, initializing }}>
       {children}
     </AuthContext.Provider>
   );
@@ -176,8 +176,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
-}
+};
