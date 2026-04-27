@@ -50,8 +50,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: data.id,
         email: data.email,
         name: data.name ?? 'Atleta',
-        role: data.role,
-        status: data.status ?? 'pending',
+        role: data.role ?? 'athlete',
+        status: data.status ?? data.approval_status ?? data.approvalStatus ?? 'pending',
         xp: data.xp || 0,
         coins: data.coins || 0,
         level: data.level || 1,
@@ -81,23 +81,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let isMounted = true;
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!isMounted) return;
-      if (session?.user) {
-        await fetchUserProfile(session.user.id);
-      }
-      if (isMounted) setInitializing(false);
-    }).catch(() => {
-      if (isMounted) setInitializing(false);
-    });
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        if (!isMounted) return;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (session?.user) {
+          await fetchUserProfile(session.user.id);
+        }
+
+        if (isMounted) setInitializing(false);
+      })
+      .catch(() => {
+        if (isMounted) setInitializing(false);
+      });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return;
+
       if (event === 'SIGNED_OUT' || !session) {
         setUser(null);
         setLoading(false);
-      } else if (event === 'SIGNED_IN' && session?.user && !fetchingRef.current) {
-        await fetchUserProfile(session.user.id);
       }
     });
 
@@ -109,8 +112,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string) => {
     setLoading(true);
+
     try {
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
 
       if (authError) {
         setLoading(false);
@@ -118,14 +125,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (authData.user) {
-        const profile = await fetchUserProfile(authData.user.id);
+        let profile = await fetchUserProfile(authData.user.id);
+
         if (!profile) {
           await new Promise(resolve => setTimeout(resolve, 1000));
-          const retry = await fetchUserProfile(authData.user.id);
-          if (!retry) {
-            setLoading(false);
-            return { error: { message: 'Perfil não encontrado. Verifique se sua conta foi aprovada.' } };
-          }
+          profile = await fetchUserProfile(authData.user.id);
+        }
+
+        if (!profile) {
+          setLoading(false);
+          return {
+            error: {
+              message: 'Perfil não encontrado. Verifique se sua conta foi aprovada.'
+            }
+          };
         }
       }
 
@@ -140,11 +153,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signup = async (email: string, password: string, name: string) => {
     setLoading(true);
+
     try {
       const { error: authError } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { name } }
+        options: {
+          data: { name }
+        }
       });
 
       if (authError) {
@@ -162,13 +178,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     setUser(null);
+    setLoading(false);
     await supabase.auth.signOut();
   };
 
-  const updateUser = (userData: User) => setUser(userData);
+  const updateUser = (userData: User) => {
+    setUser(userData);
+  };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, updateUser, loading, initializing }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        login,
+        signup,
+        logout,
+        updateUser,
+        loading,
+        initializing
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -176,6 +205,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
+
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+
   return context;
 };
