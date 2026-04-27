@@ -75,7 +75,18 @@ export default function Duels() {
         supabase.from('profiles').select('id, name, xp, level, avatar_equipped').eq('status', 'approved').neq('id', user.id)
       ]);
 
-      if (duelsRes.data) setDuels(duelsRes.data);
+      if (duelsRes.data) setDuels(duelsRes.data.map((d: any) => ({
+        id: d.id,
+        challengerId: d.challenger_id,
+        opponentIds: d.opponent_ids ?? [],
+        acceptedBy: d.accepted_by ?? [],
+        status: d.status,
+        exerciseId: d.exercise_id,
+        betCoins: d.bet_coins,
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+        betCanceledAt: d.bet_canceled_at,
+      })));
       if (usersRes.data) setUsers(usersRes.data);
     } catch (err) {
       console.error('Error loading duels data:', err);
