@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, Share2, Target } from 'lucide-react';
+import { Zap, Coins, MapPin, Timer, Activity, Trophy, Share2, Target } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [announcements, setAnnouncements] = useState<string[]>([]);
   const [activeChallenges, setActiveChallenges] = useState<any[]>([]);
+  const [userRank, setUserRank] = useState<number | null>(null);
 
   const fetchData = async () => {
     const { data: wodsData } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1);
@@ -34,6 +35,15 @@ export default function Dashboard() {
 
     const { data: challengesData } = await supabase.from('challenges').select('*').eq('active', true).limit(3);
     setActiveChallenges(challengesData || []);
+
+    // Calcular posição no ranking por XP
+    if (user?.id) {
+      const { data: allProfiles } = await supabase.from('profiles').select('id, xp').eq('status', 'approved').order('xp', { ascending: false });
+      if (allProfiles) {
+        const pos = allProfiles.findIndex((p: any) => p.id === user.id);
+        setUserRank(pos >= 0 ? pos + 1 : null);
+      }
+    }
 
     const { data: scheduleData } = await supabase.from('schedule').select('*').eq('is_active', true).order('time', { ascending: true });
     if (scheduleData) {
@@ -127,15 +137,12 @@ export default function Dashboard() {
         </div>
       )}
 
-      <section onClick={() => navigate('/wod')} className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5 flex items-center justify-between cursor-pointer">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center"><Timer className="w-6 h-6 text-primary" /></div>
-          <div>
-            <span className="text-[8px] font-black text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-full">HOJE</span>
-            <h3 className="font-headline font-black text-on-surface uppercase italic">{wod?.name || 'WOD DO DIA'}</h3>
-          </div>
+      <section className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5 flex items-center gap-4">
+        <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center"><Timer className="w-6 h-6 text-primary" /></div>
+        <div>
+          <span className="text-[8px] font-black text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-full">HOJE</span>
+          <h3 className="font-headline font-black text-on-surface uppercase italic">{wod?.name || 'WOD DO DIA'}</h3>
         </div>
-        <ChevronRight className="w-5 h-5 text-on-surface-variant" />
       </section>
 
       <section className="grid grid-cols-2 gap-4">
@@ -144,10 +151,10 @@ export default function Dashboard() {
           <p className="text-[10px] text-on-surface-variant font-bold uppercase">Check-ins Semana</p>
           <p className="text-2xl font-black">{user?.checkins?.length || 0}/6</p>
         </div>
-        <div onClick={() => navigate('/leaderboard')} className="bg-surface-container-low p-5 rounded-3xl border border-outline-variant/10">
+        <div onClick={() => navigate('/leaderboard')} className="bg-surface-container-low p-5 rounded-3xl border border-outline-variant/10 cursor-pointer">
           <Trophy className="w-5 h-5 text-secondary mb-2" />
           <p className="text-[10px] text-on-surface-variant font-bold uppercase">Ranking Box</p>
-          <p className="text-2xl font-black">#--</p>
+          <p className="text-2xl font-black">{userRank ? `#${userRank}` : '#--'}</p>
         </div>
       </section>
     </div>
