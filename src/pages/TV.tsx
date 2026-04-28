@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Timer, Trophy, Zap, Swords, Maximize, LayoutDashboard, Activity, Users, Play, Pause, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wod, Challenge, Duel, User, BoxSettings } from '../types';
@@ -21,8 +21,16 @@ export default function TV() {
   const [wodTabIndex, setWodTabIndex] = useState(0);
 
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(new Date());
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const fetchData = async () => {
+  // Relógio em tempo real
+  useEffect(() => {
+    const clockInterval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(clockInterval);
+  }, []);
+
+  const fetchData = useCallback(async () => {
     try {
       const today = formatInTimeZone(new Date(), TIMEZONE, "yyyy-MM-dd");
 
@@ -33,15 +41,23 @@ export default function TV() {
         { data: wod },
         { data: challenges },
         { data: duels },
-        { data: rankings }
+        { data: rankings },
+        { data: scheduleData }
       ] = await Promise.all([
         supabase.from('box_settings').select('*').maybeSingle(),
         supabase.from('avatar_economy_settings').select('*').eq('is_active', true).maybeSingle(),
         supabase.from('wods').select('*').eq('date', today).maybeSingle(),
         supabase.from('challenges').select('*').eq('active', true),
         supabase.from('duels').select('*, challenger:profiles!challenger_id(name), opponent:profiles!opponent_id(name)').eq('status', 'accepted'),
-        supabase.from('profiles').select('name, xp, level, avatar_equipped').order('xp', { ascending: false }).limit(10)
+        supabase.from('profiles').select('name, xp, level, avatar_equipped').eq('status', 'approved').order('xp', { ascending: false }).limit(10),
+        supabase.from('schedule').select('*').order('time', { ascending: true })
       ]);
+
+      // Determinar aula atual com base no horário
+      const nowStr = formatInTimeZone(new Date(), TIMEZONE, 'HH:mm');
+      const currentClass = (scheduleData || []).find((s: any) => {
+        return nowStr >= s.time && nowStr <= (s.end_time || s.endTime || '23:59');
+      });
 
       const { data: checkinsRaw } = await supabase
         .from('checkins').select('*')
@@ -74,22 +90,27 @@ export default function TV() {
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
 
-      const checkins = (checkinsRaw || []).map((c: any) => ({
+      const allCheckins = (checkinsRaw || []).map((c: any) => ({
         ...c,
         profiles: profileMap[c.user_id] || null
       }));
 
-      // Mocked stats for the ticker
+      // Filtrar apenas quem está na aula atual
+      const checkins = currentClass
+        ? allCheckins.filter((c: any) => c.class_time === currentClass.time)
+        : allCheckins;
+
+      // Stats reais para o ticker
       const stats = {
-        frequency: "92% OPTIMAL",
-        newRecord: "JULIA M. (158 REPS)",
-        upcoming: "HYPERTROPHY STRENGTH"
+        checkins: checkins.length,
+        topPlayer: rankings?.[0] ? `${rankings[0].name.split(' ')[0].toUpperCase()} • ${rankings[0].xp} XP` : null,
+        wod: wod?.name || null
       };
 
       setData({
         settings: settings || { name: "CrossCity Hub", logo: "" },
         rewards: economy,
-        wod: wod || { name: "WOD de Hoje", type: "AMRAP", warmup: "400M RUN\n20 AIR SQUATS", skill: "SNATCH FOCUS\n5 x 3 @ 65% 1RM", rx: "A definir", scaled: "A definir", beginner: "A definir" },
+        wod: wod || null,
         checkins: checkins || [],
         challenges: challenges || [],
         duels: (duels || []).map((d: any) => ({
@@ -102,46 +123,70 @@ export default function TV() {
         frequencyRanking
       });
       setError(null);
+      setLastUpdated(new Date());
     } catch (err: any) {
       console.error('TV Fetch Error:', err);
       setError(err.message);
     }
-  };
+  }, []);
+
+  // Ref para count de atletas — evita recriar intervals quando dados mudam
+  const athleteCountRef = useRef(0);
+  useEffect(() => {
+    const count = data?.checkins?.length > 0
+      ? data.checkins.map((c: any) => c.profiles).filter(Boolean).length
+      : data?.rankings?.length || 0;
+    athleteCountRef.current = count;
+  }, [data?.checkins?.length, data?.rankings?.length]);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 30000);
     
+    // Carrossel de atletas usando ref (sem recriar interval)
     const athleteInterval = setInterval(() => {
       setAthleteIndex(prev => {
-        const athletesToDisplay = data?.checkins?.length > 0 
-          ? data.checkins.map((c: any) => c.profiles).filter(Boolean)
-          : data?.rankings || [];
-        const count = athletesToDisplay.length || 1;
+        const count = athleteCountRef.current || 1;
         return (prev + 1) % count;
       });
-    }, 8000);
-
-    const wodInterval = isWodAutoRotationActive ? setInterval(() => {
-      setWodTabIndex(prev => (prev + 1) % 3);
-    }, 15000) : null;
+    }, 4000);
 
     const rankingInterval = setInterval(() => {
       setRankingView(prev => prev === 'xp' ? 'frequency' : 'xp');
     }, 10000);
 
-    const checkinsChannel = supabase.channel('tv-checkins')
-      .on('postgres_changes', { event: '*', table: 'checkins' }, fetchData)
-      .subscribe();
+    let realtimeChannel: ReturnType<typeof supabase.channel>;
+    const subscribeRealtime = () => {
+      realtimeChannel = supabase
+        .channel('tv-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, () => fetchData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchData())
+        .subscribe((status) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.warn('[TV] Canal realtime perdido, reconectando em 5s...');
+            supabase.removeChannel(realtimeChannel);
+            setTimeout(subscribeRealtime, 5000);
+          }
+        });
+    };
+    subscribeRealtime();
 
     return () => {
       clearInterval(interval);
       clearInterval(athleteInterval);
-      if (wodInterval) clearInterval(wodInterval);
       clearInterval(rankingInterval);
-      supabase.removeChannel(checkinsChannel);
+      supabase.removeChannel(realtimeChannel);
     };
-  }, [data?.rankings?.length, data?.checkins?.length, isWodAutoRotationActive]);
+  }, [fetchData]);
+
+  // Rotação automática do WOD — separado para reagir a isWodAutoRotationActive
+  useEffect(() => {
+    if (!isWodAutoRotationActive) return;
+    const wodInterval = setInterval(() => {
+      setWodTabIndex(prev => (prev + 1) % 3);
+    }, 15000);
+    return () => clearInterval(wodInterval);
+  }, [isWodAutoRotationActive]);
 
   useEffect(() => {
     let interval: any;
@@ -185,15 +230,32 @@ export default function TV() {
   if (!data) return <div className="min-h-screen bg-black flex items-center justify-center text-primary font-headline font-black text-4xl italic animate-pulse">PREPARANDO ARENA...</div>;
 
   const { wod, checkins, settings, rankings, stats, duels, frequencyRanking } = data;
+  const isStale = lastUpdated && (Date.now() - lastUpdated.getTime()) > 60000;
+  if (!wod) {
+    return (
+      <div className="min-h-screen bg-black text-white font-sans overflow-hidden flex flex-col p-6 gap-6 relative select-none">
+        <header className="flex justify-between items-center bg-[#111] rounded-[2rem] p-6 border border-white/5 shadow-2xl">
+          <div className="flex items-center gap-6">
+            <img src={settings.logo || "https://picsum.photos/seed/box/200"} alt="Logo" className="w-16 h-16 rounded-2xl border-2 border-primary" />
+            <div>
+              <h1 className="text-4xl font-headline font-black text-white italic tracking-tighter uppercase leading-none">{settings.name}</h1>
+              <p className="text-primary text-[10px] font-black tracking-[0.4em] uppercase italic mt-1">CROSSCITY HUB • PERFORMANCE ELITE</p>
+            </div>
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">HORA ATUAL</span>
+            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(now, 'HH:mm:ss')}</span>
+          </div>
+        </header>
+        <div className="flex-1 flex flex-col items-center justify-center bg-[#111] rounded-[3rem] border border-white/5">
+          <Activity className="w-24 h-24 text-primary/20 mb-8" />
+          <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter mb-4">AGUARDANDO WOD</h2>
+          <p className="text-white/40 text-xl font-black uppercase tracking-[0.4em] italic">NENHUM TREINO CADASTRADO PARA HOJE</p>
+        </div>
+      </div>
+    );
+  }
   
-  const athletesToDisplay = checkins.length > 0 
-    ? checkins.map((c: any) => c.profiles).filter(Boolean)
-    : rankings;
-
-  const athletesCount = athletesToDisplay?.length || 0;
-  const currentAthlete = athletesCount > 0 ? athletesToDisplay[athleteIndex % athletesCount] : null;
-  const nextAthlete = athletesCount > 1 ? athletesToDisplay[(athleteIndex + 1) % athletesCount] : null;
-
   return (
     <div className="min-h-screen bg-black text-white font-sans overflow-hidden flex flex-col p-6 gap-6 relative select-none">
       {/* Header */}
@@ -212,7 +274,7 @@ export default function TV() {
         <div className="flex items-center gap-12">
           <div className="flex flex-col items-center">
             <span className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">HORA ATUAL</span>
-            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(new Date(), 'HH:mm:ss')}</span>
+            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(now, 'HH:mm:ss')}</span>
           </div>
           
           <div className="h-12 w-[1px] bg-white/10"></div>
@@ -244,6 +306,19 @@ export default function TV() {
           <button onClick={toggleFullscreen} className="p-4 bg-white/5 rounded-2xl border border-white/10 hover:bg-primary hover:text-black transition-all group">
             <Maximize className="w-6 h-6 group-hover:scale-110 transition-transform" />
           </button>
+          {isStale ? (
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-yellow-400 text-[9px] font-black uppercase tracking-widest animate-pulse">⚠ SEM ATUALIZAÇÃO</span>
+              <button onClick={fetchData} className="text-yellow-400/70 text-[8px] font-black uppercase tracking-wider hover:text-yellow-400 transition-colors">
+                RECONECTAR
+              </button>
+            </div>
+          ) : lastUpdated ? (
+            <div className="flex flex-col items-center">
+              <span className="text-green-400/60 text-[8px] font-black uppercase tracking-widest">● AO VIVO</span>
+              <span className="text-white/20 text-[7px] font-black uppercase">{format(lastUpdated, 'HH:mm:ss')}</span>
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -468,71 +543,108 @@ export default function TV() {
             </div>
           </section>
 
-          {/* ATHLETE ROTATION */}
-          <section className="bg-[#111] rounded-[2.5rem] border border-white/5 flex-1 relative overflow-hidden p-8 flex flex-col">
-            <AnimatePresence mode="wait">
-              {currentAthlete && (
-                <motion.div 
-                  key={currentAthlete.id || athleteIndex}
-                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 1.05, y: -20 }}
-                  transition={{ duration: 0.5 }}
-                  className="flex flex-col h-full"
-                >
-                  <div className="flex items-center gap-6 mb-8">
-                    <div className="relative">
-                      <AvatarPreview equipped={currentAthlete.avatar_equipped} size="lg" className="border-4 border-primary shadow-[0_0_30px_rgba(202,253,0,0.2)]" />
-                      <div className="absolute -bottom-2 -right-2 bg-secondary text-white text-[10px] font-black px-3 py-1 rounded-full uppercase italic shadow-lg">
-                        {currentAthlete.level >= 50 ? 'ELITE' : `LVL ${currentAthlete.level}`}
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="text-4xl font-headline font-black text-white uppercase italic tracking-tighter leading-none">{currentAthlete.name}</h4>
-                      <p className="text-primary text-xs font-black uppercase tracking-widest mt-2">
-                        {currentAthlete.role === 'admin' ? 'HEAD COACH' : currentAthlete.role === 'coach' ? 'COACH' : 'ATLETA'}
-                      </p>
-                    </div>
-                  </div>
+          {/* ATLETAS NA AULA — Carrossel dinâmico — compacto */}
+          <section className="bg-[#111] rounded-[2.5rem] border border-white/5 relative overflow-hidden flex flex-col" style={{flex: '1 1 0'}}>
+            {/* Header */}
+            <div className="flex justify-between items-center px-5 pt-4 pb-2">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-headline font-black text-white italic uppercase tracking-tight">ATLETAS NA AULA</h3>
+              </div>
+              <span className="bg-primary text-black px-2 py-0.5 rounded-full font-headline font-black text-xs italic">
+                {checkins.length}
+              </span>
+            </div>
 
-                  <div className="grid grid-cols-2 gap-4 mb-auto">
-                    <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5">
-                      <span className="text-white/40 text-[10px] font-black uppercase tracking-widest block mb-2">CURRENT PERFORMANCE</span>
-                      <div className="flex items-end gap-2">
-                        <span className="text-4xl font-headline font-black text-white italic">158</span>
-                        <span className="text-primary text-[10px] font-black uppercase mb-1">REPS</span>
-                      </div>
-                    </div>
-                    <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5">
-                      <span className="text-white/40 text-[10px] font-black uppercase tracking-widest block mb-2">XP EARNED</span>
-                      <div className="flex items-end gap-2">
-                        <span className="text-4xl font-headline font-black text-white italic">138</span>
-                        <span className="text-secondary text-[10px] font-black uppercase mb-1">XP</span>
-                      </div>
-                    </div>
-                  </div>
+            {checkins.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-white/20 text-xs font-black uppercase tracking-widest italic text-center px-4">
+                  Nenhum check-in<br/>registrado ainda
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Avatar em destaque — tamanho médio */}
+                <AnimatePresence mode="wait">
+                  {(() => {
+                    const c = checkins[athleteIndex % checkins.length];
+                    const profile = c?.profiles;
+                    return (
+                      <motion.div
+                        key={athleteIndex}
+                        initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 1.05, y: -10 }}
+                        transition={{ duration: 0.4 }}
+                        className="flex items-center gap-4 px-5 py-3 flex-1"
+                      >
+                        {/* Avatar md com glow */}
+                        <div className="relative shrink-0">
+                          <div className="absolute inset-0 rounded-full bg-primary/20 blur-xl scale-150" />
+                          <AvatarPreview
+                            equipped={profile?.avatar_equipped}
+                            size="md"
+                            className="relative border-4 border-primary shadow-[0_0_20px_rgba(202,253,0,0.4)]"
+                          />
+                          <div className="absolute -bottom-1 -right-1 bg-primary text-black text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase italic shadow">
+                            ✓
+                          </div>
+                        </div>
 
-                  {nextAthlete && (
-                    <div className="mt-8 pt-8 border-t border-white/5 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/40 font-headline font-black italic">
-                          {nextAthlete?.name?.[0] || '?'}
+                        {/* Nome e info */}
+                        <div className="flex flex-col min-w-0">
+                          <h4 className="text-xl font-headline font-black text-white uppercase italic tracking-tight leading-none truncate">
+                            {profile?.name?.split(' ')[0] || 'Atleta'}
+                          </h4>
+                          <p className="text-primary text-[9px] font-black uppercase tracking-widest mt-1">
+                            {c?.class_time ? `Aula ${c.class_time}` : 'Check-in realizado'}
+                          </p>
+                          {/* Indicadores */}
+                          <div className="flex gap-1 mt-2">
+                            {checkins.slice(0, Math.min(checkins.length, 8)).map((_: any, i: number) => (
+                              <div
+                                key={i}
+                                className={`rounded-full transition-all duration-300 ${
+                                  i === athleteIndex % checkins.length
+                                    ? 'w-3 h-1.5 bg-primary'
+                                    : 'w-1.5 h-1.5 bg-white/20'
+                                }`}
+                              />
+                            ))}
+                            {checkins.length > 8 && (
+                              <span className="text-white/30 text-[8px] font-black ml-1">+{checkins.length - 8}</span>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-white/40 text-[8px] font-black uppercase tracking-widest">NEXT UP</p>
-                          <p className="text-lg font-headline font-black text-white/80 uppercase italic leading-none">{nextAthlete?.name || '---'}</p>
-                        </div>
+                      </motion.div>
+                    );
+                  })()}
+                </AnimatePresence>
+
+                {/* Mini lista dos outros atletas */}
+                <div className="border-t border-white/5 px-4 py-2 flex gap-2 overflow-x-auto no-scrollbar">
+                  {checkins.map((c: any, i: number) => {
+                    const profile = c?.profiles;
+                    const isActive = i === athleteIndex % checkins.length;
+                    return (
+                      <div
+                        key={c.id}
+                        className={`shrink-0 flex flex-col items-center gap-0.5 transition-all ${isActive ? 'opacity-100' : 'opacity-35'}`}
+                      >
+                        <AvatarPreview
+                          equipped={profile?.avatar_equipped}
+                          size="sm"
+                          className={`border-2 transition-all ${isActive ? 'border-primary shadow-[0_0_8px_rgba(202,253,0,0.4)]' : 'border-white/10'}`}
+                        />
+                        <span className="text-[7px] font-black text-white/60 uppercase truncate max-w-[36px] text-center">
+                          {profile?.name?.split(' ')[0] || '?'}
+                        </span>
                       </div>
-                      <div className="flex gap-1">
-                        {[0, 1, 2].map(i => (
-                          <div key={i} className={cn("w-1.5 h-1.5 rounded-full", i === athleteIndex % 3 ? "bg-primary" : "bg-white/10")} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </section>
         </div>
       </div>
@@ -544,8 +656,8 @@ export default function TV() {
             {[1, 2].map(i => (
               <div key={i} className="flex gap-24 items-center">
                 <div className="flex items-center gap-4">
-                  <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">FREQUENCY:</span>
-                  <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.frequency}</span>
+                  <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">CHECK-INS HOJE:</span>
+                  <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.checkins} atletas</span>
                 </div>
                 <div className="w-2 h-2 rounded-full bg-white/20"></div>
 
@@ -562,16 +674,25 @@ export default function TV() {
                   </React.Fragment>
                 ))}
 
-                <div className="flex items-center gap-4">
-                  <span className="text-secondary text-[10px] font-black uppercase tracking-widest italic">NEW BOX RECORD:</span>
-                  <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.newRecord}</span>
-                </div>
-                <div className="w-2 h-2 rounded-full bg-white/20"></div>
-                <div className="flex items-center gap-4">
-                  <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">UPCOMING:</span>
-                  <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.upcoming}</span>
-                </div>
-                <div className="w-2 h-2 rounded-full bg-white/20"></div>
+                {stats.topPlayer && (
+                  <>
+                    <div className="flex items-center gap-4">
+                      <span className="text-secondary text-[10px] font-black uppercase tracking-widest italic">LÍDER XP:</span>
+                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.topPlayer}</span>
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-white/20"></div>
+                  </>
+                )}
+
+                {stats.wod && (
+                  <>
+                    <div className="flex items-center gap-4">
+                      <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">WOD:</span>
+                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.wod}</span>
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-white/20"></div>
+                  </>
+                )}
               </div>
             ))}
           </div>
