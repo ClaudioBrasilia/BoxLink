@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Coins, MapPin, Timer, Activity, Trophy, Share2, Target } from 'lucide-react';
+import { Zap, Coins, MapPin, Activity, Trophy, Share2, Target } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -137,13 +137,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      <section className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5 flex items-center gap-4">
-        <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center"><Timer className="w-6 h-6 text-primary" /></div>
-        <div>
-          <span className="text-[8px] font-black text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-full">HOJE</span>
-          <h3 className="font-headline font-black text-on-surface uppercase italic">{wod?.name || 'WOD DO DIA'}</h3>
-        </div>
-      </section>
 
       <section className="grid grid-cols-2 gap-4">
         <div className="bg-surface-container-low p-5 rounded-3xl border border-outline-variant/10">
