@@ -138,6 +138,23 @@ export default function Dashboard() {
       )}
 
 
+      {/* Comunicados */}
+      {announcements.length > 0 && (
+        <section className="bg-primary/10 border border-primary/20 rounded-3xl p-4 overflow-hidden relative">
+          <div className="flex items-center gap-3 mb-2">
+            <Zap className="w-4 h-4 text-primary fill-primary animate-pulse" />
+            <h3 className="text-[10px] font-black text-primary uppercase tracking-widest italic">COMUNICADOS</h3>
+          </div>
+          <div className="flex flex-col gap-2">
+            {announcements.map((ann, idx) => (
+              <p key={idx} className="text-xs font-bold text-on-surface leading-tight italic">
+                • {ann}
+              </p>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="grid grid-cols-2 gap-4">
         <div className="bg-surface-container-low p-5 rounded-3xl border border-outline-variant/10">
           <Activity className="w-5 h-5 text-primary mb-2" />
