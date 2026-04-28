@@ -21,7 +21,6 @@ import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
-import { createNotification, requestNotificationPermission } from '../hooks/useNotifications';
 import AvatarPreview from '../components/AvatarPreview';
 import { AvatarSlot } from '../types';
 
@@ -62,7 +61,6 @@ export default function Duels() {
   useEffect(() => {
     if (user) {
       loadData();
-      requestNotificationPermission();
     }
   }, [user]);
 
@@ -122,7 +120,6 @@ export default function Duels() {
           colors: ['#CAFD00', '#ffffff', '#000000']
         });
         loadData();
-        createNotification('Duelo Aceito!', 'Prepare-se para o desafio.', 'duels');
       }
     } catch (err) {
       console.error('Error accepting duel:', err);
@@ -146,7 +143,6 @@ export default function Duels() {
 
       if (!error) {
         loadData();
-        createNotification('Duelo Cancelado', 'O desafio foi removido.', 'duels');
       }
     } catch (err) {
       console.error('Error canceling duel:', err);
