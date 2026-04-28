@@ -123,11 +123,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         let profile = await fetchUserProfile(authData.user.id);
 
         if (!profile) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Tenta buscar o perfil novamente com um pequeno atraso para dar tempo ao trigger do banco de dados
+          await new Promise(resolve => setTimeout(resolve, 1500));
           profile = await fetchUserProfile(authData.user.id);
         }
 
         if (!profile) {
+          // Se ainda não encontrar, pode ser um problema de sincronização ou RLS
+          console.warn('Perfil não encontrado após tentativa com atraso para o usuário:', authData.user.id);
           setLoading(false);
           return {
             error: {
