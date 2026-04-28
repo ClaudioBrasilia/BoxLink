@@ -285,8 +285,7 @@ export default function Admin() {
   const handleSaveSettings = async () => {
     const { data, error } = await supabase
       .from('box_settings')
-      .upsert({
-        id: (settings as any).id,
+      .update({
         name: settings.name,
         logo: settings.logo,
         description: settings.description,
@@ -303,7 +302,8 @@ export default function Admin() {
         timezone: settings.timezone || 'America/Sao_Paulo',
         clans_enabled: settings.clans_enabled || false,
         updated_at: new Date().toISOString()
-      }, { onConflict: 'is_active' })
+      })
+      .eq('id', (settings as any).id)
       .select()
       .single();
 
