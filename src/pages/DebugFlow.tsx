@@ -68,12 +68,13 @@ export default function DebugFlow() {
       updateStep(3, 'success', 'Duelo de teste criado com sucesso');
 
       // Refresh user profile to show persistence
-      const { data: updatedProfile } = await supabase.from('profiles').select('*, checkins(*)').eq('id', user.id).single();
+      const { data: updatedProfile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      const { data: updatedCheckins } = await supabase.from('checkins').select('*').eq('user_id', user.id);
       if (updatedProfile) {
         updateUser({
           ...updatedProfile,
           avatar: { equipped: updatedProfile.avatar_equipped, inventory: updatedProfile.avatar_inventory },
-          checkins: updatedProfile.checkins || [],
+          checkins: (updatedCheckins || []).map((c: any) => ({ date: c.date, timestamp: c.timestamp, classTime: c.class_time })),
           paidBonuses: updatedProfile.paid_bonuses || []
         });
       }
