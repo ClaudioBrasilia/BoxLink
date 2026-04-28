@@ -1,391 +1,343 @@
-import { useState, useEffect } from 'react';
-import { Swords, Zap, Timer, UserRound, ChevronRight, History, Plus, Trophy, X, Check } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { Duel, User } from '../types';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import { 
+  Trophy, 
+  Users, 
+  Plus, 
+  Search, 
+  Filter, 
+  ChevronDown, 
+  Handshake, 
+  Clock, 
+  CheckCircle2, 
+  XCircle,
+  Sword,
+  Target,
+  Zap,
+  Check,
+  X
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
+import { cn } from '../lib/utils';
 import confetti from 'canvas-confetti';
-
 import { supabase } from '../lib/supabase';
-import { addReward } from '../utils/rewards';
+import { createNotification, requestNotificationPermission } from '../hooks/useNotifications';
+import AvatarPreview from '../components/AvatarPreview';
+import { AvatarSlot } from '../types';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Duel {
+  id: string;
+  challengerId: string;
+  opponentIds: string[];
+  acceptedBy: string[];
+  betAmount: number;
+  betType: 'xp' | 'coins';
+  status: 'pending' | 'active' | 'finished';
+  winnerId?: string;
+  createdAt: string;
+  updatedAt: string;
+  betCanceledAt?: string;
+}
+
+interface UserProfile {
+  id: string;
+  name: string;
+  xp: number;
+  level: number;
+  avatar_equipped?: any;
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function Duels() {
-  const { user, login } = useAuth();
+  const { user } = useAuth();
   const [duels, setDuels] = useState<Duel[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
-  const [isChallenging, setIsChallenging] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [newDuel, setNewDuel] = useState({ opponentId: '', type: 'WOD' });
-
-  const fetchDuels = async () => {
-    const { data } = await supabase
-      .from('duels')
-      .select('*, challenger:profiles!challenger_id(name), opponent:profiles!opponent_id(name)')
-      .neq('status', 'finished');
-    
-    setDuels((data || []).map(d => ({
-      ...d,
-      challengerName: d.challenger?.name || 'Atleta',
-      opponentName: d.opponent?.name || 'Atleta',
-      reward: { xp: d.reward_xp, coins: d.reward_coins }
-    })));
-  };
-
-  const fetchHistory = async () => {
-    if (!user?.id) return;
-    const { data } = await supabase
-      .from('duels')
-      .select('*, challenger:profiles!challenger_id(*), opponent:profiles!opponent_id(*)')
-      .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
-      .eq('status', 'finished')
-      .order('created_at', { ascending: false });
-    
-    setHistory((data || []).map(d => ({
-      ...d,
-      reward: { xp: d.reward_xp, coins: d.reward_coins }
-    })));
-  };
-
-  const fetchUsers = async () => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .neq('id', user?.id)
-      .eq('status', 'approved');
-    setUsers(data || []);
-  };
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'all' | 'mine' | 'pending'>('all');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchDuels();
-    fetchHistory();
-    fetchUsers();
+    if (user) {
+      loadData();
+      requestNotificationPermission();
+    }
+  }, [user]);
 
-    const channel = supabase.channel('duels_changes')
-      .on('postgres_changes', { event: '*', table: 'duels' }, () => {
-        fetchDuels();
-        fetchHistory();
-      })
-      .subscribe();
+  const loadData = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const [duelsRes, usersRes] = await Promise.all([
+        supabase.from('duels').select('*').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id, name, xp, level, avatar_equipped').eq('status', 'approved').neq('id', user.id)
+      ]);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user?.id]);
+      if (duelsRes.data) setDuels(duelsRes.data.map((d: any) => ({
+        id: d.id,
+        challengerId: d.challenger_id,
+        opponentIds: d.opponent_ids ?? [],
+        acceptedBy: d.accepted_by ?? [],
+        status: d.status,
+        exerciseId: d.exercise_id,
+        betCoins: d.bet_coins,
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+        betCanceledAt: d.bet_canceled_at,
+      })));
+      if (usersRes.data) setUsers(usersRes.data);
+    } catch (err) {
+      console.error('Error loading duels data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const handleCreateDuel = async () => {
-    if (!user || !newDuel.opponentId) return;
+  const handleAccept = async (duelId: string) => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const duel = duels.find(d => d.id === duelId);
+      if (!duel) return;
+
+      const newAcceptedBy = [...(duel.acceptedBy || []), user.id];
+      const isFull = newAcceptedBy.length === duel.opponentIds.length;
+
+      const { error } = await supabase
+        .from('duels')
+        .update({
+          accepted_by: newAcceptedBy,
+          status: isFull ? 'active' : 'pending',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', duelId);
+
+      if (!error) {
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 },
+          colors: ['#CAFD00', '#ffffff', '#000000']
+        });
+        loadData();
+        createNotification('Duelo Aceito!', 'Prepare-se para o desafio.', 'duels');
+      }
+    } catch (err) {
+      console.error('Error accepting duel:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancel = async (duelId: string) => {
+    if (!user) return;
     setLoading(true);
     try {
       const { error } = await supabase
         .from('duels')
-        .insert({
-          challenger_id: user.id,
-          opponent_id: newDuel.opponentId,
-          type: newDuel.type,
-          reward_xp: 40,
-          reward_coins: 10,
-          status: 'pending'
-        });
+        .update({
+          status: 'finished',
+          bet_canceled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', duelId);
 
       if (!error) {
-        setIsChallenging(false);
-        alert('Desafio enviado!');
+        loadData();
+        createNotification('Duelo Cancelado', 'O desafio foi removido.', 'duels');
       }
+    } catch (err) {
+      console.error('Error canceling duel:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRespond = async (duelId: string, status: 'accepted' | 'rejected') => {
-    setLoading(true);
-    try {
-      await supabase
-        .from('duels')
-        .update({ status })
-        .eq('id', duelId);
-    } finally {
-      setLoading(false);
-    }
+  const getUserName = (id: string) => {
+    if (id === user?.id) return 'Você';
+    return users.find(u => u.id === id)?.name || 'Atleta';
   };
 
-  const handleFinish = async (duelId: string, winnerId: string) => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const { data: duel } = await supabase.from('duels').select('*').eq('id', duelId).single();
-      if (!duel) return;
-
-      await supabase
-        .from('duels')
-        .update({ status: 'finished', winner_id: winnerId })
-        .eq('id', duelId);
-
-      const isWinner = user.id === winnerId;
-      const xp = isWinner ? 40 : 15;
-      const coins = isWinner ? 10 : 0;
-      
-      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-      
-      await addReward(user.id, 'duel', xp, coins, isWinner ? "Vitória em duelo" : "Participação em duelo");
-      
-      // Also award the other participant
-      const otherId = duel.challenger_id === user.id ? duel.opponent_id : duel.challenger_id;
-      const otherIsWinner = otherId === winnerId;
-      const otherXp = otherIsWinner ? 40 : 15;
-      const otherCoins = otherIsWinner ? 10 : 0;
-      await addReward(otherId, 'duel', otherXp, otherCoins, otherIsWinner ? "Vitória em duelo" : "Participação em duelo");
-
-      alert(isWinner ? `Parabéns! Você venceu o duelo! +${xp} XP e +${coins} BrazaCoins!` : `Duelo finalizado! Você ganhou +${xp} XP pela participação.`);
-      
-      // Refresh user data locally
-      const { data: updatedProfile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      if (updatedProfile) {
-        login(updatedProfile as User);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const filteredDuels = duels.filter(d => {
+    if (activeTab === 'mine') return d.challengerId === user?.id || d.opponentIds.includes(user?.id || '');
+    if (activeTab === 'pending') return d.status === 'pending' && (d.opponentIds.includes(user?.id || '') && !(d.acceptedBy || []).includes(user?.id || ''));
+    return true;
+  });
 
   return (
-    <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background">
-      <header className="flex justify-between items-center">
-        <h1 className="text-3xl font-headline font-black text-on-surface tracking-tight uppercase italic flex items-center gap-3">
-          <Swords className="w-8 h-8 text-secondary" />
-          ARENA DE DUELOS
-        </h1>
+    <div className="min-h-screen bg-background pb-24">
+      {/* Header */}
+      <header className="p-6 pt-12 flex flex-col gap-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-headline font-black italic text-on-surface uppercase tracking-tight">
+              Duelos
+            </h1>
+            <p className="text-on-surface-variant text-xs font-medium uppercase tracking-widest opacity-60">
+              Desafie e conquiste
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+            <Sword className="w-6 h-6 text-primary" />
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-2 bg-surface-container-highest p-1 rounded-2xl">
+          {(['all', 'mine', 'pending'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                'flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all',
+                activeTab === tab 
+                  ? 'bg-primary text-background shadow-lg' 
+                  : 'text-on-surface-variant hover:text-on-surface'
+              )}
+            >
+              {tab === 'all' ? 'Todos' : tab === 'mine' ? 'Meus' : 'Pendentes'}
+            </button>
+          ))}
+        </div>
       </header>
 
-      {/* New Challenge Button */}
-      <button
-        onClick={() => setIsChallenging(true)}
-        className="w-full bg-secondary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-[0_10px_30px_rgba(255,116,57,0.2)] hover:scale-[0.98] active:scale-95 transition-all uppercase italic tracking-tight flex items-center justify-center gap-2"
-      >
-        NOVO DESAFIO <Plus className="w-5 h-5 fill-current" />
-      </button>
-
-      {/* Tabs */}
-      <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10">
-        {(['active', 'history'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "flex-1 py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all",
-              activeTab === tab ? "bg-secondary text-background shadow-lg" : "text-on-surface-variant hover:text-on-surface"
-            )}
-          >
-            {tab === 'active' ? 'ATIVOS' : 'HISTÓRICO'}
-          </button>
-        ))}
-      </div>
-
-      <AnimatePresence mode="wait">
-        {activeTab === 'active' && (
-          <motion.div
-            key="active"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="flex flex-col gap-4"
-          >
-            {duels.filter(d => d.status !== 'finished').map((duel) => (
-              <div key={duel.id} className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-6">
-                  <span className={cn(
-                    "text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest border",
-                    duel.status === 'active' ? "bg-primary/20 text-primary border-primary/30" : "bg-secondary/20 text-secondary border-secondary/30"
-                  )}>
-                    {duel.status === 'active' ? 'ATIVO' : 'PENDENTE'}
-                  </span>
-                </div>
-                
-                <div className="flex justify-between items-center mb-6">
-                  <div className="flex flex-col items-center gap-2 flex-1">
-                    <div className="w-14 h-14 rounded-full border-2 border-primary overflow-hidden bg-surface-container-highest flex items-center justify-center">
-                      <span className="text-2xl">👤</span>
-                    </div>
-                    <span className="text-[10px] font-bold text-on-surface uppercase italic">VOCÊ</span>
-                  </div>
-
-                  <div className="flex flex-col items-center gap-1 px-4">
-                    <span className="text-on-surface-variant font-headline font-black text-2xl italic opacity-30">VS</span>
-                    <div className="h-10 w-[1px] bg-outline-variant/20"></div>
-                  </div>
-
-                  <div className="flex flex-col items-center gap-2 flex-1">
-                    <div className="w-14 h-14 rounded-full border-2 border-secondary overflow-hidden bg-surface-container-highest flex items-center justify-center">
-                      <span className="text-2xl">👤</span>
-                    </div>
-                    <span className="text-[10px] font-bold text-on-surface uppercase italic">SARAH V.</span>
-                  </div>
-                </div>
-
-                <div className="bg-surface-container-highest/50 rounded-2xl p-4 flex justify-between items-center">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</span>
-                    <span className="text-xs font-headline font-black text-on-surface uppercase italic">{duel.type}</span>
-                  </div>
-                  <div className="flex flex-col gap-1 text-right">
-                    <span className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">Recompensa</span>
-                    <span className="text-xs font-headline font-black text-primary uppercase italic">+{duel.reward.xp} XP</span>
-                  </div>
-                </div>
-
-                {duel.status === 'active' && (
-                  <div className="flex gap-3 mt-4">
-                    <button 
-                      onClick={() => handleFinish(duel.id, user?.id || '')}
-                      disabled={loading}
-                      className="flex-1 bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2"
-                    >
-                      EU VENCI <Trophy className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => handleFinish(duel.id, duel.challengerId === user?.id ? duel.opponentId : duel.challengerId)}
-                      disabled={loading}
-                      className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2"
-                    >
-                      EU PERDI <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-
-                {duel.status === 'pending' && duel.opponent_id === user?.id && (
-                  <div className="flex gap-3 mt-4">
-                    <button 
-                      onClick={() => handleRespond(duel.id, 'accepted')}
-                      disabled={loading}
-                      className="flex-1 bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2"
-                    >
-                      ACEITAR <Check className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => handleRespond(duel.id, 'rejected')}
-                      disabled={loading}
-                      className="flex-1 bg-error-container text-on-error-container py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2"
-                    >
-                      REJEITAR <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </motion.div>
-        )}
-
-        {activeTab === 'history' && (
-          <motion.div
-            key="history"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="flex flex-col gap-3"
-          >
-            {history.length > 0 ? history.map((duel) => {
-              const isChallenger = duel.challenger_id === user?.id;
-              const opponent = isChallenger ? duel.opponent : duel.challenger;
-              const isWinner = duel.winner_id === user?.id;
-              
-              return (
-                <div key={duel.id} className="bg-surface-container-low/50 p-5 rounded-3xl border border-outline-variant/10 flex items-center justify-between opacity-70">
-                  <div className="flex items-center gap-4">
-                    <div className={cn(
-                      "w-10 h-10 rounded-full flex items-center justify-center",
-                      isWinner ? "bg-primary/20" : "bg-error-container/20"
-                    )}>
-                      {isWinner ? <Trophy className="w-5 h-5 text-primary" /> : <X className="w-5 h-5 text-error" />}
-                    </div>
-                    <div>
-                      <p className="text-on-surface font-bold text-sm uppercase italic">
-                        {isWinner ? 'Venceu' : 'Perdeu'} vs {opponent?.name || 'Atleta'}
-                      </p>
-                      <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">
-                        {new Date(duel.created_at).toLocaleDateString('pt-BR')} • {duel.type}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-primary font-headline font-black text-xs">+{isWinner ? duel.reward.xp : 15} XP</p>
-                    <p className="text-secondary font-headline font-black text-[10px]">+{isWinner ? duel.reward.coins : 0} BC</p>
-                  </div>
-                </div>
-              );
-            }) : (
-              <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 text-center">
-                <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50 italic">Nenhum duelo finalizado</p>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* New Challenge Modal */}
-      <AnimatePresence>
-        {isChallenging && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="w-full max-w-md bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl"
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">DESAFIAR ATLETA</h3>
-                <button onClick={() => setIsChallenging(false)} className="p-2 hover:bg-surface-container-highest rounded-xl transition-all">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Oponente</label>
-                  <select 
-                    value={newDuel.opponentId} 
-                    onChange={e => setNewDuel({...newDuel, opponentId: e.target.value})}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
-                  >
-                    <option value="">Selecione um atleta</option>
-                    {users.map(u => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo de Duelo</label>
-                  <select 
-                    value={newDuel.type} 
-                    onChange={e => setNewDuel({...newDuel, type: e.target.value})}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
-                  >
-                    <option value="WOD">WOD do Dia</option>
-                    <option value="BURPEES">Máximo de Burpees (1 min)</option>
-                    <option value="ROW">Remo 500m</option>
-                    <option value="BENCHMARK">Benchmark (Fran, Grace, etc)</option>
-                  </select>
-                </div>
-                
-                <div className="bg-secondary/10 p-4 rounded-2xl border border-secondary/20">
-                  <p className="text-[10px] text-secondary font-black uppercase tracking-widest mb-1">RECOMPENSA</p>
-                  <p className="text-xs text-on-surface-variant font-bold uppercase tracking-tight">Vencedor ganha +40 XP e +10 BrazaCoins</p>
-                </div>
-
-                <button 
-                  onClick={handleCreateDuel}
-                  disabled={loading || !newDuel.opponentId}
-                  className="w-full bg-secondary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg mt-4 disabled:opacity-50"
-                >
-                  ENVIAR DESAFIO
-                </button>
-              </div>
-            </motion.div>
+      {/* Main Content */}
+      <main className="px-6 flex flex-col gap-4">
+        {loading && !duels.length ? (
+          <div className="flex justify-center py-12">
+            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
+        ) : filteredDuels.length === 0 ? (
+          <div className="bg-surface-container rounded-3xl p-12 flex flex-col items-center text-center gap-4 border border-outline-variant/10">
+            <Handshake className="w-16 h-16 text-on-surface-variant/20 mb-2" />
+            <p className="text-on-surface-variant font-headline font-black uppercase italic">Nenhum duelo encontrado</p>
+          </div>
+        ) : (
+          filteredDuels.map((duel) => {
+            const isChallenger = duel.challengerId === user?.id;
+            const isOpponent = duel.opponentIds.includes(user?.id || '');
+            const needsMyAcceptance = isOpponent && !(duel.acceptedBy || []).includes(user?.id || '') && duel.status === 'pending';
+            const isExpanded = expandedId === duel.id;
+
+            return (
+              <div 
+                key={duel.id}
+                className={cn(
+                  "bg-surface-container rounded-3xl p-5 border border-outline-variant/10 transition-all",
+                  isExpanded && "ring-2 ring-primary/20 bg-surface-container-high"
+                )}
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <span className={cn(
+                    'text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest border',
+                    duel.status === 'active' ? 'bg-primary/20 text-primary border-primary/30'
+                      : duel.status === 'finished' ? (
+                          duel.betCanceledAt ? 'bg-error/20 text-error border-error/30' : 'bg-outline-variant/20 text-on-surface-variant border-outline-variant/30'
+                        )
+                        : 'bg-secondary/20 text-secondary border-secondary/30'
+                  )}>
+                    {duel.status === 'active' ? 'ATIVO' : duel.status === 'finished' ? (duel.betCanceledAt ? 'CANCELADO' : 'FINALIZADO') : 'PENDENTE'}
+                  </span>
+                  <button onClick={() => setExpandedId(isExpanded ? null : duel.id)}>
+                    <ChevronDown className={cn('w-4 h-4 text-on-surface-variant transition-transform', isExpanded && 'rotate-180')} />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  {[duel.challengerId, ...duel.opponentIds].map((pid, i) => (
+                    <React.Fragment key={pid}>
+                      {i > 0 && <span className="text-on-surface-variant font-headline font-black text-sm italic opacity-40">VS</span>}
+                      <div className="flex flex-col items-center gap-1">
+                        <div className={cn(
+                          'w-10 h-10 rounded-full border-2 bg-surface-container-highest flex items-center justify-center font-headline font-black text-base transition-colors overflow-hidden',
+                          pid === duel.challengerId ? 'border-secondary' : 'border-primary'
+                        )}>
+                          <AvatarPreview 
+                            equipped={(pid === user?.id ? user?.avatar?.equipped : (users || []).find(u => u.id === pid)?.avatar_equipped) || {} as AvatarSlot}
+                            size="sm"
+                            className="w-full h-full border-none shadow-none"
+                          />
+                        </div>
+                        <span className="text-[9px] font-bold text-on-surface uppercase italic truncate max-w-[56px]">
+                          {pid === user?.id ? 'VOCÊ' : getUserName(pid).split(' ')[0]}
+                        </span>
+                      </div>
+                    </React.Fragment>
+                  ))}
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-outline-variant/5 flex justify-between items-center text-[10px] text-on-surface-variant font-black uppercase tracking-widest">
+                  <div className="flex items-center gap-1">
+                    <Handshake className="w-3 h-3 text-primary" />
+                    <span>Aposta: {duel.betAmount} {duel.betType}</span>
+                  </div>
+                  <span>{new Date(duel.createdAt).toLocaleDateString()}</span>
+                </div>
+
+                {/* Opponent: accept / refuse */}
+                {needsMyAcceptance && (
+                  <div className="flex gap-4 mt-6">
+                    <button 
+                      onClick={() => handleAccept(duel.id)} 
+                      disabled={loading}
+                      className="flex-1 bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic flex items-center justify-center gap-2 shadow-[0_10px_20px_rgba(202,253,0,0.2)] hover:scale-[1.02] active:scale-95 transition-all"
+                    >
+                      ACEITAR <Check className="w-5 h-5" />
+                    </button>
+                    <button 
+                      onClick={() => handleCancel(duel.id)} 
+                      disabled={loading}
+                      className="flex-1 bg-error-container text-on-error-container py-4 rounded-2xl font-headline font-black text-sm uppercase italic flex items-center justify-center gap-2 border-2 border-error/20 hover:scale-[1.02] active:scale-95 transition-all"
+                    >
+                      RECUSAR <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Challenger: waiting + cancel */}
+                {duel.status === 'pending' && isChallenger && (
+                  <div className="flex flex-col gap-4 mt-6">
+                    <div className="bg-surface-container-highest/30 rounded-2xl p-4 border border-outline-variant/10">
+                      <p className="text-center text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">
+                        Aguardando Resposta de:
+                      </p>
+                      <p className="text-center text-xs font-headline font-black text-on-surface uppercase italic">
+                        {(duel.opponentIds || []).filter(id => !(duel.acceptedBy || []).includes(id)).map(id => getUserName(id)).join(', ')}
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => handleCancel(duel.id)} 
+                      disabled={loading}
+                      className="w-full bg-error-container/10 text-error py-4 rounded-2xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2 border-2 border-error/20 hover:bg-error-container/20 transition-all"
+                    >
+                      CANCELAR DESAFIO <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Active: cancel */}
+                {duel.status === 'active' && (isChallenger || isOpponent) && (
+                  <div className="mt-6 pt-4 border-t border-outline-variant/5">
+                    <button 
+                      onClick={() => handleCancel(duel.id)} 
+                      disabled={loading}
+                      className="w-full bg-transparent text-on-surface-variant/40 py-3 rounded-xl font-headline font-black text-[10px] uppercase italic flex items-center justify-center gap-2 border border-outline-variant/10 hover:text-error hover:border-error/30 transition-all"
+                    >
+                      DESISTIR / CANCELAR DUELO <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
-      </AnimatePresence>
+      </main>
+
+      <button className="fixed bottom-28 right-6 w-14 h-14 bg-primary text-background rounded-2xl shadow-xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
+        <Plus className="w-6 h-6" strokeWidth={3} />
+      </button>
     </div>
   );
 }
