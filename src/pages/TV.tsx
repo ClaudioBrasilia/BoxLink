@@ -499,47 +499,90 @@ export default function TV() {
 
         {/* Right: CHECK-IN & ATHLETE CARDS */}
         <div className="col-span-4 flex flex-col gap-6">
-          {/* RANKING MENSAL (XP & FREQUÊNCIA) */}
-          <section className="bg-[#111] rounded-[2.5rem] p-6 border border-white/5 h-[40%] flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-3">
+          {/* TOP 3 RANKING — Pódio */}
+          <section className="bg-[#111] rounded-[2.5rem] p-5 border border-white/5 flex flex-col gap-3" style={{flex: '2 1 0'}}>
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-primary" />
-                <h3 className="text-lg font-headline font-black text-white italic uppercase tracking-tight">
-                  {rankingView === 'xp' ? 'RANKING XP MENSAL' : 'RANKING FREQUÊNCIA'}
-                </h3>
+                <h3 className="text-base font-headline font-black text-white italic uppercase tracking-tight">TOP 3</h3>
               </div>
-              <div className="bg-white/5 px-3 py-1 rounded-full text-[8px] font-black text-white/40 uppercase tracking-widest">
-                TOP 5
+              <div className="flex gap-2">
+                {(['xp', 'frequency'] as const).map(tab => (
+                  <button key={tab} onClick={() => setRankingView(tab)}
+                    className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${rankingView === tab ? 'bg-primary text-black' : 'bg-white/5 text-white/40'}`}>
+                    {tab === 'xp' ? 'XP MÊS' : 'FREQ'}
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="flex-1 flex flex-col gap-2 overflow-hidden">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={rankingView}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  className="flex flex-col gap-2"
-                >
-                  {(rankingView === 'xp' ? rankings.slice(0, 5) : frequencyRanking).map((item: any, idx: number) => (
-                    <div key={idx} className="flex items-center justify-between bg-white/5 p-3 rounded-2xl border border-white/5">
-                      <div className="flex items-center gap-3">
-                        <span className="text-primary font-headline font-black italic text-sm w-4">#{idx + 1}</span>
-                        <span className="text-white font-bold text-xs uppercase truncate max-w-[120px]">{item.name}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-white font-black italic text-xs">
-                          {rankingView === 'xp' ? item.xp : item.count}
-                        </span>
-                        <span className="text-white/40 text-[8px] font-black uppercase">
-                          {rankingView === 'xp' ? 'XP' : 'AULAS'}
-                        </span>
+            {/* Pódio */}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={rankingView}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="flex items-end justify-between gap-2 px-2 pb-1"
+              >
+                {/* 2º */}
+                {(rankingView === 'xp' ? rankings : frequencyRanking)[1] && (() => {
+                  const r = (rankingView === 'xp' ? rankings : frequencyRanking)[1];
+                  return (
+                    <div className="flex flex-col items-center gap-1 flex-1">
+                      <div className="w-10 h-10 rounded-full bg-white/10 border-2 border-white/20 flex items-center justify-center font-headline font-black text-white text-lg">{r.name?.[0]}</div>
+                      <p className="text-white/80 text-[9px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
+                      <p className="text-white/50 text-[8px] font-bold">{rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}</p>
+                      <div className="w-full h-8 bg-white/10 rounded-t-lg flex items-center justify-center">
+                        <span className="text-white/60 text-xs font-black">#2</span>
                       </div>
                     </div>
-                  ))}
-                </motion.div>
-              </AnimatePresence>
+                  );
+                })()}
+                {/* 1º */}
+                {(rankingView === 'xp' ? rankings : frequencyRanking)[0] && (() => {
+                  const r = (rankingView === 'xp' ? rankings : frequencyRanking)[0];
+                  return (
+                    <div className="flex flex-col items-center gap-1 flex-1">
+                      <div className="w-12 h-12 rounded-full bg-primary/30 border-2 border-primary flex items-center justify-center font-headline font-black text-primary text-xl shadow-[0_0_15px_rgba(202,253,0,0.4)]">{r.name?.[0]}</div>
+                      <p className="text-primary text-[10px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
+                      <p className="text-primary text-[9px] font-black">{rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}</p>
+                      <div className="w-full h-12 bg-primary/20 border border-primary/30 rounded-t-lg flex items-center justify-center">
+                        <span className="text-primary text-sm font-black">👑 #1</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+                {/* 3º */}
+                {(rankingView === 'xp' ? rankings : frequencyRanking)[2] && (() => {
+                  const r = (rankingView === 'xp' ? rankings : frequencyRanking)[2];
+                  return (
+                    <div className="flex flex-col items-center gap-1 flex-1">
+                      <div className="w-9 h-9 rounded-full bg-white/5 border-2 border-white/10 flex items-center justify-center font-headline font-black text-white/60 text-base">{r.name?.[0]}</div>
+                      <p className="text-white/50 text-[9px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
+                      <p className="text-white/40 text-[8px] font-bold">{rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}</p>
+                      <div className="w-full h-6 bg-white/5 rounded-t-lg flex items-center justify-center">
+                        <span className="text-white/40 text-[9px] font-black">#3</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </motion.div>
+            </AnimatePresence>
+
+            {/* 4º e 5º lugar */}
+            <div className="flex flex-col gap-1 pt-2 border-t border-white/5">
+              {(rankingView === 'xp' ? rankings : frequencyRanking).slice(3, 5).map((r: any, i: number) => (
+                <div key={i} className="flex items-center justify-between px-2 py-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-white/30 text-[9px] font-black w-4">#{i + 4}</span>
+                    <span className="text-white/60 text-[10px] font-black uppercase truncate max-w-[100px]">{r.name?.split(' ')[0]}</span>
+                  </div>
+                  <span className="text-white/40 text-[9px] font-black">
+                    {rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}
+                  </span>
+                </div>
+              ))}
             </div>
           </section>
 
