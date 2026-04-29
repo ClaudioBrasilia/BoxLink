@@ -36,7 +36,6 @@ export default function Leaderboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchAll())
       .subscribe();
 
-    // Fallback polling a cada 20s caso Realtime não esteja ativo na tabela
     const poll = setInterval(() => fetchAll(), 20000);
 
     return () => { supabase.removeChannel(channel); clearInterval(poll); };
@@ -78,7 +77,7 @@ export default function Leaderboard() {
       (rewardHistory || []).forEach((r: any) => {
         if (r.xp > 0) monthXpByUser[r.user_id] = (monthXpByUser[r.user_id] || 0) + r.xp;
       });
-           setXpMonthly([...(allUsers || [])]
+      setXpMonthly([...(allUsers || [])]
         .map(u => mapUser(u, { monthXp: monthXpByUser[u.id] || 0 }))
         .filter(u => (u.monthXp || 0) > 0)
         .sort((a, b) => (b.monthXp || 0) - (a.monthXp || 0))
@@ -94,7 +93,8 @@ export default function Leaderboard() {
       setFreqRank([...(allUsers || [])]
         .map(u => mapUser(u, { monthCheckinCount: checkinCounts[u.id] || 0 }))
         .filter(u => (u.monthCheckinCount || 0) > 0)
-        .sort((a, b) => (b.monthCheckinCount||0)-(a.monthCheckinCount||0)).slice(0,50));
+        .sort((a, b) => (b.monthCheckinCount || 0) - (a.monthCheckinCount || 0))
+        .slice(0, 50));
 
       // 5. Times ranking
       const { data: clansData } = await supabase.from('clans').select('*').eq('is_active', true);
@@ -103,9 +103,9 @@ export default function Leaderboard() {
       if (clansData) {
         setClanRankings(clansData.map(clan => ({
           ...clan,
-          energy: (eventsData||[]).filter(e => e.clan_id === clan.id).reduce((s,e) => s+e.energy, 0),
-          memberCount: (membershipsData||[]).filter(m => m.clan_id === clan.id).length,
-        })).sort((a,b) => b.energy - a.energy));
+          energy: (eventsData || []).filter(e => e.clan_id === clan.id).reduce((s, e) => s + e.energy, 0),
+          memberCount: (membershipsData || []).filter(m => m.clan_id === clan.id).length,
+        })).sort((a, b) => b.energy - a.energy));
       }
 
       // 6. WOD do dia — tenta hoje, senão pega o mais recente
@@ -124,13 +124,13 @@ export default function Leaderboard() {
         const str = r.trim();
         if (/^\d+:\d+/.test(str)) {
           const p = str.split(':').map(Number);
-          return p.length === 2 ? p[0]*60+p[1] : p[0]*3600+p[1]*60+p[2];
+          return p.length === 2 ? p[0] * 60 + p[1] : p[0] * 3600 + p[1] * 60 + p[2];
         }
-        return parseFloat(str.replace(/[^0-9.]/g,'')) || (timeBased ? 999999 : 0);
+        return parseFloat(str.replace(/[^0-9.]/g, '')) || (timeBased ? 999999 : 0);
       };
 
       const processWodResults = (wodResults: any[], wodType: string) => {
-        const isTimeBased = ['FOR TIME','TIME','TEMPO'].some(t => (wodType||'').toUpperCase().includes(t));
+        const isTimeBased = ['FOR TIME', 'TIME', 'TEMPO'].some(t => (wodType || '').toUpperCase().includes(t));
         const bestByUser: Record<string, any> = {};
         wodResults.forEach((r: any) => {
           const uid = r.user_id;
@@ -145,13 +145,15 @@ export default function Leaderboard() {
             ? parseResult(a.result, isTimeBased) - parseResult(b.result, isTimeBased)
             : parseResult(b.result, isTimeBased) - parseResult(a.result, isTimeBased))
           .map((r: any) => ({
-            id: r.id, name: r.profiles?.name || 'Atleta',
-            result: r.result, type: r.type, level: r.profiles?.level || 1,
+            id: r.id,
+            name: r.profiles?.name || 'Atleta',
+            result: r.result,
+            type: r.type,
+            level: r.profiles?.level || 1,
           }));
       };
 
       if (activeWod) {
-        // Tenta buscar por wod_id primeiro
         const { data: wodResults } = await supabase
           .from('wod_results').select('*, profiles(name, level)')
           .eq('wod_id', activeWod.id);
@@ -159,9 +161,9 @@ export default function Leaderboard() {
         if (wodResults && wodResults.length > 0) {
           setWodRanking(processWodResults(wodResults, activeWod.type));
         } else {
-          // Fallback: busca por data de hoje (caso wod_id não bata)
-          const todayStart = todayStr + 'T00:00:00';
-          const todayEnd = todayStr + 'T23:59:59';
+          // Fallback com timezone correto (Brasília)
+          const todayStart = formatInTimeZone(now, 'America/Sao_Paulo', "yyyy-MM-dd'T'00:00:00xxx");
+          const todayEnd = formatInTimeZone(now, 'America/Sao_Paulo', "yyyy-MM-dd'T'23:59:59xxx");
           const { data: todayResults } = await supabase
             .from('wod_results').select('*, profiles(name, level)')
             .gte('created_at', todayStart).lte('created_at', todayEnd);
@@ -174,21 +176,29 @@ export default function Leaderboard() {
       } else {
         setWodRanking([]);
       }
-    } catch(err: any) { setError(err.message); }
+    } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
   };
 
   const isClans = activeTab === 'clans';
   const isWod = activeTab === 'wod';
-  const currentRank = activeTab === 'xp_total' ? xpAllTime : activeTab === 'xp_mes' ? xpMonthly : activeTab === 'freq' ? freqRank : clanRankings;
+
+  // Para a aba WOD, top3 e others vêm do wodRanking
+  const currentRank = activeTab === 'xp_total' ? xpAllTime
+    : activeTab === 'xp_mes' ? xpMonthly
+    : activeTab === 'freq' ? freqRank
+    : activeTab === 'wod' ? wodRanking
+    : clanRankings;
+
   const top3 = currentRank.slice(0, 3);
   const others = currentRank.slice(3);
 
   const getScore = (u: any) => {
     if (activeTab === 'xp_total') return `${u.xp} XP`;
-    if (activeTab === 'xp_mes') return `${u.monthXp||0} XP`;
-    if (activeTab === 'freq') return `${u.monthCheckinCount||0} check-ins`;
-    if (activeTab === 'clans') return `${u.energy||0} ⚡`;
+    if (activeTab === 'xp_mes') return `${u.monthXp || 0} XP`;
+    if (activeTab === 'freq') return `${u.monthCheckinCount || 0} check-ins`;
+    if (activeTab === 'clans') return `${u.energy || 0} ⚡`;
+    if (activeTab === 'wod') return u.result || '';
     return '';
   };
 
@@ -248,113 +258,118 @@ export default function Leaderboard() {
         {activeTab === 'freq' && `Check-ins de ${monthName} — só quem treinou`}
         {activeTab === 'xp_total' && 'XP acumulado desde o início'}
         {activeTab === 'clans' && 'Energia acumulada pelos times'}
-        {activeTab === 'wod' && `Resultados do WOD de hoje — ${wodInfo?.name || 'sem WOD cadastrado'}`}
+        {activeTab === 'wod' && `Resultados do WOD — ${wodInfo?.name || 'sem WOD cadastrado'}`}
       </p>
 
-      {/* WOD Tab */}
+      {/* Info do WOD (só na aba WOD) */}
       {isWod && (
-        <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 flex flex-col gap-4">
-          {wodInfo && (
-            <div className="bg-surface-container-highest/30 rounded-2xl p-3">
+        <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-4 flex flex-col gap-1">
+          {wodInfo ? (
+            <>
               <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">WOD de Hoje</p>
               <p className="text-sm font-headline font-black text-primary uppercase italic">{wodInfo.name} — {wodInfo.type}</p>
               <p className="text-[10px] text-on-surface-variant mt-1">
-                {['FOR TIME','TIME','TEMPO'].some(t => (wodInfo.type||'').toUpperCase().includes(t))
+                {['FOR TIME', 'TIME', 'TEMPO'].some(t => (wodInfo.type || '').toUpperCase().includes(t))
                   ? '⏱ Menor tempo = melhor resultado'
                   : '🔁 Maior número = melhor resultado'}
               </p>
-            </div>
+            </>
+          ) : (
+            <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-1">Nenhum WOD cadastrado para hoje</p>
           )}
-          {!wodInfo && <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-4">Nenhum WOD cadastrado para hoje</p>}
-          {wodRanking.length === 0 && wodInfo && (
-            <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-4 italic">Nenhum resultado registrado ainda</p>
-          )}
-          {wodRanking.map((r, i) => (
-            <motion.div key={r.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i*0.05 }}
-              className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between hover:border-primary/30 transition-all">
-              <div className="flex items-center gap-3">
-                <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i+1}</span>
-                <div className={cn("w-9 h-9 rounded-full flex items-center justify-center font-headline font-black text-sm",
-                  i===0?"bg-primary text-background":i===1?"bg-outline-variant/40 text-on-surface":i===2?"bg-secondary/30 text-on-surface":"bg-surface-container-highest text-on-surface")}>
-                  {r.name[0]}
-                </div>
-                <div>
-                  <p className="text-on-surface font-bold uppercase text-sm italic">{r.name}</p>
-                  <p className="text-on-surface-variant text-[10px] font-bold uppercase">{r.type}</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-primary font-headline font-black text-sm italic">{r.result}</p>
-                <p className="text-on-surface-variant text-[9px] font-bold">Nível {r.level}</p>
-              </div>
-            </motion.div>
-          ))}
-        </section>
+        </div>
       )}
 
-      {/* Pódio — não mostra no WOD */}
-      {!isWod && (
+      {/* Pódio — aparece em todas as abas incluindo WOD */}
+      {top3.length > 0 && (
         <div className="flex items-end justify-center gap-4 pt-8 pb-4">
+          {/* 2º lugar */}
           {top3[1] && (
             <div className="flex flex-col items-center gap-2">
               <div className="relative">
                 <div className="w-16 h-16 rounded-full border-4 border-outline-variant/30 bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-on-surface">
-                  {isClans ? (top3[1].name?.[0]||'T') : top3[1].name[0]}
+                  {(top3[1].name?.[0] || 'A')}
                 </div>
                 <div className="absolute -top-2 -right-2 bg-outline-variant/40 text-on-surface text-[10px] font-black px-2 py-0.5 rounded-full">#2</div>
               </div>
               <div className="text-center">
-                <p className="text-xs font-headline font-black text-on-surface uppercase italic truncate max-w-[80px]">{isClans ? top3[1].name : top3[1].name.split(' ')[0]}</p>
+                <p className="text-xs font-headline font-black text-on-surface uppercase italic truncate max-w-[80px]">
+                  {isClans ? top3[1].name : top3[1].name.split(' ')[0]}
+                </p>
                 <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[1])}</p>
+                {isWod && <p className="text-[9px] text-on-surface-variant font-bold uppercase">{top3[1].type}</p>}
               </div>
               <div className="w-16 h-20 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex items-center justify-center">
-                <span className="text-[10px] font-black text-on-surface-variant italic">{isClans ? `${top3[1].memberCount} mbr` : `LVL ${top3[1].level}`}</span>
+                <span className="text-[10px] font-black text-on-surface-variant italic">
+                  {isClans ? `${top3[1].memberCount} mbr` : isWod ? `LVL ${top3[1].level}` : `LVL ${top3[1].level}`}
+                </span>
               </div>
             </div>
           )}
+
+          {/* 1º lugar */}
           {top3[0] && (
             <div className="flex flex-col items-center gap-2 -mt-8">
               <div className="relative">
                 <div className="w-24 h-24 rounded-full border-4 border-primary bg-surface-container-highest shadow-[0_0_30px_rgba(202,253,0,0.3)] flex items-center justify-center font-headline font-black text-3xl text-primary">
-                  {isClans ? (top3[0].name?.[0]||'T') : top3[0].name[0]}
+                  {(top3[0].name?.[0] || 'A')}
                 </div>
                 <div className="absolute -top-3 -right-3 bg-primary text-background text-xs font-black px-3 py-1 rounded-full shadow-lg">#1</div>
               </div>
               <div className="text-center">
-                <p className="text-sm font-headline font-black text-primary uppercase italic truncate max-w-[100px]">{isClans ? top3[0].name : top3[0].name.split(' ')[0]}</p>
+                <p className="text-sm font-headline font-black text-primary uppercase italic truncate max-w-[100px]">
+                  {isClans ? top3[0].name : top3[0].name.split(' ')[0]}
+                </p>
                 <p className="text-xs text-on-surface font-bold">{getScore(top3[0])}</p>
+                {isWod && <p className="text-[9px] text-primary font-black uppercase">{top3[0].type}</p>}
               </div>
               <div className="w-24 h-32 bg-primary/10 rounded-t-3xl border-x border-t border-primary/20 flex items-center justify-center">
-                <span className="text-xs font-black text-primary italic">{isClans ? `${top3[0].memberCount} mbr` : `LVL ${top3[0].level}`}</span>
+                <span className="text-xs font-black text-primary italic">
+                  {isClans ? `${top3[0].memberCount} mbr` : `LVL ${top3[0].level}`}
+                </span>
               </div>
             </div>
           )}
+
+          {/* 3º lugar */}
           {top3[2] && (
             <div className="flex flex-col items-center gap-2">
               <div className="relative">
                 <div className="w-16 h-16 rounded-full border-4 border-secondary/30 bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-on-surface">
-                  {isClans ? (top3[2].name?.[0]||'T') : top3[2].name[0]}
+                  {(top3[2].name?.[0] || 'A')}
                 </div>
                 <div className="absolute -top-2 -right-2 bg-secondary/30 text-on-surface text-[10px] font-black px-2 py-0.5 rounded-full">#3</div>
               </div>
               <div className="text-center">
-                <p className="text-xs font-headline font-black text-on-surface uppercase italic truncate max-w-[80px]">{isClans ? top3[2].name : top3[2].name.split(' ')[0]}</p>
+                <p className="text-xs font-headline font-black text-on-surface uppercase italic truncate max-w-[80px]">
+                  {isClans ? top3[2].name : top3[2].name.split(' ')[0]}
+                </p>
                 <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[2])}</p>
+                {isWod && <p className="text-[9px] text-on-surface-variant font-bold uppercase">{top3[2].type}</p>}
               </div>
               <div className="w-16 h-16 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex items-center justify-center">
-                <span className="text-[10px] font-black text-on-surface-variant italic">{isClans ? `${top3[2].memberCount} mbr` : `LVL ${top3[2].level}`}</span>
+                <span className="text-[10px] font-black text-on-surface-variant italic">
+                  {isClans ? `${top3[2].memberCount} mbr` : `LVL ${top3[2].level}`}
+                </span>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Lista */}
-      {!isWod && (
+      {/* Sem resultados no WOD */}
+      {isWod && wodRanking.length === 0 && wodInfo && (
+        <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-4 italic">
+          Nenhum resultado registrado ainda
+        </p>
+      )}
+
+      {/* Lista — aparece em todas as abas */}
+      {currentRank.length > 3 && (
         <section className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-6 flex flex-col gap-4">
           <div className="flex justify-between items-center px-2">
             <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">
-              {isClans ? 'TODOS OS TIMES' : 'TODOS ATLETAS'}
+              {isClans ? 'TODOS OS TIMES' : isWod ? 'TODOS OS RESULTADOS' : 'TODOS ATLETAS'}
             </h3>
             <button onClick={() => setIsExpanded(!isExpanded)} className="text-primary text-xs font-bold flex items-center gap-1">
               {isExpanded ? 'RECOLHER' : 'EXPANDIR'} {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -362,17 +377,21 @@ export default function Leaderboard() {
           </div>
           <div className={cn("space-y-3 transition-all duration-500 overflow-hidden", isExpanded ? "max-h-[2000px]" : "max-h-[300px]")}>
             {others.map((u, i) => (
-              <motion.div key={u.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i*0.03 }}
+              <motion.div key={u.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
                 className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between hover:border-primary/30 transition-all">
                 <div className="flex items-center gap-4">
-                  <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i+4}</span>
+                  <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i + 4}</span>
                   <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-sm border border-outline-variant/10">
-                    {(u.name||'?')[0]}
+                    {(u.name || '?')[0]}
                   </div>
                   <div>
                     <p className="text-on-surface font-bold uppercase text-sm italic">{u.name}</p>
                     <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
-                      {isClans ? <><Users className="w-3 h-3" /> {(u as any).memberCount} membros</> : <><Zap className="w-3 h-3 text-primary" /> Nível {u.level}</>}
+                      {isClans
+                        ? <><Users className="w-3 h-3" /> {(u as any).memberCount} membros</>
+                        : isWod
+                        ? <span className="text-[10px] font-bold uppercase">{u.type} • Nível {u.level}</span>
+                        : <><Zap className="w-3 h-3 text-primary" /> Nível {u.level}</>}
                     </p>
                   </div>
                 </div>
