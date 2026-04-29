@@ -96,7 +96,10 @@ export default function MyBox() {
           <p className="text-sm text-on-surface font-medium leading-relaxed opacity-80 text-center">
             Av. Principal, 123 - Centro, Brasília - DF
           </p>
-          <button className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2">
+          <button
+            className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"
+            onClick={() => window.open(`https://www.google.com/maps?q=${settings.location.lat},${settings.location.lng}`, '_blank')}
+          >
             ABRIR NO GOOGLE MAPS <ChevronRight className="w-4 h-4" />
           </button>
         </div>
