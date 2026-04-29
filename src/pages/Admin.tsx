@@ -244,14 +244,18 @@ export default function Admin() {
   }, []);
 
   const handleStatusChange = async (userId: string, status: string) => {
-    const role = selectedRoles[userId] || 'athlete';
+    // Only apply the selected role when explicitly approving a user
+    const updateData: Record<string, any> = { status };
+    if (status === 'approved') {
+      updateData.role = selectedRoles[userId] || 'athlete';
+    }
     const { error } = await supabase
       .from('profiles')
-      .update({ status, role })
+      .update(updateData)
       .eq('id', userId);
     
     if (!error) {
-      setUsers(users.map(u => u.id === userId ? { ...u, status: status as any, role: role as any } : u));
+      setUsers(users.map(u => u.id === userId ? { ...u, status: status as any, ...(status === 'approved' ? { role: updateData.role as any } : {}) } : u));
     } else {
       alert('Erro ao atualizar status: ' + error.message);
     }
@@ -303,8 +307,6 @@ export default function Admin() {
         name: settings.name,
         logo: settings.logo,
         description: settings.description,
-        institutional_photo: (settings as any).institutionalPhoto,
-        top_banner: (settings as any).topBanner,
         lat: settings.location?.lat,
         lng: settings.location?.lng,
         radius: settings.radius,
@@ -319,17 +321,9 @@ export default function Admin() {
         max_clan_members: settings.max_clan_members || 10,
         updated_at: new Date().toISOString()
       })
-      .eq('id', (settings as any).id)
+      .eq('is_active', true)
       .select()
       .maybeSingle();
-
-    if (!error && data) {
-      fetchAll();
-      alert('Ajustes salvos com sucesso!');
-    } else {
-      alert('Erro ao salvar ajustes: ' + (error?.message || 'Erro desconhecido'));
-    }
-  };
 
     if (!error && data) {
       fetchAll();
@@ -1629,7 +1623,7 @@ export default function Admin() {
                       <span className="text-[10px] font-black text-secondary uppercase tracking-widest">{c.coins} COINS</span>
                     </div>
                     <span className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">
-                      {format(new Date(c.start_date), 'dd/MM')} - {format(new Date(c.end_date), 'dd/MM')}
+                      {c.start_date ? format(new Date(c.start_date), 'dd/MM') : '—'} - {c.end_date ? format(new Date(c.end_date), 'dd/MM') : '—'}
                     </span>
                   </div>
                 </div>
