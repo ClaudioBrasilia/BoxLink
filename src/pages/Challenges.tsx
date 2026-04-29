@@ -101,7 +101,11 @@ export default function Challenges() {
             const mappedUser: User = {
               ...updatedProfile,
               avatar: { equipped: updatedProfile.avatar_equipped, inventory: updatedProfile.avatar_inventory },
-              checkins: updatedProfile.checkins || [],
+              checkins: (updatedProfile.checkins || []).map((c: any) => ({
+                date: c.date,
+                timestamp: c.timestamp,
+                classTime: c.class_time ?? null,
+              })),
               paidBonuses: updatedProfile.paid_bonuses || []
             };
             updateUser(mappedUser);
