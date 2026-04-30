@@ -536,8 +536,14 @@ export default function Admin() {
   };
 
   const handleDeleteChallenge = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este desafio permanentemente?')) return;
+    if (!confirm('Tem certeza que deseja excluir este desafio permanentemente?\n\nO histórico de recompensas vinculado também será removido.')) return;
     
+    // Remove reward_history entries linked to this challenge first (foreign key constraint)
+    await supabase
+      .from('reward_history')
+      .delete()
+      .eq('challenge_id', id);
+
     const { error } = await supabase
       .from('challenges')
       .delete()
@@ -1986,6 +1992,7 @@ export default function Admin() {
                   </h3>
                   <input
                     type="date"
+                    style={{ colorScheme: 'dark' }}
                     value={checkinsDate}
                     onChange={e => setCheckinsDate(e.target.value)}
                     className="bg-surface-container-highest border-none rounded-2xl px-4 py-3 font-headline font-bold text-on-surface text-sm"
@@ -2211,6 +2218,7 @@ export default function Admin() {
                     <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data</label>
                     <input 
                       type="date" 
+                      style={{ colorScheme: 'dark' }}
                       value={editingWod.date} 
                       onChange={e => setEditingWod({...editingWod, date: e.target.value})}
                       className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
@@ -2279,6 +2287,7 @@ export default function Admin() {
                     <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Inicial</label>
                     <input 
                       type="date" 
+                      style={{ colorScheme: 'dark' }}
                       value={editingChallenge.startDate} 
                       onChange={e => setEditingChallenge({...editingChallenge, startDate: e.target.value})}
                       className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
@@ -2288,6 +2297,7 @@ export default function Admin() {
                     <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Final</label>
                     <input 
                       type="date" 
+                      style={{ colorScheme: 'dark' }}
                       value={editingChallenge.endDate} 
                       onChange={e => setEditingChallenge({...editingChallenge, endDate: e.target.value})}
                       className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" 
