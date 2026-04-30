@@ -73,6 +73,7 @@ export default function Clans() {
   const [myClan, setMyClan] = useState<Clan | null>(null);
   const [myMembership, setMyMembership] = useState<ClanMembership | null>(null);
   const [clansEnabled, setClansEnabled] = useState(false);
+  const [maxClanMembers, setMaxClanMembers] = useState(10);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showClanDetailModal, setShowClanDetailModal] = useState<Clan | null>(null);
@@ -102,9 +103,10 @@ export default function Clans() {
     try {
       const { data: settings } = await supabase
         .from('box_settings')
-        .select('clans_enabled')
+        .select('clans_enabled, max_clan_members')
         .maybeSingle();
       setClansEnabled(settings?.clans_enabled || false);
+      setMaxClanMembers(settings?.max_clan_members || 10);
 
       const { data: clansData } = await supabase
         .from('clans')
@@ -293,6 +295,14 @@ export default function Clans() {
 
   const handleJoinClan = async (clanId: string) => {
     if (!user) return;
+
+    // Verifica limite de membros
+    const approvedCount = memberships.filter(m => m.clan_id === clanId && m.status === 'approved').length;
+    if (approvedCount >= maxClanMembers) {
+      alert(`Este time está cheio! O limite é de ${maxClanMembers} membros.`);
+      return;
+    }
+
     setJoining(clanId);
     try {
       const { error } = await supabase.from('clan_memberships').insert({ clan_id: clanId, user_id: user.id, role: 'member', status: 'pending' });
@@ -502,7 +512,10 @@ export default function Clans() {
                   </div>
                   <div className="text-right">
                     <div className="flex items-center gap-1 text-primary font-black text-sm"><Zap className="w-3 h-3" /> {item.energy}</div>
-                    <div className="flex items-center gap-1 text-on-surface-variant text-[10px]"><Users className="w-3 h-3" /> {item.memberCount}</div>
+                    <div className={`flex items-center gap-1 text-[10px] font-bold ${item.memberCount >= maxClanMembers ? 'text-secondary' : 'text-on-surface-variant'}`}>
+                      <Users className="w-3 h-3" /> {item.memberCount}/{maxClanMembers}
+                      {item.memberCount >= maxClanMembers && <span className="uppercase tracking-widest"> · CHEIO</span>}
+                    </div>
                   </div>
                 </div>
 
@@ -513,11 +526,11 @@ export default function Clans() {
                 {!myClan && !alreadyRequested && (
                   <button
                     onClick={() => handleJoinClan(item.clan.id)}
-                    disabled={joining === item.clan.id}
-                    className="w-full py-2 rounded-xl font-headline font-black text-xs uppercase italic border border-outline-variant/20 text-on-surface-variant hover:border-primary hover:text-primary transition-all flex items-center justify-center gap-2"
+                    disabled={joining === item.clan.id || item.memberCount >= maxClanMembers}
+                    className={`w-full py-2 rounded-xl font-headline font-black text-xs uppercase italic border transition-all flex items-center justify-center gap-2 ${item.memberCount >= maxClanMembers ? 'border-outline-variant/10 text-on-surface-variant opacity-40 cursor-not-allowed' : 'border-outline-variant/20 text-on-surface-variant hover:border-primary hover:text-primary'}`}
                   >
                     <LogIn className="w-3 h-3" />
-                    {joining === item.clan.id ? 'Solicitando...' : 'Entrar no Time'}
+                    {joining === item.clan.id ? 'Solicitando...' : item.memberCount >= maxClanMembers ? 'Time Cheio' : 'Entrar no Time'}
                   </button>
                 )}
                 {alreadyRequested && !isMine && (
@@ -774,4 +787,4 @@ export default function Clans() {
       </AnimatePresence>
     </div>
   );
-}
+                                                            }
