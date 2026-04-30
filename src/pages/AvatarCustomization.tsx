@@ -6,7 +6,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Item, AvatarSlot } from '../types';
 import AvatarPreview from '../components/AvatarPreview';
+
 import { supabase } from '../lib/supabase';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const BUCKET = 'avatar-assets';
+
+function getItemImageUrl(imageKey: string): string {
+  if (!imageKey) return '';
+  if (imageKey.startsWith('http')) return imageKey;
+  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(imageKey)}.png`;
+}
 
 const SLOT_ICONS: Record<string, any> = {
   top: Shirt,
@@ -321,16 +331,18 @@ export default function AvatarCustomization() {
                   </div>
                 )}
 
-                <div className="aspect-square rounded-2xl bg-surface-container-highest flex items-center justify-center text-4xl group-hover:scale-110 transition-transform overflow-hidden">
-                  {item.image?.startsWith('http') ? (
+                <div className="aspect-square rounded-2xl bg-surface-container-highest overflow-hidden group-hover:scale-105 transition-transform">
+                  {item.image ? (
                     <img
-                      src={item.image}
+                      src={getItemImageUrl(item.image)}
                       alt={item.name}
-                      className="w-full h-full object-contain"
-                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover object-top"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
                     />
                   ) : (
-                    item.image || <Sparkles className="w-8 h-8 text-on-surface-variant opacity-30" />
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Sparkles className="w-8 h-8 text-on-surface-variant opacity-30" />
+                    </div>
                   )}
                 </div>
 
