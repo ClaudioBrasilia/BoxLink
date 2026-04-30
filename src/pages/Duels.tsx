@@ -11,6 +11,7 @@ import {
   Search,
   Timer,
   Hash,
+  Trash2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
@@ -116,6 +117,7 @@ export default function Duels() {
   const [boxSettings, setBoxSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // UI
   const [activeTab, setActiveTab] = useState<'all' | 'mine' | 'pending'>('all');
@@ -294,7 +296,6 @@ export default function Duels() {
 
       if (error) throw error;
 
-      // Reset form
       setSelectedOpponents([]);
       setOpponentSearch('');
       setSelectedWodId('');
@@ -332,7 +333,6 @@ export default function Duels() {
         updated_at: new Date().toISOString(),
       };
 
-      // Reservar aposta quando todos aceitaram
       if (allAccepted && !duel.betReserved && duel.betAmount > 0) {
         const allParticipants = [duel.challengerId, ...duel.opponentIds];
         for (const pid of allParticipants) {
@@ -379,7 +379,6 @@ export default function Duels() {
       const duel = duels.find(d => d.id === duelId);
       if (!duel) return;
 
-      // Devolver aposta se foi reservada
       if (duel.betReserved && duel.betAmount > 0 && !duel.betSettledAt) {
         const allParticipants = [duel.challengerId, ...duel.opponentIds];
         for (const pid of allParticipants) {
@@ -412,6 +411,33 @@ export default function Duels() {
     }
   };
 
+  // ─── Excluir duelo cancelado ──────────────────────────────────────────────
+
+  const handleDelete = async (duelId: string) => {
+    if (!user) return;
+    const duel = duels.find(d => d.id === duelId);
+    if (!duel) return;
+
+    // Só permite excluir duelos cancelados (betCanceledAt preenchido)
+    const isCanceled = duel.status === 'finished' && Boolean(duel.betCanceledAt);
+    const isParticipant = duel.challengerId === user.id || duel.opponentIds.includes(user.id);
+    if (!isCanceled || !isParticipant) return;
+
+    setDeletingId(duelId);
+    try {
+      const { error } = await supabase.from('duels').delete().eq('id', duelId);
+      if (error) throw error;
+      // Remove localmente sem precisar recarregar tudo
+      setDuels(prev => prev.filter(d => d.id !== duelId));
+      if (expandedId === duelId) setExpandedId(null);
+    } catch (err: any) {
+      console.error('Error deleting duel:', err);
+      alert('Erro ao excluir duelo: ' + err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   // ─── Submeter resultado ───────────────────────────────────────────────────
 
   const handleSubmitResult = async (duel: Duel) => {
@@ -429,7 +455,6 @@ export default function Duels() {
       const allSubmitted = allParticipants.every(id => newResults[id]);
 
       if (allSubmitted) {
-        // Determinar vencedor
         const winnerId = pickWinner(newResults, allParticipants, duel.wodType);
 
         const updates: any = {
@@ -439,17 +464,15 @@ export default function Duels() {
           updated_at: new Date().toISOString(),
         };
 
-        // Liquidar aposta
         if (duel.betReserved && duel.betAmount > 0 && !duel.betSettledAt && winnerId) {
           const losers = allParticipants.filter(id => id !== winnerId);
           const winnings = duel.betAmount * losers.length;
 
-          // Devolver a todos + prêmio ao vencedor
           for (const pid of allParticipants) {
             const profile = getUserProfile(pid);
             if (!profile) continue;
             if (duel.betType === 'xp') {
-              let newXp = (profile.xp || 0) + duel.betAmount; // devolução
+              let newXp = (profile.xp || 0) + duel.betAmount;
               if (pid === winnerId) newXp += winnings;
               await supabase.from('profiles').update({ xp: newXp }).eq('id', pid);
               if (pid === user.id) updateUser({ ...user, xp: newXp });
@@ -463,7 +486,6 @@ export default function Duels() {
           updates.bet_settled_at = new Date().toISOString();
         }
 
-        // XP/coins de vitória (do box_settings)
         if (winnerId) {
           await addReward(
             winnerId,
@@ -488,7 +510,6 @@ export default function Duels() {
 
         await supabase.from('duels').update(updates).eq('id', duel.id);
       } else {
-        // Salvar resultado parcial (escondido dos outros)
         await supabase.from('duels').update({
           results: newResults,
           updated_at: new Date().toISOString(),
@@ -589,7 +610,6 @@ export default function Duels() {
                   className="w-full bg-surface-container-highest rounded-2xl pl-9 pr-4 py-3 text-sm font-medium text-on-surface placeholder:text-on-surface-variant/40 outline-none"
                 />
               </div>
-              {/* Dropdown de resultados */}
               {opponentSearch.length > 0 && (
                 <div className="bg-surface-container-highest rounded-2xl border border-outline-variant/10 max-h-40 overflow-y-auto">
                   {filteredOpponents.length === 0 ? (
@@ -611,7 +631,6 @@ export default function Duels() {
                   ))}
                 </div>
               )}
-              {/* Oponentes selecionados */}
               {selectedOpponents.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {selectedOpponents.map(id => (
@@ -786,12 +805,21 @@ export default function Duels() {
             const allSubmitted = allParticipants.every(id => duel.results[id]);
             const timeBased = isTimeBased(duel.wodType);
 
+            // Duelo cancelado que este usuário pode excluir
+            const isCanceled = duel.status === 'finished' && Boolean(duel.betCanceledAt);
+            const canDelete = isCanceled && isParticipant;
+
             return (
-              <div
+              <motion.div
                 key={duel.id}
+                layout
+                initial={{ opacity: 1 }}
+                exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                transition={{ duration: 0.2 }}
                 className={cn(
                   'bg-surface-container rounded-3xl p-5 border border-outline-variant/10 transition-all flex flex-col gap-4',
-                  isExpanded && 'ring-2 ring-primary/20 bg-surface-container-high'
+                  isExpanded && 'ring-2 ring-primary/20 bg-surface-container-high',
+                  isCanceled && 'border-error/10'
                 )}
               >
                 {/* Cabeçalho do card */}
@@ -807,9 +835,25 @@ export default function Duels() {
                       : duel.status === 'finished' ? (duel.betCanceledAt ? 'CANCELADO' : 'FINALIZADO')
                       : 'PENDENTE'}
                   </span>
-                  <button onClick={() => setExpandedId(isExpanded ? null : duel.id)}>
-                    <ChevronDown className={cn('w-4 h-4 text-on-surface-variant transition-transform', isExpanded && 'rotate-180')} />
-                  </button>
+
+                  <div className="flex items-center gap-2">
+                    {/* Botão excluir — só em duelos cancelados */}
+                    {canDelete && (
+                      <button
+                        onClick={() => handleDelete(duel.id)}
+                        disabled={deletingId === duel.id}
+                        title="Excluir duelo cancelado"
+                        className="w-8 h-8 flex items-center justify-center rounded-xl text-error/50 hover:text-error hover:bg-error/10 border border-transparent hover:border-error/20 transition-all disabled:opacity-40"
+                      >
+                        {deletingId === duel.id
+                          ? <div className="w-3.5 h-3.5 border-2 border-error border-t-transparent rounded-full animate-spin" />
+                          : <Trash2 className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
+                    <button onClick={() => setExpandedId(isExpanded ? null : duel.id)}>
+                      <ChevronDown className={cn('w-4 h-4 text-on-surface-variant transition-transform', isExpanded && 'rotate-180')} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* WOD info (sempre visível) */}
@@ -992,7 +1036,7 @@ export default function Duels() {
                     DESISTIR / CANCELAR <X className="w-3 h-3" />
                   </button>
                 )}
-              </div>
+              </motion.div>
             );
           })
         )}
