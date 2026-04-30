@@ -215,7 +215,7 @@ export default function Admin() {
       announcements: (settings as any).announcements || [], timezone: settings.timezone || 'America/Sao_Paulo',
       clans_enabled: (settings as any).clans_enabled || false, avatar_enabled: (settings as any).avatar_enabled || false,
       max_clan_members: (settings as any).max_clan_members || 10, updated_at: new Date().toISOString(),
-    }).eq('is_active', true).select().maybeSingle();
+    }).eq('id', (settings as any).id).select().maybeSingle();
     if (!error && data) { fetchAll(); alert('Ajustes salvos!'); }
     else alert('Erro ao salvar: ' + (error?.message || 'Erro desconhecido'));
   };
@@ -562,7 +562,7 @@ export default function Admin() {
               </div>
             </div>
             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
-              <button onClick={() => { setEditingChallenge({ ...c, startDate: c.start_date, endDate: c.end_date }); setIsEditingChallenge(true); }} className="p-2 bg-primary/20 text-primary rounded-xl hover:bg-primary/30"><Edit2 className="w-3 h-3" /></button>
+              <button onClick={() => { setEditingChallenge({ ...c, startDate: c.start_date, endDate: c.end_date, dailyLimit: c.daily_limit }); setIsEditingChallenge(true); }} className="p-2 bg-primary/20 text-primary rounded-xl hover:bg-primary/30"><Edit2 className="w-3 h-3" /></button>
               <button onClick={() => handleDeleteChallenge(c.id)} className="p-2 bg-error-container text-on-error-container rounded-xl hover:bg-error/30"><Trash2 className="w-3 h-3" /></button>
             </div>
           </div>
