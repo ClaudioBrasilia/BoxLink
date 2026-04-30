@@ -460,36 +460,27 @@ export default function TV() {
                   exit={{ opacity: 0, x: 20 }}
                   className="absolute inset-0 bg-[#111] rounded-[3rem] p-12 border border-white/5 flex flex-col"
                 >
-                  <div className="flex justify-between items-start mb-8">
-                    <div>
-                      <h3 className="text-primary text-sm font-black uppercase tracking-[0.4em] italic mb-2">PHASE 03</h3>
-                      <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter">THE WOD</h2>
-                    </div>
-                    <div className="bg-primary text-black px-8 py-4 rounded-3xl font-headline font-black text-5xl italic uppercase tracking-tighter shadow-[0_0_30px_rgba(202,253,0,0.3)]">
+                  {/* Header compacto */}
+                  <div className="flex items-center justify-between mb-5">
+                    <h2 className="text-3xl font-headline font-black text-white uppercase italic tracking-tighter">{wod.name}</h2>
+                    <div className="bg-primary text-black px-6 py-2 rounded-2xl font-headline font-black text-xl italic uppercase tracking-tight">
                       {wod.type}
                     </div>
                   </div>
-                  
-                  <div className="flex-1 flex flex-col justify-center">
-                    <div className="text-center mb-12">
-                      <p className="text-white/40 text-sm font-black uppercase tracking-[0.5em] italic mb-4">MAIN EVENT</p>
-                      <h2 className="text-[12rem] font-headline font-black text-white italic tracking-tighter uppercase leading-[0.7] mb-8">{wod.name}</h2>
-                    </div>
 
-                    <div className="grid grid-cols-3 gap-6">
-                      <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 text-center">
-                        <span className="text-secondary text-xs font-black uppercase tracking-widest block mb-2">RX</span>
-                        <span className="text-4xl font-headline font-black text-white italic">{wod.rx}</span>
-                      </div>
-                      <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 text-center">
-                        <span className="text-white/40 text-xs font-black uppercase tracking-widest block mb-2">SCALED</span>
-                        <span className="text-4xl font-headline font-black text-white italic">{wod.scaled}</span>
-                      </div>
-                      <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 text-center">
-                        <span className="text-white/40 text-xs font-black uppercase tracking-widest block mb-2">BEGINNER</span>
-                        <span className="text-4xl font-headline font-black text-white italic">{wod.beginner}</span>
-                      </div>
-                    </div>
+                  {/* RX — ocupa todo o espaço com fonte adaptável */}
+                  <div className="flex-1 bg-secondary/10 border-2 border-secondary/40 rounded-[2rem] p-8 flex flex-col overflow-hidden">
+                    <span className="text-secondary text-lg font-black uppercase tracking-widest mb-4 shrink-0">🔴 RX</span>
+                    <p className="text-white font-headline font-black italic leading-snug whitespace-pre-wrap overflow-hidden"
+                      style={{
+                        fontSize: wod.rx && wod.rx.length > 200 ? '1.5rem' : wod.rx && wod.rx.length > 100 ? '2rem' : '2.5rem',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 10,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden'
+                      }}>
+                      {wod.rx}
+                    </p>
                   </div>
                 </motion.section>
               )}
