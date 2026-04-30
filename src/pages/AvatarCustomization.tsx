@@ -205,8 +205,8 @@ export default function AvatarCustomization() {
 
         {/* Gender Selection */}
         <div className="flex gap-2">
-          {(['base_1', 'base_female'] as const).map((gender) => {
-            const isActive = (user?.avatar.equipped?.base_outfit || 'base_1') === gender;
+          {(['base_masculina', 'base_feminina'] as const).map((gender) => {
+            const isActive = (user?.avatar.equipped?.base_outfit || 'base_masculina') === gender;
             return (
               <button
                 key={gender}
@@ -231,7 +231,7 @@ export default function AvatarCustomization() {
                 )}
               >
                 {changingGender && !isActive ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                {gender === 'base_1' ? '♂ Masculino' : '♀ Feminino'}
+                {gender === 'base_masculina' ? '♂ Masculino' : '♀ Feminino'}
               </button>
             );
           })}
