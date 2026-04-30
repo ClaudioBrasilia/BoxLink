@@ -1661,14 +1661,14 @@ export default function Admin() {
                     <div className="flex gap-2 ml-2">
                       <button
                         onClick={() => handleEditChallenge(c)}
-                        className="p-2 bg-primary/20 text-primary rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-primary/30"
+                        className="p-2 bg-primary/20 text-primary rounded-xl transition-all hover:bg-primary/30"
                         title="Editar desafio"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDeleteChallenge(c.id)}
-                        className="p-2 bg-error-container text-on-error-container rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-error/30"
+                        className="p-2 bg-error-container text-on-error-container rounded-xl transition-all hover:bg-error/30"
                         title="Excluir desafio"
                       >
                         <Trash2 className="w-4 h-4" />
