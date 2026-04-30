@@ -23,7 +23,7 @@ function getAvatarImageUrl(filename: string): string {
  */
 function getAvatarLayers(equipped: AvatarSlot): Array<{ url: string; alt: string }> {
   // Determina gênero pela base
-  const isFemale = equipped.base_outfit === 'base_feminina' || equipped.base_outfit?.includes('feminina');
+  const isFemale = equipped.base_outfit === 'base_feminina';
 
   const layers: Array<{ url: string; alt: string }> = [];
 
@@ -78,7 +78,7 @@ export default function AvatarPreview({ equipped, className, size = 'md' }: Avat
   };
 
   const layers = getAvatarLayers(equipped);
-  const isFemale = equipped.base_outfit === 'base_feminina' || equipped.base_outfit?.includes('feminina');
+  const isFemale = equipped.base_outfit === 'base_feminina';
 
   return (
     <div className={cn(
