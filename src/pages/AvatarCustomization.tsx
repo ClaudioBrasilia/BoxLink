@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShoppingBag, Package, Check, Coins, ChevronLeft, Sparkles, Shirt, Footprints, Glasses, GraduationCap, Watch } from 'lucide-react';
+import { ShoppingBag, Package, Check, Coins, ChevronLeft, Sparkles, Shirt, Footprints, Glasses, GraduationCap, Watch, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -35,67 +35,93 @@ export default function AvatarCustomization() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState<keyof AvatarSlot | 'all'>('all');
+  const [avatarEnabled, setAvatarEnabled] = useState<boolean | null>(null);
+  const [buyingItemId, setBuyingItemId] = useState<string | null>(null);
+  const [equipingItemId, setEquipingItemId] = useState<string | null>(null);
+  const [changingGender, setChangingGender] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => {
-    const fetchItems = async () => {
+    const fetchData = async () => {
+      const { data: settings } = await supabase
+        .from('box_settings')
+        .select('avatar_enabled')
+        .maybeSingle();
+      setAvatarEnabled(settings?.avatar_enabled ?? false);
+
       const { data } = await supabase.from('items').select('*');
       setItems(data || []);
       setLoading(false);
     };
-    fetchItems();
+    fetchData();
   }, []);
 
   const handleBuy = async (item: Item) => {
-    if (!user) return;
+    if (!user || buyingItemId) return;
     if (user.coins < item.price) return;
+    if (user.avatar?.inventory?.includes(item.id)) return;
 
+    setBuyingItemId(item.id);
     try {
       const newCoins = user.coins - item.price;
       const newInventory = [...(user.avatar?.inventory || []), item.id];
 
       const { error } = await supabase
         .from('profiles')
-        .update({ 
-          coins: newCoins, 
+        .update({
+          coins: newCoins,
           avatar_inventory: newInventory,
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
 
-      if (!error) {
-        updateUser({
-          ...user,
-          coins: newCoins,
-          avatar: { ...user.avatar, inventory: newInventory }
-        });
-      }
+      if (error) throw error;
+
+      updateUser({
+        ...user,
+        coins: newCoins,
+        avatar: { ...user.avatar, inventory: newInventory }
+      });
+      showToast(`${item.name} comprado! -${item.price} BC`);
     } catch (err) {
       console.error(err);
+      showToast('Erro ao comprar item. Tente novamente.', 'error');
+    } finally {
+      setBuyingItemId(null);
     }
   };
 
   const handleEquip = async (itemId: string | null, slot: keyof AvatarSlot) => {
-    if (!user) return;
+    if (!user || equipingItemId) return;
 
+    setEquipingItemId(itemId || slot);
     try {
       const newEquipped = { ...user.avatar.equipped, [slot]: itemId };
 
       const { error } = await supabase
         .from('profiles')
-        .update({ 
+        .update({
           avatar_equipped: newEquipped,
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
 
-      if (!error) {
-        updateUser({
-          ...user,
-          avatar: { ...user.avatar, equipped: newEquipped }
-        });
-      }
+      if (error) throw error;
+
+      updateUser({
+        ...user,
+        avatar: { ...user.avatar, equipped: newEquipped }
+      });
     } catch (err) {
       console.error(err);
+      showToast('Erro ao equipar item.', 'error');
+    } finally {
+      setEquipingItemId(null);
     }
   };
 
@@ -103,8 +129,59 @@ export default function AvatarCustomization() {
   const inventoryItems = filteredItems.filter(item => user?.avatar.inventory.includes(item.id));
   const shopItems = filteredItems.filter(item => !user?.avatar.inventory.includes(item.id));
 
+  if (loading || avatarEnabled === null) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background gap-4">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest">Carregando...</p>
+      </div>
+    );
+  }
+
+  if (!avatarEnabled) {
+    return (
+      <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background">
+        <header className="flex items-center gap-4">
+          <button onClick={() => navigate(-1)} className="p-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 text-on-surface hover:bg-surface-container-highest transition-all">
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <h1 className="text-3xl font-headline font-black text-on-surface tracking-tight uppercase italic flex items-center gap-3">
+            <Sparkles className="w-8 h-8 text-primary" />
+            CUSTOMIZAR
+          </h1>
+        </header>
+        <div className="bg-surface-container-low p-12 rounded-[2.5rem] border border-outline-variant/10 text-center flex flex-col items-center gap-4">
+          <Sparkles className="w-12 h-12 text-on-surface-variant opacity-20" />
+          <p className="text-on-surface font-headline font-bold uppercase italic tracking-widest">Em breve!</p>
+          <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50">O sistema de avatar está sendo preparado.</p>
+          <button onClick={() => navigate(-1)} className="mt-2 px-6 py-3 bg-surface-container-highest rounded-2xl border border-outline-variant/10 text-on-surface font-bold uppercase text-xs tracking-widest hover:bg-surface-container-low transition-all">
+            VOLTAR
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background pb-24">
+
+      {/* Toast de feedback */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className={cn(
+              "fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl",
+              toast.type === 'success' ? "bg-primary text-on-primary" : "bg-error text-on-error"
+            )}
+          >
+            {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <header className="flex items-center gap-4">
         <button onClick={() => navigate(-1)} className="p-3 bg-surface-container-low rounded-2xl border border-outline-variant/10 text-on-surface hover:bg-surface-container-highest transition-all">
           <ChevronLeft className="w-5 h-5" />
@@ -125,7 +202,41 @@ export default function AvatarCustomization() {
         </div>
 
         <AvatarPreview equipped={user?.avatar.equipped!} size="xl" />
-        
+
+        {/* Gender Selection */}
+        <div className="flex gap-2">
+          {(['base_1', 'base_female'] as const).map((gender) => {
+            const isActive = (user?.avatar.equipped?.base_outfit || 'base_1') === gender;
+            return (
+              <button
+                key={gender}
+                disabled={isActive || changingGender}
+                onClick={async () => {
+                  if (!user || isActive || changingGender) return;
+                  setChangingGender(true);
+                  try {
+                    const newEquipped = { ...user.avatar.equipped, base_outfit: gender };
+                    const { error } = await supabase.from('profiles').update({ avatar_equipped: newEquipped, updated_at: new Date().toISOString() }).eq('id', user.id);
+                    if (error) throw error;
+                    updateUser({ ...user, avatar: { ...user.avatar, equipped: newEquipped } });
+                  } catch {
+                    showToast('Erro ao alterar avatar.', 'error');
+                  } finally {
+                    setChangingGender(false);
+                  }
+                }}
+                className={cn(
+                  "px-4 py-1.5 rounded-full font-bold uppercase text-[8px] tracking-widest border transition-all flex items-center gap-1.5 disabled:cursor-not-allowed",
+                  isActive ? "bg-primary text-on-primary border-primary shadow-lg shadow-primary/20" : "bg-surface-container-low text-on-surface-variant border-outline-variant/10 hover:border-primary/30"
+                )}
+              >
+                {changingGender && !isActive ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                {gender === 'base_1' ? '♂ Masculino' : '♀ Feminino'}
+              </button>
+            );
+          })}
+        </div>
+
         <div className="text-center">
           <h2 className="text-2xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none mb-1">{user?.name}</h2>
           <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest italic">NÍVEL {user?.level}</p>
@@ -135,7 +246,7 @@ export default function AvatarCustomization() {
       {/* Tabs & Filters */}
       <div className="flex flex-col gap-4">
         <div className="flex bg-surface-container-low p-1.5 rounded-2xl border border-outline-variant/10">
-          <button 
+          <button
             onClick={() => setActiveTab('inventory')}
             className={cn(
               "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all",
@@ -144,7 +255,7 @@ export default function AvatarCustomization() {
           >
             <Package className="w-4 h-4" /> MEU ARMÁRIO
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('shop')}
             className={cn(
               "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all",
@@ -156,7 +267,7 @@ export default function AvatarCustomization() {
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-          <button 
+          <button
             onClick={() => setSelectedSlot('all')}
             className={cn(
               "px-4 py-2 rounded-full font-bold uppercase text-[8px] tracking-widest whitespace-nowrap border transition-all",
@@ -168,7 +279,7 @@ export default function AvatarCustomization() {
           {Object.entries(SLOT_LABELS).map(([slot, label]) => {
             const Icon = SLOT_ICONS[slot];
             return (
-              <button 
+              <button
                 key={slot}
                 onClick={() => setSelectedSlot(slot as keyof AvatarSlot)}
                 className={cn(
@@ -189,6 +300,8 @@ export default function AvatarCustomization() {
           {(activeTab === 'inventory' ? inventoryItems : shopItems).map((item) => {
             const isEquipped = user?.avatar.equipped[item.slot] === item.id;
             const canAfford = (user?.coins || 0) >= item.price;
+            const isBuying = buyingItemId === item.id;
+            const isEquiping = equipingItemId === item.id || equipingItemId === item.slot;
 
             return (
               <motion.div
@@ -207,17 +320,17 @@ export default function AvatarCustomization() {
                     <Check className="w-3 h-3" />
                   </div>
                 )}
-                
+
                 <div className="aspect-square rounded-2xl bg-surface-container-highest flex items-center justify-center text-4xl group-hover:scale-110 transition-transform overflow-hidden">
-                  {item.image.startsWith('http') ? (
-                    <img 
-                      src={item.image} 
-                      alt={item.name} 
+                  {item.image?.startsWith('http') ? (
+                    <img
+                      src={item.image}
+                      alt={item.name}
                       className="w-full h-full object-contain"
                       referrerPolicy="no-referrer"
                     />
                   ) : (
-                    item.image
+                    item.image || <Sparkles className="w-8 h-8 text-on-surface-variant opacity-30" />
                   )}
                 </div>
 
@@ -229,25 +342,26 @@ export default function AvatarCustomization() {
                 </div>
 
                 {activeTab === 'inventory' ? (
-                  <button 
+                  <button
                     onClick={() => handleEquip(isEquipped ? null : item.id, item.slot)}
+                    disabled={!!equipingItemId}
                     className={cn(
-                      "w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all",
+                      "w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all flex items-center justify-center gap-1.5 disabled:opacity-60",
                       isEquipped ? "bg-surface-container-highest text-on-surface-variant" : "bg-primary text-on-primary shadow-lg shadow-primary/20"
                     )}
                   >
-                    {isEquipped ? 'REMOVER' : 'EQUIPAR'}
+                    {isEquiping ? <Loader2 className="w-3 h-3 animate-spin" /> : isEquipped ? 'REMOVER' : 'EQUIPAR'}
                   </button>
                 ) : (
-                  <button 
+                  <button
                     onClick={() => handleBuy(item)}
-                    disabled={!canAfford}
+                    disabled={!canAfford || !!buyingItemId}
                     className={cn(
                       "w-full py-2 rounded-xl font-black uppercase text-[8px] tracking-widest transition-all flex items-center justify-center gap-1.5",
-                      canAfford ? "bg-secondary text-on-secondary shadow-lg shadow-secondary/20" : "bg-surface-container-highest text-on-surface-variant opacity-50 cursor-not-allowed"
+                      canAfford && !buyingItemId ? "bg-secondary text-on-secondary shadow-lg shadow-secondary/20" : "bg-surface-container-highest text-on-surface-variant opacity-50 cursor-not-allowed"
                     )}
                   >
-                    <Coins className="w-3 h-3" /> {item.price} BC
+                    {isBuying ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Coins className="w-3 h-3" /> {item.price} BC</>}
                   </button>
                 )}
               </motion.div>
@@ -255,11 +369,11 @@ export default function AvatarCustomization() {
           })}
         </AnimatePresence>
 
-        {activeTab === 'inventory' && inventoryItems.length === 0 && (
+        {activeTab === 'inventory' && inventoryItems.length === 0 && !loading && (
           <div className="col-span-2 bg-surface-container-low p-12 rounded-[2.5rem] border border-outline-variant/10 text-center">
             <Package className="w-12 h-12 text-on-surface-variant opacity-20 mx-auto mb-4" />
             <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">Seu armário está vazio</p>
-            <button 
+            <button
               onClick={() => setActiveTab('shop')}
               className="mt-4 text-primary text-[10px] font-black uppercase tracking-widest hover:underline"
             >
@@ -268,10 +382,12 @@ export default function AvatarCustomization() {
           </div>
         )}
 
-        {activeTab === 'shop' && shopItems.length === 0 && (
+        {activeTab === 'shop' && shopItems.length === 0 && !loading && (
           <div className="col-span-2 bg-surface-container-low p-12 rounded-[2.5rem] border border-outline-variant/10 text-center">
             <ShoppingBag className="w-12 h-12 text-on-surface-variant opacity-20 mx-auto mb-4" />
-            <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">Você já comprou tudo!</p>
+            <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest italic">
+              {items.length === 0 ? 'Nenhum item disponível ainda' : 'Você já tem todos os itens!'}
+            </p>
           </div>
         )}
       </section>
