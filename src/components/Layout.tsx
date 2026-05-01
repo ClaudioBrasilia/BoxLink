@@ -10,20 +10,23 @@ export default function Layout() {
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  // Feed entra na barra inferior no lugar de Duelos
+  // Duelos vai para o menu "Mais"
   const navItems = [
-    { icon: Home, label: 'Início', path: '/' },
-    { icon: Timer, label: 'WOD', path: '/wod' },
-    { icon: Swords, label: 'Duelos', path: '/duels' },
+    { icon: Home,   label: 'Início',  path: '/' },
+    { icon: Swords, label: 'Duelos',  path: '/duels' },
+    { icon: Users,  label: 'Feed',    path: '/feed' },
     { icon: Trophy, label: 'Ranking', path: '/leaderboard' },
-    { icon: User, label: 'Perfil', path: '/profile' },
+    { icon: User,   label: 'Perfil',  path: '/profile' },
   ];
 
   const moreItems = [
-    { icon: Zap, label: 'Desafios', path: '/challenges' },
+    { icon: Timer,     label: 'WOD',      path: '/wod' },
+    { icon: Zap,       label: 'Desafios', path: '/challenges' },
     { icon: LineChart, label: 'Evolução', path: '/progress' },
-    { icon: Box, label: 'Meu Box', path: '/mybox' },
-    { icon: Users, label: 'Times', path: '/clans' },
-    { icon: Sparkles, label: 'Avatar', path: '/avatar' },
+    { icon: Box,       label: 'Meu Box',  path: '/mybox' },
+    { icon: Users,     label: 'Clãs',     path: '/clans' },
+    { icon: Sparkles,  label: 'Avatar',   path: '/avatar' },
     ...(user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Admin', path: '/admin' }] : []),
     ...(user?.role === 'coach' || user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Coach', path: '/coach' }] : []),
   ];
@@ -35,7 +38,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-background text-on-surface font-body selection:bg-primary selection:text-background">
-      {/* HR Bar - Parity with CrossCity */}
+      {/* HR Bar */}
       <div className="bg-surface-container-highest/50 border-b border-outline-variant/10 px-4 py-1.5 flex items-center justify-between overflow-hidden z-50 sticky top-0 backdrop-blur-md">
         <div className="flex items-center gap-4 animate-marquee-slow whitespace-nowrap">
           <div className="flex items-center gap-2">
@@ -51,7 +54,6 @@ export default function Layout() {
               )}>{bpm} BPM</span>
             </div>
           ))}
-          {/* Duplicate for seamless loop */}
           {[72, 85, 110, 92, 125, 88, 140, 95, 102, 118].map((bpm, i) => (
             <div key={`dup-${i}`} className="flex items-center gap-1.5 bg-surface-container-low px-2 py-0.5 rounded-full border border-outline-variant/10">
               <span className="text-[8px] font-bold text-on-surface-variant">ATLETA {i+1}</span>
@@ -145,4 +147,4 @@ export default function Layout() {
       </nav>
     </div>
   );
-    }
+}
