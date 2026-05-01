@@ -1,26 +1,56 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Zap, CheckCircle2, History, Trophy, Camera, X, Upload, Calendar } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { Challenge, User } from '../types';
+import { Challenge } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
 import { addReward } from '../utils/rewards';
 
+// Toast inline — sem alert(), sem reload necessário
+function Toast({ message, type, onClose }: { message: string; type: 'success' | 'info' | 'error'; onClose: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 4000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -16 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -16 }}
+      className={cn(
+        'fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-2xl shadow-lg flex items-center gap-3 text-sm font-bold max-w-xs w-full',
+        type === 'success' && 'bg-primary text-background',
+        type === 'info'    && 'bg-surface-container-highest text-on-surface border border-outline-variant/20',
+        type === 'error'   && 'bg-error text-on-error',
+      )}
+    >
+      <span className="flex-1">{message}</span>
+      <button onClick={onClose} className="opacity-60 hover:opacity-100"><X className="w-4 h-4" /></button>
+    </motion.div>
+  );
+}
+
 export default function Challenges() {
   const { user, updateUser } = useAuth();
-  const [challenges, setChallenges] = useState<Challenge[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
-  const [checkins, setCheckins] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
-  const [loading, setLoading] = useState<string | null>(null);
-  const [photoModal, setPhotoModal] = useState<{ challenge: Challenge } | null>(null);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [challenges, setChallenges]   = useState<Challenge[]>([]);
+  const [history, setHistory]         = useState<any[]>([]);
+  const [checkins, setCheckins]       = useState<any[]>([]);
+  const [activeTab, setActiveTab]     = useState<'active' | 'history'>('active');
+  const [loading, setLoading]         = useState<string | null>(null);
+  const [photoModal, setPhotoModal]   = useState<{ challenge: Challenge } | null>(null);
+  const [photoFile, setPhotoFile]     = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [toast, setToast]             = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+  // FIX câmera: input fora do overflow-hidden, referenciado via ref
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchData = async () => {
+  const showToast = useCallback((message: string, type: 'success' | 'info' | 'error' = 'info') => {
+    setToast({ message, type });
+  }, []);
+
+  const fetchData = useCallback(async () => {
     const { data: challengesData } = await supabase.from('challenges').select('*').eq('active', true);
     if (challengesData) setChallenges(challengesData);
 
@@ -39,16 +69,20 @@ export default function Challenges() {
         .eq('user_id', user.id);
       if (checkinsData) setCheckins(checkinsData);
     }
-  };
+  }, [user?.id]);
 
-  useEffect(() => { fetchData(); }, [user?.id]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const getDaysCompleted = (challengeId: string) =>
     checkins.filter(c => c.challenge_id === challengeId).length;
 
   const checkedInToday = (challengeId: string) => {
     const today = new Date().toISOString().split('T')[0];
-    return checkins.some(c => c.challenge_id === challengeId && c.created_at?.startsWith(today));
+    // Verifica tanto checkin_date (coluna nova) quanto created_at (fallback)
+    return checkins.some(c =>
+      c.challenge_id === challengeId &&
+      (c.checkin_date === today || c.created_at?.startsWith(today))
+    );
   };
 
   const isRewardClaimed = (challengeId: string) =>
@@ -57,7 +91,7 @@ export default function Challenges() {
   const handleDayOk = async (challenge: Challenge) => {
     if (!user || loading) return;
     if (checkedInToday(challenge.id)) {
-      alert('Você já marcou o OK de hoje para este desafio!');
+      showToast('Você já marcou o OK de hoje para este desafio!', 'info');
       return;
     }
     if (challenge.require_photo) {
@@ -71,10 +105,12 @@ export default function Challenges() {
     if (!user) return;
     setLoading(challenge.id);
     try {
+      const today = new Date().toISOString().split('T')[0];
       const { error } = await supabase.from('challenge_checkins').insert({
         user_id: user.id,
         challenge_id: challenge.id,
         photo_url: photoUrl,
+        checkin_date: today,          // garante a coluna nova
       });
       if (error) throw error;
 
@@ -82,44 +118,60 @@ export default function Challenges() {
         user_id: user.id,
         challenge_id: challenge.id,
         photo_url: photoUrl,
-        created_at: new Date().toISOString()
+        checkin_date: today,
+        created_at: new Date().toISOString(),
       }];
       setCheckins(newCheckins);
 
-      const daysNow = newCheckins.filter(c => c.challenge_id === challenge.id).length;
+      const daysNow      = newCheckins.filter(c => c.challenge_id === challenge.id).length;
       const requiredDays = challenge.required_days || 1;
 
       if (daysNow >= requiredDays && !isRewardClaimed(challenge.id)) {
-        const rewardResult = await addReward(user.id, 'challenge', challenge.xp, challenge.coins, `Desafio: ${challenge.title}`, challenge.id);
+        const rewardResult = await addReward(
+          user.id, 'challenge',
+          challenge.xp, challenge.coins,
+          `Desafio: ${challenge.title}`,
+          challenge.id
+        );
         if (rewardResult && !(rewardResult as any).duplicate) {
           confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
           if ((rewardResult as any).levelUp) {
             setTimeout(() => confetti({ particleCount: 250, spread: 110, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }), 600);
           }
-          const { data: updatedProfile } = await supabase.from('profiles').select('*, checkins(*)').eq('id', user.id).single();
+
+          // FIX atualização: busca perfil atualizado e propaga via updateUser
+          const { data: updatedProfile } = await supabase
+            .from('profiles')
+            .select('*, checkins(*)')
+            .eq('id', user.id)
+            .single();
           if (updatedProfile) {
-            const mappedUser: User = {
-              ...updatedProfile,
-              avatar: { equipped: updatedProfile.avatar_equipped, inventory: updatedProfile.avatar_inventory },
-              checkins: (updatedProfile.checkins || []).map((c: any) => ({
-                date: c.date,
-                timestamp: c.timestamp,
-                classTime: c.class_time ?? null,
-              })),
-              paidBonuses: updatedProfile.paid_bonuses || []
-            };
-            updateUser(mappedUser);
+            updateUser({
+              ...user,
+              xp: updatedProfile.xp,
+              coins: updatedProfile.coins,
+              level: updatedProfile.level,
+              avatar: { equipped: updatedProfile.avatar_equipped, inventory: updatedProfile.avatar_inventory || [] },
+              paidBonuses: updatedProfile.paid_bonuses || [],
+            });
           }
-          alert(`Desafio concluído! +${challenge.xp} XP e +${challenge.coins} BC!`);
-          fetchData();
+
+          // FIX: aguarda fetchData antes de mostrar toast, garante que history atualiza
+          await fetchData();
+          showToast(`🏆 Desafio concluído! +${challenge.xp} XP e +${challenge.coins} BC!`, 'success');
         }
       } else {
         const remaining = requiredDays - daysNow;
-        alert(`OK marcado! Faltam ${remaining} dia${remaining !== 1 ? 's' : ''} para completar o desafio.`);
+        showToast(
+          remaining > 0
+            ? `✓ OK marcado! Faltam ${remaining} dia${remaining !== 1 ? 's' : ''} para concluir.`
+            : '✓ OK marcado!',
+          'info'
+        );
       }
     } catch (e: any) {
       console.error(e);
-      alert('Erro ao registrar OK: ' + (e.message || 'Erro desconhecido'));
+      showToast('Erro ao registrar: ' + (e.message || 'Erro desconhecido'), 'error');
     } finally {
       setLoading(null);
     }
@@ -134,15 +186,22 @@ export default function Challenges() {
 
   const handlePhotoSubmit = async () => {
     if (!photoModal || !user) return;
+
+    // FIX: valida foto obrigatória antes de submeter
+    if (photoModal.challenge.require_photo && !photoFile) {
+      showToast('Foto obrigatória — toque na área acima para tirar ou escolher uma foto.', 'error');
+      return;
+    }
+
     setLoading(photoModal.challenge.id);
     let photoUrl: string | null = null;
 
     if (photoFile) {
-      const ext = photoFile.name.split('.').pop();
+      const ext  = photoFile.name.split('.').pop();
       const path = `challenge-photos/${user.id}/${photoModal.challenge.id}-${Date.now()}.${ext}`;
       const { error: uploadError } = await supabase.storage.from('challenge-photos').upload(path, photoFile);
       if (uploadError) {
-        alert('Erro ao enviar foto: ' + uploadError.message);
+        showToast('Erro ao enviar foto: ' + uploadError.message, 'error');
         setLoading(null);
         return;
       }
@@ -157,8 +216,26 @@ export default function Challenges() {
     await submitDayOk(challenge, photoUrl);
   };
 
+  const closePhotoModal = () => {
+    setPhotoModal(null);
+    setPhotoFile(null);
+    setPhotoPreview(null);
+  };
+
   return (
     <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background">
+
+      {/* FIX: Toast inline substitui alert() — atualiza sem reload */}
+      <AnimatePresence>
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
+      </AnimatePresence>
+
       <header className="flex justify-between items-center">
         <h1 className="text-3xl font-headline font-black text-on-surface tracking-tight uppercase italic flex items-center gap-3">
           <Zap className="w-8 h-8 text-secondary" />
@@ -185,12 +262,12 @@ export default function Challenges() {
         {activeTab === 'active' && (
           <motion.div key="active" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="flex flex-col gap-4">
             {challenges.filter(c => c.active).map((challenge) => {
-              const requiredDays = challenge.required_days || 1;
-              const daysCompleted = getDaysCompleted(challenge.id);
-              const todayDone = checkedInToday(challenge.id);
-              const rewardClaimed = isRewardClaimed(challenge.id);
-              const isFinished = rewardClaimed || daysCompleted >= requiredDays;
-              const progress = Math.min(daysCompleted / requiredDays, 1);
+              const requiredDays   = challenge.required_days || 1;
+              const daysCompleted  = getDaysCompleted(challenge.id);
+              const todayDone      = checkedInToday(challenge.id);
+              const rewardClaimed  = isRewardClaimed(challenge.id);
+              const isFinished     = rewardClaimed || daysCompleted >= requiredDays;
+              const progress       = Math.min(daysCompleted / requiredDays, 1);
 
               return (
                 <div key={challenge.id} className={cn(
@@ -316,6 +393,17 @@ export default function Challenges() {
       </AnimatePresence>
 
       {/* Modal de Foto */}
+      {/* FIX câmera: input movido para FORA da div com overflow-hidden */}
+      {/* No iOS Safari, inputs hidden dentro de overflow-hidden não disparam a câmera */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handlePhotoChange}
+      />
+
       <AnimatePresence>
         {photoModal && (
           <motion.div
@@ -323,7 +411,7 @@ export default function Challenges() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4"
-            onClick={(e) => { if (e.target === e.currentTarget) { setPhotoModal(null); setPhotoFile(null); setPhotoPreview(null); } }}
+            onClick={(e) => { if (e.target === e.currentTarget) closePhotoModal(); }}
           >
             <motion.div
               initial={{ y: 100, opacity: 0 }}
@@ -333,24 +421,26 @@ export default function Challenges() {
             >
               <div className="flex justify-between items-center">
                 <h3 className="font-headline font-black text-lg text-on-surface uppercase italic">Enviar Foto</h3>
-                <button onClick={() => { setPhotoModal(null); setPhotoFile(null); setPhotoPreview(null); }} className="p-2 rounded-xl bg-surface-container-highest text-on-surface-variant">
+                <button onClick={closePhotoModal} className="p-2 rounded-xl bg-surface-container-highest text-on-surface-variant">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <p className="text-on-surface-variant text-sm">{photoModal.challenge.title}</p>
+
+              {/* Área clicável — sem overflow-hidden para não bloquear o input */}
               <div
-                className="relative w-full aspect-video bg-surface-container-highest rounded-2xl flex flex-col items-center justify-center gap-3 cursor-pointer border-2 border-dashed border-outline-variant/30 hover:border-primary/50 transition-all overflow-hidden"
+                className="relative w-full aspect-video bg-surface-container-highest rounded-2xl flex flex-col items-center justify-center gap-3 cursor-pointer border-2 border-dashed border-outline-variant/30 hover:border-primary/50 transition-all"
                 onClick={() => fileInputRef.current?.click()}
               >
                 {photoPreview
-                  ? <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                  ? <img src={photoPreview} alt="Preview" className="w-full h-full object-cover rounded-2xl" />
                   : <>
                       <Camera className="w-10 h-10 text-on-surface-variant opacity-40" />
-                      <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Toque para adicionar foto</span>
+                      <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Toque para tirar ou escolher foto</span>
                     </>
                 }
-                <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoChange} />
               </div>
+
               <button
                 onClick={handlePhotoSubmit}
                 disabled={!!loading}
