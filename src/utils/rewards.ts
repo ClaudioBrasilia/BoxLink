@@ -1,6 +1,14 @@
 import { supabase } from '../lib/supabase';
 
-export async function addReward(userId: string, type: string, xp: number, coins: number, description: string, referenceId?: string) {
+export async function addReward(
+  userId: string,
+  type: string,
+  xp: number,
+  coins: number,
+  description: string,
+  referenceId?: string
+): Promise<{ levelUp: boolean; newXp: number; newCoins: number; newLevel: number } | null> {
+
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('xp, coins, level')
@@ -8,72 +16,52 @@ export async function addReward(userId: string, type: string, xp: number, coins:
     .single();
 
   if (profileError || !profile) {
-    console.error('Error fetching profile for reward:', profileError);
+    console.error('addReward: erro ao buscar perfil', profileError);
     return null;
   }
 
-  const newXp = (profile.xp || 0) + xp;
-  const newCoins = (profile.coins || 0) + coins;
-  
-  // Simple level up logic
-  const xpToNextLevel = profile.level * 100;
-  let newLevel = profile.level;
-  let levelUp = false;
-  
+  const newXp    = (profile.xp    || 0) + xp;
+  const newCoins = (profile.coins  || 0) + coins;
+
+  // Nível sobe a cada 100 XP × nível atual
+  const xpToNextLevel = (profile.level || 1) * 100;
+  let newLevel = profile.level || 1;
+  let levelUp  = false;
   if (newXp >= xpToNextLevel) {
     newLevel += 1;
-    levelUp = true;
+    levelUp   = true;
   }
 
   const { error: updateError } = await supabase
     .from('profiles')
-    .update({ 
-      xp: newXp, 
-      coins: newCoins, 
-      level: newLevel,
-      updated_at: new Date().toISOString()
-    })
+    .update({ xp: newXp, coins: newCoins, level: newLevel, updated_at: new Date().toISOString() })
     .eq('id', userId);
 
   if (updateError) {
-    console.error('Error updating profile rewards:', updateError);
+    console.error('addReward: erro ao atualizar perfil', updateError);
     return null;
   }
 
-  const insertData: any = { 
-    user_id: userId, 
-    type, 
-    xp, 
-    coins, 
-    description 
-  };
-
-  // If we have a referenceId, we could store it if the column exists.
-  // For now, we'll just keep it in the description if we want to be safe,
-  // or just ignore it if we don't have the column.
-  // The user might have added the column manually in Supabase.
-  if (referenceId) {
-    insertData.challenge_id = referenceId; // Assuming it might exist
-  }
+  // Insere no histórico — challenge_id é opcional (coluna adicionada na migration)
+  const insertData: any = { user_id: userId, type, xp, coins, description };
+  if (referenceId) insertData.challenge_id = referenceId;
 
   const { error: historyError } = await supabase
     .from('reward_history')
     .insert(insertData);
 
   if (historyError) {
-    // If challenge_id doesn't exist, try without it
-    if (historyError.message.includes('column "challenge_id" of relation "reward_history" does not exist')) {
-      await supabase.from('reward_history').insert({ 
-        user_id: userId, 
-        type, 
-        xp, 
-        coins, 
-        description: `${description} [ID: ${referenceId}]`
+    // Fallback: tenta sem challenge_id se a coluna não existir ainda
+    if (historyError.message?.includes('challenge_id')) {
+      await supabase.from('reward_history').insert({
+        user_id: userId, type, xp, coins,
+        description: referenceId ? `${description} [${referenceId}]` : description,
       });
     } else {
-      console.error('Error inserting reward history:', historyError);
+      console.error('addReward: erro ao inserir histórico', historyError);
     }
   }
-  
-  return { levelUp };
+
+  // Retorna os novos valores para o chamador atualizar o contexto imediatamente
+  return { levelUp, newXp, newCoins, newLevel };
 }
