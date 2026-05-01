@@ -133,28 +133,30 @@ export default function Challenges() {
           `Desafio: ${challenge.title}`,
           challenge.id
         );
-        if (rewardResult && !(rewardResult as any).duplicate) {
+        if (rewardResult) {
           confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
-          if ((rewardResult as any).levelUp) {
+          if (rewardResult.levelUp) {
             setTimeout(() => confetti({ particleCount: 250, spread: 110, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }), 600);
           }
 
-          // FIX atualização: busca perfil atualizado e propaga via updateUser
-          const { data: updatedProfile } = await supabase
-            .from('profiles')
-            .select('*, checkins(*)')
-            .eq('id', user.id)
-            .single();
-          if (updatedProfile) {
-            updateUser({
-              ...user,
-              xp: updatedProfile.xp,
-              coins: updatedProfile.coins,
-              level: updatedProfile.level,
-              avatar: { equipped: updatedProfile.avatar_equipped, inventory: updatedProfile.avatar_inventory || [] },
-              paidBonuses: updatedProfile.paid_bonuses || [],
-            });
-          }
+          // Atualiza contexto imediatamente com valores retornados pelo addReward — sem SELECT extra
+          updateUser({
+            ...user,
+            xp:    rewardResult.newXp,
+            coins: rewardResult.newCoins,
+            level: rewardResult.newLevel,
+          });
+
+          // Publica automaticamente no feed quando há foto ou quando é conclusão de desafio
+          await supabase.from('feed_posts').insert({
+            user_id: user.id,
+            type: 'challenge',
+            challenge_id: challenge.id,
+            photo_url: photoUrl,
+            caption: null,
+            xp_earned: challenge.xp,
+            coins_earned: challenge.coins,
+          });
 
           // FIX: aguarda fetchData antes de mostrar toast, garante que history atualiza
           await fetchData();
