@@ -3,6 +3,7 @@ import { Heart, MessageCircle, Trophy, Zap, CheckCircle2, Swords, Send, X, Users
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { createNotification } from '../hooks/useNotifications';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface FeedPost {
@@ -312,6 +313,16 @@ export default function Feed() {
       await supabase.from('feed_likes').delete().eq('post_id', postId).eq('user_id', user.id);
     } else {
       await supabase.from('feed_likes').insert({ post_id: postId, user_id: user.id });
+      // Notifica o dono do post (não notifica a si mesmo)
+      const post = posts.find(p => p.id === postId);
+      if (post && post.user_id !== user.id) {
+        await createNotification(
+          post.user_id, 'like',
+          '❤️ Curtida no seu post',
+          `${user.name} curtiu sua foto de desafio.`,
+          { post_id: postId }
+        );
+      }
     }
     // Atualização otimista local — sem refetch
     setPosts(prev => prev.map(p => {
@@ -343,6 +354,16 @@ export default function Feed() {
           ],
         };
       }));
+      // Notifica o dono do post (não notifica a si mesmo)
+      const post = posts.find(p => p.id === postId);
+      if (post && post.user_id !== user.id) {
+        await createNotification(
+          post.user_id, 'comment',
+          '💬 Comentário no seu post',
+          `${user.name}: "${content.slice(0, 60)}${content.length > 60 ? '...' : ''}"`,
+          { post_id: postId }
+        );
+      }
     }
   };
 
