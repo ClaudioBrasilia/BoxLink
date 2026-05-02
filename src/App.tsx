@@ -20,6 +20,7 @@ import Signup from './pages/Signup';
 import DebugFlow from './pages/DebugFlow';
 import Benchmarks from './pages/Benchmarks';
 import Install from './pages/Install';
+import Feed from './pages/Feed';
 import { Shield } from 'lucide-react';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
@@ -73,6 +74,7 @@ export default function App() {
             <Route path="debug-flow" element={<DebugFlow />} />
             <Route path="benchmarks" element={<Benchmarks />} />
             <Route path="install" element={<Install />} />
+            <Route path="feed" element={<Feed />} />
             <Route path="admin" element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
             <Route path="coach" element={<ProtectedRoute roles={['coach', 'admin']}><Coach /></ProtectedRoute>} />
           </Route>
