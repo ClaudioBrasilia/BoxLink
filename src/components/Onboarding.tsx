@@ -17,9 +17,9 @@ const SLIDES = [
     icon: Zap,
     iconColor: 'text-secondary',
     iconBg: 'bg-secondary/10 border-secondary/20',
-    title: 'Ganhe XP e BoxCoins',
+    title: 'Ganhe XP e BrazaCoins',
     subtitle: 'Cada treino vale pontos',
-    body: 'Faça check-in, complete desafios e vença duelos para acumular XP, subir de nível e ganhar BoxCoins para gastar na loja do avatar.',
+    body: 'Faça check-in, complete desafios e vença duelos para acumular XP, subir de nível e ganhar BrazaCoins para gastar na loja do avatar.',
     cta: 'Que demais!',
   },
   {
@@ -84,7 +84,7 @@ const PREVIEWS: Record<number, React.ReactNode> = {
           </div>
           <div className="flex-1 bg-secondary/10 rounded-xl p-3 border border-secondary/20 text-center">
             <p className="text-lg font-black text-secondary">380</p>
-            <p className="text-[9px] text-secondary/70 font-bold uppercase tracking-widest">BoxCoins</p>
+            <p className="text-[9px] text-secondary/70 font-bold uppercase tracking-widest">BrazaCoins</p>
           </div>
         </div>
       </div>
