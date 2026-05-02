@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User, BoxSettings, Schedule, Item, Duel, Wod } from '../types';
+import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
@@ -14,6 +15,7 @@ import { supabase } from '../lib/supabase';
 import { uploadImage } from '../utils/image';
 
 export default function Admin() {
+  const toast = useToast();
   const { user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'schedule' | 'challenges' | 'store' | 'operation' | 'ranking' | 'checkins'>('users');
@@ -262,7 +264,7 @@ export default function Admin() {
     if (!error) {
       setUsers(users.map(u => u.id === userId ? { ...u, status: status as any, ...(status === 'approved' ? { role: updateData.role as any } : {}) } : u));
     } else {
-      alert('Erro ao atualizar status: ' + error.message);
+      toast.error('Erro ao atualizar status: ' + error.message);
     }
   };
 
@@ -282,9 +284,9 @@ export default function Admin() {
     
     if (!error) {
       setUsers(users.map(u => u.id === userId ? { ...u, role: role as any } : u));
-      alert('Cargo atualizado com sucesso!');
+      toast.success('Cargo atualizado com sucesso!');
     } else {
-      alert('Erro ao atualizar cargo: ' + error.message);
+      toast.error('Erro ao atualizar cargo: ' + error.message);
     }
   };
 
@@ -295,10 +297,12 @@ export default function Admin() {
     setUploading(field);
     try {
       const fileName = `${field}_${Date.now()}.jpg`;
-      const publicUrl = await uploadImage(file, 'box-assets', fileName);
+      // Usa perfil de compressão por tipo de imagem
+      const profile = field === 'topBanner' ? 'banner' : field === 'logo' ? 'logo' : 'logo';
+      const publicUrl = await uploadImage(file, 'box-assets', fileName, profile);
       setSettings(s => ({ ...s, [field]: publicUrl }));
     } catch (error: any) {
-      alert('Erro ao fazer upload: ' + error.message);
+      toast.error('Erro ao fazer upload: ' + error.message);
     } finally {
       setUploading(null);
     }
@@ -332,15 +336,15 @@ export default function Admin() {
 
     if (!error && data) {
       fetchAll();
-      alert('Ajustes salvos com sucesso!');
+      toast.success('Ajustes salvos com sucesso!');
     } else {
-      alert('Erro ao salvar ajustes: ' + (error?.message || 'Erro desconhecido'));
+      toast.error('Erro ao salvar ajustes: ' + (error?.message || 'Erro desconhecido'));
     }
   };
 
   const handleAddSchedule = async () => {
     if (!newSchedule.time || !newSchedule.endTime || !newSchedule.coach) {
-      alert('Por favor, preencha todos os campos obrigatórios: Início, Fim e Coach.');
+      toast.warning('Por favor, preencha todos os campos obrigatórios: Início, Fim e Coach.');
       return;
     }
     const { data, error } = await supabase
@@ -378,9 +382,9 @@ export default function Admin() {
         isActive: true,
         checkinWindowMinutes: 60
       });
-      alert('Horário adicionado com sucesso!');
+      toast.success('Horário adicionado com sucesso!');
     } else {
-      alert('Erro ao adicionar horário: ' + (error?.message || 'Erro desconhecido'));
+      toast.error('Erro ao adicionar horário: ' + (error?.message || 'Erro desconhecido'));
     }
   };
 
@@ -393,7 +397,7 @@ export default function Admin() {
     if (!error) {
       setSchedule(schedule.filter(s => s.id !== id));
     } else {
-      alert('Erro ao excluir horário: ' + error.message);
+      toast.error('Erro ao excluir horário: ' + error.message);
     }
   };
 
@@ -433,9 +437,9 @@ export default function Admin() {
         required_days: 1,
         require_photo: false
       });
-      alert('Desafio criado com sucesso!');
+      toast.success('Desafio criado com sucesso!');
     } else {
-      alert('Erro ao criar desafio: ' + (error?.message || 'Erro desconhecido'));
+      toast.error('Erro ao criar desafio: ' + (error?.message || 'Erro desconhecido'));
     }
   };
 
@@ -456,7 +460,7 @@ export default function Admin() {
       setItems([data[0], ...items]);
       setNewItem({ id: '', name: '', slot: 'top', price: 100, image: '' });
     } else {
-      alert('Erro ao adicionar item: ' + (error?.message || 'Erro desconhecido'));
+      toast.error('Erro ao adicionar item: ' + (error?.message || 'Erro desconhecido'));
     }
   };
 
@@ -470,7 +474,7 @@ export default function Admin() {
     if (!error) {
       setItems(items.filter(i => i.id !== id));
     } else {
-      alert('Erro ao excluir item: ' + error.message);
+      toast.error('Erro ao excluir item: ' + error.message);
     }
   };
 
@@ -489,9 +493,9 @@ export default function Admin() {
     if (!error) {
       setItems(items.map(i => i.id === editingItem.id ? editingItem : i));
       setEditingItem(null);
-      alert('Item atualizado com sucesso!');
+      toast.success('Item atualizado com sucesso!');
     } else {
-      alert('Erro ao atualizar item: ' + error.message);
+      toast.error('Erro ao atualizar item: ' + error.message);
     }
   };
 
@@ -529,9 +533,9 @@ export default function Admin() {
       setChallenges(challenges.map(c => c.id === editingChallenge.id ? editingChallenge : c));
       setEditingChallenge(null);
       setIsEditingChallenge(false);
-      alert('Desafio atualizado com sucesso!');
+      toast.success('Desafio atualizado com sucesso!');
     } else {
-      alert('Erro ao atualizar desafio: ' + error.message);
+      toast.error('Erro ao atualizar desafio: ' + error.message);
     }
   };
 
@@ -551,9 +555,9 @@ export default function Admin() {
     
     if (!error) {
       setChallenges(challenges.filter(c => c.id !== id));
-      alert('Desafio excluído com sucesso!');
+      toast.success('Desafio excluído com sucesso!');
     } else {
-      alert('Erro ao excluir desafio: ' + error.message);
+      toast.error('Erro ao excluir desafio: ' + error.message);
     }
   };
 
@@ -566,10 +570,10 @@ export default function Admin() {
       .eq('id', clanId);
     
     if (!error) {
-      alert('Time excluído com sucesso!');
+      toast.success('Time excluído com sucesso!');
       fetchAll();
     } else {
-      alert('Erro ao excluir time: ' + error.message);
+      toast.error('Erro ao excluir time: ' + error.message);
     }
   };
 
@@ -592,10 +596,10 @@ export default function Admin() {
         .update({ xp: 0, coins: 100, level: 1 })
         .neq('role', 'admin');
 
-      alert('Sistema resetado com sucesso! O box está limpo para um novo começo.');
+      toast.success('Sistema resetado com sucesso! O box está limpo para um novo começo.');
       fetchAll();
     } catch (err: any) {
-      alert('Erro durante o reset: ' + err.message);
+      toast.error('Erro durante o reset: ' + err.message);
     }
   };
 
@@ -618,9 +622,9 @@ export default function Admin() {
     if (!error) {
       setWods(wods.map(w => w.id === editingWod.id ? editingWod : w));
       setEditingWod(null);
-      alert('WOD atualizado com sucesso!');
+      toast.success('WOD atualizado com sucesso!');
     } else {
-      alert('Erro ao atualizar WOD: ' + error.message);
+      toast.error('Erro ao atualizar WOD: ' + error.message);
     }
   };
 
