@@ -14,10 +14,12 @@ import {
   Trash2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
+import { createNotification } from '../hooks/useNotifications';
 import AvatarPreview from '../components/AvatarPreview';
 import { AvatarSlot } from '../types';
 import { addReward } from '../utils/rewards';
@@ -108,6 +110,7 @@ const getVisibleResult = (duel: Duel, userId: string): string => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Duels() {
+  const toast = useToast();
   const { user, updateUser } = useAuth();
 
   // Data
@@ -223,17 +226,17 @@ export default function Duels() {
     if (!user || selectedOpponents.length === 0) return;
 
     if (wodMode === 'existing' && !selectedWodId) {
-      alert('Selecione um WOD.');
+      toast.warning('Selecione um WOD.');
       return;
     }
     if (wodMode === 'custom' && (!customWodName || !customWodDesc)) {
-      alert('Preencha nome e descrição do WOD personalizado.');
+      toast.warning('Preencha nome e descrição do WOD personalizado.');
       return;
     }
 
     const myBalance = betType === 'xp' ? user.xp : user.coins;
     if (betEnabled && betAmount > myBalance) {
-      alert(`Você não tem ${betType.toUpperCase()} suficiente para esta aposta.`);
+      toast.warning(`Você não tem ${betType.toUpperCase()} suficiente para esta aposta.`);
       return;
     }
     if (betEnabled) {
@@ -241,7 +244,7 @@ export default function Duels() {
         const op = getUserProfile(opId);
         const opBalance = betType === 'xp' ? (op?.xp ?? 0) : (op?.coins ?? 0);
         if (opBalance < betAmount) {
-          alert(`${op?.name || 'Um oponente'} não tem ${betType.toUpperCase()} suficiente.`);
+          toast.warning(`${op?.name || 'Um oponente'} não tem ${betType.toUpperCase()} suficiente.`);
           return;
         }
       }
@@ -296,6 +299,19 @@ export default function Duels() {
 
       if (error) throw error;
 
+      // Notifica cada oponente sobre o novo duelo
+      for (const opponentId of selectedOpponents) {
+        const opponent = allUsers.find((u: any) => u.id === opponentId);
+        if (opponent) {
+          await createNotification(
+            opponentId, 'duel_created',
+            '⚔️ Duelo recebido!',
+            `${user.name} te desafiou para um duelo de ${wodData.wodName || 'WOD'}. Aceite ou recuse!`,
+            { duel_id: 'new' }
+          );
+        }
+      }
+
       setSelectedOpponents([]);
       setOpponentSearch('');
       setSelectedWodId('');
@@ -309,7 +325,7 @@ export default function Duels() {
       await loadData();
     } catch (err: any) {
       console.error('Error creating duel:', err);
-      alert('Erro ao criar duelo: ' + err.message);
+      toast.error('Erro ao criar duelo: ' + err.message);
     } finally {
       setSaving(false);
     }
@@ -354,6 +370,16 @@ export default function Duels() {
 
       await supabase.from('duels').update(updates).eq('id', duelId);
 
+      // Notifica o criador do duelo que foi aceito
+      if (duel.challengerId !== user.id) {
+        await createNotification(
+          duel.challengerId, 'duel_accepted',
+          '✅ Duelo aceito!',
+          `${user.name} aceitou seu desafio! O duelo está ativo.`,
+          { duel_id: duelId }
+        );
+      }
+
       confetti({
         particleCount: 100,
         spread: 70,
@@ -364,7 +390,7 @@ export default function Duels() {
       await loadData();
     } catch (err: any) {
       console.error('Error accepting duel:', err);
-      alert('Erro ao aceitar duelo.');
+      toast.error('Erro ao aceitar duelo.');
     } finally {
       setSaving(false);
     }
@@ -405,7 +431,7 @@ export default function Duels() {
       await loadData();
     } catch (err: any) {
       console.error('Error canceling duel:', err);
-      alert('Erro ao cancelar duelo.');
+      toast.error('Erro ao cancelar duelo.');
     } finally {
       setSaving(false);
     }
@@ -432,7 +458,7 @@ export default function Duels() {
       if (expandedId === duelId) setExpandedId(null);
     } catch (err: any) {
       console.error('Error deleting duel:', err);
-      alert('Erro ao excluir duelo: ' + err.message);
+      toast.error('Erro ao excluir duelo: ' + err.message);
     } finally {
       setDeletingId(null);
     }
@@ -444,7 +470,7 @@ export default function Duels() {
     if (!user) return;
     const result = submission[duel.id]?.trim();
     if (!result) {
-      alert('Preencha seu resultado.');
+      toast.warning('Preencha seu resultado.');
       return;
     }
 
@@ -502,9 +528,9 @@ export default function Duels() {
               origin: { y: 0.5 },
               colors: ['#CAFD00', '#FFFFFF'],
             });
-            alert(`🏆 Você venceu! +${getDuelWinXp()} XP, +${getDuelWinCoins()} coins`);
+            toast.success(`🏆 Você venceu! +${getDuelWinXp()} XP, +${getDuelWinCoins()} coins`);
           } else {
-            alert(`Duelo finalizado! Vencedor: ${getUserName(winnerId)}`);
+            toast.success(`Duelo finalizado! Vencedor: ${getUserName(winnerId)}`);
           }
         }
 
@@ -520,7 +546,7 @@ export default function Duels() {
       await loadData();
     } catch (err: any) {
       console.error('Error submitting result:', err);
-      alert('Erro ao submeter resultado: ' + err.message);
+      toast.error('Erro ao submeter resultado: ' + err.message);
     } finally {
       setSaving(false);
     }
