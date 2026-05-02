@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { User } from '../types';
 import { supabase } from '../lib/supabase';
 
+const ONBOARDING_KEY = 'boxlink_onboarding_done';
+
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<{ error: any }>;
@@ -10,14 +12,18 @@ interface AuthContextType {
   updateUser: (userData: User) => void;
   loading: boolean;
   initializing: boolean;
+  // Onboarding — controlado aqui para sobreviver a trocas de rota
+  showOnboarding: boolean;
+  completeOnboarding: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [user, setUser]               = useState<User | null>(null);
+  const [loading, setLoading]         = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const fetchingRef = useRef(false);
 
   const fetchUserProfile = async (userId: string): Promise<User | null> => {
@@ -31,15 +37,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('id', userId)
         .maybeSingle();
 
-      if (error) {
-        console.error('Supabase query error:', error);
-        return null;
-      }
-
-      if (!data) {
-        console.warn('Profile not found for user:', userId);
-        return null;
-      }
+      if (error) { console.error('Supabase query error:', error); return null; }
+      if (!data)  { console.warn('Profile not found for user:', userId); return null; }
 
       const { data: checkinsData } = await supabase
         .from('checkins')
@@ -69,6 +68,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       setUser(mappedUser);
+
+      // Verifica onboarding só quando o perfil carrega com id real e status aprovado
+      if (mappedUser.status === 'approved') {
+        const done = localStorage.getItem(ONBOARDING_KEY + '_' + mappedUser.id);
+        if (!done) setShowOnboarding(true);
+      }
+
       return mappedUser;
     } catch (err) {
       console.error('Error fetching user profile:', err);
@@ -83,9 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!isMounted) return;
-      if (session?.user) {
-        await fetchUserProfile(session.user.id);
-      }
+      if (session?.user) await fetchUserProfile(session.user.id);
       if (isMounted) setInitializing(false);
     }).catch(() => {
       if (isMounted) setInitializing(false);
@@ -96,25 +100,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (event === 'SIGNED_OUT' || !session) {
         setUser(null);
         setLoading(false);
+        setShowOnboarding(false);
       }
     });
 
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
+    return () => { isMounted = false; subscription.unsubscribe(); };
   }, []);
 
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-
-      if (authError) {
-        setLoading(false);
-        return { error: authError };
-      }
-
+      if (authError) { setLoading(false); return { error: authError }; }
       if (authData.user) {
         const profile = await fetchUserProfile(authData.user.id);
         if (!profile) {
@@ -126,7 +123,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       }
-
       setLoading(false);
       return { error: null };
     } catch (err: any) {
@@ -140,16 +136,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const { error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { name } }
+        email, password, options: { data: { name } }
       });
-
-      if (authError) {
-        setLoading(false);
-        return { error: authError };
-      }
-
+      if (authError) { setLoading(false); return { error: authError }; }
       setLoading(false);
       return { error: null };
     } catch (err: any) {
@@ -160,13 +149,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     setUser(null);
+    setShowOnboarding(false);
     await supabase.auth.signOut();
   };
 
   const updateUser = (userData: User) => setUser(userData);
 
+  const completeOnboarding = () => {
+    if (user?.id) localStorage.setItem(ONBOARDING_KEY + '_' + user.id, '1');
+    setShowOnboarding(false);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, updateUser, loading, initializing }}>
+    <AuthContext.Provider value={{
+      user, login, signup, logout, updateUser,
+      loading, initializing,
+      showOnboarding, completeOnboarding,
+    }}>
       {children}
     </AuthContext.Provider>
   );
