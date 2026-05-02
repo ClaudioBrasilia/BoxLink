@@ -24,25 +24,11 @@ import Install from './pages/Install';
 import Feed from './pages/Feed';
 import { Shield } from 'lucide-react';
 import Onboarding from './components/Onboarding';
+import { ToastProvider } from './context/ToastContext';
 import { useState, useEffect } from 'react';
-
-const ONBOARDING_KEY = 'boxlink_onboarding_done';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
   const { user, loading, logout } = useAuth();
-  const [showOnboarding, setShowOnboarding] = useState(false);
-
-  useEffect(() => {
-    if (user?.status === 'approved') {
-      const done = localStorage.getItem(ONBOARDING_KEY + '_' + user.id);
-      if (!done) setShowOnboarding(true);
-    }
-  }, [user?.id, user?.status]);
-
-  const handleOnboardingComplete = () => {
-    if (user) localStorage.setItem(ONBOARDING_KEY + '_' + user.id, '1');
-    setShowOnboarding(false);
-  };
 
   if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO...</div>;
   if (!user) return <Navigate to="/login" />;
@@ -68,42 +54,47 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?
   }
 
   if (roles && !roles.includes(user.role)) return <Navigate to="/" />;
-  return (
-    <>
-      <AnimatePresence>{showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}</AnimatePresence>
-      {children}
-    </>
-  );
+  return <>{children}</>;
 };
 
-export default function App() {
+function AppRoutes() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/tv" element={<TV />} />
-          <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            <Route index element={<Dashboard />} />
-            <Route path="wod" element={<Wod />} />
-            <Route path="challenges" element={<Challenges />} />
-            <Route path="leaderboard" element={<Leaderboard />} />
-            <Route path="duels" element={<Duels />} />
-            <Route path="mybox" element={<MyBox />} />
-            <Route path="profile" element={<Profile />} />
-            <Route path="progress" element={<Progress />} />
-            <Route path="avatar" element={<AvatarCustomization />} />
-            <Route path="clans" element={<Clans />} />
-            <Route path="debug-flow" element={<DebugFlow />} />
-            <Route path="benchmarks" element={<Benchmarks />} />
-            <Route path="install" element={<Install />} />
-            <Route path="feed" element={<Feed />} />
-            <Route path="admin" element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
-            <Route path="coach" element={<ProtectedRoute roles={['coach', 'admin']}><Coach /></ProtectedRoute>} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login"   element={<Login />} />
+        <Route path="/signup"  element={<Signup />} />
+        <Route path="/install" element={<Install />} />
+        <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+          <Route index element={<Dashboard />} />
+          <Route path="wod"          element={<Wod />} />
+          <Route path="leaderboard"  element={<Leaderboard />} />
+          <Route path="profile"      element={<Profile />} />
+          <Route path="challenges"   element={<Challenges />} />
+          <Route path="duels"        element={<Duels />} />
+          <Route path="progress"     element={<Progress />} />
+          <Route path="mybox"        element={<MyBox />} />
+          <Route path="clans"        element={<Clans />} />
+          <Route path="avatar"       element={<AvatarCustomization />} />
+          <Route path="benchmarks"   element={<Benchmarks />} />
+          <Route path="feed"         element={<Feed />} />
+          <Route path="admin"        element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
+          <Route path="coach"        element={<ProtectedRoute roles={['coach', 'admin']}><Coach /></ProtectedRoute>} />
+          <Route path="tv"           element={<TV />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default function App() {
+  const { showOnboarding, completeOnboarding } = useAuth();
+  return (
+    <ToastProvider>
+      <AppRoutes />
+      <AnimatePresence>
+        {showOnboarding && <Onboarding onComplete={completeOnboarding} />}
+      </AnimatePresence>
+    </ToastProvider>
   );
 }
