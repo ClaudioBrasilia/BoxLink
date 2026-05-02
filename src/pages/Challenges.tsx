@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
 import { compressImage } from '../utils/image';
+import { createNotification } from '../hooks/useNotifications';
 import { addReward } from '../utils/rewards';
 
 // Toast inline — sem alert(), sem reload necessário
@@ -161,6 +162,13 @@ export default function Challenges() {
 
           // FIX: aguarda fetchData antes de mostrar toast, garante que history atualiza
           await fetchData();
+          // Notificação in-app de conclusão
+          await createNotification(
+            user.id, 'challenge_done',
+            '🏆 Desafio concluído!',
+            `Você completou "${challenge.title}" e ganhou +${challenge.xp} XP e +${challenge.coins} BC!`,
+            { challenge_id: challenge.id }
+          );
           showToast(`🏆 Desafio concluído! +${challenge.xp} XP e +${challenge.coins} BC!`, 'success');
         }
       } else {
