@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -22,12 +23,30 @@ import Benchmarks from './pages/Benchmarks';
 import Install from './pages/Install';
 import Feed from './pages/Feed';
 import { Shield } from 'lucide-react';
+import Onboarding from './components/Onboarding';
+import { useState, useEffect } from 'react';
+
+const ONBOARDING_KEY = 'boxlink_onboarding_done';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
   const { user, loading, logout } = useAuth();
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    if (user?.status === 'approved') {
+      const done = localStorage.getItem(ONBOARDING_KEY + '_' + user.id);
+      if (!done) setShowOnboarding(true);
+    }
+  }, [user?.id, user?.status]);
+
+  const handleOnboardingComplete = () => {
+    if (user) localStorage.setItem(ONBOARDING_KEY + '_' + user.id, '1');
+    setShowOnboarding(false);
+  };
+
   if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO...</div>;
   if (!user) return <Navigate to="/login" />;
-  
+
   if (user.status !== 'approved') {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
@@ -38,8 +57,8 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?
         <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest max-w-xs leading-relaxed">
           Sua conta foi criada com sucesso e está aguardando aprovação de um administrador.
         </p>
-        <button 
-          onClick={() => logout()} 
+        <button
+          onClick={() => logout()}
           className="mt-8 text-primary font-headline font-black uppercase italic text-sm hover:underline"
         >
           SAIR DA CONTA
@@ -49,7 +68,12 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?
   }
 
   if (roles && !roles.includes(user.role)) return <Navigate to="/" />;
-  return <>{children}</>;
+  return (
+    <>
+      <AnimatePresence>{showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}</AnimatePresence>
+      {children}
+    </>
+  );
 };
 
 export default function App() {
