@@ -258,16 +258,16 @@ export default function Feed() {
 
   const fetchPosts = useCallback(async () => {
     setError(null);
-    // Query sem nome de FK hardcodado — deixa o Supabase resolver os joins por tabela
+    // Query única com joins diretos via FK explícita (migration_fk_fix.sql)
     const { data, error: err } = await supabase
       .from('feed_posts')
       .select(`
         *,
-        profiles ( name, avatar_equipped ),
+        profiles!feed_posts_profiles_fkey ( name, avatar_equipped ),
         feed_likes ( user_id ),
         feed_comments (
           id, user_id, content, created_at,
-          profiles ( name )
+          profiles!feed_comments_profiles_fkey ( name )
         ),
         challenges ( title )
       `)
@@ -280,6 +280,7 @@ export default function Feed() {
       setLoading(false);
       return;
     }
+
     setPosts((data as unknown as FeedPost[]) || []);
     setLoading(false);
   }, []);
