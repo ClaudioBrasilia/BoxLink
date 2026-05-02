@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
+import { compressImage } from '../utils/image';
 import { addReward } from '../utils/rewards';
 
 // Toast inline — sem alert(), sem reload necessário
@@ -199,9 +200,12 @@ export default function Challenges() {
     let photoUrl: string | null = null;
 
     if (photoFile) {
-      const ext  = photoFile.name.split('.').pop();
-      const path = `challenge-photos/${user.id}/${photoModal.challenge.id}-${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('challenge-photos').upload(path, photoFile);
+      // Comprime antes do upload: max 1200px, qualidade 0.82 — reduz ~60-80% do tamanho
+      const compressed = await compressImage(photoFile, 1200, 1200, 0.82);
+      const path = `challenge-photos/${user.id}/${photoModal.challenge.id}-${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from('challenge-photos')
+        .upload(path, compressed, { contentType: 'image/jpeg' });
       if (uploadError) {
         showToast('Erro ao enviar foto: ' + uploadError.message, 'error');
         setLoading(null);
