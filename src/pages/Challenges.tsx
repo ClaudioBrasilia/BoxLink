@@ -149,16 +149,18 @@ export default function Challenges() {
             level: rewardResult.newLevel,
           });
 
-          // Publica automaticamente no feed quando há foto ou quando é conclusão de desafio
-          await supabase.from('feed_posts').insert({
-            user_id: user.id,
-            type: 'challenge',
-            challenge_id: challenge.id,
-            photo_url: photoUrl,
-            caption: null,
-            xp_earned: challenge.xp,
-            coins_earned: challenge.coins,
-          });
+          // Publica no feed apenas se o desafio tem foto (require_photo=true)
+          if (photoUrl) {
+            await supabase.from('feed_posts').insert({
+              user_id: user.id,
+              type: 'challenge',
+              challenge_id: challenge.id,
+              photo_url: photoUrl,
+              caption: null,
+              xp_earned: challenge.xp,
+              coins_earned: challenge.coins,
+            });
+          }
 
           // FIX: aguarda fetchData antes de mostrar toast, garante que history atualiza
           await fetchData();
