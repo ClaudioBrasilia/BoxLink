@@ -1,7 +1,7 @@
 export type UserRole = 'athlete' | 'coach' | 'admin' | 'visitor';
 export type UserStatus = 'pending' | 'approved' | 'rejected';
 
-export type VisitorPage = 'wod' | 'leaderboard' | 'challenges' | 'clans' | 'feed' | 'mybox' | 'benchmarks';
+export type VisitorPage = 'wod' | 'leaderboard' | 'challenges' | 'clans' | 'feed' | 'mybox' | 'benchmarks' | 'duels' | 'progress' | 'avatar';
 
 export interface VisitorPermissions {
   wod: boolean;
@@ -11,6 +11,9 @@ export interface VisitorPermissions {
   feed: boolean;
   mybox: boolean;
   benchmarks: boolean;
+  duels: boolean;
+  progress: boolean;
+  avatar: boolean;
 }
 
 export interface AvatarSlot {
@@ -113,7 +116,7 @@ export interface Schedule {
   endTime: string;
   coach: string;
   capacity: number;
-  days: number[];
+  days: number[]; // 0-6 (Sunday-Saturday)
   isActive: boolean;
   checkinWindowMinutes: number;
 }
