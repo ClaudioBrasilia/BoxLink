@@ -11,11 +11,11 @@ export default function Layout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const navItems = [
-    { icon: Home, label: 'Início', path: '/' },
-    { icon: Timer, label: 'WOD', path: '/wod' },
-    { icon: Swords, label: 'Duelos', path: '/duels' },
+    { icon: Home,   label: 'Início',  path: '/' },
+    { icon: Swords, label: 'Duelos',  path: '/duels' },
+    { icon: Users,  label: 'Feed',    path: '/feed' },
     { icon: Trophy, label: 'Ranking', path: '/leaderboard' },
-    { icon: User, label: 'Perfil', path: '/profile' },
+    { icon: User,   label: 'Perfil',  path: '/profile' },
   ];
 
   const moreItems = [
