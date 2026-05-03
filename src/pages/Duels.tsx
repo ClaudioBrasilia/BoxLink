@@ -8,9 +8,6 @@ import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
 import { addReward } from '../utils/rewards';
 import { createNotification, requestNotificationPermission } from '../hooks/useNotifications';
-import { createNotification } from '../hooks/useNotifications';
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
 
 const parseTime = (t: string) => {
   const parts = t.split(':');
@@ -52,8 +49,6 @@ const getVisibleResult = (duel: any, pid: string) => {
   return results[pid] ? '✓ Enviado' : 'Aguardando...';
 };
 
-// ─── component ────────────────────────────────────────────────────────────────
-
 export default function Duels() {
   const { user, updateUser } = useAuth();
   const [duels, setDuels] = useState<any[]>([]);
@@ -68,7 +63,6 @@ export default function Duels() {
     opponentId: '', type: 'WOD',
     betType: 'xp' as 'xp' | 'coins' | 'both',
     betXp: 20, betCoins: 10,
-    totalDays: 1,
   });
 
   const fetchDuels = useCallback(async () => {
@@ -119,9 +113,7 @@ export default function Duels() {
         fetchDuels(); fetchHistory();
       }).subscribe();
 
-    // Fallback polling every 15s
     const poll = setInterval(() => { fetchDuels(); fetchHistory(); }, 15000);
-
     return () => { supabase.removeChannel(channel); clearInterval(poll); };
   }, [user?.id, fetchDuels, fetchHistory, fetchUsers]);
 
@@ -154,20 +146,15 @@ export default function Duels() {
         reward_coins: rewards.coins,
         status: 'pending',
         results: {},
-        total_days: newDuel.totalDays,
-        current_day: 1,
-        scores: {},
       });
       if (error) { alert('Erro: ' + error.message); return; }
       setIsChallenging(false);
       setNewDuel({ opponentId: '', type: 'WOD', betType: 'xp', betXp: 20, betCoins: 10 });
-      // Notifica o oponente
-      const opponent = users.find(u => u.id === newDuel.opponentId);
       await createNotification(
         newDuel.opponentId,
         'duel_challenge',
         '⚔️ Você foi desafiado!',
-        `${user.name} te desafiou para um duelo de ${newDuel.type}. Apostar: ${getBetLabel({ bet_type: newDuel.betType, bet_xp: newDuel.betXp, bet_coins: newDuel.betCoins })}`,
+        `${user.name} te desafiou para um duelo de ${newDuel.type}. Aposta: ${getBetLabel({ bet_type: newDuel.betType, bet_xp: newDuel.betXp, bet_coins: newDuel.betCoins })}`,
         { duel_type: newDuel.type, challenger_name: user.name }
       );
       alert('Desafio enviado! Aguarde o oponente aceitar.');
@@ -175,7 +162,6 @@ export default function Duels() {
     } finally { setLoading(false); }
   };
 
-  /** Oponente aceita o duelo */
   const handleAccept = async (duelId: string) => {
     if (!user) return;
     const duel = duels.find(d => d.id === duelId);
@@ -200,7 +186,6 @@ export default function Duels() {
     } finally { setLoading(false); }
   };
 
-  /** Qualquer participante cancela/recusa o duelo */
   const handleCancel = async (duelId: string) => {
     if (!user) return;
     const duel = duels.find(d => d.id === duelId);
@@ -208,13 +193,10 @@ export default function Duels() {
     const isChallenger = duel.challenger_id === user.id;
     const isOpponent = duel.opponent_id === user.id;
     if (!isChallenger && !isOpponent) return;
-
     setLoading(true);
     try {
       await supabase.from('duels').update({ status: 'finished', winner_id: null }).eq('id', duelId);
-      // Notifica o outro participante
       const otherId = isChallenger ? duel.opponent_id : duel.challenger_id;
-      const otherName = isChallenger ? duel.opponentName : duel.challengerName;
       const myName = isChallenger ? duel.challengerName : duel.opponentName;
       await createNotification(
         otherId,
@@ -237,95 +219,57 @@ export default function Duels() {
     const newResults = { ...(duel.results || {}), [user.id]: result };
     const participants = [duel.challenger_id, duel.opponent_id];
     const allSubmitted = participants.every(id => newResults[id]);
-    const totalDays = duel.total_days || 1;
-    const currentDay = duel.current_day || 1;
 
     setLoading(true);
     try {
       if (allSubmitted) {
-        // Determina vencedor do dia
-        const dayWinnerId = pickWinner(newResults as Record<string, string>, participants);
+        const winnerId = pickWinner(newResults as Record<string, string>, participants);
+        const loserId = participants.find(id => id !== winnerId) || '';
 
-        // Acumula placar
-        const newScores: Record<string, number> = { ...(duel.scores || {}) };
-        if (dayWinnerId) {
-          newScores[dayWinnerId] = (newScores[dayWinnerId] || 0) + 1;
+        await supabase.from('duels').update({
+          results: newResults,
+          status: 'finished',
+          winner_id: winnerId,
+        }).eq('id', duel.id);
+
+        if (winnerId) {
+          await addReward(winnerId, 'duel', duel.reward_xp || 40, duel.reward_coins || 0, `Vitória no duelo (${duel.type})`);
+        }
+        if (loserId) {
+          const loseXp = duel.bet_xp > 0 ? -duel.bet_xp : 0;
+          const loseCoins = duel.bet_coins > 0 ? -duel.bet_coins : 0;
+          await addReward(loserId, 'duel', loseXp, loseCoins, `Derrota no duelo (${duel.type})`);
         }
 
-        const isDuelOver = currentDay >= totalDays;
-
-        if (isDuelOver) {
-          // Todos os dias completados — determina vencedor final pelo placar
-          const finalWinnerId = participants.reduce((a, b) =>
-            (newScores[a] || 0) >= (newScores[b] || 0) ? a : b
-          );
-          const finalLoserId = participants.find(id => id !== finalWinnerId) || '';
-
-          await supabase.from('duels').update({
-            results: newResults,
-            scores: newScores,
-            status: 'finished',
-            winner_id: finalWinnerId,
-          }).eq('id', duel.id);
-
-          // Paga recompensa só agora
-          await addReward(finalWinnerId, 'duel', duel.reward_xp || 40, duel.reward_coins || 0, `Vitória no duelo (${duel.type})`);
-          if (finalLoserId) {
-            const loseXp = duel.bet_xp > 0 ? -duel.bet_xp : 0;
-            const loseCoins = duel.bet_coins > 0 ? -duel.bet_coins : 0;
-            await addReward(finalLoserId, 'duel', loseXp, loseCoins, `Derrota no duelo (${duel.type})`);
-          }
-
-          const winnerName = finalWinnerId === duel.challenger_id ? duel.challengerName : duel.opponentName;
-          await createNotification(finalWinnerId, 'duel_result', '🏆 Você venceu o duelo!',
-            `Você derrotou ${finalWinnerId === duel.challenger_id ? duel.opponentName : duel.challengerName} no duelo de ${duel.type}! +${duel.reward_xp || 40} XP${duel.reward_coins ? ` e +${duel.reward_coins} BC` : ''}.`,
+        const winnerName = winnerId === duel.challenger_id ? duel.challengerName : duel.opponentName;
+        if (winnerId) {
+          await createNotification(winnerId, 'duel_result', '🏆 Você venceu o duelo!',
+            `Você derrotou ${winnerId === duel.challenger_id ? duel.opponentName : duel.challengerName} no duelo de ${duel.type}! +${duel.reward_xp || 40} XP${duel.reward_coins ? ` e +${duel.reward_coins} BC` : ''}.`,
             { duel_id: duel.id });
-          await createNotification(finalLoserId, 'duel_result', '💪 Duelo finalizado',
+        }
+        if (loserId) {
+          await createNotification(loserId, 'duel_result', '💪 Duelo finalizado',
             `${winnerName} venceu o duelo de ${duel.type}. Continue treinando!`,
             { duel_id: duel.id });
-
-          if (finalWinnerId === user.id) {
-            confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#CAFD00', '#fff'] });
-            alert(`🏆 Você venceu o duelo! +${duel.reward_xp || 40} XP${duel.reward_coins ? ` e +${duel.reward_coins} BC` : ''}!`);
-          } else {
-            alert(`Duelo finalizado. ${winnerName} venceu.`);
-          }
-
-          const { data: prof } = await supabase.from('profiles').select('xp, coins, level').eq('id', user.id).maybeSingle();
-          if (prof) updateUser({ ...user, xp: prof.xp, coins: prof.coins, level: prof.level });
-
-        } else {
-          // Dia completado mas ainda há mais dias — avança para o próximo
-          const dayWinnerName = dayWinnerId === duel.challenger_id ? duel.challengerName : duel.opponentName;
-          await supabase.from('duels').update({
-            results: {},           // limpa resultados para o próximo dia
-            scores: newScores,     // mantém placar acumulado
-            current_day: currentDay + 1,
-          }).eq('id', duel.id);
-
-          const opponentId = user.id === duel.challenger_id ? duel.opponent_id : duel.challenger_id;
-          await createNotification(opponentId, 'duel_day', `📅 Dia ${currentDay} concluído!`,
-            `${dayWinnerName} venceu o dia ${currentDay}. Placar: ${duel.challengerName} ${newScores[duel.challenger_id] || 0} x ${newScores[duel.opponent_id] || 0} ${duel.opponentName}. Envie o resultado do dia ${currentDay + 1}!`,
-            { duel_id: duel.id });
-
-          if (dayWinnerId === user.id) {
-            alert(`✅ Dia ${currentDay} concluído! Você venceu esse dia.
-Placar: ${duel.challengerName} ${newScores[duel.challenger_id] || 0} x ${newScores[duel.opponent_id] || 0} ${duel.opponentName}
-Dia ${currentDay + 1}/${totalDays} começa agora!`);
-          } else {
-            alert(`✅ Dia ${currentDay} concluído! ${dayWinnerName} venceu esse dia.
-Placar: ${duel.challengerName} ${newScores[duel.challenger_id] || 0} x ${newScores[duel.opponent_id] || 0} ${duel.opponentName}
-Dia ${currentDay + 1}/${totalDays} começa agora!`);
-          }
         }
+
+        if (winnerId === user.id) {
+          confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#CAFD00', '#fff'] });
+          alert(`🏆 Você venceu! +${duel.reward_xp || 40} XP${duel.reward_coins ? ` e +${duel.reward_coins} BC` : ''}!`);
+        } else {
+          alert(`Duelo finalizado. ${winnerName} venceu.`);
+        }
+
+        const { data: prof } = await supabase.from('profiles').select('xp, coins, level').eq('id', user.id).maybeSingle();
+        if (prof) updateUser({ ...user, xp: prof.xp, coins: prof.coins, level: prof.level });
+
       } else {
-        // Só um enviou — salva parcial e notifica oponente
         await supabase.from('duels').update({ results: newResults }).eq('id', duel.id);
         const opponentId = user.id === duel.challenger_id ? duel.opponent_id : duel.challenger_id;
         await createNotification(opponentId, 'duel_result', '⏳ Seu oponente enviou o resultado!',
-          `${user.name} já enviou o resultado do dia ${currentDay}/${totalDays} do duelo de ${duel.type}. Envie o seu para continuar!`,
+          `${user.name} já enviou o resultado do duelo de ${duel.type}. Envie o seu!`,
           { duel_id: duel.id });
-        alert(`Resultado do dia ${currentDay}/${totalDays} enviado! Aguardando o oponente.`);
+        alert('Resultado enviado! Aguardando o oponente.');
       }
 
       setSubmissions(prev => ({ ...prev, [duel.id]: '' }));
@@ -430,37 +374,6 @@ Dia ${currentDay + 1}/${totalDays} começa agora!`);
                     </div>
                   </div>
 
-                  {/* Progresso por dias (só mostra se for multi-dia) */}
-                  {(duel.total_days || 1) > 1 && (
-                    <div className="bg-surface-container-highest/30 rounded-2xl p-4 mb-3">
-                      <div className="flex justify-between items-center mb-2">
-                        <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">
-                          Dia {duel.current_day || 1} de {duel.total_days}
-                        </p>
-                        <p className="text-[9px] font-black text-on-surface uppercase">
-                          {duel.challengerName?.split(' ')[0]} {(duel.scores || {})[duel.challenger_id] || 0}
-                          {' '}×{' '}
-                          {(duel.scores || {})[duel.opponent_id] || 0} {duel.opponentName?.split(' ')[0]}
-                        </p>
-                      </div>
-                      {/* Barra de progresso dos dias */}
-                      <div className="flex gap-1">
-                        {Array.from({ length: duel.total_days }).map((_, i) => {
-                          const dayNum = i + 1;
-                          const isDone = dayNum < (duel.current_day || 1);
-                          const isCurrent = dayNum === (duel.current_day || 1);
-                          return (
-                            <div key={i} className={cn(
-                              "flex-1 h-1.5 rounded-full transition-all",
-                              isDone ? "bg-primary" : isCurrent ? "bg-secondary animate-pulse" : "bg-surface-container-highest"
-                            )} />
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Results panel (expanded) */}
                   {isExpanded && duel.status === 'accepted' && (
                     <div className="mb-4 bg-surface-container-highest/30 rounded-2xl p-4 space-y-2">
                       <p className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Resultados</p>
@@ -488,7 +401,6 @@ Dia ${currentDay + 1}/${totalDays} começa agora!`);
                     </div>
                   )}
 
-                  {/* Submit result */}
                   {duel.status === 'accepted' && !myResult && (
                     <div className="flex gap-2 mt-2">
                       <input
@@ -512,7 +424,6 @@ Dia ${currentDay + 1}/${totalDays} começa agora!`);
                     </p>
                   )}
 
-                  {/* Oponente: aceitar ou recusar */}
                   {duel.status === 'pending' && duel.opponent_id === user?.id && (
                     <div className="flex gap-3 mt-2">
                       <button onClick={() => handleAccept(duel.id)} disabled={loading}
@@ -525,7 +436,6 @@ Dia ${currentDay + 1}/${totalDays} começa agora!`);
                       </button>
                     </div>
                   )}
-                  {/* Desafiante: aguardando + botão cancelar */}
                   {duel.status === 'pending' && duel.challenger_id === user?.id && (
                     <div className="flex flex-col gap-2 mt-2">
                       <p className="text-center text-[10px] text-on-surface-variant font-black uppercase tracking-widest">
@@ -537,7 +447,6 @@ Dia ${currentDay + 1}/${totalDays} começa agora!`);
                       </button>
                     </div>
                   )}
-                  {/* Duelo ativo: botão cancelar para ambos */}
                   {duel.status === 'accepted' && (duel.challenger_id === user?.id || duel.opponent_id === user?.id) && (
                     <button onClick={() => handleCancel(duel.id)} disabled={loading}
                       className="w-full mt-1 bg-transparent text-on-surface-variant py-2 rounded-xl font-headline font-black text-[9px] uppercase italic flex items-center justify-center gap-1 border border-outline-variant/10 hover:border-error/30 hover:text-error transition-all">
@@ -601,7 +510,6 @@ Dia ${currentDay + 1}/${totalDays} começa agora!`);
         )}
       </AnimatePresence>
 
-      {/* Modal Novo Desafio */}
       <AnimatePresence>
         {isChallenging && (
           <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-background/80 backdrop-blur-sm">
@@ -687,22 +595,6 @@ Dia ${currentDay + 1}/${totalDays} começa agora!`);
                     </div>
                   </div>
                 )}
-
-                {/* Número de dias */}
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Duração do Duelo</label>
-                  <div className="flex gap-2">
-                    {[1, 3, 5, 7].map(d => (
-                      <button key={d} onClick={() => setNewDuel({ ...newDuel, totalDays: d })}
-                        className={cn("flex-1 py-3 rounded-2xl font-headline font-black text-sm transition-all border",
-                          newDuel.totalDays === d
-                            ? "bg-primary text-background border-primary"
-                            : "bg-surface-container-highest text-on-surface-variant border-outline-variant/20 hover:border-primary/50")}>
-                        {d === 1 ? '1 dia' : `${d} dias`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
 
                 <div className="bg-secondary/10 p-4 rounded-2xl border border-secondary/20 space-y-1">
                   <p className="text-[10px] text-secondary font-black uppercase tracking-widest">RESUMO DA APOSTA</p>
