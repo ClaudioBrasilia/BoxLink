@@ -137,6 +137,9 @@ export default function Admin() {
     feed: true,
     mybox: true,
     benchmarks: false,
+    duels: false,
+    progress: false,
+    avatar: false,
   });
 
   const toggleSection = (section: string) => {
@@ -1026,6 +1029,9 @@ export default function Admin() {
                     { key: 'clans', label: 'Clans', icon: '🛡️' },
                     { key: 'mybox', label: 'Meu Box', icon: '📍' },
                     { key: 'benchmarks', label: 'Benchmarks', icon: '📊' },
+                    { key: 'duels', label: 'Duelos', icon: '⚔️' },
+                    { key: 'progress', label: 'Progresso', icon: '📈' },
+                    { key: 'avatar', label: 'Avatar / Loja', icon: '🎮' },
                   ] as { key: keyof VisitorPermissions; label: string; icon: string }[]).map(({ key, label, icon }) => (
                     <div key={key} className="flex items-center justify-between bg-surface-container-highest rounded-2xl px-4 py-3">
                       <div className="flex items-center gap-3">
