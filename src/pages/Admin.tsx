@@ -6,7 +6,7 @@ import {
   Clock, ToggleLeft, ToggleRight, Trash2, Edit2, Save, Camera
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { User, BoxSettings, Schedule, Item, Duel, Wod } from '../types';
+import { User, BoxSettings, Schedule, Item, Duel, Wod, VisitorPermissions } from '../types';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -128,6 +128,16 @@ export default function Admin() {
 
   const [isManageUsersOpen, setIsManageUsersOpen] = useState(false);
   const [openSections, setOpenSections] = useState<string[]>([]);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [visitorPermissions, setVisitorPermissions] = useState<VisitorPermissions>({
+    wod: true,
+    leaderboard: false,
+    challenges: false,
+    clans: false,
+    feed: true,
+    mybox: true,
+    benchmarks: false,
+  });
 
   const toggleSection = (section: string) => {
     setOpenSections(prev => 
@@ -187,6 +197,9 @@ export default function Admin() {
         timezone: settingsData.timezone || prev.timezone,
         max_clan_members: settingsData.max_clan_members || 10
       }));
+      if (settingsData.visitor_permissions) {
+        setVisitorPermissions(settingsData.visitor_permissions);
+      }
     }
 
     // Fetch Schedule
@@ -287,6 +300,38 @@ export default function Admin() {
       toast.success('Cargo atualizado com sucesso!');
     } else {
       toast.error('Erro ao atualizar cargo: ' + error.message);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    setDeletingUserId(userId);
+  };
+
+  const confirmDeleteUser = async (userId: string) => {
+    const { error } = await supabase
+      .from('profiles')
+      .delete()
+      .eq('id', userId);
+
+    if (!error) {
+      setUsers(users.filter(u => u.id !== userId));
+      toast.success('Usuário excluído com sucesso!');
+    } else {
+      toast.error('Erro ao excluir usuário: ' + error.message);
+    }
+    setDeletingUserId(null);
+  };
+
+  const handleSaveVisitorPermissions = async () => {
+    const { error } = await supabase
+      .from('box_settings')
+      .update({ visitor_permissions: visitorPermissions })
+      .eq('is_active', true);
+
+    if (!error) {
+      toast.success('Permissões de visitante salvas!');
+    } else {
+      toast.error('Erro ao salvar permissões: ' + error.message);
     }
   };
 
@@ -733,6 +778,7 @@ export default function Admin() {
                     <option value="athlete">ALUNOS</option>
                     <option value="coach">COACHES</option>
                     <option value="admin">ADMINS</option>
+                    <option value="visitor">VISITANTES</option>
                   </select>
                 </div>
               </div>
@@ -764,8 +810,8 @@ export default function Admin() {
                         </div>
                         <div className="mt-3 flex flex-col gap-2">
                           <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">DEFINIR CARGO:</label>
-                          <div className="flex gap-2">
-                            {(['athlete', 'coach', 'admin'] as const).map((role) => (
+                          <div className="flex gap-2 flex-wrap">
+                            {(['athlete', 'coach', 'admin', 'visitor'] as const).map((role) => (
                               <button
                                 key={role}
                                 onClick={() => handleRoleChange(u.id, role)}
@@ -776,7 +822,7 @@ export default function Admin() {
                                     : "bg-surface-container-highest text-on-surface-variant border-outline-variant/20"
                                 )}
                               >
-                                {role === 'admin' ? 'ADMIN' : role === 'coach' ? 'COACH' : 'ALUNO'}
+                                {role === 'admin' ? 'ADMIN' : role === 'coach' ? 'COACH' : role === 'visitor' ? 'VISITANTE' : 'ALUNO'}
                               </button>
                             ))}
                           </div>
@@ -832,9 +878,35 @@ export default function Admin() {
                     <div className="pt-4 space-y-3">
                       {approvedUsers.length > 0 ? approvedUsers.map((u) => (
                         <div key={u.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-4">
+                          {/* Delete Confirmation */}
+                          {deletingUserId === u.id && (
+                            <div className="bg-error-container/20 border border-error/30 rounded-2xl p-4 flex flex-col gap-3">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-on-surface">
+                                ⚠️ Confirmar exclusão de <span className="text-error">{u.name}</span>?
+                              </p>
+                              <p className="text-[9px] text-on-surface-variant uppercase tracking-widest">Esta ação não pode ser desfeita.</p>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => setDeletingUserId(null)}
+                                  className="flex-1 py-2 rounded-xl bg-surface-container-highest text-on-surface text-[9px] font-black uppercase tracking-widest"
+                                >
+                                  CANCELAR
+                                </button>
+                                <button
+                                  onClick={() => confirmDeleteUser(u.id)}
+                                  className="flex-1 py-2 rounded-xl bg-error text-on-error text-[9px] font-black uppercase tracking-widest"
+                                >
+                                  EXCLUIR
+                                </button>
+                              </div>
+                            </div>
+                          )}
                           <div className="flex justify-between items-start">
                             <div className="flex items-center gap-4">
-                              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-headline font-black text-xl">
+                              <div className={cn(
+                                "w-12 h-12 rounded-full flex items-center justify-center font-headline font-black text-xl",
+                                u.role === 'visitor' ? "bg-secondary/10 text-secondary" : "bg-primary/10 text-primary"
+                              )}>
                                 {(u.name || 'S')[0]}
                               </div>
                               <div>
@@ -842,8 +914,8 @@ export default function Admin() {
                                 <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{u.email}</p>
                                 <div className="mt-3 flex flex-col gap-2">
                                   <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">ALTERAR CARGO:</label>
-                                  <div className="flex gap-2">
-                                    {(['athlete', 'coach', 'admin'] as const).map((role) => (
+                                  <div className="flex gap-2 flex-wrap">
+                                    {(['athlete', 'coach', 'admin', 'visitor'] as const).map((role) => (
                                       <button
                                         key={role}
                                         onClick={() => handleRoleChange(u.id, role)}
@@ -854,7 +926,7 @@ export default function Admin() {
                                             : "bg-surface-container-highest text-on-surface-variant border-outline-variant/20"
                                         )}
                                       >
-                                        {role === 'admin' ? 'ADMIN' : role === 'coach' ? 'COACH' : 'ALUNO'}
+                                        {role === 'admin' ? 'ADMIN' : role === 'coach' ? 'COACH' : role === 'visitor' ? 'VISITANTE' : 'ALUNO'}
                                       </button>
                                     ))}
                                     {selectedRoles[u.id] !== u.role && (
@@ -869,10 +941,22 @@ export default function Admin() {
                                 </div>
                               </div>
                             </div>
-                            <div className="flex gap-2">
-                              <span className="bg-primary/20 text-primary text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest h-fit">
-                                ATIVO
+                            <div className="flex flex-col items-end gap-2">
+                              <span className={cn(
+                                "text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest",
+                                u.role === 'visitor' 
+                                  ? "bg-secondary/20 text-secondary" 
+                                  : "bg-primary/20 text-primary"
+                              )}>
+                                {u.role === 'visitor' ? 'VISITANTE' : u.role === 'admin' ? 'ADMIN' : u.role === 'coach' ? 'COACH' : 'ATIVO'}
                               </span>
+                              <button
+                                onClick={() => handleDeleteUser(u.id)}
+                                className="p-1.5 rounded-xl bg-error-container/30 text-error hover:bg-error hover:text-on-error transition-all"
+                                title="Excluir usuário"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -912,6 +996,59 @@ export default function Admin() {
                 ))}
               </div>
             )}
+            {/* Visitor Permissions Section */}
+            <div className="mt-6">
+              <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-5">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-secondary/20 text-secondary">
+                      <Shield className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-headline font-bold text-base text-on-surface uppercase italic">ACESSO VISITANTE</h3>
+                      <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest opacity-60">Escolha quais páginas os visitantes podem ver</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleSaveVisitorPermissions}
+                    className="bg-primary text-background px-4 py-2 rounded-xl font-headline font-black text-[9px] uppercase italic shadow-lg hover:scale-105 transition-transform flex items-center gap-1.5"
+                  >
+                    <Save className="w-3 h-3" /> SALVAR
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {([
+                    { key: 'feed', label: 'Feed / Novidades', icon: '📰' },
+                    { key: 'wod', label: 'WOD do Dia', icon: '🏋️' },
+                    { key: 'leaderboard', label: 'Ranking', icon: '🏆' },
+                    { key: 'challenges', label: 'Desafios', icon: '⚡' },
+                    { key: 'clans', label: 'Clans', icon: '🛡️' },
+                    { key: 'mybox', label: 'Meu Box', icon: '📍' },
+                    { key: 'benchmarks', label: 'Benchmarks', icon: '📊' },
+                  ] as { key: keyof VisitorPermissions; label: string; icon: string }[]).map(({ key, label, icon }) => (
+                    <div key={key} className="flex items-center justify-between bg-surface-container-highest rounded-2xl px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-base">{icon}</span>
+                        <p className="text-[10px] text-on-surface font-bold uppercase tracking-widest">{label}</p>
+                      </div>
+                      <button
+                        onClick={() => setVisitorPermissions(prev => ({ ...prev, [key]: !prev[key] }))}
+                        className={cn(
+                          "w-11 h-6 rounded-full transition-all relative flex-shrink-0",
+                          visitorPermissions[key] ? "bg-primary" : "bg-surface-container-low border border-outline-variant/30"
+                        )}
+                      >
+                        <span className={cn(
+                          "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all",
+                          visitorPermissions[key] ? "left-5" : "left-0.5"
+                        )} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </motion.div>
         )}
 
