@@ -129,17 +129,18 @@ export default function Admin() {
   const [isManageUsersOpen, setIsManageUsersOpen] = useState(false);
   const [openSections, setOpenSections] = useState<string[]>([]);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [isVisitorPanelOpen, setIsVisitorPanelOpen] = useState(false);
   const [visitorPermissions, setVisitorPermissions] = useState<VisitorPermissions>({
-    wod: true,
-    leaderboard: false,
-    challenges: false,
-    clans: false,
-    feed: true,
-    mybox: true,
-    benchmarks: false,
-    duels: false,
-    progress: false,
-    avatar: false,
+    wod: 'allowed',
+    leaderboard: 'blocked',
+    challenges: 'blocked',
+    clans: 'blocked',
+    feed: 'allowed',
+    mybox: 'allowed',
+    benchmarks: 'blocked',
+    duels: 'blocked',
+    progress: 'blocked',
+    avatar: 'blocked',
   });
 
   const toggleSection = (section: string) => {
@@ -1001,59 +1002,86 @@ export default function Admin() {
             )}
             {/* Visitor Permissions Section */}
             <div className="mt-6">
-              <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-5">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-secondary/20 text-secondary">
-                      <Shield className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-headline font-bold text-base text-on-surface uppercase italic">ACESSO VISITANTE</h3>
-                      <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest opacity-60">Escolha quais páginas os visitantes podem ver</p>
-                    </div>
+              <button
+                onClick={() => setIsVisitorPanelOpen(!isVisitorPanelOpen)}
+                className="w-full flex justify-between items-center bg-surface-container-low p-6 rounded-3xl border border-outline-variant/10 group hover:border-secondary/30 transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "p-2 rounded-xl transition-colors",
+                    isVisitorPanelOpen ? "bg-secondary/20 text-secondary" : "bg-surface-container-highest text-on-surface-variant"
+                  )}>
+                    <Shield className="w-5 h-5" />
                   </div>
-                  <button
-                    onClick={handleSaveVisitorPermissions}
-                    className="bg-primary text-background px-4 py-2 rounded-xl font-headline font-black text-[9px] uppercase italic shadow-lg hover:scale-105 transition-transform flex items-center gap-1.5"
-                  >
-                    <Save className="w-3 h-3" /> SALVAR
-                  </button>
+                  <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">ACESSO VISITANTE</h3>
                 </div>
+                <ChevronDown className={cn("w-5 h-5 text-on-surface-variant transition-transform", isVisitorPanelOpen && "rotate-180")} />
+              </button>
 
-                <div className="space-y-2">
-                  {([
-                    { key: 'feed', label: 'Feed / Novidades', icon: '📰' },
-                    { key: 'wod', label: 'WOD do Dia', icon: '🏋️' },
-                    { key: 'leaderboard', label: 'Ranking', icon: '🏆' },
-                    { key: 'challenges', label: 'Desafios', icon: '⚡' },
-                    { key: 'clans', label: 'Clans', icon: '🛡️' },
-                    { key: 'mybox', label: 'Meu Box', icon: '📍' },
-                    { key: 'benchmarks', label: 'Benchmarks', icon: '📊' },
-                    { key: 'duels', label: 'Duelos', icon: '⚔️' },
-                    { key: 'progress', label: 'Progresso', icon: '📈' },
-                    { key: 'avatar', label: 'Avatar / Loja', icon: '🎮' },
-                  ] as { key: keyof VisitorPermissions; label: string; icon: string }[]).map(({ key, label, icon }) => (
-                    <div key={key} className="flex items-center justify-between bg-surface-container-highest rounded-2xl px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-base">{icon}</span>
-                        <p className="text-[10px] text-on-surface font-bold uppercase tracking-widest">{label}</p>
+              <AnimatePresence>
+                {isVisitorPanelOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pt-4 space-y-3">
+                      <div className="flex justify-between items-center px-1">
+                        <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest opacity-60">Escolha o acesso de cada página</p>
+                        <button
+                          onClick={handleSaveVisitorPermissions}
+                          className="bg-primary text-background px-4 py-2 rounded-xl font-headline font-black text-[9px] uppercase italic shadow-lg hover:scale-105 transition-transform flex items-center gap-1.5"
+                        >
+                          <Save className="w-3 h-3" /> SALVAR
+                        </button>
                       </div>
-                      <button
-                        onClick={() => setVisitorPermissions(prev => ({ ...prev, [key]: !prev[key] }))}
-                        className={cn(
-                          "w-11 h-6 rounded-full transition-all relative flex-shrink-0",
-                          visitorPermissions[key] ? "bg-primary" : "bg-surface-container-low border border-outline-variant/30"
-                        )}
-                      >
-                        <span className={cn(
-                          "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all",
-                          visitorPermissions[key] ? "left-5" : "left-0.5"
-                        )} />
-                      </button>
+                      <div className="flex justify-end gap-1 pr-1">
+                        <span className="w-8 text-center text-[7px] font-black uppercase tracking-widest text-primary">VER</span>
+                        <span className="w-8 text-center text-[7px] font-black uppercase tracking-widest text-error">BLOQ</span>
+                        <span className="w-8 text-center text-[7px] font-black uppercase tracking-widest text-on-surface-variant">OCU</span>
+                      </div>
+                      {([
+                        { key: 'feed', label: 'Feed / Novidades', icon: '📰' },
+                        { key: 'wod', label: 'WOD do Dia', icon: '🏋️' },
+                        { key: 'leaderboard', label: 'Ranking', icon: '🏆' },
+                        { key: 'challenges', label: 'Desafios', icon: '⚡' },
+                        { key: 'clans', label: 'Clans', icon: '🛡️' },
+                        { key: 'mybox', label: 'Meu Box', icon: '📍' },
+                        { key: 'benchmarks', label: 'Benchmarks', icon: '📊' },
+                        { key: 'duels', label: 'Duelos', icon: '⚔️' },
+                        { key: 'progress', label: 'Progresso', icon: '📈' },
+                        { key: 'avatar', label: 'Avatar / Loja', icon: '🎮' },
+                      ] as { key: keyof VisitorPermissions; label: string; icon: string }[]).map(({ key, label, icon }) => (
+                        <div key={key} className="flex items-center gap-3 bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10">
+                          <span className="text-base flex-shrink-0">{icon}</span>
+                          <p className="text-[10px] text-on-surface font-bold uppercase tracking-widest flex-1 min-w-0 truncate">{label}</p>
+                          <div className="flex gap-1 flex-shrink-0">
+                            {(['allowed', 'blocked', 'hidden'] as const).map((val) => (
+                              <button
+                                key={val}
+                                onClick={() => setVisitorPermissions(prev => ({ ...prev, [key]: val }))}
+                                className={cn(
+                                  "w-8 h-8 rounded-xl text-[10px] font-black transition-all border",
+                                  visitorPermissions[key] === val
+                                    ? val === 'allowed'
+                                      ? "bg-primary text-background border-primary"
+                                      : val === 'blocked'
+                                      ? "bg-error text-white border-error"
+                                      : "bg-surface-container-highest text-on-surface-variant border-outline-variant/50"
+                                    : "bg-surface-container-highest text-on-surface-variant/30 border-outline-variant/10"
+                                )}
+                              >
+                                {val === 'allowed' ? '✓' : val === 'blocked' ? '✕' : '–'}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </motion.div>
         )}
