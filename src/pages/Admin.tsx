@@ -627,13 +627,7 @@ export default function Admin() {
   };
 
   const handleSystemReset = async () => {
-    const confirmation = prompt(
-      'AVISO CRÍTICO: Isso apagará check-ins, duelos, recompensas, resultados de WOD, membros de clans e zerará XP/Coins/Level de todos.
-
-Benchmarks (Personal Records) serão MANTIDOS.
-
-Digite "RESETAR" para confirmar:'
-    );
+    const confirmation = prompt('AVISO CRÍTICO: Isso apagará check-ins, duelos, recompensas, resultados de WOD, membros de clans e zerará XP/Coins/Level de todos.\n\nBenchmarks (Personal Records) serão MANTIDOS.\n\nDigite RESETAR para confirmar:')
 
     if (confirmation !== 'RESETAR') return;
 
