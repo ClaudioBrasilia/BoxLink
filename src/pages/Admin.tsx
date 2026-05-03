@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Users, MapPin, Calendar, Megaphone, Plus, Settings, 
   ChevronRight, ChevronDown, Activity, Check, X, Shield, UserPlus, 
