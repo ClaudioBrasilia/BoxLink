@@ -627,25 +627,43 @@ export default function Admin() {
   };
 
   const handleSystemReset = async () => {
-    const confirmation = prompt('AVISO CRÍTICO: Isso apagará TODOS os check-ins, resultados de WOD, histórico de recompensas, duelos e resetará o XP/Coins de todos os usuários. Digite "RESETAR" para confirmar:');
-    
+    const confirmation = prompt(
+      'AVISO CRÍTICO: Isso apagará check-ins, duelos, recompensas, resultados de WOD, membros de clans e zerará XP/Coins/Level de todos.
+
+Benchmarks (Personal Records) serão MANTIDOS.
+
+Digite "RESETAR" para confirmar:'
+    );
+
     if (confirmation !== 'RESETAR') return;
 
     try {
-      // 1. Delete history tables
+      toast.success('Resetando... aguarde.');
+
+      // 1. Atividades e histórico
       await supabase.from('checkins').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('reward_history').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('wod_results').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('duels').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('domination_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-      // 2. Reset user profiles
+      // 2. Clans — remove memberships mas mantém os clans criados
+      await supabase.from('clan_memberships').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+      // 3. Zera XP, Coins e Level de todos (incluindo admins)
       await supabase
         .from('profiles')
-        .update({ xp: 0, coins: 100, level: 1 })
-        .neq('role', 'admin');
+        .update({
+          xp: 0,
+          coins: 0,
+          level: 1,
+          paid_bonuses: [],
+        })
+        .neq('id', '00000000-0000-0000-0000-000000000000');
 
-      toast.success('Sistema resetado com sucesso! O box está limpo para um novo começo.');
+      // 4. NÃO apaga: personal_records (benchmarks), wods, challenges, schedule, items, clans, box_settings
+
+      toast.success('Nova temporada iniciada! Tudo zerado — benchmarks preservados.');
       fetchAll();
     } catch (err: any) {
       toast.error('Erro durante o reset: ' + err.message);
@@ -2049,16 +2067,22 @@ export default function Admin() {
             {/* System Reset */}
             <div className="bg-error-container/10 p-6 rounded-[2rem] border border-error/20 space-y-4">
               <h3 className="font-headline font-bold text-lg text-error uppercase italic flex items-center gap-2">
-                <Shield className="w-5 h-5" /> ZONA DE PERIGO
+                <Shield className="w-5 h-5" /> NOVA TEMPORADA
               </h3>
-              <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest leading-relaxed">
-                O reset do sistema limpará todos os dados de check-ins, resultados e histórico, mantendo apenas os perfis dos usuários (com XP zerado).
-              </p>
+              <div className="space-y-2">
+                <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest leading-relaxed">
+                  Zera check-ins, duelos, recompensas, resultados de WOD, membros de clans e reseta XP/Coins/Level de todos os atletas.
+                </p>
+                <div className="flex items-center gap-2 bg-primary/10 rounded-2xl px-4 py-2">
+                  <span className="text-primary text-sm">✓</span>
+                  <p className="text-primary text-[10px] font-black uppercase tracking-widest">Benchmarks (Personal Records) são preservados</p>
+                </div>
+              </div>
               <button 
                 onClick={handleSystemReset}
                 className="w-full bg-error text-on-error py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2 hover:bg-error/90 transition-colors"
               >
-                <Trash2 className="w-5 h-5" /> RESETAR SISTEMA PARA NOVA TEMPORADA
+                <Trash2 className="w-5 h-5" /> INICIAR NOVA TEMPORADA
               </button>
             </div>
           </motion.div>
