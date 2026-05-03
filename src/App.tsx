@@ -115,11 +115,11 @@ function AppRoutes() {
           <Route path="leaderboard" element={<VisitorGuard page="leaderboard"><Leaderboard /></VisitorGuard>} />
           <Route path="profile"     element={<Profile />} />
           <Route path="challenges"  element={<VisitorGuard page="challenges"><Challenges /></VisitorGuard>} />
-          <Route path="duels"       element={<ProtectedRoute roles={['athlete','coach','admin']}><Duels /></ProtectedRoute>} />
-          <Route path="progress"    element={<ProtectedRoute roles={['athlete','coach','admin']}><Progress /></ProtectedRoute>} />
+          <Route path="duels"       element={<VisitorGuard page="duels"><Duels /></VisitorGuard>} />
+          <Route path="progress"    element={<VisitorGuard page="progress"><Progress /></VisitorGuard>} />
           <Route path="mybox"       element={<VisitorGuard page="mybox"><MyBox /></VisitorGuard>} />
           <Route path="clans"       element={<VisitorGuard page="clans"><Clans /></VisitorGuard>} />
-          <Route path="avatar"      element={<ProtectedRoute roles={['athlete','coach','admin']}><AvatarCustomization /></ProtectedRoute>} />
+          <Route path="avatar"      element={<VisitorGuard page="avatar"><AvatarCustomization /></VisitorGuard>} />
           <Route path="benchmarks"  element={<VisitorGuard page="benchmarks"><Benchmarks /></VisitorGuard>} />
           <Route path="feed"        element={<VisitorGuard page="feed"><Feed /></VisitorGuard>} />
           <Route path="admin"       element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
