@@ -1,5 +1,17 @@
-export type UserRole = 'athlete' | 'coach' | 'admin';
+export type UserRole = 'athlete' | 'coach' | 'admin' | 'visitor';
 export type UserStatus = 'pending' | 'approved' | 'rejected';
+
+export type VisitorPage = 'wod' | 'leaderboard' | 'challenges' | 'clans' | 'feed' | 'mybox' | 'benchmarks';
+
+export interface VisitorPermissions {
+  wod: boolean;
+  leaderboard: boolean;
+  challenges: boolean;
+  clans: boolean;
+  feed: boolean;
+  mybox: boolean;
+  benchmarks: boolean;
+}
 
 export interface AvatarSlot {
   base_outfit: string;
@@ -101,7 +113,7 @@ export interface Schedule {
   endTime: string;
   coach: string;
   capacity: number;
-  days: number[]; // 0-6 (Sunday-Saturday)
+  days: number[];
   isActive: boolean;
   checkinWindowMinutes: number;
 }
@@ -156,4 +168,5 @@ export interface BoxSettings {
     challenges: boolean;
   };
   clans_enabled?: boolean;
+  visitor_permissions?: VisitorPermissions;
 }
