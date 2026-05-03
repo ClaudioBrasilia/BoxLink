@@ -11,7 +11,6 @@ import {
   Search,
   Timer,
   Hash,
-  Trash2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
@@ -119,7 +118,6 @@ export default function Duels() {
   const [boxSettings, setBoxSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // UI
   const [activeTab, setActiveTab] = useState<'all' | 'mine' | 'pending'>('all');
@@ -395,13 +393,10 @@ export default function Duels() {
         }
       }
 
-      await supabase.from('duels').update({
-        status: 'finished',
-        bet_canceled_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }).eq('id', duelId);
-
-      await loadData();
+      await supabase.from('duels').delete().eq('id', duelId);
+      setDuels(prev => prev.filter(d => d.id !== duelId));
+      if (expandedId === duelId) setExpandedId(null);
+      toast.success('Duelo cancelado e removido.');
     } catch (err: any) {
       console.error('Error canceling duel:', err);
       toast.error('Erro ao cancelar duelo.');
@@ -410,32 +405,6 @@ export default function Duels() {
     }
   };
 
-  // ─── Excluir duelo cancelado ──────────────────────────────────────────────
-
-  const handleDelete = async (duelId: string) => {
-    if (!user) return;
-    const duel = duels.find(d => d.id === duelId);
-    if (!duel) return;
-
-    // Só permite excluir duelos cancelados (betCanceledAt preenchido)
-    const isCanceled = duel.status === 'finished' && Boolean(duel.betCanceledAt);
-    const isParticipant = duel.challengerId === user.id || duel.opponentIds.includes(user.id);
-    if (!isCanceled || !isParticipant) return;
-
-    setDeletingId(duelId);
-    try {
-      const { error } = await supabase.from('duels').delete().eq('id', duelId);
-      if (error) throw error;
-      // Remove localmente sem precisar recarregar tudo
-      setDuels(prev => prev.filter(d => d.id !== duelId));
-      if (expandedId === duelId) setExpandedId(null);
-    } catch (err: any) {
-      console.error('Error deleting duel:', err);
-      toast.error('Erro ao excluir duelo: ' + err.message);
-    } finally {
-      setDeletingId(null);
-    }
-  };
 
   // ─── Submeter resultado ───────────────────────────────────────────────────
 
@@ -804,8 +773,6 @@ export default function Duels() {
             const timeBased = isTimeBased(duel.wodType);
 
             // Duelo cancelado que este usuário pode excluir
-            const isCanceled = duel.status === 'finished' && Boolean(duel.betCanceledAt);
-            const canDelete = isCanceled && isParticipant;
 
             return (
               <motion.div
@@ -817,7 +784,7 @@ export default function Duels() {
                 className={cn(
                   'bg-surface-container rounded-3xl p-5 border border-outline-variant/10 transition-all flex flex-col gap-4',
                   isExpanded && 'ring-2 ring-primary/20 bg-surface-container-high',
-                  isCanceled && 'border-error/10'
+  
                 )}
               >
                 {/* Cabeçalho do card */}
@@ -825,29 +792,13 @@ export default function Duels() {
                   <span className={cn(
                     'text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest border',
                     duel.status === 'active' ? 'bg-primary/20 text-primary border-primary/30'
-                      : duel.status === 'finished'
-                        ? (duel.betCanceledAt ? 'bg-error/20 text-error border-error/30' : 'bg-outline-variant/20 text-on-surface-variant border-outline-variant/30')
-                        : 'bg-secondary/20 text-secondary border-secondary/30'
+                      : duel.status === 'finished' ? 'bg-outline-variant/20 text-on-surface-variant border-outline-variant/30'
+                      : 'bg-secondary/20 text-secondary border-secondary/30'
                   )}>
-                    {duel.status === 'active' ? 'ATIVO'
-                      : duel.status === 'finished' ? (duel.betCanceledAt ? 'CANCELADO' : 'FINALIZADO')
-                      : 'PENDENTE'}
+                    {duel.status === 'active' ? 'ATIVO' : duel.status === 'finished' ? 'FINALIZADO' : 'PENDENTE'}
                   </span>
 
                   <div className="flex items-center gap-2">
-                    {/* Botão excluir — só em duelos cancelados */}
-                    {canDelete && (
-                      <button
-                        onClick={() => handleDelete(duel.id)}
-                        disabled={deletingId === duel.id}
-                        title="Excluir duelo cancelado"
-                        className="w-8 h-8 flex items-center justify-center rounded-xl text-error/50 hover:text-error hover:bg-error/10 border border-transparent hover:border-error/20 transition-all disabled:opacity-40"
-                      >
-                        {deletingId === duel.id
-                          ? <div className="w-3.5 h-3.5 border-2 border-error border-t-transparent rounded-full animate-spin" />
-                          : <Trash2 className="w-3.5 h-3.5" />}
-                      </button>
-                    )}
                     <button onClick={() => setExpandedId(isExpanded ? null : duel.id)}>
                       <ChevronDown className={cn('w-4 h-4 text-on-surface-variant transition-transform', isExpanded && 'rotate-180')} />
                     </button>
