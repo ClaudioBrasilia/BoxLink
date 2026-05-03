@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -25,12 +25,15 @@ import Feed from './pages/Feed';
 import { Shield } from 'lucide-react';
 import Onboarding from './components/Onboarding';
 import { ToastProvider } from './context/ToastContext';
-import { useState, useEffect } from 'react';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
   const { user, loading, logout } = useAuth();
 
-  if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO...</div>;
+  if (loading) return (
+    <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">
+      CARREGANDO...
+    </div>
+  );
   if (!user) return <Navigate to="/login" />;
 
   if (user.status !== 'approved') {
@@ -66,20 +69,20 @@ function AppRoutes() {
         <Route path="/install" element={<Install />} />
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<Dashboard />} />
-          <Route path="wod"          element={<Wod />} />
-          <Route path="leaderboard"  element={<Leaderboard />} />
-          <Route path="profile"      element={<Profile />} />
-          <Route path="challenges"   element={<Challenges />} />
-          <Route path="duels"        element={<Duels />} />
-          <Route path="progress"     element={<Progress />} />
-          <Route path="mybox"        element={<MyBox />} />
-          <Route path="clans"        element={<Clans />} />
-          <Route path="avatar"       element={<AvatarCustomization />} />
-          <Route path="benchmarks"   element={<Benchmarks />} />
-          <Route path="feed"         element={<Feed />} />
-          <Route path="admin"        element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
-          <Route path="coach"        element={<ProtectedRoute roles={['coach', 'admin']}><Coach /></ProtectedRoute>} />
-          <Route path="tv"           element={<TV />} />
+          <Route path="wod"         element={<Wod />} />
+          <Route path="leaderboard" element={<Leaderboard />} />
+          <Route path="profile"     element={<Profile />} />
+          <Route path="challenges"  element={<Challenges />} />
+          <Route path="duels"       element={<Duels />} />
+          <Route path="progress"    element={<Progress />} />
+          <Route path="mybox"       element={<MyBox />} />
+          <Route path="clans"       element={<Clans />} />
+          <Route path="avatar"      element={<AvatarCustomization />} />
+          <Route path="benchmarks"  element={<Benchmarks />} />
+          <Route path="feed"        element={<Feed />} />
+          <Route path="admin"       element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
+          <Route path="coach"       element={<ProtectedRoute roles={['coach', 'admin']}><Coach /></ProtectedRoute>} />
+          <Route path="tv"          element={<TV />} />
         </Route>
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
