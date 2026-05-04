@@ -22,6 +22,7 @@ export default function Dashboard() {
   const [announcements, setAnnouncements] = useState<string[]>([]);
   const [activeChallenges, setActiveChallenges] = useState<any[]>([]);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [userRankPosition, setUserRankPosition] = useState<number | null>(null);
 
   const fetchData = async () => {
     // Fetch WODs
@@ -71,6 +72,22 @@ export default function Dashboard() {
       const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
       const current = mappedSchedule.find((s: any) => now >= s.time && now <= s.endTime);
       if (current) setSelectedClass(current.time);
+    }
+
+    // Fetch ranking position (XP do mês)
+    if (user?.id) {
+      const now2 = new Date();
+      const firstDayOfMonth = new Date(now2.getFullYear(), now2.getMonth(), 1).toISOString().split('T')[0];
+      const { data: rewardHistory } = await supabase
+        .from('reward_history').select('user_id, xp')
+        .gte('created_at', firstDayOfMonth + 'T00:00:00');
+      const monthXpByUser: Record<string, number> = {};
+      (rewardHistory || []).forEach((r: any) => {
+        if (r.xp > 0) monthXpByUser[r.user_id] = (monthXpByUser[r.user_id] || 0) + r.xp;
+      });
+      const sorted = Object.entries(monthXpByUser).sort((a, b) => b[1] - a[1]);
+      const pos = sorted.findIndex(([id]) => id === user.id);
+      setUserRankPosition(pos >= 0 ? pos + 1 : null);
     }
   };
 
@@ -406,7 +423,9 @@ export default function Dashboard() {
           </div>
           <div>
             <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Ranking Box</p>
-            <p className="text-2xl font-headline font-black text-on-surface">#12</p>
+            <p className="text-2xl font-headline font-black text-on-surface">
+              {userRankPosition != null ? `#${userRankPosition}` : '—'}
+            </p>
           </div>
         </div>
       </section>
