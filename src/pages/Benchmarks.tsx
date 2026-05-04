@@ -104,8 +104,8 @@ export default function Benchmarks() {
       if (!acc[b.user_id]) acc[b.user_id] = b;
       return acc;
     }, {});
-  const rankingSorted = Object.values(rankingData)
-    .sort((a, b) => {
+  const rankingSorted = (Object.values(rankingData) as any[])
+    .sort((a: any, b: any) => {
       const numA = parseFloat(a.value.replace(/[^0-9.]/g, '')) || 0;
       const numB = parseFloat(b.value.replace(/[^0-9.]/g, '')) || 0;
       const isTime = a.unit === 'min' || a.unit === 'seg';
@@ -257,7 +257,7 @@ export default function Benchmarks() {
             </p>
           ) : (
             <div className="flex flex-col gap-3">
-              {rankingSorted.map((r, i) => (
+              {rankingSorted.map((r: any, i: number) => (
                 <motion.div key={r.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
                   className={cn("p-4 rounded-2xl border flex items-center justify-between",
                     r.user_id === user?.id ? "bg-primary/10 border-primary/30" : "bg-surface-container-low border-outline-variant/10"
