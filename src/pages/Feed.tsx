@@ -431,13 +431,14 @@ export default function Feed() {
 
       {/* Posts */}
       {!loading && !error && posts.map(post => (
-        <PostCard
-          key={post.id}
-          post={post}
-          currentUserId={user?.id || ''}
-          onLike={handleLike}
-          onAdd={handleAddComment}
-        />
+        <div key={post.id}>
+          <PostCard
+            post={post}
+            currentUserId={user?.id || ''}
+            onLike={handleLike}
+            onAdd={handleAddComment}
+          />
+        </div>
       ))}
     </div>
   );
