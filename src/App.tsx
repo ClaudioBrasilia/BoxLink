@@ -109,6 +109,7 @@ function AppRoutes() {
         <Route path="/login"   element={<Login />} />
         <Route path="/signup"  element={<Signup />} />
         <Route path="/install" element={<Install />} />
+        <Route path="/tv"      element={<TV />} />
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<Dashboard />} />
           <Route path="wod"         element={<VisitorGuard page="wod"><Wod /></VisitorGuard>} />
@@ -124,7 +125,6 @@ function AppRoutes() {
           <Route path="feed"        element={<VisitorGuard page="feed"><Feed /></VisitorGuard>} />
           <Route path="admin"       element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
           <Route path="coach"       element={<ProtectedRoute roles={['coach', 'admin']}><Coach /></ProtectedRoute>} />
-          <Route path="tv"          element={<TV />} />
         </Route>
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
