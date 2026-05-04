@@ -641,13 +641,20 @@ export default function Admin() {
       await supabase.from('duels').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('domination_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-      // 2. Clans — remove memberships mas mantém os clans criados
-      await supabase.from('clan_memberships').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-
-      // 3. Desafios — apaga participações da temporada
+      // 2. Desafios — apaga participações e os desafios criados
       await supabase.from('challenge_checkins').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('challenges').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-      // 4. Zera XP, Coins e Level de todos (incluindo admins)
+      // 3. Times — apaga membros e os times criados
+      await supabase.from('clan_memberships').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('clans').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+      // 4. Feed — apaga posts, likes e comentários
+      await supabase.from('feed_comments').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('feed_likes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('feed_posts').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+      // 5. Zera XP, Coins, Level e avatar de todos
       await supabase
         .from('profiles')
         .update({
@@ -655,10 +662,12 @@ export default function Admin() {
           coins: 0,
           level: 1,
           paid_bonuses: [],
+          avatar_inventory: [],
+          avatar_equipped: null,
         })
         .neq('id', '00000000-0000-0000-0000-000000000000');
 
-      // 5. NÃO apaga: personal_records (benchmarks), wods, challenges, schedule, items, clans, box_settings
+      // 6. NÃO apaga: personal_records (benchmarks), wods, schedule, items, box_settings, profiles
 
       toast.success('Nova temporada iniciada! Tudo zerado — benchmarks preservados.');
       fetchAll();
