@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Zap, CheckCircle2, History, Trophy, Camera, X, Upload, Calendar } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Challenge } from '../types';
