@@ -1,22 +1,5 @@
-export type UserRole = 'athlete' | 'coach' | 'admin' | 'visitor';
+export type UserRole = 'athlete' | 'coach' | 'admin';
 export type UserStatus = 'pending' | 'approved' | 'rejected';
-
-export type VisitorPage = 'wod' | 'leaderboard' | 'challenges' | 'clans' | 'feed' | 'mybox' | 'benchmarks' | 'duels' | 'progress' | 'avatar';
-
-export type VisitorPageAccess = 'allowed' | 'blocked' | 'hidden';
-
-export interface VisitorPermissions {
-  wod: VisitorPageAccess;
-  leaderboard: VisitorPageAccess;
-  challenges: VisitorPageAccess;
-  clans: VisitorPageAccess;
-  feed: VisitorPageAccess;
-  mybox: VisitorPageAccess;
-  benchmarks: VisitorPageAccess;
-  duels: VisitorPageAccess;
-  progress: VisitorPageAccess;
-  avatar: VisitorPageAccess;
-}
 
 export interface AvatarSlot {
   base_outfit: string;
@@ -35,6 +18,8 @@ export interface Item {
   slot: keyof AvatarSlot;
   price: number;
   image: string;
+  layer_adjustment?: Record<string, any> | null;
+  gender_target?: 'male' | 'female' | 'both';
 }
 
 export interface PersonalRecord {
@@ -89,8 +74,6 @@ export interface Challenge {
   repeatable: boolean;
   dailyLimit: number;
   difficulty?: 'easy' | 'medium' | 'hard' | 'special';
-  require_photo?: boolean;
-  required_days?: number;
 }
 
 export interface Duel {
@@ -120,7 +103,7 @@ export interface Schedule {
   endTime: string;
   coach: string;
   capacity: number;
-  days: number[]; // 0-6 (Sunday-Saturday)
+  days: number[];
   isActive: boolean;
   checkinWindowMinutes: number;
 }
@@ -175,5 +158,4 @@ export interface BoxSettings {
     challenges: boolean;
   };
   clans_enabled?: boolean;
-  visitor_permissions?: VisitorPermissions;
 }
