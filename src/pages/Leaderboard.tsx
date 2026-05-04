@@ -22,6 +22,7 @@ export default function Leaderboard() {
   const [activeTab, setActiveTab] = useState<'xp_mes' | 'freq' | 'xp_total' | 'clans' | 'wod'>('xp_mes');
   const [isExpanded, setIsExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const now = new Date();
@@ -32,17 +33,18 @@ export default function Leaderboard() {
 
     const channel = supabase
       .channel('leaderboard_rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wod_results' }, () => fetchAll())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wod_results' }, () => fetchAll(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchAll(true))
       .subscribe();
 
-    const poll = setInterval(() => fetchAll(), 20000);
+    const poll = setInterval(() => fetchAll(true), 20000);
 
     return () => { supabase.removeChannel(channel); clearInterval(poll); };
   }, []);
 
-  const fetchAll = async () => {
-    setLoading(true);
+  const fetchAll = async (silent = false) => {
+    if (silent) setRefreshing(true);
+    else setLoading(true);
     try {
       const now = new Date();
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
@@ -177,7 +179,7 @@ export default function Leaderboard() {
         setWodRanking([]);
       }
     } catch (err: any) { setError(err.message); }
-    finally { setLoading(false); }
+    finally { setLoading(false); setRefreshing(false); }
   };
 
   const isClans = activeTab === 'clans';
@@ -217,6 +219,7 @@ export default function Leaderboard() {
       <header className="flex justify-between items-center">
         <h1 className="text-3xl font-headline font-black text-on-surface tracking-tight uppercase italic flex items-center gap-3">
           <Trophy className="w-8 h-8 text-primary" /> RANKING
+          {refreshing && <span className="text-xs font-sans font-normal text-on-surface-variant animate-pulse normal-case tracking-normal">atualizando...</span>}
         </h1>
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-1 text-on-surface-variant text-[10px] font-black uppercase tracking-widest">
