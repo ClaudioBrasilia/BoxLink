@@ -3,17 +3,19 @@ export type UserStatus = 'pending' | 'approved' | 'rejected';
 
 export type VisitorPage = 'wod' | 'leaderboard' | 'challenges' | 'clans' | 'feed' | 'mybox' | 'benchmarks' | 'duels' | 'progress' | 'avatar';
 
+export type VisitorPageAccess = 'allowed' | 'blocked' | 'hidden';
+
 export interface VisitorPermissions {
-  wod: boolean;
-  leaderboard: boolean;
-  challenges: boolean;
-  clans: boolean;
-  feed: boolean;
-  mybox: boolean;
-  benchmarks: boolean;
-  duels: boolean;
-  progress: boolean;
-  avatar: boolean;
+  wod: VisitorPageAccess;
+  leaderboard: VisitorPageAccess;
+  challenges: VisitorPageAccess;
+  clans: VisitorPageAccess;
+  feed: VisitorPageAccess;
+  mybox: VisitorPageAccess;
+  benchmarks: VisitorPageAccess;
+  duels: VisitorPageAccess;
+  progress: VisitorPageAccess;
+  avatar: VisitorPageAccess;
 }
 
 export interface AvatarSlot {
@@ -87,6 +89,8 @@ export interface Challenge {
   repeatable: boolean;
   dailyLimit: number;
   difficulty?: 'easy' | 'medium' | 'hard' | 'special';
+  require_photo?: boolean;
+  required_days?: number;
 }
 
 export interface Duel {
