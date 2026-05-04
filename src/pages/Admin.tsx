@@ -644,7 +644,10 @@ export default function Admin() {
       // 2. Clans — remove memberships mas mantém os clans criados
       await supabase.from('clan_memberships').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-      // 3. Zera XP, Coins e Level de todos (incluindo admins)
+      // 3. Desafios — apaga participações da temporada
+      await supabase.from('challenge_checkins').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+      // 4. Zera XP, Coins e Level de todos (incluindo admins)
       await supabase
         .from('profiles')
         .update({
@@ -655,7 +658,7 @@ export default function Admin() {
         })
         .neq('id', '00000000-0000-0000-0000-000000000000');
 
-      // 4. NÃO apaga: personal_records (benchmarks), wods, challenges, schedule, items, clans, box_settings
+      // 5. NÃO apaga: personal_records (benchmarks), wods, challenges, schedule, items, clans, box_settings
 
       toast.success('Nova temporada iniciada! Tudo zerado — benchmarks preservados.');
       fetchAll();
