@@ -1,79 +1,61 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AvatarSlot } from '../types';
 import { cn } from '../lib/utils';
+import { buildAvatarLayers, adjustmentToCSS, LayerAdjustment } from '../lib/avatarLayers';
 
 interface AvatarPreviewProps {
   equipped: AvatarSlot;
   className?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  itemAdjustments?: Record<string, Partial<LayerAdjustment>>;
+  showBorder?: boolean;
+  shape?: 'circle' | 'rect';
 }
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const BUCKET = 'avatar-assets';
 
 function getAvatarImageUrl(filename: string): string {
-  const encoded = encodeURIComponent(filename);
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encoded}.png`;
+  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(filename)}.png`;
 }
 
-function getAvatarLayers(equipped: AvatarSlot): Array<{ url: string; alt: string }> {
-  const isFemale = equipped.base_outfit === 'base_feminina';
-  const layers: Array<{ url: string; alt: string }> = [];
+const SIZE_CLASSES = { sm:'w-12 h-12', md:'w-24 h-24', lg:'w-32 h-32', xl:'w-48 h-48' };
 
-  const baseFile = isFemale ? 'base feminina' : 'base masculina';
-  layers.push({ url: getAvatarImageUrl(baseFile), alt: 'Base' });
-
-  if (equipped.bottom) layers.push({ url: getAvatarImageUrl(equipped.bottom), alt: 'Calça' });
-  if (equipped.top) layers.push({ url: getAvatarImageUrl(equipped.top), alt: 'Camiseta' });
-  if (equipped.shoes) layers.push({ url: getAvatarImageUrl(equipped.shoes), alt: 'Tênis' });
-  if (equipped.special) layers.push({ url: getAvatarImageUrl(equipped.special), alt: 'Especial' });
-  if (equipped.wrist_accessory) layers.push({ url: getAvatarImageUrl(equipped.wrist_accessory), alt: 'Pulso' });
-  if (equipped.head_accessory) layers.push({ url: getAvatarImageUrl(equipped.head_accessory), alt: 'Cabeça' });
-  if (equipped.accessory) layers.push({ url: getAvatarImageUrl(equipped.accessory), alt: 'Acessório' });
-
-  return layers;
-}
-
-export default function AvatarPreview({ equipped, className, size = 'md' }: AvatarPreviewProps) {
-  const sizeClasses = {
-    sm: 'w-12 h-12',
-    md: 'w-24 h-24',
-    lg: 'w-32 h-32',
-    xl: 'w-48 h-48',
-  };
-
-  const layers = getAvatarLayers(equipped);
+export default function AvatarPreview({
+  equipped, className, size = 'md',
+  itemAdjustments = {}, showBorder = true, shape = 'circle',
+}: AvatarPreviewProps) {
+  const [failedLayers, setFailedLayers] = useState<Set<number>>(new Set());
+  const layers = buildAvatarLayers(equipped, getAvatarImageUrl, itemAdjustments);
   const isFemale = equipped.base_outfit === 'base_feminina';
   const fallbackBase = getAvatarImageUrl(isFemale ? 'base feminina' : 'base masculina');
 
   return (
     <div className={cn(
-      'relative rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden border-4 border-primary shadow-[0_0_30px_rgba(202,253,0,0.2)]',
-      sizeClasses[size],
-      className
+      'relative flex items-center justify-center overflow-hidden bg-surface-container-highest',
+      shape === 'circle' ? 'rounded-full' : 'rounded-2xl',
+      showBorder && 'border-4 border-primary shadow-[0_0_30px_rgba(202,253,0,0.2)]',
+      SIZE_CLASSES[size], className
     )}>
-      {layers.map((layer, index) => (
-        <img
-          key={index}
-          src={layer.url}
-          alt={layer.alt}
-          className={cn(
-            'absolute inset-0 w-full h-full',
-            index === 0
-              ? 'object-cover object-top'
-              : 'object-contain object-bottom'
-          )}
-          onError={(e) => {
-            if (index === 0) {
-              if (e.currentTarget.src !== fallbackBase) {
+      {layers.map((layer, index) => {
+        if (failedLayers.has(index)) return null;
+        return (
+          <img
+            key={`${layer.slot}-${index}`}
+            src={layer.url}
+            alt={layer.alt}
+            style={adjustmentToCSS(layer.adjustment)}
+            draggable={false}
+            onError={(e) => {
+              if (index === 0 && e.currentTarget.src !== fallbackBase) {
                 e.currentTarget.src = fallbackBase;
+              } else {
+                setFailedLayers(prev => new Set(prev).add(index));
               }
-            } else {
-              e.currentTarget.style.display = 'none';
-            }
-          }}
-        />
-      ))}
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
