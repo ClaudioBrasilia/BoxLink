@@ -19,6 +19,14 @@ function getItemImageUrl(imageKey: string): string {
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(imageKey)}.png`;
 }
 
+// Retorna a URL direta da imagem do item — usa o campo image se for URL completa,
+// senão monta pelo ID no bucket
+function getItemPreviewUrl(item: Item): string {
+  if (item.image?.startsWith('http')) return item.image;
+  const key = item.image || item.id;
+  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(key)}.png`;
+}
+
 const SLOT_ICONS: Record<string, any> = {
   top: Shirt, bottom: Footprints, shoes: Footprints,
   accessory: Glasses, head_accessory: GraduationCap, wrist_accessory: Watch, special: Sparkles,
@@ -80,11 +88,13 @@ function CalibratorPanel({ item, onSave, onClose }: CalibratorPanelProps) {
     try { await onSave(item.id, getDiff()); } finally { setSaving(false); }
   };
 
-  // Preview ao vivo
   const baseStyle: React.CSSProperties = {
     position: 'absolute', inset: 0, width: '100%', height: '100%',
     objectFit: 'cover', objectPosition: 'top center', zIndex: 0,
   };
+
+  // URL correta da imagem do item
+  const itemImageUrl = getItemPreviewUrl(item);
 
   return (
     <motion.div
@@ -108,8 +118,18 @@ function CalibratorPanel({ item, onSave, onClose }: CalibratorPanelProps) {
         {(['base masculina', 'base feminina'] as const).map(base => (
           <div key={base} className="flex-1 flex flex-col items-center gap-1">
             <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-surface-container-highest border border-outline-variant/10">
-              <img src={getItemImageUrl(base)} alt="base" style={baseStyle} onError={e => { e.currentTarget.style.display = 'none'; }} />
-              <img src={getItemImageUrl(item.image || item.id)} alt={item.name} style={adjustmentToCSS(adj)} onError={e => { e.currentTarget.style.opacity = '0.15'; }} />
+              <img
+                src={getItemImageUrl(base)}
+                alt="base"
+                style={baseStyle}
+                onError={e => { e.currentTarget.style.display = 'none'; }}
+              />
+              <img
+                src={itemImageUrl}
+                alt={item.name}
+                style={adjustmentToCSS(adj)}
+                onError={e => { e.currentTarget.style.opacity = '0.15'; }}
+              />
             </div>
             <span className="text-[7px] font-bold uppercase tracking-widest text-on-surface-variant opacity-40">
               {base === 'base masculina' ? '♂' : '♀'}
@@ -160,25 +180,15 @@ function CalibratorPanel({ item, onSave, onClose }: CalibratorPanelProps) {
   );
 }
 
-// ─── Upload padronizado (B: padrão no upload) ─────────────────────────────────
+// ─── Upload padronizado ────────────────────────────────────────────────────────
 
 async function uploadAvatarItem(
   file: File,
   itemId: string,
   slot: AvatarSlotKey
 ): Promise<{ publicUrl: string; naturalWidth: number; naturalHeight: number }> {
-  // Dimensões alvo por slot — garante consistência sem precisar calibrar na maioria dos casos
-  const TARGET: Record<AvatarSlotKey, { w: number; h: number }> = {
-    top:             { w: 512, h: 768 },
-    bottom:          { w: 512, h: 768 },
-    shoes:           { w: 512, h: 768 },
-    accessory:       { w: 512, h: 768 },
-    wrist_accessory: { w: 512, h: 768 },
-    head_accessory:  { w: 512, h: 768 },
-    special:         { w: 512, h: 768 },
-  };
-
-  const { w: targetW, h: targetH } = TARGET[slot];
+  const TARGET = { w: 512, h: 768 };
+  const { w: targetW, h: targetH } = TARGET;
 
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -191,8 +201,6 @@ async function uploadAvatarItem(
         canvas.width = targetW;
         canvas.height = targetH;
         const ctx = canvas.getContext('2d')!;
-
-        // Centraliza a imagem original no canvas alvo mantendo proporção
         const scale = Math.min(targetW / img.width, targetH / img.height);
         const dx = (targetW - img.width * scale) / 2;
         const dy = (targetH - img.height * scale) / 2;
@@ -249,7 +257,6 @@ export default function AvatarCustomization() {
     fetchData();
   }, []);
 
-  // Mapa de ajustes: itemId → LayerAdjustment parcial
   const itemAdjustments = Object.fromEntries(
     items.filter(i => i.layer_adjustment).map(i => [i.id, i.layer_adjustment!])
   );
@@ -280,7 +287,6 @@ export default function AvatarCustomization() {
     } catch { showToast('Erro ao equipar item.', 'error'); } finally { setEquipingItemId(null); }
   };
 
-  // Admin: salva ajuste de camada no banco
   const handleSaveLayerAdjustment = async (itemId: string, adjustment: Partial<LayerAdjustment>) => {
     const { error } = await supabase.from('items').update({ layer_adjustment: adjustment }).eq('id', itemId);
     if (error) { showToast('Erro ao salvar ajuste.', 'error'); return; }
@@ -442,7 +448,6 @@ export default function AvatarCustomization() {
                   </div>
                 )}
 
-                {/* Badge de calibração + botão admin */}
                 {isAdmin && (
                   <button
                     onClick={() => setCalibratingItem(calibratingItem?.id === item.id ? null : item)}
@@ -532,4 +537,4 @@ export default function AvatarCustomization() {
       </AnimatePresence>
     </div>
   );
-}
+      }
