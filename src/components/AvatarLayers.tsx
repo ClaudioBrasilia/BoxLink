@@ -76,4 +76,4 @@ export function buildAvatarLayers(
     });
   }
   return layers;
-}
+    }
