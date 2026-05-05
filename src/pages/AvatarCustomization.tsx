@@ -117,7 +117,7 @@ function CalibratorPanel({ item, onSave, onClose }: CalibratorPanelProps) {
       <div className="flex gap-3">
         {(['base masculina', 'base feminina'] as const).map(base => (
           <div key={base} className="flex-1 flex flex-col items-center gap-1">
-            <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-surface-container-highest border border-outline-variant/10">
+            <div className="relative w-full rounded-2xl overflow-hidden bg-surface-container-highest border border-outline-variant/10" style={{ paddingBottom: '150%' }}>
               <img
                 src={getItemImageUrl(base)}
                 alt="base"
@@ -127,7 +127,7 @@ function CalibratorPanel({ item, onSave, onClose }: CalibratorPanelProps) {
               <img
                 src={itemImageUrl}
                 alt={item.name}
-                style={adjustmentToCSS(adj)}
+                style={{ ...adjustmentToCSS(adj), position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                 onError={e => { e.currentTarget.style.opacity = '0.15'; }}
               />
             </div>
