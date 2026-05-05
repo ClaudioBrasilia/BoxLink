@@ -54,7 +54,7 @@ export function buildAvatarLayers(
   layers.push({
     url: getUrl(isFemale ? 'base feminina' : 'base masculina'),
     alt: 'Base', slot: 'base',
-    adjustment: { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'center center', zIndex:0, objectFit:'contain', objectPosition:'center center' },
+    adjustment: { scaleX:0.6, scaleY:0.6, offsetX:0, offsetY:0, transformOrigin:'center center', zIndex:0, objectFit:'contain', objectPosition:'center center' },
   });
 
   const order: Array<{ key: AvatarSlotKey; alt: string }> = [
@@ -76,4 +76,4 @@ export function buildAvatarLayers(
     });
   }
   return layers;
-    }
+}
