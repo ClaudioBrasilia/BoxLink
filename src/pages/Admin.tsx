@@ -951,6 +951,153 @@ export default function Admin() {
                   ))}
                 </div>
               </div>
+              {/* ── Recompensas Padrão ── */}
+              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                <button onClick={() => toggleSection('rewards')} className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">RECOMPENSAS PADRÃO</h3>
+                  {openSections.includes('rewards') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+                <AnimatePresence>
+                  {openSections.includes('rewards') && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden px-2 space-y-6">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP por Check-in</label>
+                          <input type="number" value={settings.rewards.xp_per_checkin} onChange={e => { const val = e.target.value === '' ? 0 : parseInt(e.target.value); setSettings(s => ({...s, rewards: {...s.rewards, xp_per_checkin: val}})); }} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">BrazaCoins por Check-in</label>
+                          <input type="number" value={settings.rewards.coins_per_checkin} onChange={e => { const val = e.target.value === '' ? 0 : parseInt(e.target.value); setSettings(s => ({...s, rewards: {...s.rewards, coins_per_checkin: val}})); }} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* ── Recompensas por Desafio ── */}
+              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                <button onClick={() => toggleSection('challenges')} className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">RECOMPENSAS POR DESAFIO</h3>
+                  {openSections.includes('challenges') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+                <AnimatePresence>
+                  {openSections.includes('challenges') && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden px-2 space-y-4">
+                      {(['easy', 'medium', 'hard', 'special'] as const).map(diff => (
+                        <div key={diff} className="p-4 bg-surface-container-highest/30 rounded-2xl border border-outline-variant/10 space-y-3">
+                          <div className="text-[10px] text-primary font-black uppercase tracking-widest">DESAFIO {diff === 'easy' ? 'FÁCIL' : diff === 'medium' ? 'MÉDIO' : diff === 'hard' ? 'DIFÍCIL' : 'ESPECIAL'}</div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">XP</label>
+                              <input type="number" value={(settings.rewards as any)[`challenge_${diff}_xp`]} onChange={e => { const val = e.target.value === '' ? 0 : parseInt(e.target.value); setSettings(s => ({...s, rewards: {...s.rewards, [`challenge_${diff}_xp`]: val}})); }} className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm" />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">BrazaCoins</label>
+                              <input type="number" value={(settings.rewards as any)[`challenge_${diff}_coins`]} onChange={e => { const val = e.target.value === '' ? 0 : parseInt(e.target.value); setSettings(s => ({...s, rewards: {...s.rewards, [`challenge_${diff}_coins`]: val}})); }} className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm" />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* ── Bônus Semanais ── */}
+              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                <button onClick={() => toggleSection('weekly')} className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">BÔNUS SEMANAIS (FREQUÊNCIA)</h3>
+                  {openSections.includes('weekly') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+                <AnimatePresence>
+                  {openSections.includes('weekly') && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden px-2 space-y-4">
+                      {[3, 4, 5, 6].map(count => (
+                        <div key={count} className="grid grid-cols-2 gap-4 p-4 bg-surface-container-highest/30 rounded-2xl border border-outline-variant/10">
+                          <div className="col-span-2 text-[10px] text-primary font-black uppercase tracking-widest">{count} CHECK-INS NA SEMANA</div>
+                          <div className="space-y-2">
+                            <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">XP Bônus</label>
+                            <input type="number" value={(settings.rewards as any)[`weekly_bonus_${count}_xp`]} onChange={e => { const val = e.target.value === '' ? 0 : parseInt(e.target.value); setSettings(s => ({...s, rewards: {...s.rewards, [`weekly_bonus_${count}_xp`]: val}})); }} className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm" />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">BrazaCoins Bônus</label>
+                            <input type="number" value={(settings.rewards as any)[`weekly_bonus_${count}_coins`]} onChange={e => { const val = e.target.value === '' ? 0 : parseInt(e.target.value); setSettings(s => ({...s, rewards: {...s.rewards, [`weekly_bonus_${count}_coins`]: val}})); }} className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm" />
+                          </div>
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* ── Outras Recompensas ── */}
+              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                <button onClick={() => toggleSection('other')} className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">OUTRAS RECOMPENSAS</h3>
+                  {openSections.includes('other') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+                <AnimatePresence>
+                  {openSections.includes('other') && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden px-2 space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">BrazaCoins por Level Up</label>
+                          <input type="number" value={settings.rewards.level_up_bonus_coins} onChange={e => { const val = e.target.value === '' ? 0 : parseInt(e.target.value); setSettings(s => ({...s, rewards: {...s.rewards, level_up_bonus_coins: val}})); }} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP por Derrota em Duelo</label>
+                          <input type="number" value={(settings.rewards as any).duel_loss_xp || 0} onChange={e => { const val = e.target.value === '' ? 0 : parseInt(e.target.value); setSettings(s => ({...s, rewards: {...s.rewards, duel_loss_xp: val}})); }} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* ── Avisos do Box ── */}
+              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                <button onClick={() => toggleSection('announcements')} className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">AVISOS DO BOX</h3>
+                  {openSections.includes('announcements') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+                <AnimatePresence>
+                  {openSections.includes('announcements') && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden px-2 space-y-4">
+                      <button onClick={() => setSettings(s => ({...s, announcements: [...s.announcements, { id: Date.now().toString(), title: '', content: '', date: new Date().toISOString(), active: true }]}))} className="w-full py-3 border-2 border-dashed border-outline-variant/20 rounded-2xl text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:border-primary/30 hover:text-primary transition-all flex items-center justify-center gap-2">
+                        <Plus className="w-4 h-4" /> ADICIONAR NOVO AVISO
+                      </button>
+                      {settings.announcements.map((ann: any, idx: number) => (
+                        <div key={ann.id} className="p-4 bg-surface-container-highest/30 rounded-2xl border border-outline-variant/10 space-y-4">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] text-primary font-black uppercase tracking-widest">AVISO #{idx + 1}</span>
+                            <button onClick={() => setSettings(s => ({...s, announcements: s.announcements.filter((a: any) => a.id !== ann.id)}))} className="text-error hover:scale-110 transition-transform"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                          <input type="text" placeholder="TÍTULO DO AVISO" value={ann.title} onChange={e => { const newAnn = [...settings.announcements]; (newAnn[idx] as any).title = e.target.value; setSettings({...settings, announcements: newAnn}); }} className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm" />
+                          <textarea placeholder="CONTEÚDO DO AVISO" value={ann.content} onChange={e => { const newAnn = [...settings.announcements]; (newAnn[idx] as any).content = e.target.value; setSettings({...settings, announcements: newAnn}); }} rows={2} className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-xs resize-none" />
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* ── Módulo Economia ── */}
+              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
+                <div><p className="text-xs font-black text-on-surface uppercase italic">Módulo Economia</p><p className="text-[10px] text-on-surface-variant mt-0.5">Ativa/desativa sistema de moedas e XP</p></div>
+                <button onClick={() => setSettings({...settings, modules: {...settings.modules, economy: !settings.modules.economy}})} className={`w-12 h-6 rounded-full transition-all relative ${settings.modules.economy ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}>
+                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${settings.modules.economy ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+
+              {/* ── Módulo Loja ── */}
+              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
+                <div><p className="text-xs font-black text-on-surface uppercase italic">Módulo Loja</p><p className="text-[10px] text-on-surface-variant mt-0.5">Ativa/desativa loja de avatares para atletas</p></div>
+                <button onClick={() => setSettings({...settings, modules: {...settings.modules, store: !settings.modules.store}})} className={`w-12 h-6 rounded-full transition-all relative ${settings.modules.store ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}>
+                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${settings.modules.store ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+
               <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
                 <div><p className="text-xs font-black text-on-surface uppercase italic">Sistema de Times</p><p className="text-[10px] text-on-surface-variant mt-0.5">Ativa disputa por territórios entre times</p></div>
                 <button onClick={() => setSettings({...settings, clans_enabled: !(settings as any).clans_enabled} as any)} className={`w-12 h-6 rounded-full transition-all relative ${(settings as any)?.clans_enabled ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}>
@@ -1281,6 +1428,48 @@ export default function Admin() {
                   </div>
                 );
               })}
+
+              {/* ── Check-ins sem aula vinculada ── */}
+              {(() => {
+                const matchedKeys = new Set(
+                  activeSlots.flatMap(slot =>
+                    dayCheckins.filter(c =>
+                      c.classTime === slot.time ||
+                      (!c.classTime && (() => {
+                        if (!c.timestamp) return false;
+                        const t = new Date(c.timestamp);
+                        const [sh, sm] = slot.time.split(':').map(Number);
+                        const [eh, em] = slot.endTime.split(':').map(Number);
+                        const start = sh * 60 + sm - (slot.checkinWindowMinutes || 60);
+                        const end = eh * 60 + em;
+                        const cur = t.getHours() * 60 + t.getMinutes();
+                        return cur >= start && cur <= end;
+                      })())
+                    ).map(c => c.user.id + (c.timestamp || ''))
+                  )
+                );
+                const unmatched = dayCheckins.filter(c => !matchedKeys.has(c.user.id + (c.timestamp || '')));
+                if (unmatched.length === 0) return null;
+                return (
+                  <div className="bg-surface-container-low rounded-3xl border border-outline-variant/10 overflow-hidden">
+                    <div className="p-4 border-b border-outline-variant/10">
+                      <p className="text-on-surface font-bold uppercase text-sm italic">SEM AULA VINCULADA</p>
+                      <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{unmatched.length} check-in(s)</p>
+                    </div>
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {unmatched.map((c, idx) => (
+                        <div key={idx} className="flex items-center gap-3 bg-surface-container-highest/40 px-3 py-2.5 rounded-2xl">
+                          <div className="w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center text-secondary font-headline font-black text-sm flex-shrink-0">{(c.user.name || 'S')[0]}</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-on-surface font-bold uppercase text-xs truncate">{c.user.name}</p>
+                            {c.timestamp && <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest">{format(new Date(c.timestamp), 'HH:mm')}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </motion.div>
           );
         })()}
