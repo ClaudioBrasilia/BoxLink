@@ -22,6 +22,10 @@ import { LayerAdjustment, SLOT_DEFAULTS, resolveAdjustment, adjustmentToCSS } fr
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const AVATAR_BUCKET = 'avatar-assets';
 function getAvatarUrl(filename: string) {
+  // Se já for uma URL completa (vinda do Supabase após upload), usa direto
+  if (filename.startsWith('http://') || filename.startsWith('https://')) {
+    return filename;
+  }
   const cleanFilename = /\.(png|jpg|jpeg|webp|gif)$/i.test(filename) ? filename : `${filename}.png`;
   return `${SUPABASE_URL}/storage/v1/object/public/${AVATAR_BUCKET}/${encodeURIComponent(cleanFilename)}`;
 }
