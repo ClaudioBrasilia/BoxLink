@@ -69,8 +69,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setUser(mappedUser);
 
-      // Verifica onboarding só quando o perfil carrega com id real e status aprovado
-      if (mappedUser.status === 'approved') {
+      // Onboarding só para atletas aprovados (não coach/admin)
+      if (mappedUser.status === 'approved' && mappedUser.role === 'athlete') {
         const done = localStorage.getItem(ONBOARDING_KEY + '_' + mappedUser.id);
         if (!done) setShowOnboarding(true);
       }
