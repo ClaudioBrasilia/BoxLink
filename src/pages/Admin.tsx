@@ -932,6 +932,11 @@ export default function Admin() {
                 <div className="flex items-center gap-2 text-primary"><Settings className="w-4 h-4" /><span className="text-[10px] font-black uppercase tracking-widest">Informações Básicas</span></div>
                 <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome do Box</label><input type="text" value={settings.name} onChange={e => setSettings({...settings, name: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
                 <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Descrição</label><textarea value={settings.description} onChange={e => setSettings({...settings, description: e.target.value})} rows={3} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" /></div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Raio de Check-in (metros)</label>
+                  <input type="number" min={50} max={5000} value={settings.radius} onChange={e => setSettings({...settings, radius: parseInt(e.target.value) || 500})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                  <p className="text-[9px] text-on-surface-variant opacity-50 uppercase tracking-widest">Distância máxima do box para fazer check-in. Padrão: 500m</p>
+                </div>
               </div>
               <div className="space-y-4 border-t border-outline-variant/10 pt-6">
                 <div className="flex items-center gap-2 text-primary"><ImageIcon className="w-4 h-4" /><span className="text-[10px] font-black uppercase tracking-widest">Imagens e Identidade</span></div>
@@ -1512,8 +1517,36 @@ export default function Admin() {
                 <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Título</label><input type="text" value={editingChallenge.title} onChange={e => setEditingChallenge({...editingChallenge, title: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
                 <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Descrição</label><textarea value={editingChallenge.description} onChange={e => setEditingChallenge({...editingChallenge, description: e.target.value})} rows={3} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" /></div>
                 <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Inicial</label>
+                    <input type="date" style={{ colorScheme: 'dark' }} value={editingChallenge.startDate} onChange={e => setEditingChallenge({...editingChallenge, startDate: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Final</label>
+                    <input type="date" style={{ colorScheme: 'dark' }} value={editingChallenge.endDate} onChange={e => setEditingChallenge({...editingChallenge, endDate: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP</label><input type="number" value={editingChallenge.xp} onChange={e => setEditingChallenge({...editingChallenge, xp: parseInt(e.target.value)})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
                   <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Coins</label><input type="number" value={editingChallenge.coins} onChange={e => setEditingChallenge({...editingChallenge, coins: parseInt(e.target.value)})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dificuldade</label>
+                    <select value={editingChallenge.difficulty} onChange={e => setEditingChallenge({...editingChallenge, difficulty: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                      <option value="easy">Fácil</option>
+                      <option value="medium">Médio</option>
+                      <option value="hard">Difícil</option>
+                      <option value="special">Especial</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Status</label>
+                    <select value={editingChallenge.active ? 'true' : 'false'} onChange={e => setEditingChallenge({...editingChallenge, active: e.target.value === 'true'})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                      <option value="true">Ativo</option>
+                      <option value="false">Inativo</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="flex gap-3 pt-4">
                   <button onClick={() => { setEditingChallenge(null); setIsEditingChallenge(false); }} className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-bold uppercase italic">CANCELAR</button>
@@ -1542,4 +1575,4 @@ export default function Admin() {
       </AnimatePresence>
     </div>
   );
-}
+          }
