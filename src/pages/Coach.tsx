@@ -5,6 +5,7 @@ import { Wod, User } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
+import { useToast } from '../context/ToastContext';
 
 import { formatInTimeZone } from 'date-fns-tz';
 
@@ -18,6 +19,7 @@ export default function Coach() {
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [selectedResultsDate, setSelectedResultsDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [editingWod, setEditingWod] = useState<Partial<Wod> | null>(null);
+  const toast = useToast();
   const [newWod, setNewWod] = useState<Partial<Wod>>({
     date: format(new Date(), 'yyyy-MM-dd'),
     name: '',
@@ -92,7 +94,7 @@ export default function Coach() {
     
     if (!error && data) {
       setWods([data, ...wods]);
-      alert('WOD Postado com Sucesso!');
+      toast.success('WOD postado com sucesso!');
       setNewWod({
         date: format(new Date(), 'yyyy-MM-dd'),
         name: '',
@@ -105,7 +107,7 @@ export default function Coach() {
       });
     } else {
       console.error('Error saving WOD:', error);
-      alert('Erro ao postar WOD: ' + error?.message);
+      toast.error('Erro ao postar WOD: ' + (error?.message || 'Erro desconhecido'));
     }
   };
 
@@ -160,9 +162,9 @@ export default function Coach() {
     if (!error) {
       setWods(wods.map(w => w.id === editingWod.id ? { ...w, ...editingWod } as Wod : w));
       setEditingWod(null);
-      alert('WOD atualizado com sucesso!');
+      toast.success('WOD atualizado com sucesso!');
     } else {
-      alert('Erro ao atualizar: ' + error.message);
+      toast.error('Erro ao atualizar: ' + error.message);
     }
   };
 
