@@ -75,7 +75,14 @@ export default function Coach() {
   }, []);
 
   const handleSaveWod = async () => {
-    if (!newWod.name || !newWod.date) return;
+    const missing = [];
+    if (!newWod.date) missing.push('Data');
+    if (!newWod.name) missing.push('Nome do WOD');
+    if (!newWod.rx) missing.push('RX');
+    if (missing.length > 0) {
+      toast.error('Preencha os campos obrigatórios: ' + missing.join(', '));
+      return;
+    }
     
     const { data, error } = await supabase
       .from('wods')
@@ -152,11 +159,11 @@ export default function Coach() {
       .update({
         name: editingWod.name,
         type: editingWod.type,
-        warmup: editingWod.warmup,
-        skill: editingWod.skill,
-        rx: editingWod.rx,
-        scaled: editingWod.scaled,
-        beginner: editingWod.beginner,
+        warmup: editingWod.warmup ?? '',
+        skill: editingWod.skill ?? '',
+        rx: editingWod.rx ?? '',
+        scaled: editingWod.scaled ?? '',
+        beginner: editingWod.beginner ?? '',
       })
       .eq('id', editingWod.id);
     if (!error) {
@@ -330,7 +337,14 @@ export default function Coach() {
                         <h4 className="text-xl font-headline font-black text-on-surface uppercase italic">{historyWod.name}</h4>
                         <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mt-1">{historyWod.type}</p>
                       </div>
-                      <button onClick={() => setEditingWod({...historyWod})}
+                      <button onClick={() => setEditingWod({
+                          ...historyWod,
+                          warmup: historyWod.warmup || '',
+                          skill: historyWod.skill || '',
+                          rx: historyWod.rx || '',
+                          scaled: historyWod.scaled || '',
+                          beginner: historyWod.beginner || '',
+                        })}
                         className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary hover:text-background transition-all flex items-center gap-1">
                         <Edit2 className="w-4 h-4" />
                         <span className="text-[9px] font-black uppercase">EDITAR</span>
@@ -497,4 +511,4 @@ export default function Coach() {
       </AnimatePresence>
     </div>
   );
-}
+                                                    }
