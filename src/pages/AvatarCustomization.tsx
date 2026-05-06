@@ -13,17 +13,22 @@ import type { AvatarSlotKey } from '../lib/avatarLayers';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const BUCKET = 'avatar-assets';
 
+/** Remove extensão .png do final da chave para evitar duplicidade ao montar a URL. */
+function normalizeAvatarAssetKey(rawKey: string): string {
+  return rawKey.replace(/\.png$/i, '');
+}
+
 function getItemImageUrl(imageKey: string): string {
   if (!imageKey) return '';
   if (imageKey.startsWith('http')) return imageKey;
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(imageKey)}.png`;
+  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(normalizeAvatarAssetKey(imageKey))}.png`;
 }
 
 // Retorna a URL direta da imagem do item — usa o campo image se for URL completa,
 // senão monta pelo ID no bucket
 function getItemPreviewUrl(item: Item): string {
   if (item.image?.startsWith('http')) return item.image;
-  const key = item.image || item.id;
+  const key = normalizeAvatarAssetKey(item.image || item.id);
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(key)}.png`;
 }
 
@@ -128,7 +133,11 @@ function CalibratorPanel({ item, onSave, onClose }: CalibratorPanelProps) {
                 src={itemImageUrl}
                 alt={item.name}
                 style={{ ...adjustmentToCSS(adj), position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-                onError={e => { e.currentTarget.style.opacity = '0.15'; }}
+                onError={e => {
+                  console.error('[CalibratorPanel] Falha ao carregar imagem da roupa:', itemImageUrl);
+                  e.currentTarget.style.outline = '2px dashed red';
+                  e.currentTarget.style.opacity = '0.3';
+                }}
               />
             </div>
             <span className="text-[7px] font-bold uppercase tracking-widest text-on-surface-variant opacity-40">
