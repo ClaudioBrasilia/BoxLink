@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 
 import { supabase } from '../lib/supabase';
+import { addReward } from '../utils/rewards';
 
 const TIMEZONE = 'America/Sao_Paulo';
 
@@ -290,55 +291,58 @@ export default function Wod() {
         setIsEditing(false);
 
       } else {
-        // ── New registration via Edge Function ────────────────────────────────
-        const { data, error } = await supabase.functions.invoke('register-wod-result', {
-          body: { wodId: currentWod.id, result: normalisedResult, type: newResult.type },
-        });
+        // ── Verificar se já registrou hoje ────────────────────────────────────
+        const { data: existing } = await supabase
+          .from('wod_results')
+          .select('id')
+          .eq('wod_id', currentWod.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
 
-        if (error) throw error;
-
-        if (data.alreadyRegistered) {
+        if (existing) {
           showToast('Você já registrou um resultado para este WOD.', 'warning');
-        } else if (data.success) {
-          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-          showToast(`🎉 Resultado registrado! +${data.xp} XP  •  +${data.coins} BrazaCoins`, 'success', 5000);
+        } else {
+          // ── Inserir resultado diretamente ─────────────────────────────────
+          const { error: insertError } = await supabase
+            .from('wod_results')
+            .insert({
+              user_id: user.id,
+              wod_id: currentWod.id,
+              result: normalisedResult,
+              type: newResult.type,
+            });
 
-          if (data.levelUp) {
-            setTimeout(() => {
-              confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] });
-            }, 500);
+          if (insertError) throw insertError;
+
+          // ── Conceder recompensas via addReward ────────────────────────────
+          const reward = await addReward(
+            user.id,
+            'wod',
+            30,
+            10,
+            `WOD registrado — ${currentWod.name}`,
+            currentWod.id,
+          );
+
+          if (reward) {
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+            showToast(`🎉 Resultado registrado! +30 XP  •  +10 BrazaCoins`, 'success', 5000);
+
+            if (reward.levelUp) {
+              setTimeout(() => {
+                confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] });
+              }, 500);
+            }
+
+            // ── Atualizar contexto do usuário ─────────────────────────────
+            updateUser({
+              ...user,
+              xp: reward.newXp,
+              coins: reward.newCoins,
+              level: reward.newLevel,
+            });
           }
 
-          // Refresh user profile in context
-          const { data: updatedProfile } = await supabase
-            .from('profiles').select('*').eq('id', user.id).maybeSingle();
-          const { data: updatedCheckins } = await supabase
-            .from('checkins').select('*').eq('user_id', user.id);
-
-          if (updatedProfile) {
-            const mappedUser: User = {
-              id: updatedProfile.id,
-              email: updatedProfile.email,
-              name: updatedProfile.name,
-              role: updatedProfile.role,
-              status: updatedProfile.status,
-              xp: updatedProfile.xp || 0,
-              coins: updatedProfile.coins || 0,
-              level: updatedProfile.level || 1,
-              avatar: {
-                equipped: updatedProfile.avatar_equipped,
-                inventory: updatedProfile.avatar_inventory || [],
-              },
-              checkins: (updatedCheckins || []).map((c: any) => ({
-                date: c.date,
-                timestamp: c.timestamp,
-                classTime: c.class_time,
-              })),
-              paidBonuses: updatedProfile.paid_bonuses || [],
-              createdAt: updatedProfile.created_at,
-            };
-            updateUser(mappedUser);
-          }
           setIsRegistering(false);
         }
       }
