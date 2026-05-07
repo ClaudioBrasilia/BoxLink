@@ -1190,6 +1190,38 @@ export default function Admin() {
                 <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP</label><input type="number" value={newChallenge.xp} onChange={e => setNewChallenge({...newChallenge, xp: parseInt(e.target.value)})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
                 <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Coins</label><input type="number" value={newChallenge.coins} onChange={e => setNewChallenge({...newChallenge, coins: parseInt(e.target.value)})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dificuldade</label>
+                  <select value={newChallenge.difficulty} onChange={e => setNewChallenge({...newChallenge, difficulty: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                    <option value="easy">Fácil</option>
+                    <option value="medium">Médio</option>
+                    <option value="hard">Difícil</option>
+                    <option value="special">Especial</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dias necessários</label>
+                  <input type="number" min={1} value={newChallenge.required_days} onChange={e => setNewChallenge({...newChallenge, required_days: parseInt(e.target.value) || 1})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Inicial</label>
+                  <input type="date" style={{ colorScheme: 'dark' }} value={newChallenge.startDate} onChange={e => setNewChallenge({...newChallenge, startDate: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Final</label>
+                  <input type="date" style={{ colorScheme: 'dark' }} value={newChallenge.endDate} onChange={e => setNewChallenge({...newChallenge, endDate: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                </div>
+              </div>
+              <button
+                onClick={() => setNewChallenge({...newChallenge, require_photo: !newChallenge.require_photo})}
+                className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl border-2 transition-all font-headline font-bold text-sm uppercase italic ${newChallenge.require_photo ? 'bg-secondary/20 border-secondary text-secondary' : 'bg-surface-container-highest border-outline-variant/20 text-on-surface-variant'}`}
+              >
+                <span className="flex items-center gap-2"><Camera className="w-5 h-5" /> Exigir foto para completar</span>
+                {newChallenge.require_photo ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
+              </button>
               <button onClick={handleAddChallenge} className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> CRIAR DESAFIO</button>
             </div>
             <div className="space-y-3">
@@ -1553,6 +1585,17 @@ export default function Admin() {
                     </select>
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dias necessários</label>
+                  <input type="number" min={1} value={editingChallenge.required_days || 1} onChange={e => setEditingChallenge({...editingChallenge, required_days: parseInt(e.target.value) || 1})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                </div>
+                <button
+                  onClick={() => setEditingChallenge({...editingChallenge, require_photo: !editingChallenge.require_photo})}
+                  className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl border-2 transition-all font-headline font-bold text-sm uppercase italic ${editingChallenge.require_photo ? 'bg-secondary/20 border-secondary text-secondary' : 'bg-surface-container-highest border-outline-variant/20 text-on-surface-variant'}`}
+                >
+                  <span className="flex items-center gap-2"><Camera className="w-5 h-5" /> Exigir foto para completar</span>
+                  {editingChallenge.require_photo ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
+                </button>
                 <div className="flex gap-3 pt-4">
                   <button onClick={() => { setEditingChallenge(null); setIsEditingChallenge(false); }} className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-bold uppercase italic">CANCELAR</button>
                   <button onClick={handleUpdateChallenge} className="flex-1 bg-primary text-background py-3 rounded-2xl font-headline font-bold uppercase italic flex items-center justify-center gap-2"><Save className="w-5 h-5" /> SALVAR</button>
@@ -1580,4 +1623,4 @@ export default function Admin() {
       </AnimatePresence>
     </div>
   );
-          }
+    }
