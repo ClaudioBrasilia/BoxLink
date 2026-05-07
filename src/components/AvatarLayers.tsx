@@ -14,13 +14,13 @@ export interface LayerAdjustment {
 }
 
 export const SLOT_DEFAULTS: Record<AvatarSlotKey, LayerAdjustment> = {
-  bottom:          { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'bottom center', zIndex:2, objectFit:'contain', objectPosition:'bottom center' },
-  shoes:           { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'bottom center', zIndex:3, objectFit:'contain', objectPosition:'bottom center' },
-  top:             { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'top center',    zIndex:4, objectFit:'contain', objectPosition:'top center'    },
-  accessory:       { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'center center', zIndex:5, objectFit:'contain', objectPosition:'center center' },
-  wrist_accessory: { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'center center', zIndex:6, objectFit:'contain', objectPosition:'center center' },
-  head_accessory:  { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'top center',    zIndex:7, objectFit:'contain', objectPosition:'top center'    },
-  special:         { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'center center', zIndex:8, objectFit:'contain', objectPosition:'center center' },
+  bottom:          { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'bottom center', zIndex:2, objectFit:'fill', objectPosition:'bottom center' },
+  shoes:           { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'bottom center', zIndex:3, objectFit:'fill', objectPosition:'bottom center' },
+  top:             { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'top center',    zIndex:4, objectFit:'fill', objectPosition:'top center'    },
+  accessory:       { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'center center', zIndex:5, objectFit:'fill', objectPosition:'center center' },
+  wrist_accessory: { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'center center', zIndex:6, objectFit:'fill', objectPosition:'center center' },
+  head_accessory:  { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'top center',    zIndex:7, objectFit:'fill', objectPosition:'top center'    },
+  special:         { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'center center', zIndex:8, objectFit:'fill', objectPosition:'center center' },
 };
 
 export function resolveAdjustment(slot: AvatarSlotKey, override?: Partial<LayerAdjustment> | null): LayerAdjustment {
@@ -54,7 +54,7 @@ export function buildAvatarLayers(
   layers.push({
     url: getUrl(isFemale ? 'base feminina' : 'base masculina'),
     alt: 'Base', slot: 'base',
-    adjustment: { scaleX:0.6, scaleY:0.6, offsetX:0, offsetY:0, transformOrigin:'center center', zIndex:0, objectFit:'contain', objectPosition:'center center' },
+    adjustment: { scaleX:1, scaleY:1, offsetX:0, offsetY:0, transformOrigin:'center center', zIndex:0, objectFit:'cover', objectPosition:'top center' },
   });
 
   const order: Array<{ key: AvatarSlotKey; alt: string }> = [
@@ -76,4 +76,4 @@ export function buildAvatarLayers(
     });
   }
   return layers;
-}
+    }
