@@ -435,21 +435,27 @@ export default function Duels() {
           const losers = allParticipants.filter(id => id !== winnerId);
           const winnings = duel.betAmount * losers.length;
 
-          for (const pid of allParticipants) {
-            const profile = getUserProfile(pid);
-            if (!profile) continue;
+          // Busca saldos frescos do banco para evitar usar estado React desatualizado
+          const { data: freshProfiles } = await supabase
+            .from('profiles')
+            .select('id, xp, coins')
+            .in('id', allParticipants);
+
+          // Vencedor recebe tudo: sua aposta + a de cada perdedor
+          const totalPrize = duel.betAmount * allParticipants.length;
+          const fresh = freshProfiles?.find(p => p.id === winnerId);
+          if (fresh) {
             if (duel.betType === 'xp') {
-              let newXp = (profile.xp || 0) + duel.betAmount;
-              if (pid === winnerId) newXp += winnings;
-              await supabase.from('profiles').update({ xp: newXp }).eq('id', pid);
-              if (pid === user.id) updateUser({ ...user, xp: newXp });
+              const newXp = (fresh.xp || 0) + totalPrize;
+              await supabase.from('profiles').update({ xp: newXp }).eq('id', winnerId);
+              if (winnerId === user.id) updateUser({ ...user, xp: newXp });
             } else {
-              let newCoins = (profile.coins || 0) + duel.betAmount;
-              if (pid === winnerId) newCoins += winnings;
-              await supabase.from('profiles').update({ coins: newCoins }).eq('id', pid);
-              if (pid === user.id) updateUser({ ...user, coins: newCoins });
+              const newCoins = (fresh.coins || 0) + totalPrize;
+              await supabase.from('profiles').update({ coins: newCoins }).eq('id', winnerId);
+              if (winnerId === user.id) updateUser({ ...user, coins: newCoins });
             }
           }
+          // Perdedores não recebem nada — aposta já foi descontada no aceite
           updates.bet_settled_at = new Date().toISOString();
         }
 
