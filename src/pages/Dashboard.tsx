@@ -18,6 +18,7 @@ export default function Dashboard() {
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkinMessage, setCheckinMessage] = useState<string | null>(null);
   const [schedule, setSchedule] = useState<{ time: string; endTime: string; coach: string }[]>([]);
+  const [now, setNow] = useState(new Date());
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [announcements, setAnnouncements] = useState<string[]>([]);
   const [activeChallenges, setActiveChallenges] = useState<any[]>([]);
@@ -90,6 +91,11 @@ export default function Dashboard() {
       setUserRankPosition(pos >= 0 ? pos + 1 : null);
     }
   };
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -335,23 +341,41 @@ export default function Dashboard() {
           <div className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 space-y-3">
             <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest px-2">SELECIONE SEU HORÁRIO:</label>
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-              {schedule.map((s) => (
-                <button
-                  key={s.time}
-                  onClick={() => setSelectedClass(s.time)}
-                  className={cn(
-                    "flex flex-col items-center min-w-[80px] p-3 rounded-2xl border transition-all",
-                    selectedClass === s.time 
-                      ? "bg-primary border-primary text-background" 
-                      : "bg-surface-container-highest border-outline-variant/20 text-on-surface"
-                  )}
-                >
-                  <span className="text-sm font-headline font-black">{s.time}</span>
-                  <span className={cn("text-[8px] font-bold uppercase tracking-tighter", selectedClass === s.time ? "text-background/60" : "text-on-surface-variant")}>
-                    {s.coach.split(' ')[0]}
-                  </span>
-                </button>
-              ))}
+              {(() => {
+                const todayDow = now.getDay();
+                const nowMinutes = now.getHours() * 60 + now.getMinutes();
+                const todaySchedule = schedule.filter((s: any) => s.days?.includes(todayDow));
+
+                if (todaySchedule.length === 0) {
+                  return <p className="text-on-surface-variant text-xs font-bold uppercase italic px-2 opacity-50">Nenhuma aula hoje</p>;
+                }
+
+                return todaySchedule.map((s: any) => {
+                  const [h, m] = s.time.split(':').map(Number);
+                  const startMinutes = h * 60 + m;
+                  const expired = nowMinutes > startMinutes + 10;
+                  return (
+                    <button
+                      key={s.time}
+                      onClick={() => !expired && setSelectedClass(s.time)}
+                      disabled={expired}
+                      className={cn(
+                        "flex flex-col items-center min-w-[80px] p-3 rounded-2xl border transition-all",
+                        expired
+                          ? "bg-surface-container-highest/40 border-outline-variant/10 opacity-40 cursor-not-allowed"
+                          : selectedClass === s.time
+                          ? "bg-primary border-primary text-background"
+                          : "bg-surface-container-highest border-outline-variant/20 text-on-surface"
+                      )}
+                    >
+                      <span className={cn("text-sm font-headline font-black", expired ? "line-through" : "")}>{s.time}</span>
+                      <span className={cn("text-[8px] font-bold uppercase tracking-tighter", selectedClass === s.time ? "text-background/60" : "text-on-surface-variant")}>
+                        {expired ? "encerrada" : s.coach.split(' ')[0]}
+                      </span>
+                    </button>
+                  );
+                });
+              })()}
             </div>
           </div>
         )}
@@ -461,4 +485,4 @@ export default function Dashboard() {
       </AnimatePresence>
     </div>
   );
-            }
+                                            }
