@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { RewardEvent, PersonalRecord } from '../types';
 import AvatarPreview from '../components/AvatarPreview';
+import { LayerAdjustment } from '../lib/avatarLayers';
 
 import { supabase } from '../lib/supabase';
 
@@ -26,10 +27,19 @@ export default function Profile() {
   const [editName, setEditName] = useState('');
   const [sharing, setSharing] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [itemAdjustments, setItemAdjustments] = useState<Record<string, Partial<LayerAdjustment>>>({});
 
   useEffect(() => {
     if (user?.id) {
       const fetchData = async () => {
+        // Fetch item adjustments for avatar calibration
+        const { data: itemsData } = await supabase.from('items').select('id, layer_adjustment');
+        if (itemsData) {
+          setItemAdjustments(Object.fromEntries(
+            itemsData.filter(i => i.layer_adjustment).map(i => [i.id, i.layer_adjustment!])
+          ));
+        }
+
         // Fetch Duels stats
         const { data: duelsData } = await supabase
           .from('duels')
@@ -257,7 +267,7 @@ export default function Profile() {
         
         <div className="flex items-center gap-6 mb-8">
           <div className="relative">
-            <AvatarPreview equipped={user?.avatar.equipped!} size="lg" />
+            <AvatarPreview equipped={user?.avatar.equipped!} size="lg" itemAdjustments={itemAdjustments} />
             <button 
               onClick={() => navigate('/avatar')}
               className="absolute -bottom-2 -right-2 bg-primary text-on-primary p-2 rounded-xl shadow-lg border-2 border-surface-container-low hover:scale-110 transition-transform"
