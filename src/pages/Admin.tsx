@@ -211,8 +211,6 @@ export default function Admin() {
   });
   const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
   const [schedule, setSchedule] = useState<Schedule[]>([]);
-  const [now, setNow] = useState(new Date());
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [challenges, setChallenges] = useState<any[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [duels, setDuels] = useState<Duel[]>([]);
@@ -371,13 +369,6 @@ export default function Admin() {
     const { data: clanMembershipsData } = await supabase.from('clan_memberships').select('*');
     if (clanMembershipsData) setClanMemberships(clanMembershipsData);
   };
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30000);
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => { clearInterval(timer); window.removeEventListener('resize', handleResize); };
-  }, []);
 
   useEffect(() => {
     fetchAll();
@@ -1170,66 +1161,20 @@ export default function Admin() {
               <button onClick={handleAddSchedule} className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> ADICIONAR HORÁRIO</button>
             </div>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">GRADE ATUAL</h3>
-                <span className="text-[9px] font-black uppercase tracking-widest text-primary bg-primary/10 px-2 py-1 rounded-full">
-                  {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][now.getDay()]}
-                </span>
-              </div>
-              {(() => {
-                const todayDow = now.getDay();
-                const nowMinutes = now.getHours() * 60 + now.getMinutes();
-
-                const isExpired = (s: Schedule) => {
-                  const [h, m] = s.time.split(':').map(Number);
-                  const startMinutes = h * 60 + m;
-                  return nowMinutes > startMinutes + 10;
-                };
-
-                const filtered = schedule.filter(s => s.days?.includes(todayDow));
-
-                if (filtered.length === 0) {
-                  return (
-                    <div className="text-center py-8 text-on-surface-variant text-sm font-bold uppercase italic opacity-50">
-                      Nenhuma aula hoje
+              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">GRADE ATUAL</h3>
+              {schedule.map((s) => (
+                <div key={s.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex justify-between items-center group hover:border-primary/30 transition-all">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-primary/10 rounded-2xl"><Clock className="w-6 h-6 text-primary" /></div>
+                    <div>
+                      <div className="flex items-center gap-2"><p className="text-on-surface font-bold uppercase text-sm italic">{s.time} - {s.endTime}</p>{!s.isActive && <span className="bg-error-container text-on-error-container text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">INATIVO</span>}</div>
+                      <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Coach: {s.coach} • Cap: {s.capacity}</p>
+                      <div className="flex gap-1 mt-1">{['D','S','T','Q','Q','S','S'].map((day, idx) => (<span key={idx} className={cn("text-[8px] font-black w-4 h-4 flex items-center justify-center rounded-sm", s.days?.includes(idx) ? "bg-primary/20 text-primary" : "bg-surface-container-highest text-on-surface-variant opacity-30")}>{day}</span>))}</div>
                     </div>
-                  );
-                }
-
-                return filtered.map((s) => {
-                  const expired = isExpired(s);
-                  return (
-                    <div key={s.id} className={cn(
-                      "p-4 rounded-3xl border flex justify-between items-center group transition-all",
-                      expired
-                        ? "bg-surface-container-highest/40 border-outline-variant/5 opacity-40"
-                        : "bg-surface-container-low border-outline-variant/10 hover:border-primary/30"
-                    )}>
-                      <div className="flex items-center gap-4">
-                        <div className={cn("p-3 rounded-2xl", expired ? "bg-surface-container-highest" : "bg-primary/10")}>
-                          <Clock className={cn("w-6 h-6", expired ? "text-on-surface-variant" : "text-primary")} />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className={cn("font-bold uppercase text-sm italic", expired ? "text-on-surface-variant line-through" : "text-on-surface")}>
-                              {s.time} - {s.endTime}
-                            </p>
-                            {expired && <span className="bg-surface-container-highest text-on-surface-variant text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">ENCERRADA</span>}
-                            {!s.isActive && !expired && <span className="bg-error-container text-on-error-container text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">INATIVO</span>}
-                          </div>
-                          <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Coach: {s.coach} • Cap: {s.capacity}</p>
-                          <div className="flex gap-1 mt-1">
-                            {['D','S','T','Q','Q','S','S'].map((day, idx) => (
-                              <span key={idx} className={cn("text-[8px] font-black w-4 h-4 flex items-center justify-center rounded-sm", s.days?.includes(idx) ? "bg-primary/20 text-primary" : "bg-surface-container-highest text-on-surface-variant opacity-30")}>{day}</span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      <button onClick={() => s.id && handleDeleteSchedule(s.id)} className="p-2 text-on-surface-variant hover:text-error transition-colors flex-shrink-0"><Trash2 className="w-5 h-5" /></button>
-                    </div>
-                  );
-                });
-              })()}
+                  </div>
+                  <button onClick={() => s.id && handleDeleteSchedule(s.id)} className="p-2 text-on-surface-variant hover:text-error transition-colors flex-shrink-0"><Trash2 className="w-5 h-5" /></button>
+                </div>
+              ))}
             </div>
           </motion.div>
         )}
