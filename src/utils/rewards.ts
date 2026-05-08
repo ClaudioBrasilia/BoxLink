@@ -42,24 +42,30 @@ export async function addReward(
     return null;
   }
 
-  // Insere no histórico — challenge_id é opcional (coluna adicionada na migration)
-  const insertData: any = { user_id: userId, type, xp, coins, description };
-  if (referenceId) insertData.challenge_id = referenceId;
+  // Insere no histórico — challenge_id só é enviado para o tipo 'challenge'
+  const insertData: any = {
+    user_id: userId,
+    type,
+    xp,
+    coins,
+    description:
+      referenceId && type !== 'challenge'
+        ? `${description} [ref:${referenceId}]`
+        : description,
+  };
+  if (referenceId && type === 'challenge') insertData.challenge_id = referenceId;
 
   const { error: historyError } = await supabase
     .from('reward_history')
     .insert(insertData);
 
   if (historyError) {
-    // Fallback: tenta sem challenge_id se a coluna não existir ainda
-    if (historyError.message?.includes('challenge_id')) {
-      await supabase.from('reward_history').insert({
-        user_id: userId, type, xp, coins,
-        description: referenceId ? `${description} [${referenceId}]` : description,
-      });
-    } else {
-      console.error('addReward: erro ao inserir histórico', historyError);
-    }
+    // Fallback genérico — garante que WOD/checkin/duelo entrem no histórico
+    // mesmo que insertData tenha algum campo inesperado
+    await supabase.from('reward_history').insert({
+      user_id: userId, type, xp, coins, description,
+    });
+    console.warn('addReward: fallback reward_history:', historyError.message);
   }
 
   // Retorna os novos valores para o chamador atualizar o contexto imediatamente
