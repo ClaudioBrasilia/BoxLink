@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Trophy, Zap, Calendar, ChevronDown, ChevronUp, Users } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, compareBy } from '../lib/utils';
 import { User as UserType } from '../types';
 import { motion } from 'framer-motion';
 import ShareRankingButton from '../components/ShareRankingButton';
@@ -64,14 +64,29 @@ export default function Leaderboard() {
         createdAt: u.created_at, ...extra
       });
 
+      // Helpers de desempate reutilizáveis
+      const byLevelDesc = (a: RankedUser, b: RankedUser) => (b.level || 1) - (a.level || 1);
+      const byXpDesc    = (a: RankedUser, b: RankedUser) => (b.xp || 0) - (a.xp || 0);
+      const byAgeAsc    = (a: RankedUser, b: RankedUser) =>
+        new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+      const byNameAsc   = (a: RankedUser, b: RankedUser) =>
+        (a.name || '').localeCompare(b.name || '', 'pt-BR');
+
       // 2. XP total
+      // Desempate: level desc → conta mais antiga → nome A→Z
       setXpAllTime([...(allUsers || [])]
         .map(u => mapUser(u))
         .filter(u => (u.xp || 0) > 0)
-        .sort((a, b) => (b.xp || 0) - (a.xp || 0))
+        .sort(compareBy<RankedUser>(
+          (a, b) => (b.xp || 0) - (a.xp || 0),
+          byLevelDesc,
+          byAgeAsc,
+          byNameAsc,
+        ))
         .slice(0, 50));
 
       // 3. XP do mês via reward_history
+      // Desempate: XP total → level desc → conta mais antiga → nome A→Z
       const { data: rewardHistory } = await supabase
         .from('reward_history').select('user_id, xp')
         .gte('created_at', firstDayOfMonth + 'T00:00:00');
@@ -82,10 +97,17 @@ export default function Leaderboard() {
       setXpMonthly([...(allUsers || [])]
         .map(u => mapUser(u, { monthXp: monthXpByUser[u.id] || 0 }))
         .filter(u => (u.monthXp || 0) > 0)
-        .sort((a, b) => (b.monthXp || 0) - (a.monthXp || 0))
+        .sort(compareBy<RankedUser>(
+          (a, b) => (b.monthXp || 0) - (a.monthXp || 0),
+          byXpDesc,
+          byLevelDesc,
+          byAgeAsc,
+          byNameAsc,
+        ))
         .slice(0, 50));
 
       // 4. Frequência do mês
+      // Desempate: XP total → level desc → conta mais antiga → nome A→Z
       const { data: checkinsData } = await supabase
         .from('checkins').select('user_id').gte('date', firstDayOfMonth);
       const checkinCounts: Record<string, number> = {};
@@ -95,10 +117,17 @@ export default function Leaderboard() {
       setFreqRank([...(allUsers || [])]
         .map(u => mapUser(u, { monthCheckinCount: checkinCounts[u.id] || 0 }))
         .filter(u => (u.monthCheckinCount || 0) > 0)
-        .sort((a, b) => (b.monthCheckinCount || 0) - (a.monthCheckinCount || 0))
+        .sort(compareBy<RankedUser>(
+          (a, b) => (b.monthCheckinCount || 0) - (a.monthCheckinCount || 0),
+          byXpDesc,
+          byLevelDesc,
+          byAgeAsc,
+          byNameAsc,
+        ))
         .slice(0, 50));
 
       // 5. Times ranking
+      // Desempate: mais membros aprovados → clã mais antigo → nome A→Z
       const { data: clansData } = await supabase.from('clans').select('*').eq('is_active', true);
       const { data: eventsData } = await supabase.from('domination_events').select('clan_id, energy');
       const { data: membershipsData } = await supabase.from('clan_memberships').select('clan_id').eq('status', 'approved');
@@ -107,7 +136,12 @@ export default function Leaderboard() {
           ...clan,
           energy: (eventsData || []).filter(e => e.clan_id === clan.id).reduce((s, e) => s + e.energy, 0),
           memberCount: (membershipsData || []).filter(m => m.clan_id === clan.id).length,
-        })).sort((a, b) => b.energy - a.energy));
+        })).sort(compareBy<any>(
+          (a, b) => (b.energy || 0) - (a.energy || 0),
+          (a, b) => (b.memberCount || 0) - (a.memberCount || 0),
+          (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime(),
+          (a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'),
+        )));
       }
 
       // 6. WOD do dia — tenta hoje, senão pega o mais recente
