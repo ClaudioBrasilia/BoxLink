@@ -83,19 +83,63 @@ const parseResultValue = (result: string, isTimeBased: boolean): number => {
   return parseFloat(str.replace(/[^0-9.]/g, '')) || (isTimeBased ? 999999 : 0);
 };
 
-const isTimeBased = (wodType?: string) =>
-  ['FOR TIME', 'TIME', 'TEMPO'].some(t => (wodType || '').toUpperCase().includes(t));
+// Keywords que indicam "menor tempo vence"
+const TIME_BASED_KEYWORDS = ['FOR TIME', 'TIME', 'TEMPO', 'RFT', 'CHIPPER'];
+// Keywords que indicam "maior resultado vence"
+const REPS_BASED_KEYWORDS = ['AMRAP', 'EMOM', 'REPS', 'MAX'];
 
-const pickWinner = (results: DuelResult, participantIds: string[], wodType?: string): string | null => {
-  const timeBased = isTimeBased(wodType);
-  const validIds = participantIds.filter(id => results[id]);
+/**
+ * Determina se o duelo é time-based (menor = melhor) com estratégia em 3 níveis:
+ * 1. wod_type com keyword explícita de tempo
+ * 2. wod_type com keyword explícita de reps
+ * 3. Inferência pelo formato dos resultados submetidos (maioria com ":" → time-based)
+ */
+const isTimeBasedDuel = (wodType: string | undefined, results: DuelResult): boolean => {
+  const upper = (wodType || '').toUpperCase();
+  if (TIME_BASED_KEYWORDS.some(k => upper.includes(k))) return true;
+  if (REPS_BASED_KEYWORDS.some(k => upper.includes(k))) return false;
+  const submitted = Object.values(results).filter(Boolean) as string[];
+  if (submitted.length === 0) return false;
+  const timeFormatCount = submitted.filter(r => /^\d+:\d+/.test(r.trim())).length;
+  return timeFormatCount > submitted.length / 2;
+};
+
+// Mantido apenas para display dos cards (ícone + label), sem resultados disponíveis
+const isTimeBased = (wodType?: string) =>
+  TIME_BASED_KEYWORDS.some(k => (wodType || '').toUpperCase().includes(k));
+
+/**
+ * Retorna o id do vencedor, ou null se:
+ *   - nenhum participante tem resultado válido/parseável, OU
+ *   - há empate (mesmo melhor valor entre os válidos)
+ */
+const pickWinner = (
+  results: DuelResult,
+  participantIds: string[],
+  wodType: string | undefined,
+): string | null => {
+  const timeBased = isTimeBasedDuel(wodType, results);
+
+  const validIds = participantIds.filter(id => {
+    if (!results[id]) return false;
+    const val = parseResultValue(results[id]!, timeBased);
+    // Sentinel 999999 = valor não parseável em modo time-based
+    return !(timeBased && val === 999999);
+  });
+
   if (validIds.length === 0) return null;
 
-  return validIds.reduce((bestId, id) => {
-    const bestVal = parseResultValue(results[bestId] || '', timeBased);
-    const val = parseResultValue(results[id] || '', timeBased);
-    return timeBased ? (val < bestVal ? id : bestId) : (val > bestVal ? id : bestId);
-  });
+  const bestVal = validIds.reduce<number>((best, id) => {
+    const val = parseResultValue(results[id]!, timeBased);
+    return timeBased ? Math.min(best, val) : Math.max(best, val);
+  }, timeBased ? Infinity : -Infinity);
+
+  const tied = validIds.filter(
+    id => parseResultValue(results[id]!, timeBased) === bestVal,
+  );
+
+  // Mais de um com o mesmo melhor valor → empate → null
+  return tied.length === 1 ? tied[0] : null;
 };
 
 const getVisibleResult = (duel: Duel, userId: string): string => {
@@ -240,7 +284,6 @@ export default function Duels() {
         const opBalance = betType === 'xp' ? (op?.xp ?? 0) : (op?.coins ?? 0);
         if (opBalance < betAmount) {
           toast.error(`${op?.name || 'Um oponente'} não tem ${betType.toUpperCase()} suficiente.`); return;
-          return;
         }
       }
     }
@@ -294,7 +337,6 @@ export default function Duels() {
 
       if (error) throw error;
 
-      // Notifica cada oponente sobre o desafio recebido
       for (const opId of selectedOpponents) {
         await createNotification(
           opId,
@@ -363,7 +405,6 @@ export default function Duels() {
 
       await supabase.from('duels').update(updates).eq('id', duelId);
 
-      // Notifica o criador do duelo que foi aceito
       if (duel.challengerId !== user.id) {
         await createNotification(
           duel.challengerId,
@@ -373,7 +414,6 @@ export default function Duels() {
           { duelId, acceptedBy: user.id }
         );
       }
-      // Se todos aceitaram, notifica todos os participantes que o duelo está ativo
       if (allAccepted) {
         const allParticipants = [duel.challengerId, ...duel.opponentIds];
         for (const pid of allParticipants) {
@@ -442,7 +482,6 @@ export default function Duels() {
     }
   };
 
-
   // ─── Submeter resultado ───────────────────────────────────────────────────
 
   const handleSubmitResult = async (duel: Duel) => {
@@ -460,45 +499,73 @@ export default function Duels() {
 
       if (allSubmitted) {
         const winnerId = pickWinner(newResults, allParticipants, duel.wodType);
+        const isTie = winnerId === null;
+
+        // ── Audit log ──────────────────────────────────────────────────────
+        console.info('[duel_settlement]', {
+          duelId: duel.id,
+          wodType: duel.wodType,
+          results: newResults,
+          winnerId,
+          losers: isTie ? [] : allParticipants.filter(id => id !== winnerId),
+          totalPrize: duel.betAmount * allParticipants.length,
+          isTie,
+        });
 
         const updates: any = {
           results: newResults,
           status: 'finished',
-          winner_id: winnerId,
+          winner_id: winnerId,   // null = empate ou sem resultado válido
           updated_at: new Date().toISOString(),
         };
 
-        if (duel.betReserved && duel.betAmount > 0 && !duel.betSettledAt && winnerId) {
-          const losers = allParticipants.filter(id => id !== winnerId);
-          const winnings = duel.betAmount * losers.length;
+        // Busca saldos frescos do banco para evitar usar estado React desatualizado
+        const { data: freshProfiles } = await supabase
+          .from('profiles')
+          .select('id, xp, coins')
+          .in('id', allParticipants);
 
-          // Busca saldos frescos do banco para evitar usar estado React desatualizado
-          const { data: freshProfiles } = await supabase
-            .from('profiles')
-            .select('id, xp, coins')
-            .in('id', allParticipants);
-
-          // Vencedor recebe tudo: sua aposta + a de cada perdedor
-          const totalPrize = duel.betAmount * allParticipants.length;
-          const fresh = freshProfiles?.find(p => p.id === winnerId);
-          if (fresh) {
-            if (duel.betType === 'xp') {
-              const newXp = (fresh.xp || 0) + totalPrize;
-              await supabase.from('profiles').update({ xp: newXp }).eq('id', winnerId);
-              if (winnerId === user.id) updateUser({ ...user, xp: newXp });
-            } else {
-              const newCoins = (fresh.coins || 0) + totalPrize;
-              await supabase.from('profiles').update({ coins: newCoins }).eq('id', winnerId);
-              if (winnerId === user.id) updateUser({ ...user, coins: newCoins });
+        if (duel.betReserved && duel.betAmount > 0 && !duel.betSettledAt) {
+          if (isTie) {
+            // ── Empate ou resultado inválido: devolver apostas a todos ────
+            for (const pid of allParticipants) {
+              const fresh = freshProfiles?.find(p => p.id === pid);
+              if (!fresh) continue;
+              if (duel.betType === 'xp') {
+                const newXp = (fresh.xp || 0) + duel.betAmount;
+                await supabase.from('profiles').update({ xp: newXp }).eq('id', pid);
+                if (pid === user.id) updateUser({ ...user, xp: newXp });
+              } else {
+                const newCoins = (fresh.coins || 0) + duel.betAmount;
+                await supabase.from('profiles').update({ coins: newCoins }).eq('id', pid);
+                if (pid === user.id) updateUser({ ...user, coins: newCoins });
+              }
+            }
+          } else {
+            // ── Vencedor recebe tudo: sua aposta + a de cada perdedor ─────
+            const totalPrize = duel.betAmount * allParticipants.length;
+            const fresh = freshProfiles?.find(p => p.id === winnerId);
+            if (fresh) {
+              if (duel.betType === 'xp') {
+                const newXp = (fresh.xp || 0) + totalPrize;
+                await supabase.from('profiles').update({ xp: newXp }).eq('id', winnerId);
+                if (winnerId === user.id) updateUser({ ...user, xp: newXp });
+              } else {
+                const newCoins = (fresh.coins || 0) + totalPrize;
+                await supabase.from('profiles').update({ coins: newCoins }).eq('id', winnerId);
+                if (winnerId === user.id) updateUser({ ...user, coins: newCoins });
+              }
             }
           }
-          // Perdedores não recebem nada — aposta já foi descontada no aceite
+          // Sempre marcar aposta como liquidada, mesmo em empate
           updates.bet_settled_at = new Date().toISOString();
         }
 
-        if (winnerId) {
+        if (isTie) {
+          toast.success('🤝 Duelo empatado — apostas devolvidas!');
+        } else {
           await addReward(
-            winnerId,
+            winnerId!,
             'duel',
             getDuelWinXp(),
             getDuelWinCoins(),
@@ -514,24 +581,26 @@ export default function Duels() {
             });
             toast.success(`🏆 Você venceu! +${getDuelWinXp()} XP, +${getDuelWinCoins()} coins`);
           } else {
-            toast.success(`Duelo finalizado! Vencedor: ${getUserName(winnerId)}`);
+            toast.success(`Duelo finalizado! Vencedor: ${getUserName(winnerId!)}`);
           }
         }
 
         await supabase.from('duels').update(updates).eq('id', duel.id);
 
-        // Notifica todos os participantes sobre o resultado final
-        const allParticipants2 = [duel.challengerId, ...duel.opponentIds];
-        for (const pid of allParticipants2) {
+        for (const pid of allParticipants) {
           const isWinner = pid === winnerId;
           await createNotification(
             pid,
             'duel_finished',
-            isWinner ? '🏆 Você Venceu o Duelo!' : '💪 Duelo Finalizado!',
-            isWinner
-              ? `Parabéns! Você venceu o duelo — ${duel.wodName || 'duelo'}`
-              : `Duelo encerrado. Vencedor: ${winnerId ? getUserName(winnerId) : 'Empate'} — ${duel.wodName || 'duelo'}`,
-            { duelId: duel.id, winnerId }
+            isTie
+              ? '🤝 Duelo Empatado!'
+              : isWinner ? '🏆 Você Venceu o Duelo!' : '💪 Duelo Finalizado!',
+            isTie
+              ? `Empate! Apostas devolvidas — ${duel.wodName || 'duelo'}`
+              : isWinner
+                ? `Parabéns! Você venceu o duelo — ${duel.wodName || 'duelo'}`
+                : `Duelo encerrado. Vencedor: ${getUserName(winnerId!)} — ${duel.wodName || 'duelo'}`,
+            { duelId: duel.id, winnerId, isTie }
           );
         }
       } else {
@@ -540,9 +609,7 @@ export default function Duels() {
           updated_at: new Date().toISOString(),
         }).eq('id', duel.id);
 
-        // Notifica os outros participantes que ainda não submeteram
-        const allParticipants3 = [duel.challengerId, ...duel.opponentIds];
-        for (const pid of allParticipants3) {
+        for (const pid of allParticipants) {
           if (pid === user.id || newResults[pid]) continue;
           await createNotification(
             pid,
@@ -843,8 +910,6 @@ export default function Duels() {
             const allSubmitted = allParticipants.every(id => duel.results[id]);
             const timeBased = isTimeBased(duel.wodType);
 
-            // Duelo cancelado que este usuário pode excluir
-
             return (
               <motion.div
                 key={duel.id}
@@ -855,7 +920,6 @@ export default function Duels() {
                 className={cn(
                   'bg-surface-container rounded-3xl p-5 border border-outline-variant/10 transition-all flex flex-col gap-4',
                   isExpanded && 'ring-2 ring-primary/20 bg-surface-container-high',
-  
                 )}
               >
                 {/* Cabeçalho do card */}
@@ -868,7 +932,6 @@ export default function Duels() {
                   )}>
                     {duel.status === 'active' ? 'ATIVO' : duel.status === 'finished' ? 'FINALIZADO' : 'PENDENTE'}
                   </span>
-
                   <div className="flex items-center gap-2">
                     <button onClick={() => setExpandedId(isExpanded ? null : duel.id)}>
                       <ChevronDown className={cn('w-4 h-4 text-on-surface-variant transition-transform', isExpanded && 'rotate-180')} />
@@ -876,7 +939,7 @@ export default function Duels() {
                   </div>
                 </div>
 
-                {/* WOD info (sempre visível) */}
+                {/* WOD info */}
                 {duel.wodName && (
                   <div className="bg-surface-container-highest/40 rounded-2xl px-4 py-3 flex items-center gap-3">
                     {timeBased
@@ -938,15 +1001,19 @@ export default function Duels() {
                   <div className="flex flex-col gap-1">
                     {allParticipants.map(pid => {
                       const visible = getVisibleResult(duel, pid);
-                      const isWinner = duel.winnerId === pid;
+                      const isWinner = duel.status === 'finished' && duel.winnerId === pid;
+                      const isTieFinished = duel.status === 'finished' && duel.winnerId === null;
                       return (
                         <div key={pid} className={cn(
                           'flex justify-between items-center px-3 py-2 rounded-xl',
-                          isWinner ? 'bg-primary/10 border border-primary/20' : 'bg-surface-container-highest/30'
+                          isWinner ? 'bg-primary/10 border border-primary/20'
+                            : isTieFinished ? 'bg-secondary/10 border border-secondary/20'
+                            : 'bg-surface-container-highest/30'
                         )}>
                           <span className="text-[11px] font-bold text-on-surface uppercase italic">
                             {getUserName(pid)}
                             {isWinner && ' 🏆'}
+                            {isTieFinished && ' 🤝'}
                           </span>
                           <span className={cn(
                             'text-[11px] font-black italic',
@@ -960,6 +1027,11 @@ export default function Duels() {
                     {duel.status === 'active' && !allSubmitted && (
                       <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest text-center mt-1 italic">
                         Resultados revelados quando todos enviarem
+                      </p>
+                    )}
+                    {duel.status === 'finished' && duel.winnerId === null && (
+                      <p className="text-[10px] text-secondary font-bold uppercase tracking-widest text-center mt-1 italic">
+                        Empate — apostas devolvidas
                       </p>
                     )}
                   </div>
@@ -977,8 +1049,6 @@ export default function Duels() {
                     )}
                   </div>
                 )}
-
-                {/* ── Ações ── */}
 
                 {/* Pendente: oponente aceita/recusa */}
                 {needsMyAcceptance && (
