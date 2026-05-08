@@ -21,6 +21,7 @@ import AvatarPreview from '../components/AvatarPreview';
 import { AvatarSlot } from '../types';
 import { addReward } from '../utils/rewards';
 import { useToast } from '../context/ToastContext';
+import { createNotification } from '../hooks/useNotifications';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -293,6 +294,17 @@ export default function Duels() {
 
       if (error) throw error;
 
+      // Notifica cada oponente sobre o desafio recebido
+      for (const opId of selectedOpponents) {
+        await createNotification(
+          opId,
+          'duel_created',
+          '⚔️ Novo Duelo!',
+          `${user.name || 'Um atleta'} te desafiou para um duelo — ${wodData.wodName}`,
+          { challengerId: user.id, wodName: wodData.wodName }
+        );
+      }
+
       setSelectedOpponents([]);
       setOpponentSearch('');
       setSelectedWodId('');
@@ -350,6 +362,31 @@ export default function Duels() {
       }
 
       await supabase.from('duels').update(updates).eq('id', duelId);
+
+      // Notifica o criador do duelo que foi aceito
+      if (duel.challengerId !== user.id) {
+        await createNotification(
+          duel.challengerId,
+          'duel_accepted',
+          '✅ Duelo Aceito!',
+          `${user.name || 'Um atleta'} aceitou seu duelo — ${duel.wodName || 'duelo'}`,
+          { duelId, acceptedBy: user.id }
+        );
+      }
+      // Se todos aceitaram, notifica todos os participantes que o duelo está ativo
+      if (allAccepted) {
+        const allParticipants = [duel.challengerId, ...duel.opponentIds];
+        for (const pid of allParticipants) {
+          if (pid === user.id) continue;
+          await createNotification(
+            pid,
+            'duel_accepted',
+            '🥊 Duelo Ativo!',
+            `Todos aceitaram! Submeta seu resultado no duelo — ${duel.wodName || 'duelo'}`,
+            { duelId }
+          );
+        }
+      }
 
       confetti({
         particleCount: 100,
@@ -482,11 +519,39 @@ export default function Duels() {
         }
 
         await supabase.from('duels').update(updates).eq('id', duel.id);
+
+        // Notifica todos os participantes sobre o resultado final
+        const allParticipants2 = [duel.challengerId, ...duel.opponentIds];
+        for (const pid of allParticipants2) {
+          const isWinner = pid === winnerId;
+          await createNotification(
+            pid,
+            'duel_finished',
+            isWinner ? '🏆 Você Venceu o Duelo!' : '💪 Duelo Finalizado!',
+            isWinner
+              ? `Parabéns! Você venceu o duelo — ${duel.wodName || 'duelo'}`
+              : `Duelo encerrado. Vencedor: ${winnerId ? getUserName(winnerId) : 'Empate'} — ${duel.wodName || 'duelo'}`,
+            { duelId: duel.id, winnerId }
+          );
+        }
       } else {
         await supabase.from('duels').update({
           results: newResults,
           updated_at: new Date().toISOString(),
         }).eq('id', duel.id);
+
+        // Notifica os outros participantes que ainda não submeteram
+        const allParticipants3 = [duel.challengerId, ...duel.opponentIds];
+        for (const pid of allParticipants3) {
+          if (pid === user.id || newResults[pid]) continue;
+          await createNotification(
+            pid,
+            'duel_result',
+            '⏳ Resultado Aguardando',
+            `${user.name || 'Um atleta'} já submeteu o resultado. Submeta o seu! — ${duel.wodName || 'duelo'}`,
+            { duelId: duel.id }
+          );
+        }
       }
 
       setSubmission(prev => ({ ...prev, [duel.id]: '' }));
