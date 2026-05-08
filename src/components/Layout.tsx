@@ -1,21 +1,39 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity, Users } from 'lucide-react';
+import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity, Users, Bell } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNotifications } from '../hooks/useNotifications';
+import NotificationPanel from './NotificationPanel';
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
+
+  // Contagem de badges por seção
+  const duelBadge = notifications.filter(n =>
+    !n.read && ['duel_created', 'duel_accepted', 'duel_finished', 'duel_result'].includes(n.type)
+  ).length;
+  const feedBadge = notifications.filter(n =>
+    !n.read && ['like', 'comment', 'feed_post'].includes(n.type)
+  ).length;
+  const challengeBadge = notifications.filter(n =>
+    !n.read && ['challenge_done', 'challenge_new'].includes(n.type)
+  ).length;
+  const homeBadge = notifications.filter(n =>
+    !n.read && ['announcement'].includes(n.type)
+  ).length;
 
   const navItems = [
-    { icon: Home,   label: 'Início',  path: '/' },
-    { icon: Swords, label: 'Duelos',  path: '/duels' },
-    { icon: Users,  label: 'Feed',    path: '/feed' },
-    { icon: Trophy, label: 'Ranking', path: '/leaderboard' },
-    { icon: User,   label: 'Perfil',  path: '/profile' },
+    { icon: Home,   label: 'Início',  path: '/',          badge: homeBadge },
+    { icon: Swords, label: 'Duelos',  path: '/duels',     badge: duelBadge },
+    { icon: Users,  label: 'Feed',    path: '/feed',      badge: feedBadge },
+    { icon: Trophy, label: 'Ranking', path: '/leaderboard', badge: 0 },
+    { icon: User,   label: 'Perfil',  path: '/profile',   badge: 0 },
   ];
 
   const moreItems = [
@@ -37,7 +55,7 @@ export default function Layout() {
     <div className="min-h-screen bg-background text-on-surface font-body selection:bg-primary selection:text-background">
       {/* HR Bar - Parity with CrossCity */}
       <div className="bg-surface-container-highest/50 border-b border-outline-variant/10 px-4 py-1.5 flex items-center justify-between overflow-hidden z-50 sticky top-0 backdrop-blur-md">
-        <div className="flex items-center gap-4 animate-marquee-slow whitespace-nowrap">
+        <div className="flex items-center gap-4 animate-marquee-slow whitespace-nowrap flex-1 overflow-hidden mr-3">
           <div className="flex items-center gap-2">
             <Activity className="w-3 h-3 text-primary animate-pulse" />
             <span className="text-[8px] font-black uppercase tracking-widest italic">Live HR:</span>
@@ -62,7 +80,29 @@ export default function Layout() {
             </div>
           ))}
         </div>
+        {/* Bell notification button */}
+        <button
+          onClick={() => setIsNotifOpen(true)}
+          className="relative flex-shrink-0 p-1.5 rounded-full hover:bg-surface-container-low transition-colors"
+        >
+          <Bell className="w-4 h-4 text-on-surface-variant" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] bg-error text-white text-[8px] font-black rounded-full flex items-center justify-center px-0.5 shadow">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </button>
       </div>
+
+      {/* Notification Panel */}
+      <NotificationPanel
+        open={isNotifOpen}
+        onClose={() => setIsNotifOpen(false)}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onMarkRead={markRead}
+        onMarkAllRead={markAllRead}
+      />
 
       {/* Main Content */}
       <main className="max-w-md mx-auto min-h-screen relative pb-24">
@@ -125,7 +165,14 @@ export default function Layout() {
             >
               {({ isActive }) => (
                 <>
-                  <item.icon className={cn('w-6 h-6 transition-transform', isActive && 'scale-110')} />
+                  <div className="relative">
+                    <item.icon className={cn('w-6 h-6 transition-transform', isActive && 'scale-110')} />
+                    {item.badge > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] bg-error text-white text-[8px] font-black rounded-full flex items-center justify-center px-0.5 shadow-md animate-pulse">
+                        {item.badge > 9 ? '9+' : item.badge}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[8px] font-bold uppercase tracking-widest">{item.label}</span>
                   {isActive && (
                     <div className="absolute -top-2 w-1 h-1 bg-primary rounded-full shadow-[0_0_10px_#cafd00]" />
@@ -138,7 +185,14 @@ export default function Layout() {
             onClick={() => setIsMenuOpen(true)}
             className="flex flex-col items-center gap-1 text-on-surface-variant hover:text-on-surface transition-all flex-1"
           >
-            <Menu className="w-6 h-6" />
+            <div className="relative">
+              <Menu className="w-6 h-6" />
+              {challengeBadge > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] bg-error text-white text-[8px] font-black rounded-full flex items-center justify-center px-0.5 shadow-md animate-pulse">
+                  {challengeBadge > 9 ? '9+' : challengeBadge}
+                </span>
+              )}
+            </div>
             <span className="text-[8px] font-bold uppercase tracking-widest">Mais</span>
           </button>
         </div>
