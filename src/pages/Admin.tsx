@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { uploadImage } from '../utils/image';
+import { createNotification } from '../hooks/useNotifications';
 import { uploadAvatarItem } from '../utils/avatarUpload';
 import type { AvatarSlotKey } from '../lib/avatarLayers';
 import { LayerAdjustment, SLOT_DEFAULTS, resolveAdjustment, adjustmentToCSS } from '../lib/avatarLayers';
@@ -270,6 +271,9 @@ export default function Admin() {
   const [isManageUsersOpen, setIsManageUsersOpen] = useState(false);
   const [openSections, setOpenSections] = useState<string[]>([]);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+
+  // ── Comunicados ──
+  const [announcements, setAnnouncements] = useState<any[]>([]);
   const [isVisitorPanelOpen, setIsVisitorPanelOpen] = useState(false);
   const [visitorPermissions, setVisitorPermissions] = useState<VisitorPermissions>({
     wod: 'allowed',
@@ -368,6 +372,7 @@ export default function Admin() {
 
     const { data: clanMembershipsData } = await supabase.from('clan_memberships').select('*');
     if (clanMembershipsData) setClanMemberships(clanMembershipsData);
+
   };
 
   useEffect(() => {
@@ -469,6 +474,17 @@ export default function Admin() {
 
   const handleSaveSettings = async () => {
     if (!settings) return;
+
+    // Guarda IDs dos comunicados que já existiam antes de salvar
+    const { data: prevData } = await supabase
+      .from('box_settings')
+      .select('announcements')
+      .eq('is_active', true)
+      .maybeSingle();
+    const prevAnnouncementIds = new Set(
+      ((prevData?.announcements as any[]) || []).map((a: any) => a.id)
+    );
+
     const { data, error } = await supabase
       .from('box_settings')
       .update({
@@ -492,7 +508,31 @@ export default function Admin() {
       .eq('is_active', true)
       .select()
       .maybeSingle();
-    if (!error && data) { fetchAll(); toast.success('Ajustes salvos com sucesso!'); }
+    if (!error && data) {
+      fetchAll();
+      toast.success('Ajustes salvos com sucesso!');
+      // Detecta comunicados novos (IDs que não existiam antes) e notifica todos
+      const currentAnnouncements: any[] = (settings as any).announcements || [];
+      const newAnnouncements = currentAnnouncements.filter(
+        (a: any) => a.title && !prevAnnouncementIds.has(a.id)
+      );
+      if (newAnnouncements.length > 0) {
+        const { data: allProfiles } = await supabase.from('profiles').select('id');
+        if (allProfiles) {
+          for (const ann of newAnnouncements) {
+            for (const profile of allProfiles) {
+              await createNotification(
+                profile.id,
+                'announcement',
+                `📢 ${ann.title}`,
+                ann.content || 'Novo comunicado do box. Confira no início!',
+                { announcement_id: ann.id }
+              );
+            }
+          }
+        }
+      }
+    }
     else toast.error('Erro ao salvar ajustes: ' + (error?.message || 'Erro desconhecido'));
   };
 
@@ -533,6 +573,16 @@ export default function Admin() {
       setChallenges([data[0], ...challenges]);
       setNewChallenge({ title: '', description: '', active: true, startDate: format(new Date(), 'yyyy-MM-dd'), endDate: format(new Date(new Date().setDate(new Date().getDate() + 7)), 'yyyy-MM-dd'), xp: 50, coins: 10, repeatable: false, dailyLimit: 1, difficulty: 'easy', required_days: 1, require_photo: false });
       toast.success('Desafio criado com sucesso!');
+      // Notifica todos os usuários sobre o novo desafio
+      for (const u of users) {
+        await createNotification(
+          u.id,
+          'challenge_new',
+          '⚡ Novo Desafio Disponível!',
+          `"${newChallenge.title}" está disponível — complete e ganhe +${newChallenge.xp} XP e +${newChallenge.coins} BC!`,
+          { challenge_id: data[0].id }
+        );
+      }
     } else toast.error('Erro ao criar desafio: ' + (error?.message || 'Erro desconhecido'));
   };
 
