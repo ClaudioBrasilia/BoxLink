@@ -487,4 +487,4 @@ export default function Challenges() {
       </AnimatePresence>
     </div>
   );
-}
+                                                  }
