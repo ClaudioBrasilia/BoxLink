@@ -160,6 +160,22 @@ export default function Challenges() {
               xp_earned: challenge.xp,
               coins_earned: challenge.coins,
             });
+            // Notifica todos os outros usuários sobre a nova postagem no feed
+            const { data: allProfiles } = await supabase
+              .from('profiles')
+              .select('id')
+              .neq('id', user.id);
+            if (allProfiles) {
+              for (const profile of allProfiles) {
+                await createNotification(
+                  profile.id,
+                  'feed_post',
+                  '📸 Nova postagem no Feed!',
+                  `${user.name} completou o desafio "${challenge.title}" e publicou uma foto!`,
+                  { user_id: user.id, challenge_id: challenge.id }
+                );
+              }
+            }
           }
 
           // FIX: aguarda fetchData antes de mostrar toast, garante que history atualiza
