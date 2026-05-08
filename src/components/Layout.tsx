@@ -1,18 +1,16 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity, Users, Bell } from 'lucide-react';
+import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity, Users } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNotifications } from '../hooks/useNotifications';
-import NotificationPanel from './NotificationPanel';
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
+  const { notifications } = useNotifications();
 
   // Contagem de badges por seção
   const duelBadge = notifications.filter(n =>
@@ -80,29 +78,7 @@ export default function Layout() {
             </div>
           ))}
         </div>
-        {/* Bell notification button */}
-        <button
-          onClick={() => setIsNotifOpen(true)}
-          className="relative flex-shrink-0 p-1.5 rounded-full hover:bg-surface-container-low transition-colors"
-        >
-          <Bell className="w-4 h-4 text-on-surface-variant" />
-          {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] bg-error text-white text-[8px] font-black rounded-full flex items-center justify-center px-0.5 shadow">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
-        </button>
       </div>
-
-      {/* Notification Panel */}
-      <NotificationPanel
-        open={isNotifOpen}
-        onClose={() => setIsNotifOpen(false)}
-        notifications={notifications}
-        unreadCount={unreadCount}
-        onMarkRead={markRead}
-        onMarkAllRead={markAllRead}
-      />
 
       {/* Main Content */}
       <main className="max-w-md mx-auto min-h-screen relative pb-24">
@@ -199,4 +175,4 @@ export default function Layout() {
       </nav>
     </div>
   );
-}
+                    }
