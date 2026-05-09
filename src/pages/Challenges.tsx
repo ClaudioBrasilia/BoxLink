@@ -53,7 +53,9 @@ export default function Challenges() {
   }, []);
 
   const fetchData = useCallback(async () => {
-    const { data: challengesData } = await supabase.from('challenges').select('*').eq('active', true);
+    const today = new Date().toISOString().split('T')[0];
+    const { data: challengesData } = await supabase.from('challenges').select('*').eq('active', true)
+      .or(`end_date.is.null,end_date.gte.${today}`);
     if (challengesData) setChallenges(challengesData);
 
     if (user) {
@@ -487,4 +489,4 @@ export default function Challenges() {
       </AnimatePresence>
     </div>
   );
-                                                  }
+        }
