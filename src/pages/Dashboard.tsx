@@ -353,7 +353,7 @@ export default function Dashboard() {
                 return todaySchedule.map((s: any) => {
                   const [h, m] = s.time.split(':').map(Number);
                   const startMinutes = h * 60 + m;
-                  const expired = nowMinutes > startMinutes + 10;
+                  const expired = nowMinutes > startMinutes + 20;
                   return (
                     <button
                       key={s.time}
@@ -485,4 +485,4 @@ export default function Dashboard() {
       </AnimatePresence>
     </div>
   );
-                        }
+            }
