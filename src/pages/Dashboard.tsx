@@ -52,8 +52,11 @@ export default function Dashboard() {
     }
 
     // Fetch active challenges
+    const today = new Date().toISOString().split('T')[0];
     const { data: challengesData } = await supabase
-      .from('challenges').select('*').eq('active', true).limit(3);
+      .from('challenges').select('*').eq('active', true)
+      .or(`end_date.is.null,end_date.gte.${today}`)
+      .limit(3);
     setActiveChallenges(challengesData || []);
 
     // Fetch Schedule
@@ -353,7 +356,7 @@ export default function Dashboard() {
                 return todaySchedule.map((s: any) => {
                   const [h, m] = s.time.split(':').map(Number);
                   const startMinutes = h * 60 + m;
-                  const expired = nowMinutes > startMinutes + 20;
+                  const expired = nowMinutes > startMinutes + 10;
                   return (
                     <button
                       key={s.time}
@@ -485,4 +488,4 @@ export default function Dashboard() {
       </AnimatePresence>
     </div>
   );
-            }
+  }
