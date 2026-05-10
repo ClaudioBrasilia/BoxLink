@@ -1,213 +1,307 @@
-# Prompts de Geração — Avatar BoxLink
-
+# REGRAS GLOBAIS — SISTEMA OFICIAL DE OVERLAY BOXLINK
 <!-- versão: 2026-05-10 -->
 
-# Sistema Oficial de Geração — BoxLink Avatar Assets
+Todos os itens deste arquivo são assets de sobreposição para avatar mobile game.
 
-Este arquivo contém os prompts oficiais de geração de roupas e acessórios do sistema de avatar BoxLink.
-
-Todos os assets devem ser produzidos seguindo EXATAMENTE estas regras.
+Os itens DEVEM funcionar diretamente sobre os avatares oficiais do BoxLink sem edição manual.
 
 ---
 
-# REGRA MAIS IMPORTANTE DO SISTEMA
+# OBJETIVO
 
-O avatar base NÃO MUDA.
+Cada item deve funcionar como:
 
-As roupas e acessórios são layers PNG sobrepostas ao avatar.
+- avatar overlay;
+- clothing layer;
+- accessory layer;
+- mobile game cosmetic item;
+- React Native avatar asset;
+- Expo overlay item.
 
-Portanto:
+Os itens NÃO são:
 
-* o canvas deve permanecer idêntico;
-* a posição deve permanecer idêntica;
-* a escala deve permanecer idêntica;
-* o alinhamento deve permanecer idêntico.
-
-As peças NÃO podem ser centralizadas novamente.
-
-As peças NÃO podem ser renderizadas isoladas em outra posição.
-
----
-
-# CANVAS OFICIAL
-
-Canvas obrigatório para TODOS os assets:
-
-1024x1536
-
-Nunca:
-
-* cortar;
-* redimensionar;
-* rotacionar;
-* mover.
+- mockups;
+- renders de ecommerce;
+- catálogo;
+- manequim;
+- produto isolado;
+- foto de estúdio;
+- render promocional.
 
 ---
 
-# POSICIONAMENTO FIXO
-
-Toda peça deve ser criada:
-
-* exatamente na posição do avatar;
-* usando o avatar como molde anatômico;
-* respeitando perspectiva frontal fixa.
-
-O ponto x=0 y=0 precisa permanecer alinhado com o avatar original.
-
----
-
-# TRANSPARÊNCIA REAL (ALPHA)
-
-Todas as peças precisam usar:
-
-* PNG alpha verdadeiro;
-* transparência real;
-* sem fundo branco;
-* sem fundo preto;
-* sem sombra de fundo;
-* sem glow externo.
-
----
-
-# ABERTURAS VAZADAS (ALPHA = 0)
-
-Toda abertura da peça precisa ser um BURACO REAL NO PNG.
-
-Isso inclui:
-
-* gola;
-* cavas;
-* mangas;
-* cintura;
-* punhos;
-* barras;
-* abertura de tênis;
-* abertura de boné;
-* interior de luvas;
-* interior de joelheiras;
-* interior de munhequeiras.
-
-O avatar deve aparecer por trás dessas áreas.
-
-NUNCA:
-
-* preencher com tecido;
-* preencher com gradiente;
-* preencher com sombra;
-* preencher com cor sólida;
-* desenhar interior da peça.
-
----
-
-# NÃO DESENHAR O CORPO
-
-A imagem final deve conter SOMENTE:
-
-* roupa;
-  ou
-* acessório.
-
-NÃO mostrar:
-
-* pele;
-* cabeça;
-* cabelo;
-* braços;
-* pernas;
-* pés;
-* pescoço;
-* torso.
-
----
-
-# EXPORTAÇÃO
+# EXPORTAÇÃO OBRIGATÓRIA
 
 Formato obrigatório:
 
-* PNG transparente.
-
-Resultado:
-
-* pronto para upload;
-* pronto para React Native;
-* pronto para Expo;
-* pronto para Supabase;
-* pronto para overlay automático.
+- PNG
+- canal alpha real
+- fundo totalmente transparente
+- sem compressão destrutiva
+- canvas fixo 1024x1536
 
 ---
 
-# TESTE DE VALIDAÇÃO
+# REGRAS CRÍTICAS DE CANVAS
 
-O asset será considerado correto somente se:
+OBRIGATÓRIO:
 
-1. for colocado exatamente em x=0 y=0;
-2. sem redimensionamento;
-3. sem calibração;
-4. encaixar perfeitamente no avatar base.
+- manter canvas EXATAMENTE 1024x1536;
+- NÃO cortar imagem;
+- NÃO aplicar auto-crop;
+- NÃO recentralizar automaticamente;
+- NÃO redimensionar canvas;
+- NÃO aproximar câmera;
+- NÃO afastar câmera.
 
-Se precisar mover:
-❌ asset inválido.
-
----
-
-# ESTILO OFICIAL
-
-Todos os itens devem seguir:
-
-* cartoon 3D;
-* Disney/Pixar;
-* mobile game premium;
-* iluminação suave;
-* sombreamento leve;
-* render limpo;
-* bordas suaves;
-* aparência fitness/crossfit.
-
-Referência visual:
-
-* Fortnite Locker
-* Roblox Avatar Shop
-* Zepeto
-* NBA 2K MyPlayer
-* The Sims
-
-Adaptado para universo fitness/crossfit.
+A peça deve permanecer posicionada exatamente dentro da área oficial.
 
 ---
 
-# REGRAS GLOBAIS OBRIGATÓRIAS
+# REGRAS DE TRANSPARÊNCIA
 
-Adicionar implicitamente em TODAS as peças:
+Todas as áreas fora da peça DEVEM permanecer:
 
-* NÃO gerar mockup;
-* NÃO gerar personagem vestido;
-* NÃO gerar manequim;
-* NÃO gerar preview de loja;
-* NÃO gerar fundo cinza;
-* NÃO gerar fundo branco;
-* NÃO gerar composição promocional;
-* NÃO gerar render com corpo humano.
+- alpha 0 absoluto;
+- totalmente transparentes;
+- sem pixels residuais;
+- sem fundo branco;
+- sem fundo cinza;
+- sem glow;
+- sem sombra residual.
 
-Gerar SOMENTE a peça isolada em PNG transparente.
+NÃO renderizar:
+
+- fundo quadriculado;
+- simulação de transparência;
+- checkerboard;
+- background fake.
 
 ---
 
-# QUALIDADE DAS BORDAS
+# ABERTURAS VAZADAS (ALPHA REAL)
 
-Toda peça deve possuir:
+Toda abertura da peça deve ser um BURACO REAL no PNG.
 
-* bordas externas totalmente fechadas;
-* recorte limpo;
-* alpha sem serrilhado;
-* transparência suave;
-* contorno consistente.
+As áreas vazadas DEVEM possuir:
 
-Evitar:
+- alpha 0 absoluto;
+- transparência real;
+- nenhum preenchimento;
+- nenhuma sombra interna;
+- nenhum gradiente;
+- nenhuma máscara.
 
-* pixels fantasmas;
-* sombras transparentes excessivas;
-* vazamento de cor;
-* blur nas bordas.
+---
+
+# É PROIBIDO
+
+NÃO criar:
+
+- mockup;
+- manequim;
+- cabeça fake;
+- corpo fake;
+- braços fake;
+- pernas fake;
+- rosto fake;
+- máscara branca;
+- placeholder;
+- vidro opaco;
+- ambient occlusion fora da peça;
+- sombra cinematográfica;
+- iluminação dramática;
+- render de produto;
+- efeito publicitário;
+- perspectiva 3/4;
+- pose dinâmica;
+- tecido flutuando;
+- clipping.
+
+---
+
+# PERSPECTIVA OFICIAL
+
+Todos os itens DEVEM usar:
+
+- perspectiva frontal exata;
+- pose neutra;
+- alinhamento vertical;
+- escala oficial;
+- iluminação frontal suave;
+- estilo mobile game cartoon 3D.
+
+NÃO usar:
+
+- rotação;
+- inclinação;
+- profundidade exagerada;
+- perspectiva lateral;
+- câmera dinâmica.
+
+---
+
+# ILUMINAÇÃO
+
+Usar:
+
+- iluminação frontal suave;
+- iluminação uniforme;
+- shading cartoon mobile game.
+
+NÃO usar:
+
+- luz lateral dramática;
+- sombras cinematográficas;
+- brilho exagerado;
+- reflexos de estúdio;
+- HDR pesado.
+
+---
+
+# ESTILO VISUAL
+
+Estilo obrigatório:
+
+- Cartoon 3D Disney/Pixar
+- mobile fitness game
+- clean edges
+- soft shading
+- premium game asset
+- production-ready overlay
+- avatar customization item
+
+---
+
+# REGRAS DE ESCALA
+
+A peça NÃO pode:
+
+- ultrapassar a zona oficial;
+- atravessar braços;
+- atravessar pernas;
+- atravessar cabelo;
+- ultrapassar cabeça;
+- sair da área definida.
+
+---
+
+# REGRAS PARA ACESSÓRIOS
+
+Todos os acessórios DEVEM respeitar:
+
+- profundidade frontal mínima;
+- overlay 2D frontal;
+- compatibilidade com avatar;
+- encaixe automático.
+
+---
+
+# REGRAS ESPECÍFICAS — ÓCULOS
+
+Os óculos DEVEM:
+
+- possuir lentes transparentes reais;
+- permitir visualização dos olhos;
+- possuir somente frente da armação;
+- ter hastes mínimas ou invisíveis;
+- funcionar como overlay frontal.
+
+NÃO criar:
+
+- braços longos;
+- estrutura traseira;
+- óculos realistas completos;
+- profundidade lateral exagerada.
+
+---
+
+# REGRAS ESPECÍFICAS — BONÉS
+
+O boné DEVE possuir:
+
+- abertura interna transparente;
+- alpha real na parte interna;
+- encaixe frontal exato;
+- compatibilidade com cabelo.
+
+NÃO criar:
+
+- cabeça fake;
+- máscara branca;
+- preenchimento interno;
+- manequim;
+- fundo dentro do boné.
+
+---
+
+# REGRAS ESPECÍFICAS — TÊNIS
+
+Os tênis DEVEM:
+
+- encaixar exatamente nos pés;
+- respeitar linha do chão;
+- manter abertura superior transparente.
+
+NÃO criar:
+
+- sola exagerada;
+- altura fora da base;
+- profundidade lateral excessiva.
+
+---
+
+# REGRAS ESPECÍFICAS — MOCHILAS
+
+As mochilas DEVEM:
+
+- manter área entre alças transparente;
+- respeitar largura do tronco;
+- não atravessar braços.
+
+---
+
+# REGRAS ESPECÍFICAS — JAQUETAS E CAMISETAS
+
+As roupas superiores DEVEM:
+
+- respeitar ombros oficiais;
+- manter gola vazada;
+- manter mangas vazadas;
+- respeitar cintura oficial.
+
+---
+
+# REGRAS ESPECÍFICAS — CALÇAS E SHORTS
+
+As roupas inferiores DEVEM:
+
+- manter cintura vazada;
+- manter barras transparentes;
+- respeitar anatomia das pernas.
+
+---
+
+# CHECKLIST FINAL
+
+Antes de exportar, validar:
+
+✓ canvas 1024x1536  
+✓ PNG  
+✓ alpha real  
+✓ fundo transparente  
+✓ sem auto-crop  
+✓ sem fundo fake  
+✓ sem sombra externa  
+✓ sem mockup  
+✓ sem manequim  
+✓ sem corpo fake  
+✓ sem pixels fantasmas  
+✓ overlay funcionando  
+✓ encaixe correto  
+✓ área oficial respeitada  
+✓ pronto para React Native/Expo  
+✓ production-ready mobile game asset
 
 ---
 
