@@ -1,351 +1,725 @@
-# Prompts de Geração — Avatar Feminino BoxLink
+# Prompts de Geração — Avatar BoxLink
 
 <!-- versão: 2026-05-10 -->
 
-# BASE_FEMININA_OFICIAL
+# Sistema Oficial de Geração — BoxLink Avatar Assets
 
-* Canvas obrigatório: 1024x1536
-* Fundo totalmente transparente
-* Corpo inteiro visível da cabeça aos pés
-* Avatar centralizado
-* Estilo cartoon 3D Disney/Pixar
-* Anatomia atlética feminina
-* Pose frontal neutra
-* Braços levemente afastados do corpo
-* Sem perspectiva lateral
-* Sem cortes
-* Sem acessórios na base
-* Sem roupas além das peças padrão da base
-* Compatível com overlay PNG para React Native/Expo
-* Todas as roupas devem encaixar exatamente nesta anatomia
+Este arquivo contém os prompts oficiais de geração de roupas e acessórios do sistema de avatar BoxLink.
+
+Todos os assets devem ser produzidos seguindo EXATAMENTE estas regras.
 
 ---
 
-# REGRAS GLOBAIS
+# REGRA MAIS IMPORTANTE DO SISTEMA
 
-## Transparência obrigatória
+O avatar base NÃO MUDA.
 
-Toda peça deve ser exportada como PNG transparente.
+As roupas e acessórios são layers PNG sobrepostas ao avatar.
 
-Nunca gerar:
+Portanto:
 
-* fundo branco
-* fundo cinza
-* sombra externa
-* glow externo
-* corpo junto da peça
-* pele
-* cabelo
-* olhos
-* rosto
-* avatar completo
+* o canvas deve permanecer idêntico;
+* a posição deve permanecer idêntica;
+* a escala deve permanecer idêntica;
+* o alinhamento deve permanecer idêntico.
 
-A imagem final deve conter SOMENTE a peça.
+As peças NÃO podem ser centralizadas novamente.
+
+As peças NÃO podem ser renderizadas isoladas em outra posição.
 
 ---
 
-# REGRA CRÍTICA — ABERTURAS VAZADAS
+# CANVAS OFICIAL
 
-Todas as aberturas precisam ser vazadas reais (alpha = 0).
+Canvas obrigatório para TODOS os assets:
+
+1024x1536
+
+Nunca:
+
+* cortar;
+* redimensionar;
+* rotacionar;
+* mover.
+
+---
+
+# POSICIONAMENTO FIXO
+
+Toda peça deve ser criada:
+
+* exatamente na posição do avatar;
+* usando o avatar como molde anatômico;
+* respeitando perspectiva frontal fixa.
+
+O ponto x=0 y=0 precisa permanecer alinhado com o avatar original.
+
+---
+
+# TRANSPARÊNCIA REAL (ALPHA)
+
+Todas as peças precisam usar:
+
+* PNG alpha verdadeiro;
+* transparência real;
+* sem fundo branco;
+* sem fundo preto;
+* sem sombra de fundo;
+* sem glow externo.
+
+---
+
+# ABERTURAS VAZADAS (ALPHA = 0)
+
+Toda abertura da peça precisa ser um BURACO REAL NO PNG.
 
 Isso inclui:
 
-* gola
-* cavas
-* mangas
-* cintura
-* barras
-* punhos
-* cano do tênis
-* abertura do boné
-* lentes dos óculos
-* espaços internos das alças
+* gola;
+* cavas;
+* mangas;
+* cintura;
+* punhos;
+* barras;
+* abertura de tênis;
+* abertura de boné;
+* interior de luvas;
+* interior de joelheiras;
+* interior de munhequeiras.
 
-O corpo do avatar precisa aparecer por trás.
+O avatar deve aparecer por trás dessas áreas.
 
-NÃO incluir:
+NUNCA:
 
-* forro interno
-* tecido interno
-* sombra preenchendo buracos
-* gradiente cobrindo transparência
-* cor sólida dentro das aberturas
-* blur preenchendo buracos
-
----
-
-# ORDEM DE SOBREPOSIÇÃO
-
-1. Corpo base
-2. Calçados
-3. Calças/shorts
-4. Tops/camisetas
-5. Jaquetas
-6. Mochilas
-7. Luvas/munhequeiras
-8. Óculos
-9. Bonés/acessórios cabeça
+* preencher com tecido;
+* preencher com gradiente;
+* preencher com sombra;
+* preencher com cor sólida;
+* desenhar interior da peça.
 
 ---
 
-# TOP_FEMININO
+# NÃO DESENHAR O CORPO
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na anatomia da base feminina oficial BoxLink.
+A imagem final deve conter SOMENTE:
 
-ABERTURAS VAZADAS (alpha = 0): gola, cavas e barra inferior devem ser TOTALMENTE TRANSPARENTES. Pescoço, braços e abdômen do avatar precisam aparecer por trás.
+* roupa;
+  ou
+* acessório.
 
-NÃO incluir: forro interno, sombra preenchendo aberturas, tecido tampando gola.
+NÃO mostrar:
 
-Criar SOMENTE: top fitness feminino [COR/ESTILO].
+* pele;
+* cabeça;
+* cabelo;
+* braços;
+* pernas;
+* pés;
+* pescoço;
+* torso.
 
-ÁREA OFICIAL:
-x: 270 → 760
-y: 210 → 620
+---
 
-Top esportivo premium estilo crossfit/cartoon mobile game.
+# EXPORTAÇÃO
+
+Formato obrigatório:
+
+* PNG transparente.
+
+Resultado:
+
+* pronto para upload;
+* pronto para React Native;
+* pronto para Expo;
+* pronto para Supabase;
+* pronto para overlay automático.
+
+---
+
+# TESTE DE VALIDAÇÃO
+
+O asset será considerado correto somente se:
+
+1. for colocado exatamente em x=0 y=0;
+2. sem redimensionamento;
+3. sem calibração;
+4. encaixar perfeitamente no avatar base.
+
+Se precisar mover:
+❌ asset inválido.
+
+---
+
+# ESTILO OFICIAL
+
+Todos os itens devem seguir:
+
+* cartoon 3D;
+* Disney/Pixar;
+* mobile game premium;
+* iluminação suave;
+* sombreamento leve;
+* render limpo;
+* bordas suaves;
+* aparência fitness/crossfit.
+
+Referência visual:
+
+* Fortnite Locker
+* Roblox Avatar Shop
+* Zepeto
+* NBA 2K MyPlayer
+* The Sims
+
+Adaptado para universo fitness/crossfit.
+
+---
+
+# REGRAS GLOBAIS OBRIGATÓRIAS
+
+Adicionar implicitamente em TODAS as peças:
+
+* NÃO gerar mockup;
+* NÃO gerar personagem vestido;
+* NÃO gerar manequim;
+* NÃO gerar preview de loja;
+* NÃO gerar fundo cinza;
+* NÃO gerar fundo branco;
+* NÃO gerar composição promocional;
+* NÃO gerar render com corpo humano.
+
+Gerar SOMENTE a peça isolada em PNG transparente.
+
+---
+
+# QUALIDADE DAS BORDAS
+
+Toda peça deve possuir:
+
+* bordas externas totalmente fechadas;
+* recorte limpo;
+* alpha sem serrilhado;
+* transparência suave;
+* contorno consistente.
+
+Evitar:
+
+* pixels fantasmas;
+* sombras transparentes excessivas;
+* vazamento de cor;
+* blur nas bordas.
+
+---
+
+# Índice
+
+## Base Masculina
+
+* Camiseta
+* Regata
+* Cropped sem manga
+* Short
+* Calça
+* Boné
+* Óculos
+* Mochila
+* Munhequeira
+* Joelheira
+* Tênis
+* Luvas
+* Jaqueta
+
+## Base Feminina
+
+* Top
+* Camiseta
+* Cropped
+* Short
+* Calça
+* Boné
+* Óculos
+* Mochila
+* Munhequeira
+* Joelheira
+* Tênis
+* Luvas
+* Jaqueta
+
+---
+
+# BASES OFICIAIS
+
+## BASE_MASCULINA_OFICIAL
+
+* Canvas: 1024x1536
+* Corpo inteiro visível
+* Estilo cartoon 3D Disney/Pixar
+* Personagem centralizado
+* Posição frontal neutra
+* Braços levemente afastados do corpo
+* Sem perspectiva lateral
+* Sem cortes
+* Fundo transparente
+* Base utilizada para todas as peças masculinas
+* Todas as roupas devem respeitar exatamente esta anatomia
+* Compatível com overlay PNG em React Native/Expo
+
+## BASE_FEMININA_OFICIAL
+
+* Canvas: 1024x1536
+* Corpo inteiro visível
+* Estilo cartoon 3D Disney/Pixar
+* Personagem centralizado
+* Posição frontal neutra
+* Braços levemente afastados do corpo
+* Sem perspectiva lateral
+* Sem cortes
+* Fundo transparente
+* Base utilizada para todas as peças femininas
+* Todas as roupas devem respeitar exatamente esta anatomia
+* Compatível com overlay PNG em React Native/Expo
+
+---
+
+# BASE MASCULINA
+
+## CAMISETA_MASCULINA
+
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): gola, bocas das mangas e barra inferior devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem forro, sem sombra preenchendo, sem gradiente, sem cor de fundo dentro do buraco. Pescoço, braços e cintura do avatar precisam aparecer por trás. NÃO desenhar o interior da peça.
+
+NÃO incluir: forro interno, tecido fechando a gola, sombra preenchendo aberturas, gradiente cobrindo o buraco da peça, fundo de qualquer cor dentro das aberturas.
+
+A peça deve possuir:
+- bordas externas totalmente fechadas;
+- recorte limpo;
+- alpha sem serrilhado;
+- transparência suave;
+- contorno consistente.
+
+NÃO gerar:
+- mockup;
+- personagem vestido;
+- manequim;
+- fundo cinza;
+- fundo branco;
+- preview de loja.
+
+Criar SOMENTE: camiseta fitness masculina [COR/ESTILO]. Área obrigatória: x: 220 → 800, y: 210 → 820. Camiseta atlética ajustada ao corpo, mangas curtas proporcionais, tecido esportivo premium, caimento natural sobre peitoral e abdômen.
 ```
 
 ---
 
-# CAMISETA_FEMININA
+## REGATA_MASCULINA
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça.
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-ABERTURAS VAZADAS (alpha = 0): gola, mangas e barra devem ser totalmente transparentes.
+ABERTURAS VAZADAS (alpha = 0): gola, cavas e barra inferior devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem sombra preenchendo, sem gradiente, sem cor dentro das aberturas. Pescoço, braços e abdômen do avatar precisam aparecer por trás.
 
-Criar SOMENTE: camiseta fitness feminina [COR/ESTILO].
+NÃO incluir: preenchimento nas cavas, tecido tampando a gola, sombras internas cobrindo corpo.
 
-ÁREA OFICIAL:
-x: 240 → 785
-y: 210 → 760
-
-Modelagem atlética feminina premium.
+Criar SOMENTE: regata fitness masculina [COR/ESTILO]. Área obrigatória: x: 250 → 780, y: 210 → 760. Regata atlética premium estilo treino funcional/cartoon mobile game.
 ```
 
 ---
 
-# CROPPED_FEMININO
+## CROPPED_SEM_MANGA_MASCULINO
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente.
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-ABERTURAS VAZADAS (alpha = 0): gola, mangas e barra devem ser totalmente transparentes.
+ABERTURAS VAZADAS (alpha = 0): gola, cavas e barra inferior devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem sombra preenchendo, sem gradiente, sem cor de fundo dentro do buraco. Pescoço, braços e abdômen do avatar precisam aparecer por trás.
 
-Criar SOMENTE: cropped fitness feminino [COR/ESTILO].
+NÃO incluir: tecido tampando gola, preenchimento interno nas cavas, sombras internas cobrindo corpo.
 
-ÁREA OFICIAL:
-x: 250 → 775
-y: 220 → 690
-
-Cropped atlético premium ajustado ao busto.
+Criar SOMENTE: cropped sem manga masculino fitness [COR/ESTILO]. Área obrigatória: x: 260 → 770, y: 210 → 690. Peça atlética moderna estilo treino funcional/cartoon premium.
 ```
 
 ---
 
-# SHORT_FEMININO
+## SHORT_MASCULINO
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente.
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-ABERTURAS VAZADAS (alpha = 0): cintura e pernas devem ser totalmente transparentes.
+ABERTURAS VAZADAS (alpha = 0): cintura e barras das pernas devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem sombra preenchendo, sem gradiente, sem cor dentro das aberturas. Abdômen e pernas do avatar precisam aparecer por trás.
 
-Criar SOMENTE: short fitness feminino [COR/ESTILO].
+NÃO incluir: preenchimento interno, sombra cobrindo pernas, tecido tampando cintura.
 
-ÁREA OFICIAL:
-x: 290 → 740
-y: 560 → 910
-
-Short fitness premium feminino.
+Criar SOMENTE: short fitness masculino [COR/ESTILO]. Área obrigatória: x: 270 → 760, y: 600 → 980. Short esportivo premium estilo cross training/mobile game.
 ```
 
 ---
 
-# CALCA_FEMININA
+## CALCA_MASCULINA
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente.
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-ABERTURAS VAZADAS (alpha = 0): cintura e barras inferiores totalmente transparentes.
+ABERTURAS VAZADAS (alpha = 0): cintura e barras inferiores das pernas devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem sombra preenchendo, sem gradiente, sem cor dentro das aberturas. Abdômen e pés do avatar precisam aparecer por trás.
 
-Criar SOMENTE: legging fitness feminina [COR/ESTILO].
-
-ÁREA OFICIAL:
-x: 260 → 760
-y: 540 → 1400
-
-Legging anatômica premium.
+Criar SOMENTE: calça esportiva masculina [COR/ESTILO]. Área obrigatória: x: 250 → 770, y: 580 → 1440. Modelagem slim esportiva, tecido fitness premium, ajuste anatômico nas pernas.
 ```
 
 ---
 
-# JAQUETA_FEMININA
+## BONE_MASCULINO
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente.
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-ABERTURAS VAZADAS (alpha = 0): gola, mangas e barra transparentes.
+ABERTURAS VAZADAS (alpha = 0): abertura inferior do boné deve ser TOTALMENTE TRANSPARENTE — buraco real no PNG, sem sombra interna, sem preenchimento. Cabeça e cabelo do avatar precisam aparecer por trás.
 
-Criar SOMENTE: jaqueta fitness feminina [COR/ESTILO].
+Respeitar espaço do cabelo da base oficial.
 
-ÁREA OFICIAL:
-x: 220 → 810
-y: 180 → 860
-
-Jaqueta esportiva premium.
+Criar SOMENTE: boné esportivo masculino [COR/ESTILO]. Área obrigatória: x: 280 → 740, y: 10 → 280. Boné fitness premium estilo crossfit/mobile game.
 ```
 
 ---
 
-# BONE_FEMININO
+## OCULOS_MASCULINO
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente.
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-ABERTURAS VAZADAS (alpha = 0): abertura inferior e traseira do rabo de cavalo devem ser transparentes.
+ABERTURAS VAZADAS (alpha = 0): lentes internas e área dos olhos devem ser TOTALMENTE TRANSPARENTES. Olhos e rosto do avatar precisam aparecer por trás.
 
-Criar SOMENTE: boné fitness feminino [COR/ESTILO].
+As lentes devem possuir transparência parcial controlada OU transparência total.
 
-ÁREA OFICIAL:
-x: 290 → 730
-y: 20 → 300
+Nunca bloquear:
+- olhos;
+- sobrancelhas;
+- rosto do avatar.
+
+Criar SOMENTE: óculos esportivos masculinos [COR/ESTILO]. Área obrigatória: x: 330 → 700, y: 120 → 300. Óculos premium estilo corrida/crossfit/mobile game.
 ```
 
 ---
 
-# OCULOS_FEMININO
+## MOCHILA_MASCULINA
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente.
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-ABERTURAS VAZADAS (alpha = 0): lentes totalmente transparentes.
+ABERTURAS VAZADAS (alpha = 0): área interna entre alças deve ser TOTALMENTE TRANSPARENTE. Tronco e braços do avatar precisam aparecer por trás.
 
-Criar SOMENTE: óculos esportivos femininos [COR/ESTILO].
-
-ÁREA OFICIAL:
-x: 340 → 690
-y: 130 → 310
+Criar SOMENTE: mochila fitness masculina [COR/ESTILO]. Área obrigatória: x: 200 → 820, y: 250 → 1000. Mochila premium estilo treino funcional/cartoon mobile game.
 ```
 
 ---
 
-# MOCHILA_FEMININA
+## MUNHEQUEIRA_MASCULINA
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente.
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-ABERTURAS VAZADAS (alpha = 0): espaço entre alças totalmente transparente.
+ABERTURAS VAZADAS (alpha = 0): interior do anel da munhequeira deve ser TOTALMENTE TRANSPARENTE. Braços do avatar precisam aparecer por trás.
 
-Criar SOMENTE: mochila fitness feminina [COR/ESTILO].
-
-ÁREA OFICIAL:
-x: 210 → 810
-y: 260 → 980
+Criar SOMENTE: munhequeiras esportivas masculinas [COR/ESTILO]. Área obrigatória: x: 170 → 860, y: 500 → 760. Munhequeiras fitness acolchoadas estilo treino funcional.
 ```
 
 ---
 
-# MUNHEQUEIRA_FEMININA
+## JOELHEIRA_MASCULINA
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente.
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-Interior da munhequeira totalmente transparente.
+ABERTURAS VAZADAS (alpha = 0): interior da joelheira deve ser TOTALMENTE TRANSPARENTE. Joelhos e pernas do avatar precisam aparecer por trás.
 
-Criar SOMENTE: munhequeiras fitness femininas [COR/ESTILO].
-
-ÁREA OFICIAL:
-x: 190 → 850
-y: 520 → 760
+Criar SOMENTE: joelheiras fitness masculinas [COR/ESTILO]. Área obrigatória: x: 300 → 730, y: 930 → 1150. Joelheiras premium estilo cross training.
 ```
 
 ---
 
-# JOELHEIRA_FEMININA
+## TENIS_MASCULINO
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente.
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-Interior da joelheira totalmente transparente.
+ABERTURAS VAZADAS (alpha = 0): cano superior do tênis deve ser TOTALMENTE TRANSPARENTE. Tornozelos e pés do avatar precisam aparecer por trás.
 
-Criar SOMENTE: joelheiras fitness femininas [COR/ESTILO].
+Os dois tênis devem ser separados corretamente:
+- pé esquerdo alinhado ao pé esquerdo do avatar;
+- pé direito alinhado ao pé direito do avatar.
 
-ÁREA OFICIAL:
-x: 300 → 730
-y: 920 → 1140
+NÃO gerar:
+- tênis unidos;
+- base única;
+- sombra conectando os pés.
+
+Criar SOMENTE: tênis esportivo masculino [COR/ESTILO]. Área obrigatória: x: 250 → 770, y: 1260 → 1510. Tênis atlético moderno estilo crossfit premium.
 ```
 
 ---
 
-# TENIS_FEMININO
+## LUVAS_MASCULINAS
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente.
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-ABERTURAS VAZADAS (alpha = 0): cano superior transparente.
+ABERTURAS VAZADAS (alpha = 0): punhos internos das luvas devem ser TOTALMENTE TRANSPARENTES. Mãos e braços do avatar precisam aparecer por trás.
 
-Criar SOMENTE: tênis fitness feminino [COR/ESTILO].
-
-ÁREA OFICIAL:
-x: 260 → 770
-y: 1260 → 1510
+Criar SOMENTE: luvas fitness masculinas [COR/ESTILO]. Área obrigatória: x: 170 → 860, y: 520 → 830. Luvas de treino funcional premium.
 ```
 
 ---
 
-# LUVAS_FEMININAS
+## JAQUETA_MASCULINA
 
-```txt
-Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente.
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-Punhos internos transparentes.
+ABERTURAS VAZADAS (alpha = 0): gola, bocas das mangas e barra devem ser TOTALMENTE TRANSPARENTES. Pescoço, braços e cintura do avatar precisam aparecer por trás.
 
-Criar SOMENTE: luvas fitness femininas [COR/ESTILO].
+A abertura frontal da jaqueta deve ser transparente internamente quando estiver aberta.
 
-ÁREA OFICIAL:
-x: 190 → 850
-y: 520 → 830
+Não preencher o espaço interno com sombra sólida.
+
+Criar SOMENTE: jaqueta esportiva masculina [COR/ESTILO]. Área obrigatória: x: 210 → 810, y: 180 → 860. Jaqueta fitness premium com modelagem esportiva moderna.
 ```
 
 ---
 
-# TABELA OFICIAL DE ZONAS
+# BASE FEMININA
 
-| Peça                 | X início | X fim | Y início | Y fim |
-| -------------------- | -------- | ----- | -------- | ----- |
-| Top Feminino         | 270      | 760   | 210      | 620   |
-| Camiseta Feminina    | 240      | 785   | 210      | 760   |
-| Cropped Feminino     | 250      | 775   | 220      | 690   |
-| Short Feminino       | 290      | 740   | 560      | 910   |
-| Calça Feminina       | 260      | 760   | 540      | 1400  |
-| Boné Feminino        | 290      | 730   | 20       | 300   |
-| Óculos Feminino      | 340      | 690   | 130      | 310   |
-| Mochila Feminina     | 210      | 810   | 260      | 980   |
-| Munhequeira Feminina | 190      | 850   | 520      | 760   |
-| Joelheira Feminina   | 300      | 730   | 920      | 1140  |
-| Tênis Feminino       | 260      | 770   | 1260     | 1510  |
-| Luvas Femininas      | 190      | 850   | 520      | 830   |
-| Jaqueta Feminina     | 220      | 810   | 180      | 860   |
+## TOP_FEMININO
+
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): gola, cavas e barra inferior devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem sombra preenchendo, sem gradiente, sem cor dentro das aberturas. Pescoço, braços e abdômen do avatar precisam aparecer por trás.
+
+Criar SOMENTE: top fitness feminino [COR/ESTILO]. Área obrigatória: x: 270 → 760, y: 210 → 620. Top esportivo premium estilo crossfit/mobile game.
+```
 
 ---
 
-# PIPELINE RECOMENDADO
+## CAMISETA_FEMININA
 
-1. Gerar peça
-2. Exportar PNG transparente
-3. Verificar alpha nas aberturas
-4. Testar overlay na base oficial
-5. Ajustar alinhamento se necessário
-6. Fazer upload via sistema BoxLink
-7. Publicar item na loja
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): gola, bocas das mangas e barra inferior devem ser TOTALMENTE TRANSPARENTES. Pescoço, braços e cintura do avatar precisam aparecer por trás.
+
+Criar SOMENTE: camiseta fitness feminina [COR/ESTILO]. Área obrigatória: x: 240 → 785, y: 210 → 760. Camiseta esportiva feminina premium com modelagem atlética.
+```
 
 ---
 
-# COMO USAR
+## CROPPED_FEMININO
 
-1. Escolha a peça
-2. Copie o bloco completo
-3. Substitua [COR/ESTILO]
-4. Gere a imagem
-5. Faça upload no app
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): gola, bocas das mangas e barra inferior devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem forro, sem sombra preenchendo, sem gradiente, sem cor de fundo dentro do buraco. Pescoço, braços e abdômen do avatar precisam aparecer por trás.
+
+Criar SOMENTE: cropped fitness feminino [COR/ESTILO]. Área obrigatória: x: 250 → 775, y: 220 → 690. Cropped atlético premium ajustado ao busto e cintura superior.
+```
+
+---
+
+## SHORT_FEMININO
+
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): cintura e barras das pernas devem ser TOTALMENTE TRANSPARENTES. Abdômen e pernas do avatar precisam aparecer por trás.
+
+Criar SOMENTE: short fitness feminino [COR/ESTILO]. Área obrigatória: x: 290 → 740, y: 560 → 910. Short atlético feminino premium estilo crossfit.
+```
+
+---
+
+## CALCA_FEMININA
+
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): cintura e barras inferiores das pernas devem ser TOTALMENTE TRANSPARENTES. Abdômen e pés do avatar precisam aparecer por trás.
+
+Criar SOMENTE: legging fitness feminina [COR/ESTILO]. Área obrigatória: x: 260 → 760, y: 540 → 1400. Legging esportiva premium anatômica.
+```
+
+---
+
+## BONE_FEMININO
+
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): abertura inferior e abertura traseira do rabo de cavalo devem ser TOTALMENTE TRANSPARENTES. Cabeça e cabelo do avatar precisam aparecer por trás.
+
+Respeitar espaço do cabelo/rabo de cavalo da base oficial.
+
+Nunca cortar o cabelo do avatar.
+
+Criar SOMENTE: boné esportivo feminino [COR/ESTILO]. Área obrigatória: x: 290 → 730, y: 20 → 300. Boné fitness feminino premium.
+```
+
+---
+
+## OCULOS_FEMININO
+
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): lentes internas e área dos olhos devem ser TOTALMENTE TRANSPARENTES. Olhos e rosto do avatar precisam aparecer por trás.
+
+As lentes devem possuir transparência parcial controlada OU transparência total.
+
+Nunca bloquear:
+- olhos;
+- sobrancelhas;
+- rosto do avatar.
+
+Criar SOMENTE: óculos esportivos femininos [COR/ESTILO]. Área obrigatória: x: 340 → 690, y: 130 → 310. Óculos fitness premium estilo corrida/crossfit/cartoon mobile game.
+```
+
+---
+
+## MOCHILA_FEMININA
+
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): área interna entre alças deve ser TOTALMENTE TRANSPARENTE. Tronco e braços do avatar precisam aparecer por trás.
+
+Criar SOMENTE: mochila fitness feminina [COR/ESTILO]. Área obrigatória: x: 210 → 810, y: 260 → 980. Mochila premium estilo treino funcional/mobile game com alças anatômicas.
+```
+
+---
+
+## MUNHEQUEIRA_FEMININA
+
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): interior do anel da munhequeira deve ser TOTALMENTE TRANSPARENTE. Braços do avatar precisam aparecer por trás.
+
+Criar SOMENTE: munhequeiras fitness femininas [COR/ESTILO]. Área obrigatória: x: 190 → 850, y: 520 → 760. Munhequeiras esportivas premium.
+```
+
+---
+
+## JOELHEIRA_FEMININA
+
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): interior da joelheira deve ser TOTALMENTE TRANSPARENTE. Joelhos e pernas do avatar precisam aparecer por trás.
+
+Criar SOMENTE: joelheiras fitness femininas [COR/ESTILO]. Área obrigatória: x: 300 → 730, y: 920 → 1140. Joelheiras premium estilo treino funcional.
+```
+
+---
+
+## TENIS_FEMININO
+
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): cano superior do tênis deve ser TOTALMENTE TRANSPARENTE. Tornozelos e pés do avatar precisam aparecer por trás.
+
+Os dois tênis devem ser separados corretamente:
+- pé esquerdo alinhado ao pé esquerdo do avatar;
+- pé direito alinhado ao pé direito do avatar.
+
+NÃO gerar:
+- tênis unidos;
+- base única;
+- sombra conectando os pés.
+
+Criar SOMENTE: tênis esportivo feminino [COR/ESTILO]. Área obrigatória: x: 260 → 770, y: 1260 → 1510. Tênis fitness feminino premium.
+```
+
+---
+
+## LUVAS_FEMININAS
+
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): punhos internos das luvas devem ser TOTALMENTE TRANSPARENTES. Mãos e braços do avatar precisam aparecer por trás.
+
+Criar SOMENTE: luvas fitness femininas [COR/ESTILO]. Área obrigatória: x: 190 → 850, y: 520 → 830. Luvas esportivas premium.
+```
+
+---
+
+## JAQUETA_FEMININA
+
+```text
+Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): gola, bocas das mangas e barra devem ser TOTALMENTE TRANSPARENTES. Pescoço, braços e cintura do avatar precisam aparecer por trás.
+
+A abertura frontal da jaqueta deve ser transparente internamente quando estiver aberta.
+
+Não preencher o espaço interno com sombra sólida.
+
+Criar SOMENTE: jaqueta esportiva feminina [COR/ESTILO]. Área obrigatória: x: 220 → 810, y: 180 → 860. Jaqueta fitness feminina premium com modelagem atlética moderna.
+```
+
+---
+
+# Tabela de Zonas (referência rápida)
+
+| Peça                        | X início | X fim | Y início | Y fim |
+| --------------------------- | -------- | ----- | -------- | ----- |
+| Camiseta Masculina          | 220      | 800   | 210      | 820   |
+| Regata Masculina            | 250      | 780   | 210      | 760   |
+| Cropped sem manga Masculino | 260      | 770   | 210      | 690   |
+| Short Masculino             | 270      | 760   | 600      | 980   |
+| Calça Masculina             | 250      | 770   | 580      | 1440  |
+| Boné Masculino              | 280      | 740   | 10       | 280   |
+| Óculos Masculino            | 330      | 700   | 120      | 300   |
+| Mochila Masculina           | 200      | 820   | 250      | 1000  |
+| Munhequeira Masculina       | 170      | 860   | 500      | 760   |
+| Joelheira Masculina         | 300      | 730   | 930      | 1150  |
+| Tênis Masculino             | 250      | 770   | 1260     | 1510  |
+| Luvas Masculinas            | 170      | 860   | 520      | 830   |
+| Jaqueta Masculina           | 210      | 810   | 180      | 860   |
+| Top Feminino                | 270      | 760   | 210      | 620   |
+| Camiseta Feminina           | 240      | 785   | 210      | 760   |
+| Cropped Feminino            | 250      | 775   | 220      | 690   |
+| Short Feminino              | 290      | 740   | 560      | 910   |
+| Calça Feminina              | 260      | 760   | 540      | 1400  |
+| Boné Feminino               | 290      | 730   | 20       | 300   |
+| Óculos Feminino             | 340      | 690   | 130      | 310   |
+| Mochila Feminina            | 210      | 810   | 260      | 980   |
+| Munhequeira Feminina        | 190      | 850   | 520      | 760   |
+| Joelheira Feminina          | 300      | 730   | 920      | 1140  |
+| Tênis Feminino              | 260      | 770   | 1260     | 1510  |
+| Luvas Femininas             | 190      | 850   | 520      | 830   |
+| Jaqueta Feminina            | 220      | 810   | 180      | 860   |
+
+---
+
+# Como usar
+
+1. Escolha a peça.
+2. Copie o bloco completo.
+3. Substitua [COR/ESTILO].
+4. Cole no gerador de imagem.
+5. Gere o PNG.
+6. Faça upload via uploadAvatarItem.
+7. Sobreponha no avatar em x=0 y=0 sem redimensionar.
+
+---
+
+# Pipeline Oficial BoxLink
+
+Avatar Base
++
+Peça PNG Transparente
++
+Overlay React Native
++
+Supabase Item System
+====================
+
+Sistema Profissional de Avatar Fitness/Crossfit
