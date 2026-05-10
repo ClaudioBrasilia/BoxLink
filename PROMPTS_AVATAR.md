@@ -1,7 +1,23 @@
 # Prompts de Geração — Avatar BoxLink
 
+<!-- versão: 2026-05-10 (sync GitHub forçado) -->
+
 Cada prompt abaixo já vem **completo** (regras globais + zona + peça).
 Basta **copiar o bloco inteiro**, substituir `[COR/ESTILO]` e gerar.
+
+---
+
+## ⚠️ Regra crítica: ABERTURAS VAZADAS (alpha = 0)
+
+Toda peça é uma camada PNG sobreposta ao avatar. As **aberturas internas** da peça
+(gola, cavas, bocas das mangas, cintura, barra, punhos, cano do tênis, abertura do boné)
+**precisam ser totalmente transparentes** — um furo real no PNG, sem tecido interno,
+sem forro, sem sombra preenchendo. Caso contrário, o pescoço/braços/pernas do avatar
+ficam tampados.
+
+**Sempre adicionar ao prompt (já está incluído nos blocos abaixo):**
+> NÃO incluir: forro interno, tecido fechando a gola, sombra preenchendo aberturas,
+> gradiente cobrindo o buraco da peça, fundo de qualquer cor dentro das aberturas.
 
 ---
 
@@ -20,13 +36,17 @@ Basta **copiar o bloco inteiro**, substituir `[COR/ESTILO]` e gerar.
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-Criar SOMENTE: camiseta masculina [COR/ESTILO]. Área obrigatória: x: 220 → 800, y: 210 → 820. Modelagem athletic fit masculina, mangas curtas, gola redonda.
+ABERTURAS VAZADAS (alpha = 0): gola e bocas das mangas devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem forro, sem sombra preenchendo, sem gradiente, sem cor de fundo dentro do buraco. O pescoço e os braços do avatar precisam aparecer por trás. NÃO desenhar o "interior" da camiseta.
+
+Criar SOMENTE: camiseta masculina [COR/ESTILO]. Área obrigatória: x: 220 → 800, y: 210 → 820. Modelagem athletic fit masculina, mangas curtas, gola redonda com abertura vazada.
 ```
 
 ## <a id="short-m"></a>Short
 
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): cintura e barra das duas pernas devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem forro, sem sombra preenchendo, sem cor de fundo. As pernas do avatar precisam aparecer por trás.
 
 Criar SOMENTE: short esportivo masculino [COR/ESTILO]. Área obrigatória: x: 280 → 740, y: 780 → 1080. Comprimento até metade da coxa, corte masculino.
 ```
@@ -36,6 +56,8 @@ Criar SOMENTE: short esportivo masculino [COR/ESTILO]. Área obrigatória: x: 28
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
+ABERTURAS VAZADAS (alpha = 0): cintura e barra de cada perna devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem forro, sem sombra preenchendo, sem cor de fundo.
+
 Criar SOMENTE: calça esportiva masculina [COR/ESTILO]. Área obrigatória: x: 280 → 740, y: 780 → 1380. Modelagem reta/jogger masculina, cobre até os tornozelos.
 ```
 
@@ -43,6 +65,8 @@ Criar SOMENTE: calça esportiva masculina [COR/ESTILO]. Área obrigatória: x: 2
 
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): a abertura inferior (onde encaixa a cabeça) deve ser TOTALMENTE TRANSPARENTE — buraco real no PNG, sem forro interno, sem sombra preenchendo, sem cor de fundo. A cabeça do avatar precisa aparecer por dentro.
 
 Criar SOMENTE: boné masculino [COR/ESTILO]. Área obrigatória: x: 360 → 660, y: 40 → 240. Aba frontal, vista frontal, encaixado no topo da cabeça.
 ```
@@ -52,6 +76,8 @@ Criar SOMENTE: boné masculino [COR/ESTILO]. Área obrigatória: x: 360 → 660,
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
+ABERTURAS VAZADAS (alpha = 0): o interior do anel de cada munhequeira deve ser TOTALMENTE TRANSPARENTE — buraco real no PNG, sem forro, sem cor de pele desenhada, sem sombra preenchendo. O pulso do avatar aparece por dentro.
+
 Criar SOMENTE: par de munhequeiras esportivas masculinas [COR/ESTILO]. Área obrigatória: x: 140 → 880, y: 600 → 780. Uma em cada pulso, simétricas.
 ```
 
@@ -59,6 +85,8 @@ Criar SOMENTE: par de munhequeiras esportivas masculinas [COR/ESTILO]. Área obr
 
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): o interior do anel de cada joelheira deve ser TOTALMENTE TRANSPARENTE — buraco real no PNG, sem forro, sem cor de pele desenhada, sem sombra preenchendo.
 
 Criar SOMENTE: par de joelheiras esportivas masculinas [COR/ESTILO]. Área obrigatória: x: 300 → 720, y: 1080 → 1280. Uma em cada joelho, simétricas.
 ```
@@ -68,6 +96,8 @@ Criar SOMENTE: par de joelheiras esportivas masculinas [COR/ESTILO]. Área obrig
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
+ABERTURAS VAZADAS (alpha = 0): o cano/abertura superior de cada tênis (onde entra o tornozelo) deve ser TOTALMENTE TRANSPARENTE — buraco real no PNG, sem forro, sem sombra preenchendo, sem cor de fundo.
+
 Criar SOMENTE: par de tênis esportivos masculinos [COR/ESTILO]. Área obrigatória: x: 300 → 720, y: 1380 → 1530. Vista frontal, perspectiva dos pés da base.
 ```
 
@@ -75,6 +105,8 @@ Criar SOMENTE: par de tênis esportivos masculinos [COR/ESTILO]. Área obrigató
 
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): o punho de cada luva deve ser TOTALMENTE TRANSPARENTE — buraco real no PNG, sem forro, sem sombra preenchendo, sem cor de fundo.
 
 Criar SOMENTE: par de luvas de treino masculinas [COR/ESTILO]. Área obrigatória: x: 100 → 920, y: 720 → 900. Uma em cada mão, simétricas.
 ```
@@ -84,6 +116,8 @@ Criar SOMENTE: par de luvas de treino masculinas [COR/ESTILO]. Área obrigatóri
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
+ABERTURAS VAZADAS (alpha = 0): gola e cavas (onde os braços passam) devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem forro, sem sombra preenchendo, sem cor de fundo. Pescoço e ombros do avatar precisam aparecer por trás.
+
 Criar SOMENTE: regata esportiva masculina [COR/ESTILO]. Área obrigatória: x: 240 → 780, y: 220 → 760. Cavas largas, modelagem athletic masculina.
 ```
 
@@ -91,6 +125,8 @@ Criar SOMENTE: regata esportiva masculina [COR/ESTILO]. Área obrigatória: x: 2
 
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base masculina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): gola, bocas das mangas e barra inferior devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem forro, sem sombra preenchendo, sem cor de fundo. Pescoço e mãos do avatar precisam aparecer por trás.
 
 Criar SOMENTE: jaqueta esportiva masculina [COR/ESTILO]. Área obrigatória: x: 180 → 840, y: 200 → 880. Mangas longas, zíper frontal, modelagem masculina.
 ```
@@ -104,13 +140,17 @@ Criar SOMENTE: jaqueta esportiva masculina [COR/ESTILO]. Área obrigatória: x: 
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
-Criar SOMENTE: camiseta feminina [COR/ESTILO]. Área obrigatória: x: 220 → 800, y: 210 → 820. Modelagem athletic fit feminina, mangas curtas, gola redonda.
+ABERTURAS VAZADAS (alpha = 0): gola e bocas das mangas devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem forro, sem sombra preenchendo, sem cor de fundo. Pescoço e braços do avatar precisam aparecer por trás.
+
+Criar SOMENTE: camiseta feminina [COR/ESTILO]. Área obrigatória: x: 220 → 800, y: 210 → 820. Modelagem athletic fit feminina, mangas curtas, gola redonda com abertura vazada.
 ```
 
 ## <a id="short-f"></a>Short
 
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): cintura e barra das duas pernas devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem forro, sem sombra preenchendo, sem cor de fundo.
 
 Criar SOMENTE: short esportivo feminino [COR/ESTILO]. Área obrigatória: x: 290 → 730, y: 780 → 1050. Cintura alta, corte feminino.
 ```
@@ -120,6 +160,8 @@ Criar SOMENTE: short esportivo feminino [COR/ESTILO]. Área obrigatória: x: 290
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
+ABERTURAS VAZADAS (alpha = 0): cintura e barra de cada perna devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem forro, sem sombra preenchendo, sem cor de fundo.
+
 Criar SOMENTE: legging/calça esportiva feminina [COR/ESTILO]. Área obrigatória: x: 280 → 740, y: 780 → 1380. Cintura alta, modelagem feminina, cobre até os tornozelos.
 ```
 
@@ -127,6 +169,8 @@ Criar SOMENTE: legging/calça esportiva feminina [COR/ESTILO]. Área obrigatóri
 
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): a abertura inferior (onde encaixa a cabeça) E a abertura traseira (para o rabo de cavalo) devem ser TOTALMENTE TRANSPARENTES — buracos reais no PNG, sem forro, sem sombra preenchendo, sem cor de fundo.
 
 Criar SOMENTE: boné feminino [COR/ESTILO]. Área obrigatória: x: 360 → 660, y: 40 → 240. Aba frontal, vista frontal, encaixado no topo da cabeça (com abertura traseira para o rabo de cavalo).
 ```
@@ -136,6 +180,8 @@ Criar SOMENTE: boné feminino [COR/ESTILO]. Área obrigatória: x: 360 → 660, 
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
+ABERTURAS VAZADAS (alpha = 0): o interior do anel de cada munhequeira deve ser TOTALMENTE TRANSPARENTE — buraco real no PNG, sem forro, sem cor de pele desenhada, sem sombra preenchendo.
+
 Criar SOMENTE: par de munhequeiras esportivas femininas [COR/ESTILO]. Área obrigatória: x: 140 → 880, y: 600 → 780. Uma em cada pulso, simétricas.
 ```
 
@@ -143,6 +189,8 @@ Criar SOMENTE: par de munhequeiras esportivas femininas [COR/ESTILO]. Área obri
 
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): o interior do anel de cada joelheira deve ser TOTALMENTE TRANSPARENTE — buraco real no PNG, sem forro, sem cor de pele desenhada, sem sombra preenchendo.
 
 Criar SOMENTE: par de joelheiras esportivas femininas [COR/ESTILO]. Área obrigatória: x: 300 → 720, y: 1080 → 1280. Uma em cada joelho, simétricas.
 ```
@@ -152,6 +200,8 @@ Criar SOMENTE: par de joelheiras esportivas femininas [COR/ESTILO]. Área obriga
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
+ABERTURAS VAZADAS (alpha = 0): o cano/abertura superior de cada tênis (onde entra o tornozelo) deve ser TOTALMENTE TRANSPARENTE — buraco real no PNG, sem forro, sem sombra preenchendo, sem cor de fundo.
+
 Criar SOMENTE: par de tênis esportivos femininos [COR/ESTILO]. Área obrigatória: x: 300 → 720, y: 1380 → 1530. Vista frontal, perspectiva dos pés da base.
 ```
 
@@ -159,6 +209,8 @@ Criar SOMENTE: par de tênis esportivos femininos [COR/ESTILO]. Área obrigatór
 
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): o punho de cada luva deve ser TOTALMENTE TRANSPARENTE — buraco real no PNG, sem forro, sem sombra preenchendo, sem cor de fundo.
 
 Criar SOMENTE: par de luvas de treino femininas [COR/ESTILO]. Área obrigatória: x: 100 → 920, y: 720 → 900. Uma em cada mão, simétricas.
 ```
@@ -168,6 +220,8 @@ Criar SOMENTE: par de luvas de treino femininas [COR/ESTILO]. Área obrigatória
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
 
+ABERTURAS VAZADAS (alpha = 0): decote, cavas (passagem dos braços) e barra inferior devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem tecido interno, sem forro, sem sombra preenchendo, sem cor de fundo. Pescoço, ombros e abdômen do avatar precisam aparecer por trás.
+
 Criar SOMENTE: top esportivo feminino [COR/ESTILO]. Área obrigatória: x: 260 → 760, y: 230 → 560. Sports bra, alças largas, modelagem fitness feminina.
 ```
 
@@ -175,6 +229,8 @@ Criar SOMENTE: top esportivo feminino [COR/ESTILO]. Área obrigatória: x: 260 �
 
 ```
 Cartoon 3D Disney/Pixar style, premium mobile fitness game item. Canvas 1024x1536. PNG transparente, somente a peça, sem corpo, sem fundo, sem sombras externas. Encaixe perfeito na zona indicada, respeitando perspectiva e anatomia da base feminina oficial. Pronto para sistema de avatar React Native/Expo, sem necessidade de calibração.
+
+ABERTURAS VAZADAS (alpha = 0): gola, bocas das mangas e barra inferior devem ser TOTALMENTE TRANSPARENTES — buraco real no PNG, sem forro, sem sombra preenchendo, sem cor de fundo.
 
 Criar SOMENTE: jaqueta esportiva feminina [COR/ESTILO]. Área obrigatória: x: 180 → 840, y: 200 → 880. Mangas longas, zíper frontal, modelagem feminina.
 ```
