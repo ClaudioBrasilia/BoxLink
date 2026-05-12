@@ -12,6 +12,13 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        workbox: {
+          // Impede o workbox de tentar pré-cachear e resolver
+          // os chunks das páginas durante o build interno do PWA
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+          navigateFallback: 'index.html',
+          navigateFallbackDenylist: [/^\/api/],
+        },
         manifest: {
           name: 'CrossCity Hub',
           short_name: 'CrossCity',
