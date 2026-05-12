@@ -20,6 +20,8 @@ export default function Profile() {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [isPrModalOpen, setIsPrModalOpen] = useState(false);
   const [newPr, setNewPr] = useState({ exercise: '', value: '', date: new Date().toISOString().split('T')[0] });
+  const [editingPr, setEditingPr] = useState<PersonalRecord | null>(null);
+  const [editPrData, setEditPrData] = useState({ exercise: '', value: '', date: '' });
   const [selectedAchievement, setSelectedAchievement] = useState<any | null>(null);
   const [duelsWon, setDuelsWon] = useState(0);
   const [duelsTotal, setDuelsTotal] = useState(0);
@@ -107,6 +109,36 @@ export default function Profile() {
       setPrs(data || []);
       setIsPrModalOpen(false);
       setNewPr({ exercise: '', value: '', date: new Date().toISOString().split('T')[0] });
+    }
+  };
+
+  const handleEditPr = (pr: PersonalRecord) => {
+    setEditingPr(pr);
+    setEditPrData({ exercise: pr.exercise, value: pr.value, date: pr.date });
+  };
+
+  const handleSaveEditPr = async () => {
+    if (!editingPr || !editPrData.exercise || !editPrData.value) return;
+    const { error } = await supabase
+      .from('personal_records')
+      .update({ exercise: editPrData.exercise, value: editPrData.value, date: editPrData.date })
+      .eq('id', editingPr.id);
+    if (!error) {
+      const { data } = await supabase
+        .from('personal_records')
+        .select('*')
+        .eq('user_id', user!.id)
+        .order('date', { ascending: false });
+      setPrs(data || []);
+      setEditingPr(null);
+    }
+  };
+
+  const handleDeletePr = async (prId: string) => {
+    const { error } = await supabase.from('personal_records').delete().eq('id', prId);
+    if (!error) {
+      setPrs(prev => prev.filter(p => p.id !== prId));
+      setEditingPr(null);
     }
   };
 
@@ -364,7 +396,15 @@ export default function Profile() {
                   </p>
                 </div>
               </div>
-              <span className="text-primary font-headline font-black text-lg italic">{pr.value}</span>
+              <div className="flex items-center gap-3">
+                <span className="text-primary font-headline font-black text-lg italic">{pr.value}</span>
+                <button
+                  onClick={() => handleEditPr(pr)}
+                  className="p-2 rounded-xl bg-surface-container-highest hover:bg-primary/20 hover:text-primary text-on-surface-variant transition-all"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           )) : (
             <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 text-center">
@@ -426,6 +466,71 @@ export default function Profile() {
                   className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg mt-4"
                 >
                   SALVAR RECORDE
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit PR Modal */}
+      <AnimatePresence>
+        {editingPr && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="w-full max-w-md bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">EDITAR RECORDE</h3>
+                <button onClick={() => setEditingPr(null)} className="p-2 hover:bg-surface-container-highest rounded-xl transition-all">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Exercício</label>
+                  <input
+                    type="text"
+                    value={editPrData.exercise}
+                    onChange={e => setEditPrData({ ...editPrData, exercise: e.target.value })}
+                    placeholder="ex: Back Squat"
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Resultado</label>
+                  <input
+                    type="text"
+                    value={editPrData.value}
+                    onChange={e => setEditPrData({ ...editPrData, value: e.target.value })}
+                    placeholder="ex: 140kg ou 3:45"
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data</label>
+                  <input
+                    type="date"
+                    value={editPrData.date}
+                    onChange={e => setEditPrData({ ...editPrData, date: e.target.value })}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
+                  />
+                </div>
+                <button
+                  onClick={handleSaveEditPr}
+                  className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg mt-4"
+                >
+                  SALVAR ALTERAÇÕES
+                </button>
+                <button
+                  onClick={() => handleDeletePr(editingPr.id)}
+                  className="w-full bg-red-500/10 text-red-400 border border-red-500/30 py-3 rounded-2xl font-headline font-black uppercase italic"
+                >
+                  EXCLUIR RECORDE
                 </button>
               </div>
             </motion.div>
