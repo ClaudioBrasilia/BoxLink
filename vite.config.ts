@@ -12,9 +12,9 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        strategies: 'generateSW',
+        injectRegister: 'auto',
         workbox: {
-          // Impede o workbox de tentar pré-cachear e resolver
-          // os chunks das páginas durante o build interno do PWA
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
           navigateFallback: 'index.html',
           navigateFallbackDenylist: [/^\/api/],
@@ -46,7 +46,8 @@ export default defineConfig(({mode}) => {
     },
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(__dirname, 'src'),
+        '~': path.resolve(__dirname, 'src'),
       },
     },
     server: {
