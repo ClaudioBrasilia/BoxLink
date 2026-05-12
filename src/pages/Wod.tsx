@@ -55,6 +55,7 @@ function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: 
 }
 
 // ─── Time Input Component ──────────────────────────────────────────────────────
+// Renders two separate number fields (MM : SS) for time-based WODs
 function TimeInput({
   value,
   onChange,
@@ -106,12 +107,12 @@ function TimeInput({
           onChange={(e) => handleMinutes(e.target.value)}
           placeholder="00"
           disabled={disabled}
-          className="w-full bg-transparent text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none"
+          className="w-full bg-transparent text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none disabled:opacity-50"
         />
       </div>
-      <span className="text-3xl font-black text-on-surface-variant">:</span>
+      <span className="font-headline font-black text-4xl text-primary pb-1">:</span>
       <div className="flex-1 flex flex-col items-center gap-1">
-        <label className="text-[8px] text-on-surface-variant font-black uppercase tracking-widest">SEC</label>
+        <label className="text-[8px] text-on-surface-variant font-black uppercase tracking-widest">SEG</label>
         <input
           ref={secRef}
           type="number"
@@ -122,256 +123,584 @@ function TimeInput({
           onChange={(e) => handleSeconds(e.target.value)}
           placeholder="00"
           disabled={disabled}
-          className="w-full bg-transparent text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none"
+          className="w-full bg-transparent text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none disabled:opacity-50"
         />
       </div>
     </div>
   );
 }
 
-// ─── Main Wod Page ─────────────────────────────────────────────────────────────
-export default function Wod() {
-  const { user } = useAuth();
-  const [wod, setWod] = useState<WodType | null>(null);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [result, setResult] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [existingResultId, setExistingResultId] = useState<string | null>(null);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const [showInfo, setShowInfo] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [weekDays, setWeekDays] = useState<Date[]>([]);
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-  const addToast = (message: string, type: ToastType = 'info') => {
-    const id = Date.now();
+function isTimeBased(type: string): boolean {
+  return ['FOR TIME', 'TIME', 'TEMPO'].some((t) => type.toUpperCase().includes(t));
+}
+
+/**
+ * Improvement #3 – Robust parse that handles missing leading zeros.
+ * "9:45"  → 585   (same as "09:45")
+ * "1:2:3" → 3723
+ * "150"   → 150
+ */
+function parseResult(r: string, timeBased: boolean): number {
+  if (!r) return timeBased ? 999999 : 0;
+  const str = r.trim();
+
+  if (/^\d+:\d+/.test(str)) {
+    const parts = str.split(':').map((p) => parseInt(p, 10));
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+
+  const num = parseFloat(str.replace(/[^0-9.]/g, ''));
+  return isNaN(num) ? (timeBased ? 999999 : 0) : num;
+}
+
+/**
+ * Normalises a time string so that "9:5" becomes "09:05", etc.
+ * Applied before saving to keep ranking deterministic.
+ */
+function normaliseTimeResult(value: string): string {
+  if (!/^\d+:\d+/.test(value.trim())) return value;
+  const parts = value.trim().split(':').map((p) => p.padStart(2, '0'));
+  return parts.join(':');
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
+export default function Wod() {
+  const { user, updateUser } = useAuth();
+  const [selectedDate, setSelectedDate]     = useState(new Date());
+  const [wods, setWods]                     = useState<WodType[]>([]);
+  const [currentWod, setCurrentWod]         = useState<WodType | null>(null);
+  const [results, setResults]               = useState<any[]>([]);
+  const [userResult, setUserResult]         = useState<any>(null);
+  const [isRegistering, setIsRegistering]   = useState(false);
+  const [isEditing, setIsEditing]           = useState(false);
+  const [newResult, setNewResult]           = useState({ result: '', type: 'RX' });
+  const [isSaving, setIsSaving]             = useState(false);
+  const [hasCheckedExisting, setHasCheckedExisting] = useState(false);
+
+  // ── Toast state ──
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastId = useRef(0);
+
+  const showToast = (message: string, type: ToastType = 'info', duration = 4000) => {
+    const id = ++toastId.current;
     setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3500);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), duration);
   };
 
-  useEffect(() => {
-    const today = new Date();
-    const start = subDays(today, 3);
-    const end = addDays(today, 3);
-    setWeekDays(eachDayOfInterval({ start, end }));
-  }, []);
+  const removeToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
-  useEffect(() => {
-    fetchWod();
-  }, [selectedDate, user]);
+  // ── Detect if current WOD is time-based ──
+  const wodIsTimeBased = currentWod ? isTimeBased(currentWod.type) : false;
 
-  const fetchWod = async () => {
-    if (!user) return;
-    setLoading(true);
-    setSubmitted(false);
-    setExistingResultId(null);
-    setResult('');
-
-    const dateStr = formatInTimeZone(selectedDate, TIMEZONE, 'yyyy-MM-dd');
-
-    const { data: wodData } = await supabase
+  // ── Fetch results ──────────────────────────────────────────────────────────
+  const fetchResults = async (wodId: string) => {
+    const { data: wod } = await supabase
       .from('wods')
-      .select('*')
-      .eq('date', dateStr)
+      .select('type')
+      .eq('id', wodId)
       .maybeSingle();
 
-    setWod(wodData ?? null);
+    const { data } = await supabase
+      .from('wod_results')
+      .select('*, profiles(name, level)')
+      .eq('wod_id', wodId);
 
-    if (wodData) {
-      const { data: resultData } = await supabase
-        .from('wod_results')
-        .select('*')
-        .eq('wod_id', wodData.id)
-        .eq('user_id', user.id)
-        .maybeSingle();
+    const timeBased = isTimeBased(wod?.type || '');
 
-      if (resultData) {
-        setSubmitted(true);
-        setExistingResultId(resultData.id);
-        setResult(resultData.result ?? '');
+    const sorted = (data || []).sort((a: any, b: any) =>
+      timeBased
+        ? parseResult(a.result, timeBased) - parseResult(b.result, timeBased)
+        : parseResult(b.result, timeBased) - parseResult(a.result, timeBased),
+    );
+
+    setResults(sorted);
+
+    if (user) {
+      const userRes = sorted.find((r: any) => r.user_id === user.id);
+      setUserResult(userRes || null);
+      if (userRes) {
+        setNewResult({ result: userRes.result, type: userRes.type });
+      } else {
+        setNewResult({ result: '', type: 'RX' });
       }
+      setHasCheckedExisting(true);
     }
-
-    setLoading(false);
   };
 
-  const handleSubmit = async () => {
-    if (!user || !wod || !result.trim()) return;
-    setSubmitting(true);
+  // ── Effects ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const fetchWods = async () => {
+      const { data } = await supabase.from('wods').select('*');
+      setWods(data || []);
+
+      const dateStr = formatInTimeZone(selectedDate, TIMEZONE, 'yyyy-MM-dd');
+      const found = (data || []).find((w: any) => w.date === dateStr);
+      setCurrentWod(found || null);
+      setHasCheckedExisting(false);
+
+      if (found) {
+        fetchResults(found.id);
+      } else {
+        setResults([]);
+        setUserResult(null);
+      }
+    };
+
+    fetchWods();
+
+    const channel = supabase
+      .channel('wod_results_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wod_results' }, () => {
+        if (currentWod) fetchResults(currentWod.id);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [selectedDate, user]);
+
+  // ── Register / Edit ──────────────────────────────────────────────────────
+  const handleRegisterResult = async () => {
+    if (!user || !currentWod || !newResult.result) {
+      showToast('Por favor, preencha o resultado', 'warning');
+      return;
+    }
+
+    if (isSaving) return;
+    setIsSaving(true);
+
+    // Normalise leading zeros before saving (Improvement #3)
+    const normalisedResult = wodIsTimeBased
+      ? normaliseTimeResult(newResult.result)
+      : newResult.result;
 
     try {
-      if (existingResultId) {
-        await supabase
+      if (isEditing && userResult) {
+        // ── Improvement #2: Edit feedback with XP reminder ──────────────────
+        const { error } = await supabase
           .from('wod_results')
-          .update({ result })
-          .eq('id', existingResultId);
-        addToast('Resultado atualizado!', 'success');
+          .update({ result: normalisedResult, type: newResult.type })
+          .eq('id', userResult.id);
+
+        if (error) throw error;
+
+        showToast('✅ Resultado atualizado no ranking!', 'success');
+        showToast('💡 XP e BrazaCoins são concedidos apenas no primeiro registro do dia.', 'info', 6000);
+        setIsEditing(false);
+
       } else {
-        const { data } = await supabase
+        // ── Verificar se já registrou hoje ────────────────────────────────────
+        const { data: existing } = await supabase
           .from('wod_results')
-          .insert({ wod_id: wod.id, user_id: user.id, result })
-          .select()
-          .single();
-        setExistingResultId(data?.id ?? null);
-        await addReward(user.id, 'wod_complete', 10);
-        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-        addToast('WOD concluído! +10 XP 🎉', 'success');
+          .select('id')
+          .eq('wod_id', currentWod.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (existing) {
+          showToast('Você já registrou um resultado para este WOD.', 'warning');
+        } else {
+          // ── Inserir resultado diretamente ─────────────────────────────────
+          const { error: insertError } = await supabase
+            .from('wod_results')
+            .insert({
+              user_id: user.id,
+              wod_id: currentWod.id,
+              result: normalisedResult,
+              type: newResult.type,
+            });
+
+          if (insertError) throw insertError;
+
+          // ── Conceder recompensas via addReward ────────────────────────────
+          const reward = await addReward(
+            user.id,
+            'wod',
+            30,
+            10,
+            `WOD registrado — ${currentWod.name}`,
+            currentWod.id,
+          );
+
+          if (reward) {
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+            showToast(`🎉 Resultado registrado! +30 XP  •  +10 BrazaCoins`, 'success', 5000);
+
+            if (reward.levelUp) {
+              setTimeout(() => {
+                confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] });
+              }, 500);
+            }
+
+            // ── Atualizar contexto do usuário ─────────────────────────────
+            updateUser({
+              ...user,
+              xp: reward.newXp,
+              coins: reward.newCoins,
+              level: reward.newLevel,
+            });
+          }
+
+          setIsRegistering(false);
+        }
       }
-      setSubmitted(true);
-      setEditing(false);
-    } catch {
-      addToast('Erro ao salvar resultado.', 'error');
+
+      await fetchResults(currentWod.id);
+    } catch (err: any) {
+      console.error('Error:', err);
+      showToast('Erro ao processar: ' + (err.message || 'Tente novamente'), 'error');
     } finally {
-      setSubmitting(false);
+      setIsSaving(false);
     }
   };
 
-  const isToday = isSameDay(selectedDate, new Date());
+  const days = eachDayOfInterval({
+    start: subDays(selectedDate, 3),
+    end: addDays(selectedDate, 3),
+  });
 
+  //─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-6 pb-24">
-      <ToastContainer toasts={toasts} onRemove={(id) => setToasts((p) => p.filter((t) => t.id !== id))} />
+    <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background">
+      {/* Global Toast layer */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
 
-      {/* Date Selector */}
-      <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
-        <button onClick={() => setSelectedDate((d) => subDays(d, 7))} className="shrink-0 p-1 text-on-surface-variant">
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-        {weekDays.map((day) => {
-          const active = isSameDay(day, selectedDate);
-          const todayDay = isSameDay(day, new Date());
-          return (
-            <button
-              key={day.toISOString()}
-              onClick={() => setSelectedDate(day)}
-              className={cn(
-                'shrink-0 flex flex-col items-center justify-center w-12 h-14 rounded-2xl text-xs font-bold transition-all',
-                active
-                  ? 'bg-primary text-background'
-                  : todayDay
-                  ? 'bg-surface-container-highest text-primary'
-                  : 'bg-surface-container text-on-surface-variant',
-              )}
-            >
-              <span className="text-[10px] uppercase">{format(day, 'EEE')}</span>
-              <span className="text-lg">{format(day, 'd')}</span>
-            </button>
-          );
-        })}
-        <button onClick={() => setSelectedDate((d) => addDays(d, 7))} className="shrink-0 p-1 text-on-surface-variant">
-          <ChevronRight className="w-5 h-5" />
-        </button>
-      </div>
+      <header className="flex justify-between items-center">
+        <h1 className="text-3xl font-headline font-black text-on-surface tracking-tight uppercase italic flex items-center gap-3">
+          <Timer className="w-8 h-8 text-primary" />
+          WOD DIÁRIO
+        </h1>
+      </header>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-black text-on-surface">
-            {isToday ? 'WOD de Hoje' : format(selectedDate, "dd 'de' MMMM")}
-          </h1>
-        </div>
-        {wod?.description && (
-          <button onClick={() => setShowInfo((v) => !v)} className="p-1.5 rounded-xl bg-surface-container text-on-surface-variant">
-            <Info className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-
-      {/* Info Panel */}
-      <AnimatePresence>
-        {showInfo && wod?.description && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="bg-surface-container rounded-2xl p-4 text-sm text-on-surface-variant leading-relaxed">
-              {wod.description}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Content */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : !wod ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-on-surface-variant">
-          <Activity className="w-10 h-10 opacity-30" />
-          <p className="text-sm font-medium">Nenhum WOD para este dia.</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {/* WOD Card */}
-          <div className="bg-surface-container-low rounded-3xl p-5 flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <Timer className="w-5 h-5 text-primary" />
-              <span className="font-black text-on-surface text-base">{wod.title}</span>
-            </div>
-            {wod.movements && (
-              <ul className="flex flex-col gap-1 text-sm text-on-surface-variant">
-                {(wod.movements as string[]).map((m, i) => (
-                  <li key={i} className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-                    {m}
-                  </li>
-                ))}
-              </ul>
+      {/* Calendar Strip */}
+      <div className="flex justify-between items-center bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 overflow-x-auto no-scrollbar gap-4">
+        {days.map((day) => (
+          <button
+            key={day.toISOString()}
+            onClick={() => setSelectedDate(day)}
+            className={cn(
+              'flex flex-col items-center gap-1 min-w-[50px] py-3 rounded-2xl transition-all',
+              isSameDay(day, selectedDate)
+                ? 'bg-primary text-background shadow-lg scale-110'
+                : 'text-on-surface-variant hover:text-on-surface',
             )}
-          </div>
+          >
+            <span className="text-[8px] font-black uppercase tracking-widest">{format(day, 'EEE')}</span>
+            <span className="text-lg font-headline font-black">{format(day, 'dd')}</span>
+          </button>
+        ))}
+      </div>
 
-          {/* Result Input */}
-          {submitted && !editing ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2 text-primary">
-                <CheckCircle2 className="w-5 h-5" />
-                <span className="font-black text-sm">Resultado registrado: {result}</span>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={selectedDate.toISOString()}
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
+          className="flex flex-col gap-6"
+        >
+          {currentWod ? (
+            <>
+              {/* WOD Header Card */}
+              <div className="bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-6">
+                  <span className="bg-primary/20 text-primary text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest border border-primary/30">
+                    {currentWod.type}
+                  </span>
+                </div>
+                <h2 className="text-5xl font-headline font-black text-on-surface italic uppercase tracking-tighter leading-none mb-2">
+                  {currentWod.name}
+                </h2>
+                <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest mb-8">
+                  {format(selectedDate, "dd 'de' MMMM 'de' yyyy")}
+                </p>
+
+                <div className="grid grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <h3 className="text-on-surface-variant text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-primary" /> WARM UP
+                    </h3>
+                    <p className="text-sm text-on-surface font-medium leading-relaxed opacity-80">{currentWod.warmup}</p>
+                  </div>
+                  <div className="space-y-4">
+                    <h3 className="text-on-surface-variant text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-secondary" /> SKILL
+                    </h3>
+                    <p className="text-sm text-on-surface font-medium leading-relaxed opacity-80">{currentWod.skill}</p>
+                  </div>
+                </div>
               </div>
-              <button
-                onClick={() => setEditing(true)}
-                className="flex items-center gap-2 text-xs text-on-surface-variant underline"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-                Editar resultado
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {wod.type === 'time' ? (
-                <TimeInput value={result} onChange={setResult} disabled={submitting} />
-              ) : (
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  value={result}
-                  onChange={(e) => setResult(e.target.value)}
-                  placeholder={wod.type === 'reps' ? 'Total de reps' : 'Peso (kg)'}
-                  disabled={submitting}
-                  className="w-full bg-surface-container-highest rounded-2xl p-4 text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none"
-                />
+
+              {/* Workout Details */}
+              <div className="space-y-4">
+                <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
+                  <Info className="w-5 h-5 text-primary" /> DETALHES DO TREINO
+                </h3>
+                <div className="space-y-3">
+                  {[
+                    { label: 'RX',       content: currentWod.rx,       color: 'text-primary',            bg: 'bg-primary/5' },
+                    { label: 'SCALED',   content: currentWod.scaled,   color: 'text-secondary',          bg: 'bg-secondary/5' },
+                    { label: 'BEGINNER', content: currentWod.beginner, color: 'text-on-surface-variant', bg: 'bg-surface-container-highest/30' },
+                  ].map((item) => (
+                    <div key={item.label} className={cn('p-6 rounded-3xl border border-outline-variant/10', item.bg)}>
+                      <span className={cn('text-[10px] font-black uppercase tracking-widest block mb-2', item.color)}>{item.label}</span>
+                      <p className="text-sm font-bold text-on-surface leading-relaxed">{item.content}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Seu Resultado (se já registrou) */}
+              {userResult && !isEditing && hasCheckedExisting && (
+                <div className="space-y-4">
+                  <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-primary" /> SEU RESULTADO
+                  </h3>
+                  <div className="bg-primary/10 border-2 border-primary/30 p-6 rounded-2xl flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary font-headline font-black text-lg">
+                        ✓
+                      </div>
+                      <div>
+                        <p className="text-on-surface font-bold uppercase text-sm italic">Resultado Registrado</p>
+                        <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">
+                          {userResult.result} • {userResult.type}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      disabled={isSaving}
+                      className="p-3 bg-primary/20 hover:bg-primary/30 rounded-xl transition-all flex items-center gap-2 text-primary font-headline font-bold text-sm uppercase disabled:opacity-50"
+                    >
+                      <Edit2 className="w-4 h-4" /> EDITAR
+                    </button>
+                  </div>
+                </div>
               )}
-              <button
-                onClick={handleSubmit}
-                disabled={submitting || !result.trim()}
-                className="w-full py-4 rounded-2xl bg-primary text-background font-black text-base disabled:opacity-40 transition-opacity"
-              >
-                {submitting ? 'Salvando…' : editing ? 'Atualizar' : 'Registrar resultado'}
-              </button>
+
+              {/* ── Leaderboard ── */}
+              <div className="space-y-4">
+                <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-secondary" /> RESULTADOS DO DIA
+                </h3>
+
+                <div className="space-y-3">
+                  {results.length > 0 ? (
+                    results.map((res, i) => {
+                      const isMe = res.user_id === user?.id;
+                      return (
+                        <div
+                          key={res.id}
+                          className={cn(
+                            'p-4 rounded-2xl border flex items-center justify-between transition-all',
+                            isMe
+                              ? 'bg-primary/10 border-primary/50 shadow-[0_0_0_2px] shadow-primary/30'
+                              : 'bg-surface-container-low border-outline-variant/10 hover:border-primary/30',
+                          )}
+                        >
+                          <div className="flex items-center gap-4">
+                            <span
+                              className={cn(
+                                'w-6 font-headline font-black text-xs italic',
+                                isMe ? 'text-primary' : 'text-on-surface-variant',
+                              )}
+                            >
+                              #{i + 1}
+                            </span>
+
+                            <div
+                              className={cn(
+                                'w-10 h-10 rounded-full flex items-center justify-center font-headline font-black text-sm',
+                                isMe
+                                  ? 'bg-primary text-background'
+                                  : 'bg-surface-container-highest text-on-surface',
+                              )}
+                            >
+                              {res.profiles?.name?.[0] || 'A'}
+                            </div>
+
+                            <div>
+                              <p className={cn('font-bold uppercase text-sm italic flex items-center gap-2', isMe ? 'text-primary' : 'text-on-surface')}>
+                                {res.profiles?.name || 'Atleta'}
+                                {isMe && (
+                                  <span className="text-[8px] font-black bg-primary text-background px-1.5 py-0.5 rounded-full tracking-widest">
+                                    VOCÊ
+                                  </span>
+                                )}
+                              </p>
+                              <span
+                                className={cn(
+                                  'text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest border',
+                                  res.type === 'RX'
+                                    ? 'bg-primary/20 text-primary border-primary/30'
+                                    : res.type === 'SCALED'
+                                    ? 'bg-secondary/20 text-secondary border-secondary/30'
+                                    : 'bg-surface-container-highest text-on-surface-variant border-outline-variant/10',
+                                )}
+                              >
+                                {res.type}
+                              </span>
+                            </div>
+                          </div>
+
+                          <span
+                            className={cn(
+                              'font-headline font-black text-lg italic',
+                              isMe ? 'text-primary' : 'text-on-surface-variant',
+                            )}
+                          >
+                            {res.result}
+                          </span>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 text-center">
+                      <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50 italic">
+                        Nenhum resultado registrado ainda
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {!userResult && !isEditing && hasCheckedExisting && (
+                <button
+                  onClick={() => setIsRegistering(true)}
+                  disabled={isSaving}
+                  className="w-full bg-primary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-lg uppercase italic tracking-tight flex items-center justify-center gap-2 mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  REGISTRAR RESULTADO <ChevronRight className="w-5 h-5" />
+                </button>
+              )}
+            </>
+          ) : (
+            <div className="bg-surface-container-low p-12 rounded-[2.5rem] border border-outline-variant/10 text-center flex flex-col items-center gap-4">
+              <Calendar className="w-12 h-12 text-on-surface-variant opacity-20" />
+              <p className="text-on-surface-variant font-headline font-bold uppercase italic tracking-widest">
+                Nenhum WOD encontrado para esta data
+              </p>
             </div>
           )}
-        </div>
-      )}
+        </motion.div>
+      </AnimatePresence>
 
-      {/* Trophy Footer */}
-      <div className="flex items-center justify-center gap-2 text-xs text-on-surface-variant pt-2">
-        <Trophy className="w-4 h-4" />
-        <span>Complete o WOD para ganhar XP</span>
-      </div>
+      {/* ── Register / Edit Modal ── */}
+      <AnimatePresence>
+        {(isRegistering || isEditing) && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="w-full max-w-md bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">
+                  {isEditing ? 'EDITAR RESULTADO' : 'REGISTRAR RESULTADO'}
+                </h3>
+                <button
+                  onClick={() => { setIsRegistering(false); setIsEditing(false); }}
+                  className="p-2 hover:bg-surface-container-highest rounded-xl transition-all"
+                  disabled={isSaving}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest flex items-center gap-2">
+                    Seu Resultado
+                    {wodIsTimeBased && (
+                      <span className="text-[8px] bg-primary/20 text-primary px-2 py-0.5 rounded-full border border-primary/30 font-black tracking-widest uppercase">
+                        ⏱ Tempo
+                      </span>
+                    )}
+                  </label>
+
+                  {wodIsTimeBased ? (
+                    <TimeInput
+                      value={newResult.result}
+                      onChange={(val) => setNewResult({ ...newResult, result: val })}
+                      disabled={isSaving}
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={newResult.result}
+                      onChange={(e) => setNewResult({ ...newResult, result: e.target.value })}
+                      placeholder="ex: 150 reps ou 100kg"
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
+                      disabled={isSaving}
+                    />
+                  )}
+                </div>
+
+                {/* Category selector */}
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Categoria</label>
+                  <div className="flex gap-2">
+                    {['RX', 'SCALED', 'BEGINNER'].map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setNewResult({ ...newResult, type: t })}
+                        disabled={isSaving}
+                        className={cn(
+                          'flex-1 py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all disabled:opacity-50',
+                          newResult.type === t
+                            ? 'bg-primary text-background shadow-lg'
+                            : 'bg-surface-container-highest text-on-surface-variant',
+                        )}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Editing reminder banner */}
+                {isEditing && (
+                  <div className="bg-secondary/10 border border-secondary/30 rounded-2xl p-3 flex items-start gap-2">
+                    <Info className="w-4 h-4 text-secondary shrink-0 mt-0.5" />
+                    <p className="text-secondary text-[10px] font-bold uppercase tracking-widest leading-relaxed">
+                      Editar atualiza apenas o ranking. XP e BrazaCoins são concedidos somente no primeiro registro do dia.
+                    </p>
+                  </div>
+                )}
+
+                {/* Submit */}
+                <button
+                  onClick={handleRegisterResult}
+                  disabled={isSaving}
+                  className={cn(
+                    'w-full py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg mt-4 transition-all flex items-center justify-center gap-2',
+                    isSaving
+                      ? 'bg-surface-container-highest text-on-surface-variant cursor-not-allowed'
+                      : 'bg-primary text-background hover:opacity-90',
+                  )}
+                >
+                  {isSaving && (
+                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  )}
+                  {isSaving ? 'SALVANDO...' : isEditing ? 'ATUALIZAR RESULTADO' : 'SALVAR RESULTADO'}
+                </button>
+
+                <button
+                  onClick={() => { setIsRegistering(false); setIsEditing(false); }}
+                  disabled={isSaving}
+                  className="w-full bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-bold uppercase italic shadow-sm disabled:opacity-50"
+                >
+                  CANCELAR
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
