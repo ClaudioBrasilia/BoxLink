@@ -277,16 +277,21 @@ export default function Wod() {
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                {wod.type === 'time' ? (
-                  <TimeInput value={result} onChange={setResult} disabled={submitting} />
-                ) : (
-                  <input type="number" inputMode="numeric" value={result}
-                    onChange={(e) => setResult(e.target.value)}
-                    placeholder={wod.type === 'reps' ? 'Total de reps' : 'Peso (kg)'}
-                    disabled={submitting}
-                    className="w-full bg-surface-container-highest rounded-2xl p-4 text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none"
-                  />
-                )}
+                {(() => {
+                  const t = (wod.type ?? '').toLowerCase();
+                  const isTime = t === 'time' || t === 'fortime' || t === 'for time';
+                  const isWeight = t === 'weight' || t === 'max' || t === 'maxweight' || t === '1rm';
+                  const placeholder = isWeight ? 'Peso (kg)' : 'Total de reps';
+                  if (isTime) return <TimeInput value={result} onChange={setResult} disabled={submitting} />;
+                  return (
+                    <input type="number" inputMode="numeric" value={result}
+                      onChange={(e) => setResult(e.target.value)}
+                      placeholder={placeholder}
+                      disabled={submitting}
+                      className="w-full bg-surface-container-highest rounded-2xl p-4 text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none"
+                    />
+                  );
+                })()}
                 <button onClick={handleSubmit} disabled={submitting || !result.trim()}
                   className="w-full py-4 rounded-2xl bg-primary text-background font-black text-base disabled:opacity-40 transition-opacity">
                   {submitting ? 'Salvando…' : editing ? 'Atualizar' : 'Registrar resultado'}
@@ -303,4 +308,4 @@ export default function Wod() {
       </div>
     </div>
   );
-                   }
+}
