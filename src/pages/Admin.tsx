@@ -198,6 +198,12 @@ export default function Admin() {
       duel_win_xp: 40,
       duel_win_coins: 10
     },
+    inactivity: {
+      enabled: false,
+      mode: "consecutive",
+      startDays: 5,
+      maxDays: 14,
+    },
     isActive: true,
     announcements: [] as any[],
     timezone: 'America/Sao_Paulo',
@@ -1086,6 +1092,95 @@ export default function Admin() {
                           </div>
                         </div>
                       ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+
+              {/* ── Inatividade do Avatar ── */}
+              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                <button onClick={() => toggleSection('inactivity')} className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">INATIVIDADE DO AVATAR 💤</h3>
+                  {openSections.includes('inactivity') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+                <AnimatePresence>
+                  {openSections.includes('inactivity') && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden px-2 space-y-4">
+                      <p className="text-xs text-on-surface-variant leading-relaxed">
+                        Quando o atleta fica sem treinar por muito tempo, o avatar começa a desbotar e fica cinza com o ícone 💤.
+                      </p>
+
+                      {/* Ativar/desativar */}
+                      <div className="flex items-center justify-between p-4 bg-surface-container-highest/30 rounded-2xl border border-outline-variant/10">
+                        <span className="text-sm font-bold text-on-surface">Ativar efeito de inatividade</span>
+                        <button
+                          onClick={() => setSettings(s => ({ ...s, inactivity: { ...(s as any).inactivity, enabled: !(s as any).inactivity?.enabled } }))}
+                          className={`w-12 h-6 rounded-full transition-all relative ${(settings as any).inactivity?.enabled ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
+                        >
+                          <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${(settings as any).inactivity?.enabled ? 'right-0.5' : 'left-0.5'}`} />
+                        </button>
+                      </div>
+
+                      {(settings as any).inactivity?.enabled && (
+                        <>
+                          {/* Modo */}
+                          <div className="space-y-2">
+                            <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo de contagem</label>
+                            <div className="grid grid-cols-2 gap-3">
+                              {[
+                                { value: 'consecutive', label: 'Dias seguidos', desc: 'Conta dias consecutivos sem treinar' },
+                                { value: 'alternated', label: 'Dias alternados', desc: 'Conta ausências nos últimos dias' },
+                              ].map(opt => (
+                                <button
+                                  key={opt.value}
+                                  onClick={() => setSettings(s => ({ ...s, inactivity: { ...(s as any).inactivity, mode: opt.value } }))}
+                                  className={`p-3 rounded-2xl border text-left transition-all ${(settings as any).inactivity?.mode === opt.value ? 'bg-primary/10 border-primary text-primary' : 'bg-surface-container-highest/30 border-outline-variant/10 text-on-surface-variant'}`}
+                                >
+                                  <div className="text-xs font-black uppercase">{opt.label}</div>
+                                  <div className="text-[10px] mt-1 opacity-70">{opt.desc}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Dias para começar */}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Começa após (dias)</label>
+                              <input
+                                type="number" min={1} max={30}
+                                value={(settings as any).inactivity?.startDays ?? 5}
+                                onChange={e => setSettings(s => ({ ...s, inactivity: { ...(s as any).inactivity, startDays: parseInt(e.target.value) || 5 } }))}
+                                className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Cinza total após (dias)</label>
+                              <input
+                                type="number" min={1} max={60}
+                                value={(settings as any).inactivity?.maxDays ?? 14}
+                                onChange={e => setSettings(s => ({ ...s, inactivity: { ...(s as any).inactivity, maxDays: parseInt(e.target.value) || 14 } }))}
+                                className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Preview */}
+                          <div className="p-4 bg-surface-container-highest/20 rounded-2xl border border-outline-variant/10 space-y-2">
+                            <div className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Exemplo de progressão</div>
+                            <div className="flex gap-2 items-end">
+                              {[0, 25, 50, 75, 100].map(pct => (
+                                <div key={pct} className="flex flex-col items-center gap-1 flex-1">
+                                  <div className="w-8 h-12 rounded-xl border border-outline-variant/20"
+                                    style={{ background: `hsl(0,0%,${30 + pct * 0.4}%)`, filter: `saturate(${1 - pct / 100}) brightness(${1 - (pct / 100) * 0.25})`, opacity: 0.9 }} />
+                                  <span className="text-[8px] text-on-surface-variant">{pct}%</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
