@@ -6,6 +6,8 @@
  *   <div className="w-12 h-12 rounded-full overflow-hidden">
  *     <AvatarPreview equipped={...} size="sm" showBorder={false} />
  *   </div>
+ *
+ * Prop `fadePercent` (0–100): aplica desbote + ícone 💤 por inatividade.
  */
 import React, { useState } from 'react';
 import type { AvatarSlot } from '../types';
@@ -20,6 +22,13 @@ interface AvatarPreviewProps {
   itemAdjustments?: Record<string, Partial<LayerAdjustment>>;
   /** Exibe borda e brilho verde (padrão: true) */
   showBorder?: boolean;
+  /**
+   * 0 = normal | 1–100 = grau de desbote por inatividade.
+   * 100 = totalmente cinza + 💤
+   */
+  fadePercent?: number;
+  /** Exibe ícone 💤 por cima do avatar */
+  showSleeping?: boolean;
 }
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -30,16 +39,18 @@ function getAvatarImageUrl(filename: string): string {
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encoded}.png`;
 }
 
-/**
- * Tamanhos sempre em proporção 2:3.
- * Mesma proporção do canvas de arte (1024×1536) e do upload (512×768).
- * Isso garante que tênis, calça e acessórios apareçam na posição correta.
- */
 const SIZE_CLASSES: Record<NonNullable<AvatarPreviewProps['size']>, string> = {
-  sm: 'w-16 aspect-[2/3]',   // ~16×24 — para avatares compactos (listas, ranking)
-  md: 'w-28 aspect-[2/3]',   // ~28×42 — padrão
-  lg: 'w-40 aspect-[2/3]',   // ~40×60 — perfil
-  xl: 'w-56 aspect-[2/3]',   // ~56×84 — customização
+  sm: 'w-16 aspect-[2/3]',
+  md: 'w-28 aspect-[2/3]',
+  lg: 'w-40 aspect-[2/3]',
+  xl: 'w-56 aspect-[2/3]',
+};
+
+const SLEEP_ICON_SIZE: Record<NonNullable<AvatarPreviewProps['size']>, string> = {
+  sm: 'text-lg',
+  md: 'text-2xl',
+  lg: 'text-3xl',
+  xl: 'text-4xl',
 };
 
 export default function AvatarPreview({
@@ -48,6 +59,8 @@ export default function AvatarPreview({
   size = 'md',
   itemAdjustments = {},
   showBorder = true,
+  fadePercent = 0,
+  showSleeping = false,
 }: AvatarPreviewProps) {
   const [failedLayers, setFailedLayers] = useState<Set<number>>(new Set());
 
@@ -65,6 +78,14 @@ export default function AvatarPreview({
     setFailedLayers(prev => new Set(prev).add(index));
   };
 
+  // CSS filter: desbote progressivo até cinza total
+  const fade = Math.min(Math.max(fadePercent ?? 0, 0), 100);
+  const saturation = 1 - fade / 100;           // 1.0 → 0.0
+  const brightness = 1 - (fade / 100) * 0.25;  // 1.0 → 0.75 (leve escurecimento)
+  const filterStyle = fade > 0
+    ? { filter: `saturate(${saturation}) brightness(${brightness})`, transition: 'filter 1s ease' }
+    : undefined;
+
   return (
     <div
       className={cn(
@@ -75,20 +96,41 @@ export default function AvatarPreview({
         className
       )}
     >
-      {layers.map((layer, index) => {
-        if (failedLayers.has(index)) return null;
-        const style = adjustmentToCSS(layer.adjustment);
-        return (
-          <img
-            key={`${layer.slot}-${index}`}
-            src={layer.url}
-            alt={layer.alt}
-            style={style}
-            onError={(e) => handleError(index, e)}
-            draggable={false}
-          />
-        );
-      })}
+      {/* Camadas do avatar com filtro de desbote */}
+      <div style={filterStyle} className="absolute inset-0">
+        {layers.map((layer, index) => {
+          if (failedLayers.has(index)) return null;
+          const style = adjustmentToCSS(layer.adjustment);
+          return (
+            <img
+              key={`${layer.slot}-${index}`}
+              src={layer.url}
+              alt={layer.alt}
+              style={style}
+              onError={(e) => handleError(index, e)}
+              draggable={false}
+            />
+          );
+        })}
+      </div>
+
+      {/* Overlay escuro progressivo */}
+      {fade > 0 && (
+        <div
+          className="absolute inset-0 bg-black rounded-2xl pointer-events-none"
+          style={{ opacity: (fade / 100) * 0.3, transition: 'opacity 1s ease' }}
+        />
+      )}
+
+      {/* Ícone 💤 */}
+      {showSleeping && (
+        <div className={cn(
+          'absolute top-1 right-1 animate-bounce pointer-events-none select-none',
+          SLEEP_ICON_SIZE[size]
+        )}>
+          💤
+        </div>
+      )}
     </div>
   );
 }
