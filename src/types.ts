@@ -124,6 +124,13 @@ export interface BoxSettings {
     showChallenges: boolean;
     rightBlockContent: 'ranking' | 'duels' | 'challenges' | 'announcements';
     topBlockContent: 'logo' | 'wod' | 'timer';
+    tickerItems: {
+      duels: boolean;
+      checkins: boolean;
+      topPlayer: boolean;
+      wod: boolean;
+      announcements: boolean;
+    };
   };
   rewards: {
     xp_per_checkin: number;
