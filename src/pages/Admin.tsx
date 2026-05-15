@@ -196,7 +196,9 @@ export default function Admin() {
       challenge_special_xp: 500,
       challenge_special_coins: 100,
       duel_win_xp: 40,
-      duel_win_coins: 10
+      duel_win_coins: 10,
+      wod_xp: 10,
+      wod_coins: 5
     },
     inactivity: {
       enabled: false,
@@ -1203,6 +1205,17 @@ export default function Admin() {
                         <div className="space-y-2">
                           <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP por Derrota em Duelo</label>
                           <input type="number" value={(settings.rewards as any).duel_loss_xp || 0} onChange={e => { const val = e.target.value === '' ? 0 : parseInt(e.target.value); setSettings(s => ({...s, rewards: {...s.rewards, duel_loss_xp: val}})); }} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest pt-2">Recompensa WOD</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP por WOD</label>
+                          <input type="number" value={(settings.rewards as any).wod_xp ?? 10} onChange={e => { const val = e.target.value === '' ? 0 : parseInt(e.target.value); setSettings(s => ({...s, rewards: {...s.rewards, wod_xp: val}})); }} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">BrazaCoins por WOD</label>
+                          <input type="number" value={(settings.rewards as any).wod_coins ?? 5} onChange={e => { const val = e.target.value === '' ? 0 : parseInt(e.target.value); setSettings(s => ({...s, rewards: {...s.rewards, wod_coins: val}})); }} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
                         </div>
                       </div>
                     </motion.div>
