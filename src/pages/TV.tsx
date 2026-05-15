@@ -7,7 +7,6 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
 import AvatarPreview from '../components/AvatarPreview';
-import { calcInactivity } from '../utils/inactivity';
 
 const TIMEZONE = "America/Sao_Paulo";
 
@@ -67,38 +66,7 @@ export default function TV() {
       const { data: profilesRaw } = await supabase
         .from('profiles').select('id, name, avatar_equipped, xp, level, role');
 
-      // Fetch inactivity settings and recent checkins for fade effect
-      const { data: inactivitySettings } = await supabase
-        .from('box_settings').select('inactivity').maybeSingle();
-
-      const inactCfg = inactivitySettings?.inactivity;
-      const windowDays = inactCfg?.maxDays ?? 14;
-      const windowStart = new Date();
-      windowStart.setDate(windowStart.getDate() - windowDays);
-      const windowStartStr = windowStart.toISOString().split('T')[0];
-
-      const { data: recentCheckinsRaw } = inactCfg?.enabled
-        ? await supabase.from('checkins').select('user_id, date').gte('date', windowStartStr)
-        : { data: [] };
-
-      // Group checkins by user_id
-      const checkinsByUser: Record<string, { date: string }[]> = {};
-      (recentCheckinsRaw || []).forEach((c: any) => {
-        if (!checkinsByUser[c.user_id]) checkinsByUser[c.user_id] = [];
-        checkinsByUser[c.user_id].push({ date: c.date });
-      });
-
       const profileMap = Object.fromEntries((profilesRaw || []).map((p: any) => [p.id, p]));
-
-      // Calculate fade percent per user
-      const fadeMap: Record<string, { fadePercent: number; showSleeping: boolean }> = {};
-      if (inactCfg?.enabled) {
-        (profilesRaw || []).forEach((p: any) => {
-          const userCheckins = checkinsByUser[p.id] || [];
-          const state = calcInactivity(userCheckins, inactCfg);
-          fadeMap[p.id] = { fadePercent: state.fadePercent, showSleeping: state.showSleeping };
-        });
-      }
 
       const startOfMonth = format(new Date(), 'yyyy-MM-01');
       const { data: monthlyCheckins } = await supabase
@@ -134,8 +102,9 @@ export default function TV() {
         wod: wod?.name || null
       };
 
-      setData({ fadeMap,
+      setData({
         settings: settings || { name: "CrossCity Hub", logo: "" },
+        tvConfig: settings?.tv_config || settings?.tvConfig || {},
         rewards: economy,
         wod: wod || null,
         checkins: checkins || [],
@@ -147,7 +116,8 @@ export default function TV() {
         })),
         rankings: rankings || [],
         stats,
-        frequencyRanking
+        frequencyRanking,
+        announcements: settings?.announcements || [],
       });
       setError(null);
       setLastUpdated(new Date());
@@ -254,7 +224,12 @@ export default function TV() {
     </div>
   );
 
-  const { wod, checkins, settings, rankings, stats, duels, frequencyRanking, fadeMap = {} } = data;
+  const { wod, checkins, settings, rankings, stats, duels, frequencyRanking, tvConfig, announcements } = data;
+  
+  // tickerItems: o que o admin configurou para aparecer na faixa
+  const tickerItems = tvConfig?.tickerItems ?? {
+    duels: true, checkins: true, topPlayer: true, wod: true, announcements: true
+  };
   const isStale = lastUpdated && (Date.now() - lastUpdated.getTime()) > 60000;
 
   if (!wod) {
@@ -612,9 +587,7 @@ export default function TV() {
                         <div className="relative shrink-0">
                           <div className="absolute inset-0 rounded-full bg-primary/20 blur-xl scale-150" />
                           <AvatarPreview equipped={profile?.avatar_equipped} size="md"
-                            className="relative border-4 border-primary shadow-[0_0_20px_rgba(202,253,0,0.4)]"
-                            fadePercent={(fadeMap as any)[c?.user_id]?.fadePercent ?? 0}
-                            showSleeping={(fadeMap as any)[c?.user_id]?.showSleeping ?? false} />
+                            className="relative border-4 border-primary shadow-[0_0_20px_rgba(202,253,0,0.4)]" />
                           <div className="absolute -bottom-1 -right-1 bg-primary text-black text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase italic shadow">✓</div>
                         </div>
                         <div className="flex flex-col min-w-0">
@@ -643,9 +616,7 @@ export default function TV() {
                     return (
                       <div key={c.id} className={`shrink-0 flex flex-col items-center gap-0.5 transition-all ${isActive ? 'opacity-100' : 'opacity-35'}`}>
                         <AvatarPreview equipped={profile?.avatar_equipped} size="sm"
-                          className={`border-2 transition-all ${isActive ? 'border-primary shadow-[0_0_8px_rgba(202,253,0,0.4)]' : 'border-white/10'}`}
-                          fadePercent={(fadeMap as any)[c?.user_id]?.fadePercent ?? 0}
-                          showSleeping={false} />
+                          className={`border-2 transition-all ${isActive ? 'border-primary shadow-[0_0_8px_rgba(202,253,0,0.4)]' : 'border-white/10'}`} />
                         <span className="text-[7px] font-black text-white/60 uppercase truncate max-w-[36px] text-center">
                           {profile?.name?.split(' ')[0] || '?'}
                         </span>
@@ -665,16 +636,24 @@ export default function TV() {
           <div className="flex gap-24 animate-marquee whitespace-nowrap items-center">
             {[1, 2].map(i => (
               <div key={i} className="flex gap-24 items-center">
-                <div className="flex items-center gap-4">
-                  <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">CHECK-INS HOJE:</span>
-                  <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.checkins} atletas</span>
-                </div>
-                <div className="w-2 h-2 rounded-full bg-white/20"></div>
-                {duels?.map((d: any) => (
+
+                {/* CHECK-INS */}
+                {tickerItems.checkins && (
+                  <>
+                    <div className="flex items-center gap-4">
+                      <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">CHECK-INS HOJE:</span>
+                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.checkins} atletas</span>
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-white/20"></div>
+                  </>
+                )}
+
+                {/* DUELOS */}
+                {tickerItems.duels && duels?.map((d: any) => (
                   <React.Fragment key={d.id}>
                     <div className="flex items-center gap-4">
                       <Swords className="w-4 h-4 text-secondary" />
-                      <span className="text-secondary text-[10px] font-black uppercase tracking-widest italic">DUEL:</span>
+                      <span className="text-secondary text-[10px] font-black uppercase tracking-widest italic">DUELO:</span>
                       <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">
                         {d.challengerName} <span className="text-white/30 mx-2">VS</span> {d.opponentName}
                       </span>
@@ -682,24 +661,45 @@ export default function TV() {
                     <div className="w-2 h-2 rounded-full bg-white/20"></div>
                   </React.Fragment>
                 ))}
-                {stats.topPlayer && (
+
+                {/* LÍDER XP */}
+                {tickerItems.topPlayer && stats.topPlayer && (
                   <>
                     <div className="flex items-center gap-4">
+                      <Trophy className="w-4 h-4 text-secondary" />
                       <span className="text-secondary text-[10px] font-black uppercase tracking-widest italic">LÍDER XP:</span>
                       <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.topPlayer}</span>
                     </div>
                     <div className="w-2 h-2 rounded-full bg-white/20"></div>
                   </>
                 )}
-                {stats.wod && (
+
+                {/* WOD */}
+                {tickerItems.wod && stats.wod && (
                   <>
                     <div className="flex items-center gap-4">
+                      <Zap className="w-4 h-4 text-primary" />
                       <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">WOD:</span>
                       <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.wod}</span>
                     </div>
                     <div className="w-2 h-2 rounded-full bg-white/20"></div>
                   </>
                 )}
+
+                {/* COMUNICADOS */}
+                {tickerItems.announcements && announcements?.filter((a: any) => a.active && a.title).map((a: any) => (
+                  <React.Fragment key={a.id}>
+                    <div className="flex items-center gap-4">
+                      <span className="text-yellow-400 text-[10px] font-black uppercase tracking-widest italic">📢 AVISO:</span>
+                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{a.title}</span>
+                      {a.content && (
+                        <span className="text-white/50 text-base font-black italic tracking-tight">{a.content}</span>
+                      )}
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-white/20"></div>
+                  </React.Fragment>
+                ))}
+
               </div>
             ))}
           </div>
