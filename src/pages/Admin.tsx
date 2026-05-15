@@ -173,7 +173,14 @@ export default function Admin() {
       showDuels: true,
       showChallenges: true,
       rightBlockContent: 'ranking',
-      topBlockContent: 'logo'
+      topBlockContent: 'logo',
+      tickerItems: {
+        duels: true,
+        checkins: true,
+        topPlayer: true,
+        wod: true,
+        announcements: true,
+      }
     },
     rewards: {
       xp_per_checkin: 20,
@@ -1245,6 +1252,59 @@ export default function Admin() {
                           <textarea placeholder="CONTEÚDO DO AVISO" value={ann.content} onChange={e => { const newAnn = [...settings.announcements]; (newAnn[idx] as any).content = e.target.value; setSettings({...settings, announcements: newAnn}); }} rows={2} className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-xs resize-none" />
                         </div>
                       ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* ── Faixa Inferior da TV ── */}
+              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                <button onClick={() => toggleSection('tvTicker')} className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                  <div className="flex items-center gap-2">
+                    <Tv className="w-4 h-4 text-primary" />
+                    <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">FAIXA INFERIOR DA TV</h3>
+                  </div>
+                  {openSections.includes('tvTicker') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+                <AnimatePresence>
+                  {openSections.includes('tvTicker') && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden px-2 space-y-3">
+                      <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest pb-1">Escolha o que aparece no ticker da parte inferior da tela da TV:</p>
+                      {(
+                        [
+                          { key: 'duels',         label: 'Duelos',      desc: 'Mostra os duelos ativos entre atletas' },
+                          { key: 'checkins',      label: 'Check-ins',   desc: 'Quantidade de check-ins do dia' },
+                          { key: 'topPlayer',     label: 'Líder de XP', desc: 'Nome e XP do atleta líder' },
+                          { key: 'wod',           label: 'WOD do Dia',  desc: 'Nome do treino do dia' },
+                          { key: 'announcements', label: 'Comunicados', desc: 'Avisos cadastrados do box' },
+                        ] as const
+                      ).map(({ key, label, desc }) => {
+                        const tickerItems = (settings as any).tvConfig?.tickerItems || {};
+                        const isOn = tickerItems[key] !== false;
+                        return (
+                          <div key={key} className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
+                            <div>
+                              <p className="text-xs font-black text-on-surface uppercase italic">{label}</p>
+                              <p className="text-[10px] text-on-surface-variant mt-0.5">{desc}</p>
+                            </div>
+                            <button
+                              onClick={() => setSettings(s => ({
+                                ...s,
+                                tvConfig: {
+                                  ...((s as any).tvConfig || {}),
+                                  tickerItems: {
+                                    ...(((s as any).tvConfig?.tickerItems) || { duels: true, checkins: true, topPlayer: true, wod: true, announcements: true }),
+                                    [key]: !isOn
+                                  }
+                                }
+                              }))}
+                              className={`w-12 h-6 rounded-full transition-all relative ${isOn ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
+                            >
+                              <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${isOn ? 'right-0.5' : 'left-0.5'}`} />
+                            </button>
+                          </div>
+                        );
+                      })}
                     </motion.div>
                   )}
                 </AnimatePresence>
