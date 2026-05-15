@@ -257,14 +257,33 @@ export default function TV() {
     );
   }
 
-  // Calcula tamanho de fonte dinâmico para o WOD baseado no tamanho do texto
+  // Tamanho de fonte para blocos de texto corrido (RX, Scaled)
   const getWodFontSize = (text: string) => {
     const len = (text || '').length;
-    if (len > 400) return '1.1rem';
-    if (len > 300) return '1.3rem';
-    if (len > 200) return '1.6rem';
-    if (len > 100) return '2rem';
-    return '2.4rem';
+    const lines = (text || '').split('\n').filter(Boolean).length;
+    if (len > 400 || lines > 10) return '0.95rem';
+    if (len > 300 || lines > 7)  return '1.15rem';
+    if (len > 200 || lines > 5)  return '1.4rem';
+    if (len > 100 || lines > 3)  return '1.8rem';
+    return '2.2rem';
+  };
+
+  // Tamanho de fonte para listas de itens (Warm-up, Skill) — baseia no nº de linhas
+  const getListFontSize = (text: string) => {
+    const lines = (text || '').split('\n').filter(Boolean).length;
+    if (lines > 10) return '1rem';
+    if (lines > 7)  return '1.3rem';
+    if (lines > 5)  return '1.7rem';
+    if (lines > 3)  return '2.2rem';
+    return '2.6rem';
+  };
+
+  // Gap entre itens da lista — diminui com mais itens
+  const getListGap = (text: string) => {
+    const lines = (text || '').split('\n').filter(Boolean).length;
+    if (lines > 8) return 'gap-2';
+    if (lines > 5) return 'gap-4';
+    return 'gap-6';
   };
   
   return (
@@ -377,21 +396,22 @@ export default function TV() {
                 <motion.section key="warmup"
                   initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
                   className="absolute inset-0 bg-[#111] rounded-[3rem] p-12 border border-white/5 flex flex-col">
-                  <div className="flex justify-between items-start mb-12">
+                  <div className="flex justify-between items-start mb-8 shrink-0">
                     <div>
                       <h3 className="text-primary text-sm font-black uppercase tracking-[0.4em] italic mb-2">PHASE 01</h3>
                       <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter">WARM-UP</h2>
                     </div>
-                    <div className="w-20 h-20 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                    <div className="w-20 h-20 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
                       <Activity className="w-10 h-10 text-primary animate-pulse" />
                     </div>
                   </div>
-                  <div className="flex-1 flex flex-col justify-center gap-6 overflow-hidden">
+                  <div className={`flex-1 flex flex-col justify-center ${getListGap(wod?.warmup)} min-h-0 overflow-hidden`}>
                     {(wod?.warmup || '').split('\n').filter(Boolean).map((line: string, i: number) => (
-                      <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
-                        className="flex items-center gap-8">
-                        <div className="w-4 h-4 rounded-full bg-primary shadow-[0_0_20px_#cafd00] shrink-0"></div>
-                        <p className="text-4xl font-headline font-black text-white uppercase italic tracking-tight leading-tight">{line}</p>
+                      <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
+                        className="flex items-center gap-6 shrink-0">
+                        <div className="w-3 h-3 rounded-full bg-primary shadow-[0_0_20px_#cafd00] shrink-0"></div>
+                        <p className="font-headline font-black text-white uppercase italic tracking-tight leading-tight"
+                           style={{ fontSize: getListFontSize(wod?.warmup) }}>{line}</p>
                       </motion.div>
                     ))}
                   </div>
@@ -402,21 +422,22 @@ export default function TV() {
                 <motion.section key="skill"
                   initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
                   className="absolute inset-0 bg-[#111] rounded-[3rem] p-12 border border-white/5 flex flex-col">
-                  <div className="flex justify-between items-start mb-12">
+                  <div className="flex justify-between items-start mb-8 shrink-0">
                     <div>
                       <h3 className="text-secondary text-sm font-black uppercase tracking-[0.4em] italic mb-2">PHASE 02</h3>
                       <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter">SKILL / TECHNIQUE</h2>
                     </div>
-                    <div className="w-20 h-20 rounded-3xl bg-secondary/10 border border-secondary/20 flex items-center justify-center">
+                    <div className="w-20 h-20 rounded-3xl bg-secondary/10 border border-secondary/20 flex items-center justify-center shrink-0">
                       <Zap className="w-10 h-10 text-secondary" />
                     </div>
                   </div>
-                  <div className="flex-1 flex flex-col justify-center gap-6 overflow-hidden">
+                  <div className={`flex-1 flex flex-col justify-center ${getListGap(wod?.skill)} min-h-0 overflow-hidden`}>
                     {(wod?.skill || '').split('\n').filter(Boolean).map((line: string, i: number) => (
-                      <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
-                        className="flex items-center gap-8">
-                        <div className="w-4 h-4 rounded-full bg-secondary shadow-[0_0_20px_#ff7439] shrink-0"></div>
-                        <p className="text-4xl font-headline font-black text-white uppercase italic tracking-tight leading-tight">{line}</p>
+                      <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
+                        className="flex items-center gap-6 shrink-0">
+                        <div className="w-3 h-3 rounded-full bg-secondary shadow-[0_0_20px_#ff7439] shrink-0"></div>
+                        <p className="font-headline font-black text-white uppercase italic tracking-tight leading-tight"
+                           style={{ fontSize: getListFontSize(wod?.skill) }}>{line}</p>
                       </motion.div>
                     ))}
                   </div>
@@ -454,14 +475,16 @@ export default function TV() {
 
                   {/* SCALED — só aparece se tiver conteúdo */}
                   {wod.scaled && (
-                    <div className="shrink-0 bg-white/5 border border-white/10 rounded-[2rem] p-5">
-                      <span className="text-white/40 text-xs font-black uppercase tracking-widest mb-2 block">SCALED</span>
-                      <p
-                        className="text-white/70 font-headline font-black italic leading-snug whitespace-pre-wrap"
-                        style={{ fontSize: getWodFontSize(wod.scaled) }}
-                      >
-                        {wod.scaled}
-                      </p>
+                    <div className="shrink-0 max-h-[30%] flex flex-col bg-white/5 border border-white/10 rounded-[2rem] p-5">
+                      <span className="text-white/40 text-xs font-black uppercase tracking-widest mb-2 shrink-0 block">SCALED</span>
+                      <div className="flex-1 overflow-y-auto no-scrollbar">
+                        <p
+                          className="text-white/70 font-headline font-black italic leading-snug whitespace-pre-wrap"
+                          style={{ fontSize: getWodFontSize(wod.scaled) }}
+                        >
+                          {wod.scaled}
+                        </p>
+                      </div>
                     </div>
                   )}
                 </motion.section>
