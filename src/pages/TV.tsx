@@ -228,7 +228,7 @@ export default function TV() {
   
   // tickerItems: o que o admin configurou para aparecer na faixa
   const tickerItems = tvConfig?.tickerItems ?? {
-    duels: true, checkins: true, topPlayer: true, wod: true, announcements: true
+    duels: true, checkins: true, topPlayer: true, wod: true, announcements: true, challenges: true
   };
   const isStale = lastUpdated && (Date.now() - lastUpdated.getTime()) > 60000;
 
@@ -261,11 +261,11 @@ export default function TV() {
   const getWodFontSize = (text: string) => {
     const len = (text || '').length;
     const lines = (text || '').split('\n').filter(Boolean).length;
-    if (len > 400 || lines > 10) return '0.95rem';
-    if (len > 300 || lines > 7)  return '1.15rem';
-    if (len > 200 || lines > 5)  return '1.4rem';
-    if (len > 100 || lines > 3)  return '1.8rem';
-    return '2.2rem';
+    if (len > 400 || lines > 10) return '1.3rem';
+    if (len > 300 || lines > 7)  return '1.6rem';
+    if (len > 200 || lines > 5)  return '2rem';
+    if (len > 100 || lines > 3)  return '2.6rem';
+    return '3.2rem';
   };
 
   // Tamanho de fonte para listas de itens (Warm-up, Skill) — baseia no nº de linhas
@@ -660,17 +660,6 @@ export default function TV() {
             {[1, 2].map(i => (
               <div key={i} className="flex gap-24 items-center">
 
-                {/* CHECK-INS */}
-                {tickerItems.checkins && (
-                  <>
-                    <div className="flex items-center gap-4">
-                      <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">CHECK-INS HOJE:</span>
-                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.checkins} atletas</span>
-                    </div>
-                    <div className="w-2 h-2 rounded-full bg-white/20"></div>
-                  </>
-                )}
-
                 {/* DUELOS */}
                 {tickerItems.duels && duels?.map((d: any) => (
                   <React.Fragment key={d.id}>
@@ -697,18 +686,6 @@ export default function TV() {
                   </>
                 )}
 
-                {/* WOD */}
-                {tickerItems.wod && stats.wod && (
-                  <>
-                    <div className="flex items-center gap-4">
-                      <Zap className="w-4 h-4 text-primary" />
-                      <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">WOD:</span>
-                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.wod}</span>
-                    </div>
-                    <div className="w-2 h-2 rounded-full bg-white/20"></div>
-                  </>
-                )}
-
                 {/* COMUNICADOS */}
                 {tickerItems.announcements && announcements?.filter((a: any) => a.active && a.title).map((a: any) => (
                   <React.Fragment key={a.id}>
@@ -717,6 +694,21 @@ export default function TV() {
                       <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{a.title}</span>
                       {a.content && (
                         <span className="text-white/50 text-base font-black italic tracking-tight">{a.content}</span>
+                      )}
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-white/20"></div>
+                  </React.Fragment>
+                ))}
+
+                {/* DESAFIOS */}
+                {tickerItems.challenges && challenges?.filter((c: any) => c.active).map((c: any) => (
+                  <React.Fragment key={c.id}>
+                    <div className="flex items-center gap-4">
+                      <Trophy className="w-4 h-4 text-yellow-400" />
+                      <span className="text-yellow-400 text-[10px] font-black uppercase tracking-widest italic">DESAFIO:</span>
+                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{c.name || c.title}</span>
+                      {c.description && (
+                        <span className="text-white/50 text-base font-black italic tracking-tight">{c.description}</span>
                       )}
                     </div>
                     <div className="w-2 h-2 rounded-full bg-white/20"></div>
