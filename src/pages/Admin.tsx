@@ -180,6 +180,7 @@ export default function Admin() {
         topPlayer: true,
         wod: true,
         announcements: true,
+        challenges: true,
       }
     },
     rewards: {
@@ -1275,10 +1276,9 @@ export default function Admin() {
                       {(
                         [
                           { key: 'duels',         label: 'Duelos',      desc: 'Mostra os duelos ativos entre atletas' },
-                          { key: 'checkins',      label: 'Check-ins',   desc: 'Quantidade de check-ins do dia' },
                           { key: 'topPlayer',     label: 'Líder de XP', desc: 'Nome e XP do atleta líder' },
-                          { key: 'wod',           label: 'WOD do Dia',  desc: 'Nome do treino do dia' },
                           { key: 'announcements', label: 'Comunicados', desc: 'Avisos cadastrados do box' },
+                          { key: 'challenges',    label: 'Desafios',    desc: 'Desafios ativos do box' },
                         ] as const
                       ).map(({ key, label, desc }) => {
                         const tickerItems = (settings as any).tvConfig?.tickerItems || {};
@@ -1295,7 +1295,7 @@ export default function Admin() {
                                 tvConfig: {
                                   ...((s as any).tvConfig || {}),
                                   tickerItems: {
-                                    ...(((s as any).tvConfig?.tickerItems) || { duels: true, checkins: true, topPlayer: true, wod: true, announcements: true }),
+                                    ...(((s as any).tvConfig?.tickerItems) || { duels: true, checkins: true, topPlayer: true, wod: true, announcements: true, challenges: true }),
                                     [key]: !isOn
                                   }
                                 }
