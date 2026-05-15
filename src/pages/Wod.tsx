@@ -165,9 +165,12 @@ export default function Wod() {
         const { data } = await supabase.from('wod_results')
           .insert({ wod_id: wod.id, user_id: user.id, result }).select().single();
         setExistingResultId(data?.id ?? null);
-        await addReward(user.id, 'wod_complete', 10);
+        const { data: settingsData } = await supabase.from('app_settings').select('rewards').eq('id', 1).single();
+        const wodXp    = settingsData?.rewards?.wod_xp    ?? 10;
+        const wodCoins = settingsData?.rewards?.wod_coins ?? 5;
+        await addReward(user.id, 'wod_complete', wodXp, wodCoins, 'WOD concluído', wod.id);
         confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-        addToast('WOD concluído! +10 XP 🎉', 'success');
+        addToast(`WOD concluído! +${wodXp} XP e +${wodCoins} BrazaCoins 🎉`, 'success');
       }
       setSubmitted(true); setEditing(false);
     } catch {
