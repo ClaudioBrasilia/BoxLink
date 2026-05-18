@@ -224,7 +224,7 @@ export default function TV() {
     </div>
   );
 
-  const { wod, checkins, settings, rankings, stats, duels, frequencyRanking, tvConfig, announcements } = data;
+  const { wod, checkins, settings, rankings, stats, duels, challenges, frequencyRanking, tvConfig, announcements } = data;
   
   // tickerItems: o que o admin configurou para aparecer na faixa
   const tickerItems = tvConfig?.tickerItems ?? {
@@ -701,12 +701,12 @@ export default function TV() {
                 ))}
 
                 {/* DESAFIOS */}
-                {tickerItems.challenges && challenges?.filter((c: any) => c.active).map((c: any) => (
+                {tickerItems.challenges && challenges && challenges.length > 0 && challenges.filter((c: any) => c.active).map((c: any) => (
                   <React.Fragment key={c.id}>
                     <div className="flex items-center gap-4">
                       <Trophy className="w-4 h-4 text-yellow-400" />
                       <span className="text-yellow-400 text-[10px] font-black uppercase tracking-widest italic">DESAFIO:</span>
-                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{c.name || c.title}</span>
+                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{c.name || c.title || 'Desafio sem nome'}</span>
                       {c.description && (
                         <span className="text-white/50 text-base font-black italic tracking-tight">{c.description}</span>
                       )}
@@ -736,4 +736,4 @@ export default function TV() {
       `}</style>
     </div>
   );
-                                                                                                            }
+        }
