@@ -74,6 +74,22 @@ export interface Challenge {
   repeatable: boolean;
   dailyLimit: number;
   difficulty?: 'easy' | 'medium' | 'hard' | 'special';
+  // NOVOS CAMPOS PARA DESAFIOS ACUMULATIVOS
+  type?: 'daily_checkin' | 'accumulative'; 
+  required_days?: number;      // Para daily_checkin (ex: 5 dias)
+  target_value?: number;       // Para accumulative (ex: 5000)
+  unit?: string;               // Para accumulative (ex: "m", "km", "reps")
+  require_photo?: boolean;     // Se exige foto para completar
+}
+
+// NOVA INTERFACE PARA RASTREAR PROGRESSO ACUMULATIVO
+export interface ChallengeProgress {
+  id: string;
+  user_id: string;
+  challenge_id: string;
+  progress_date: string;
+  quantity: number;
+  created_at: string;
 }
 
 export interface Duel {
