@@ -109,9 +109,23 @@ export default function TV() {
         activeWod = latestWod;
       }
 
+      // Normalizar tvConfig com fallback seguro
+      const rawTvConfig = settings?.tv_config || settings?.tvConfig || {};
+      const tvConfig = {
+        ...rawTvConfig,
+        tickerItems: {
+          duels: rawTvConfig?.tickerItems?.duels ?? true,
+          checkins: rawTvConfig?.tickerItems?.checkins ?? true,
+          topPlayer: rawTvConfig?.tickerItems?.topPlayer ?? true,
+          wod: rawTvConfig?.tickerItems?.wod ?? true,
+          announcements: rawTvConfig?.tickerItems?.announcements ?? true,
+          challenges: rawTvConfig?.tickerItems?.challenges ?? true,
+        }
+      };
+
       setData({
         settings: settings || { name: "CrossCity Hub", logo: "" },
-        tvConfig: settings?.tv_config || settings?.tvConfig || {},
+        tvConfig: tvConfig,
         rewards: economy,
         wod: activeWod || null,
         checkins: checkins || [],
@@ -234,9 +248,21 @@ export default function TV() {
   const { wod, checkins, settings, rankings, stats, duels, challenges, frequencyRanking, tvConfig, announcements } = data;
   
   // tickerItems: o que o admin configurou para aparecer na faixa
-  const tickerItems = tvConfig?.tickerItems ?? {
-    duels: true, checkins: true, topPlayer: true, wod: true, announcements: true, challenges: true
+  // Validação individual de cada item para garantir que todos os campos existem
+  const tickerItems = {
+    duels: tvConfig?.tickerItems?.duels ?? true,
+    checkins: tvConfig?.tickerItems?.checkins ?? true,
+    topPlayer: tvConfig?.tickerItems?.topPlayer ?? true,
+    wod: tvConfig?.tickerItems?.wod ?? true,
+    announcements: tvConfig?.tickerItems?.announcements ?? true,
+    challenges: tvConfig?.tickerItems?.challenges ?? true,
   };
+
+  // Debug: Log para verificar se tickerItems está sendo carregado corretamente
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[TV] tvConfig loaded:', tvConfig);
+    console.log('[TV] tickerItems resolved:', tickerItems);
+  }
   const isStale = lastUpdated && (Date.now() - lastUpdated.getTime()) > 60000;
 
   if (!wod) {
