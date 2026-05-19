@@ -46,7 +46,7 @@ export default function TV() {
         supabase.from('box_settings').select('*').maybeSingle(),
         supabase.from('avatar_economy_settings').select('*').eq('is_active', true).maybeSingle(),
         supabase.from('wods').select('*').eq('date', today).maybeSingle(),
-        supabase.from('challenges').select('*').eq('active', true),
+        supabase.from('challenges').select('*').eq('active', true).or(`end_date.is.null,end_date.gte.${today}`),
         supabase.from('duels').select('*, challenger:profiles!challenger_id(name), opponent:profiles!opponent_id(name)').eq('status', 'accepted'),
         supabase.from('profiles').select('name, xp, level, avatar_equipped').eq('status', 'approved').order('xp', { ascending: false }).limit(10),
         supabase.from('schedule').select('*').order('time', { ascending: true })
@@ -247,8 +247,6 @@ export default function TV() {
 
   const { wod, checkins, settings, rankings, stats, duels, challenges, frequencyRanking, tvConfig, announcements } = data;
   
-  // tickerItems: o que o admin configurou para aparecer na faixa
-  // Validação individual de cada item para garantir que todos os campos existem
   const tickerItems = {
     duels: tvConfig?.tickerItems?.duels ?? true,
     checkins: tvConfig?.tickerItems?.checkins ?? true,
@@ -258,7 +256,6 @@ export default function TV() {
     challenges: tvConfig?.tickerItems?.challenges ?? true,
   };
 
-  // Debug: Log para verificar se tickerItems está sendo carregado corretamente
   if (process.env.NODE_ENV === 'development') {
     console.log('[TV] tvConfig loaded:', tvConfig);
     console.log('[TV] tickerItems resolved:', tickerItems);
@@ -278,7 +275,7 @@ export default function TV() {
           </div>
           <div className="flex flex-col items-center">
             <span className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">HORA ATUAL</span>
-            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(now, 'HH:mm:ss')}</span>
+            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(now, 'HH:mm:ss' )}</span>
           </div>
         </header>
         <div className="flex-1 flex flex-col items-center justify-center bg-[#111] rounded-[3rem] border border-white/5">
@@ -290,7 +287,6 @@ export default function TV() {
     );
   }
 
-  // Tamanho de fonte para blocos de texto corrido (RX, Scaled)
   const getWodFontSize = (text: string) => {
     const len = (text || '').length;
     const lines = (text || '').split('\n').filter(Boolean).length;
@@ -301,7 +297,6 @@ export default function TV() {
     return '3.2rem';
   };
 
-  // Tamanho de fonte para listas de itens (Warm-up, Skill) — baseia no nº de linhas
   const getListFontSize = (text: string) => {
     const lines = (text || '').split('\n').filter(Boolean).length;
     if (lines > 10) return '1rem';
@@ -311,7 +306,6 @@ export default function TV() {
     return '2.6rem';
   };
 
-  // Gap entre itens da lista — diminui com mais itens
   const getListGap = (text: string) => {
     const lines = (text || '').split('\n').filter(Boolean).length;
     if (lines > 8) return 'gap-2';
@@ -321,11 +315,10 @@ export default function TV() {
   
   return (
     <div className="min-h-screen bg-black text-white font-sans overflow-hidden flex flex-col p-6 gap-6 relative select-none">
-      {/* Header */}
       <header className="flex justify-between items-center bg-[#111] rounded-[2rem] p-6 border border-white/5 shadow-2xl">
         <div className="flex items-center gap-6">
           <div className="relative">
-            <img src={settings.logo || "https://picsum.photos/seed/box/200"} alt="Logo" className="w-16 h-16 rounded-2xl border-2 border-primary shadow-[0_0_20px_rgba(202,253,0,0.3)]" />
+            <img src={settings.logo || "https://picsum.photos/seed/box/200"} alt="Logo" className="w-16 h-16 rounded-2xl border-2 border-primary shadow-[0_0_20px_rgba(202,253,0,0.3 )]" />
             <div className="absolute -bottom-2 -right-2 bg-primary text-black text-[8px] font-black px-2 py-0.5 rounded-full uppercase italic">ELITE</div>
           </div>
           <div>
@@ -379,11 +372,8 @@ export default function TV() {
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="flex-1 grid grid-cols-12 gap-6 overflow-hidden">
-        {/* Left: WOD */}
         <div className="col-span-8 flex flex-col gap-6">
-          {/* WOD Tabs Navigation */}
           <div className="flex items-center justify-between bg-[#111] rounded-3xl p-3 border border-white/5">
             <div className="flex gap-3">
               {['WARM-UP', 'SKILL', 'THE WOD'].map((label, i) => (
@@ -481,8 +471,6 @@ export default function TV() {
                 <motion.section key="wod"
                   initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
                   className="absolute inset-0 bg-[#111] rounded-[3rem] p-8 border border-white/5 flex flex-col gap-4">
-                  
-                  {/* Header do WOD */}
                   <div className="flex items-center justify-between shrink-0">
                     <div>
                       <h3 className="text-primary text-sm font-black uppercase tracking-[0.4em] italic mb-1">PHASE 03</h3>
@@ -493,7 +481,6 @@ export default function TV() {
                     </div>
                   </div>
 
-                  {/* ── RX — SEM fundo vermelho, scroll se necessário ── */}
                   <div className="flex-1 flex flex-col min-h-0 bg-white/5 border border-white/10 rounded-[2rem] p-6 overflow-hidden">
                     <span className="text-primary text-sm font-black uppercase tracking-widest mb-3 shrink-0">RX</span>
                     <div className="flex-1 overflow-y-auto no-scrollbar">
@@ -506,7 +493,6 @@ export default function TV() {
                     </div>
                   </div>
 
-                  {/* SCALED — só aparece se tiver conteúdo */}
                   {wod.scaled && (
                     <div className="shrink-0 max-h-[30%] flex flex-col bg-white/5 border border-white/10 rounded-[2rem] p-5">
                       <span className="text-white/40 text-xs font-black uppercase tracking-widest mb-2 shrink-0 block">SCALED</span>
@@ -526,9 +512,7 @@ export default function TV() {
           </div>
         </div>
 
-        {/* Right: RANKING + ATLETAS */}
         <div className="col-span-4 flex flex-col gap-6">
-          {/* TOP 3 RANKING */}
           <section className="bg-[#111] rounded-[2.5rem] p-5 border border-white/5 flex flex-col gap-3" style={{flex: '2 1 0'}}>
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
@@ -549,7 +533,6 @@ export default function TV() {
               <motion.div key={rankingView}
                 initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
                 className="flex items-end justify-between gap-2 px-2 pb-1">
-                {/* 2º */}
                 {(rankingView === 'xp' ? rankings : frequencyRanking)[1] && (() => {
                   const r = (rankingView === 'xp' ? rankings : frequencyRanking)[1];
                   return (
@@ -563,7 +546,6 @@ export default function TV() {
                     </div>
                   );
                 })()}
-                {/* 1º */}
                 {(rankingView === 'xp' ? rankings : frequencyRanking)[0] && (() => {
                   const r = (rankingView === 'xp' ? rankings : frequencyRanking)[0];
                   return (
@@ -577,7 +559,6 @@ export default function TV() {
                     </div>
                   );
                 })()}
-                {/* 3º */}
                 {(rankingView === 'xp' ? rankings : frequencyRanking)[2] && (() => {
                   const r = (rankingView === 'xp' ? rankings : frequencyRanking)[2];
                   return (
@@ -609,7 +590,6 @@ export default function TV() {
             </div>
           </section>
 
-          {/* ATLETAS NA AULA */}
           <section className="bg-[#111] rounded-[2.5rem] border border-white/5 relative overflow-hidden flex flex-col" style={{flex: '1 1 0'}}>
             <div className="flex justify-between items-center px-5 pt-4 pb-2">
               <div className="flex items-center gap-2">
@@ -624,7 +604,8 @@ export default function TV() {
             {checkins.length === 0 ? (
               <div className="flex-1 flex items-center justify-center">
                 <p className="text-white/20 text-xs font-black uppercase tracking-widest italic text-center px-4">
-                  Nenhum check-in<br/>registrado ainda
+                  Nenhum check-in  
+registrado ainda
                 </p>
               </div>
             ) : (
@@ -686,14 +667,11 @@ export default function TV() {
         </div>
       </div>
 
-      {/* Footer Ticker */}
       <footer className="h-16 bg-[#111] rounded-2xl border border-white/5 overflow-hidden flex items-center relative">
         <div className="flex-1 overflow-hidden">
           <div className="flex gap-24 animate-marquee whitespace-nowrap items-center">
             {[1, 2].map(i => (
               <div key={i} className="flex gap-24 items-center">
-
-                {/* WOD no ticker */}
                 {tickerItems.wod && wod && (
                   <>
                     <div className="flex items-center gap-4">
@@ -707,7 +685,6 @@ export default function TV() {
                   </>
                 )}
 
-                {/* CHECK-INS no ticker */}
                 {tickerItems.checkins && checkins.length > 0 && (
                   <>
                     <div className="flex items-center gap-4">
@@ -721,7 +698,6 @@ export default function TV() {
                   </>
                 )}
 
-                {/* DUELOS */}
                 {tickerItems.duels && duels?.map((d: any) => (
                   <React.Fragment key={d.id}>
                     <div className="flex items-center gap-4">
@@ -735,7 +711,6 @@ export default function TV() {
                   </React.Fragment>
                 ))}
 
-                {/* LÍDER XP */}
                 {tickerItems.topPlayer && stats.topPlayer && (
                   <>
                     <div className="flex items-center gap-4">
@@ -747,7 +722,6 @@ export default function TV() {
                   </>
                 )}
 
-                {/* COMUNICADOS */}
                 {tickerItems.announcements && announcements?.filter((a: any) => 
                   typeof a === 'string' ? !!a : a.active !== false && a.title
                 ).map((a: any, idx: number) => {
@@ -767,12 +741,7 @@ export default function TV() {
                   );
                 })}
 
-                {/* DESAFIOS */}
-                {tickerItems.challenges && challenges && challenges.length > 0 && challenges.filter((c: any) => {
-                  const today = formatInTimeZone(new Date(), TIMEZONE, "yyyy-MM-dd");
-                  const isDateValid = (!c.startDate || today >= c.startDate) && (!c.endDate || today <= c.endDate);
-                  return c.active && isDateValid;
-                }).map((c: any) => (
+                {tickerItems.challenges && challenges && challenges.length > 0 && challenges.map((c: any) => (
                   <React.Fragment key={c.id}>
                     <div className="flex items-center gap-4">
                       <Trophy className="w-4 h-4 text-yellow-400" />
@@ -785,7 +754,6 @@ export default function TV() {
                     <div className="w-2 h-2 rounded-full bg-white/20"></div>
                   </React.Fragment>
                 ))}
-
               </div>
             ))}
           </div>
@@ -807,4 +775,4 @@ export default function TV() {
       `}</style>
     </div>
   );
-        }
+}
