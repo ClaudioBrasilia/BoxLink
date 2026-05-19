@@ -28,7 +28,14 @@ export default function Dashboard() {
   const fetchData = async () => {
     // Fetch WODs
     const todayDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-    const { data: wodsData } = await supabase.from('wods').select('*').eq('date', todayDate).maybeSingle();
+    let { data: wodsData } = await supabase.from('wods').select('*').eq('date', todayDate).maybeSingle();
+    
+    // Fallback to most recent WOD if today's WOD is not found
+    if (!wodsData) {
+      const { data: latestWod } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
+      wodsData = latestWod;
+    }
+
     if (wodsData) setWod(wodsData);
     
     // Fetch Box Settings
