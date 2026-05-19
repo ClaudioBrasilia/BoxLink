@@ -27,8 +27,9 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     // Fetch WODs
-    const { data: wodsData } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1);
-    if (wodsData) setWod(wodsData[0]);
+    const todayDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    const { data: wodsData } = await supabase.from('wods').select('*').eq('date', todayDate).maybeSingle();
+    if (wodsData) setWod(wodsData);
     
     // Fetch Box Settings
     const { data: settingsData } = await supabase.from('box_settings').select('*').single();
