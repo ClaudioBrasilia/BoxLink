@@ -146,6 +146,7 @@ export interface BoxSettings {
       topPlayer: boolean;
       wod: boolean;
       announcements: boolean;
+      challenges: boolean;
     };
   };
   rewards: {
