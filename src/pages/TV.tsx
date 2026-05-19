@@ -768,7 +768,11 @@ export default function TV() {
                 })}
 
                 {/* DESAFIOS */}
-                {tickerItems.challenges && challenges && challenges.length > 0 && challenges.filter((c: any) => c.active).map((c: any) => (
+                {tickerItems.challenges && challenges && challenges.length > 0 && challenges.filter((c: any) => {
+                  const today = formatInTimeZone(new Date(), TIMEZONE, "yyyy-MM-dd");
+                  const isDateValid = (!c.startDate || today >= c.startDate) && (!c.endDate || today <= c.endDate);
+                  return c.active && isDateValid;
+                }).map((c: any) => (
                   <React.Fragment key={c.id}>
                     <div className="flex items-center gap-4">
                       <Trophy className="w-4 h-4 text-yellow-400" />
