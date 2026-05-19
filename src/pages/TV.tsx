@@ -102,11 +102,18 @@ export default function TV() {
         wod: wod?.name || null
       };
 
+      // Fallback to most recent WOD if today's WOD is not found
+      let activeWod = wod;
+      if (!activeWod) {
+        const { data: latestWod } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
+        activeWod = latestWod;
+      }
+
       setData({
         settings: settings || { name: "CrossCity Hub", logo: "" },
         tvConfig: settings?.tv_config || settings?.tvConfig || {},
         rewards: economy,
-        wod: wod || null,
+        wod: activeWod || null,
         checkins: checkins || [],
         challenges: challenges || [],
         duels: (duels || []).map((d: any) => ({
