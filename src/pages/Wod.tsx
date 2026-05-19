@@ -144,7 +144,14 @@ export default function Wod() {
     if (!user) return;
     setLoading(true); setSubmitted(false); setExistingResultId(null); setResult('');
     const dateStr = formatInTimeZone(selectedDate, TIMEZONE, 'yyyy-MM-dd');
-    const { data: wodData } = await supabase.from('wods').select('*').eq('date', dateStr).maybeSingle();
+    let { data: wodData } = await supabase.from('wods').select('*').eq('date', dateStr).maybeSingle();
+    
+    // Fallback to most recent WOD if today's WOD is not found and we are looking at "today"
+    if (!wodData && isSameDay(selectedDate, new Date())) {
+      const { data: latestWod } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
+      wodData = latestWod;
+    }
+
     setWod(wodData ?? null);
     if (wodData) {
       const { data: resultData } = await supabase.from('wod_results').select('*')
