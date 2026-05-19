@@ -21,7 +21,7 @@ export default function Coach() {
   const [editingWod, setEditingWod] = useState<Partial<Wod> | null>(null);
   const toast = useToast();
   const [newWod, setNewWod] = useState<Partial<Wod>>({
-    date: format(new Date(), 'yyyy-MM-dd'),
+    date: formatInTimeZone(new Date(), TIMEZONE, 'yyyy-MM-dd'),
     name: '',
     type: 'AMRAP',
     warmup: '',
@@ -103,7 +103,7 @@ export default function Coach() {
       setWods([data, ...wods]);
       toast.success('WOD postado com sucesso!');
       setNewWod({
-        date: format(new Date(), 'yyyy-MM-dd'),
+        date: formatInTimeZone(new Date(), TIMEZONE, 'yyyy-MM-dd'),
         name: '',
         type: 'AMRAP',
         warmup: '',
