@@ -660,6 +660,34 @@ export default function TV() {
             {[1, 2].map(i => (
               <div key={i} className="flex gap-24 items-center">
 
+                {/* WOD no ticker */}
+                {tickerItems.wod && wod && (
+                  <>
+                    <div className="flex items-center gap-4">
+                      <Timer className="w-4 h-4 text-primary" />
+                      <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">WOD:</span>
+                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">
+                        {wod.name} • {wod.type}
+                      </span>
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-white/20"></div>
+                  </>
+                )}
+
+                {/* CHECK-INS no ticker */}
+                {tickerItems.checkins && checkins.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-4">
+                      <Users className="w-4 h-4 text-primary" />
+                      <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">CHECK-INS:</span>
+                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">
+                        {checkins.length} atleta{checkins.length !== 1 ? 's' : ''} na aula
+                      </span>
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-white/20"></div>
+                  </>
+                )}
+
                 {/* DUELOS */}
                 {tickerItems.duels && duels?.map((d: any) => (
                   <React.Fragment key={d.id}>
@@ -687,18 +715,24 @@ export default function TV() {
                 )}
 
                 {/* COMUNICADOS */}
-                {tickerItems.announcements && announcements?.filter((a: any) => a.active && a.title).map((a: any) => (
-                  <React.Fragment key={a.id}>
-                    <div className="flex items-center gap-4">
-                      <span className="text-yellow-400 text-[10px] font-black uppercase tracking-widest italic">📢 AVISO:</span>
-                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{a.title}</span>
-                      {a.content && (
-                        <span className="text-white/50 text-base font-black italic tracking-tight">{a.content}</span>
-                      )}
-                    </div>
-                    <div className="w-2 h-2 rounded-full bg-white/20"></div>
-                  </React.Fragment>
-                ))}
+                {tickerItems.announcements && announcements?.filter((a: any) => 
+                  typeof a === 'string' ? !!a : a.active !== false && a.title
+                ).map((a: any, idx: number) => {
+                  const title = typeof a === 'string' ? a : a.title;
+                  const content = typeof a === 'string' ? '' : a.content;
+                  return (
+                    <React.Fragment key={typeof a === 'string' ? `ann-${idx}` : a.id}>
+                      <div className="flex items-center gap-4">
+                        <span className="text-yellow-400 text-[10px] font-black uppercase tracking-widest italic">📢 AVISO:</span>
+                        <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{title}</span>
+                        {content && (
+                          <span className="text-white/50 text-base font-black italic tracking-tight">{content}</span>
+                        )}
+                      </div>
+                      <div className="w-2 h-2 rounded-full bg-white/20"></div>
+                    </React.Fragment>
+                  );
+                })}
 
                 {/* DESAFIOS */}
                 {tickerItems.challenges && challenges && challenges.length > 0 && challenges.filter((c: any) => c.active).map((c: any) => (
