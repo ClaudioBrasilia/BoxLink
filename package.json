@@ -10,7 +10,6 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "@capacitor-community/bluetooth-le": "^6.0.0",
     "@supabase/supabase-js": "^2.45.4",
     "canvas-confetti": "^1.9.3",
     "date-fns": "^3.6.0",
