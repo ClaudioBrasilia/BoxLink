@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { BleClient } from '@capacitor-community/bluetooth-le';
 import { supabase } from '../lib/supabase';
 
 export function useHeartRate() {
   const [bpm, setBpm] = useState<number | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [device, setDevice] = useState<any>(null);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
 
   const connectHeartRateMonitor = async () => {
     try {
@@ -16,7 +16,7 @@ export function useHeartRate() {
       });
 
       await BleClient.connect(device.deviceId);
-      setDevice(device);
+      setDeviceId(device.deviceId);
       setIsConnected(true);
 
       await BleClient.startNotifications(
@@ -25,46 +25,49 @@ export function useHeartRate() {
         'heart_rate_measurement',
         (value) => {
           const dataView = new DataView(value.buffer);
-          const flags = dataView.getUint8(0);
-          const bpmValue = dataView.getUint8(1); // BPM está no segundo byte
+          let heartRate = dataView.getUint8(1); // BPM geralmente está no byte 1
 
-          setBpm(bpmValue);
+          // Alguns dispositivos usam formato diferente
+          if (heartRate === 0) heartRate = dataView.getUint8(2);
 
-          // Enviar para Supabase em tempo real
-          updateBPMInSupabase(bpmValue);
+          setBpm(heartRate);
+          updateBPMInSupabase(heartRate);
         }
       );
 
-      console.log('✅ Monitor cardíaco conectado!');
-    } catch (error) {
-      console.error('Erro ao conectar monitor:', error);
-      alert('Não foi possível conectar o relógio. Tente novamente.');
+      alert('✅ Monitor cardíaco conectado com sucesso!');
+    } catch (error: any) {
+      console.error(error);
+      alert('❌ Erro ao conectar: ' + (error.message || 'Verifique o Bluetooth'));
     }
   };
 
   const updateBPMInSupabase = async (currentBpm: number) => {
-    const user = supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    const { error } = await supabase
-      .from('live_heart_rate')
-      .upsert({
-        user_id: (await user).data.user?.id,
-        bpm: currentBpm,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'user_id' });
-
-    if (error) console.error('Erro ao enviar BPM:', error);
+      await supabase
+        .from('live_heart_rate')
+        .upsert({
+          user_id: user.id,
+          bpm: currentBpm,
+        }, { onConflict: 'user_id' });
+    } catch (e) {
+      console.error('Erro ao enviar BPM:', e);
+    }
   };
 
   const disconnect = async () => {
-    if (device) {
-      await BleClient.stopNotifications(device.deviceId, 'heart_rate', 'heart_rate_measurement');
-      await BleClient.disconnect(device.deviceId);
-      setIsConnected(false);
-      setBpm(null);
-      setDevice(null);
+    if (deviceId) {
+      try {
+        await BleClient.stopNotifications(deviceId, 'heart_rate', 'heart_rate_measurement');
+        await BleClient.disconnect(deviceId);
+      } catch (e) {}
     }
+    setIsConnected(false);
+    setBpm(null);
+    setDeviceId(null);
   };
 
   return {
