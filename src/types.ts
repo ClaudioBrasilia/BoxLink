@@ -1,5 +1,19 @@
-export type UserRole = 'athlete' | 'coach' | 'admin';
+export type UserRole = 'athlete' | 'coach' | 'admin' | 'visitor';
+
 export type UserStatus = 'pending' | 'approved' | 'rejected';
+
+export type VisitorPermissions = {
+  wod: 'allowed' | 'blocked' | 'hidden';
+  leaderboard: 'allowed' | 'blocked' | 'hidden';
+  challenges: 'allowed' | 'blocked' | 'hidden';
+  duels: 'allowed' | 'blocked' | 'hidden';
+  progress: 'allowed' | 'blocked' | 'hidden';
+  mybox: 'allowed' | 'blocked' | 'hidden';
+  clans: 'allowed' | 'blocked' | 'hidden';
+  avatar: 'allowed' | 'blocked' | 'hidden';
+  benchmarks: 'allowed' | 'blocked' | 'hidden';
+  feed: 'allowed' | 'blocked' | 'hidden';
+};
 
 export interface AvatarSlot {
   base_outfit: string;
@@ -51,15 +65,15 @@ export interface User {
 }
 
 export interface Wod {
-  id: string;
+  id?: string;
   date: string;
   name: string;
   type: string;
-  warmup: string;
-  skill: string;
+  warmup?: string;
+  skill?: string;
   rx: string;
-  scaled: string;
-  beginner: string;
+  scaled?: string;
+  beginner?: string;
 }
 
 export interface Challenge {
@@ -74,15 +88,13 @@ export interface Challenge {
   repeatable: boolean;
   dailyLimit: number;
   difficulty?: 'easy' | 'medium' | 'hard' | 'special';
-  // NOVOS CAMPOS PARA DESAFIOS ACUMULATIVOS
   type?: 'daily_checkin' | 'accumulative'; 
-  required_days?: number;      // Para daily_checkin (ex: 5 dias)
-  target_value?: number;       // Para accumulative (ex: 5000)
-  unit?: string;               // Para accumulative (ex: "m", "km", "reps")
-  require_photo?: boolean;     // Se exige foto para completar
+  required_days?: number;
+  target_value?: number;
+  unit?: string;
+  require_photo?: boolean;
 }
 
-// NOVA INTERFACE PARA RASTREAR PROGRESSO ACUMULATIVO
 export interface ChallengeProgress {
   id: string;
   user_id: string;
@@ -133,22 +145,7 @@ export interface BoxSettings {
   location: { lat: number; lng: number };
   radius: number;
   tvLayout: 'old' | 'new';
-  tvConfig: {
-    showCheckins: boolean;
-    showRanking: boolean;
-    showDuels: boolean;
-    showChallenges: boolean;
-    rightBlockContent: 'ranking' | 'duels' | 'challenges' | 'announcements';
-    topBlockContent: 'logo' | 'wod' | 'timer';
-    tickerItems: {
-      duels: boolean;
-      checkins: boolean;
-      topPlayer: boolean;
-      wod: boolean;
-      announcements: boolean;
-      challenges: boolean;
-    };
-  };
+  tvConfig?: any;
   rewards: {
     xp_per_checkin: number;
     coins_per_checkin: number;
@@ -171,15 +168,26 @@ export interface BoxSettings {
     challenge_special_coins: number;
     duel_win_xp: number;
     duel_win_coins: number;
+    wod_xp: number;
+    wod_coins: number;
   };
   isActive: boolean;
-  announcements?: string[];
+  announcements?: (string | { id: string; title: string; content: string; date: string; active: boolean })[];
   timezone: string;
   modules: {
     economy: boolean;
     store: boolean;
     duels: boolean;
     challenges: boolean;
+    clans?: boolean;
   };
   clans_enabled?: boolean;
+  max_clan_members?: number;
+  inactivity?: {
+    enabled: boolean;
+    mode: 'consecutive' | 'alternated';
+    startDays: number;
+    maxDays: number;
+  };
+  visitor_permissions?: VisitorPermissions;
 }
