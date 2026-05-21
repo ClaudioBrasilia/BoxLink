@@ -8,8 +8,8 @@ import { Wod, User } from '../types';
 import confetti from 'canvas-confetti';
 import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
-
 import { addReward } from '../utils/rewards';
+import HeartRateWidget from '../components/HeartRateWidget';
 
 export default function Dashboard() {
   const { user, updateUser } = useAuth();
@@ -26,19 +26,14 @@ export default function Dashboard() {
   const [userRankPosition, setUserRankPosition] = useState<number | null>(null);
 
   const fetchData = async () => {
-    // Fetch WODs
     const todayDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
     let { data: wodsData } = await supabase.from('wods').select('*').eq('date', todayDate).maybeSingle();
-    
-    // Fallback to most recent WOD if today's WOD is not found
     if (!wodsData) {
       const { data: latestWod } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
       wodsData = latestWod;
     }
-
     if (wodsData) setWod(wodsData);
-    
-    // Fetch Box Settings
+
     const { data: settingsData } = await supabase.from('box_settings').select('*').single();
     const rawAnn = settingsData?.announcements || settingsData?.tv_config?.announcements || [];
     if (Array.isArray(rawAnn) && rawAnn.length > 0) {
@@ -49,9 +44,7 @@ export default function Dashboard() {
             try {
               const parsed = JSON.parse(a);
               return parsed.title ? `${parsed.title}${parsed.content ? ': ' + parsed.content : ''}` : a;
-            } catch (e) {
-              return a;
-            }
+            } catch (e) { return a; }
           }
           return a.title ? `${a.title}${a.content ? ': ' + a.content : ''}` : '';
         })
@@ -59,7 +52,6 @@ export default function Dashboard() {
       setAnnouncements(annTexts);
     }
 
-    // Fetch active challenges
     const today = new Date().toISOString().split('T')[0];
     const { data: challengesData } = await supabase
       .from('challenges').select('*').eq('active', true)
@@ -67,17 +59,11 @@ export default function Dashboard() {
       .limit(3);
     setActiveChallenges(challengesData || []);
 
-    // Fetch Schedule
     const { data: scheduleData } = await supabase.from('schedule').select('*').eq('is_active', true).order('time', { ascending: true });
     if (scheduleData) {
       const mappedSchedule = scheduleData.map((s: any) => ({
-        id: s.id,
-        time: s.time,
-        endTime: s.end_time,
-        coach: s.coach,
-        capacity: s.capacity,
-        days: s.days,
-        isActive: s.is_active,
+        id: s.id, time: s.time, endTime: s.end_time, coach: s.coach,
+        capacity: s.capacity, days: s.days, isActive: s.is_active,
         checkinWindowMinutes: s.checkin_window_minutes
       }));
       setSchedule(mappedSchedule);
@@ -86,7 +72,6 @@ export default function Dashboard() {
       if (current) setSelectedClass(current.time);
     }
 
-    // Fetch ranking position (XP do mês)
     if (user?.id) {
       const now2 = new Date();
       const firstDayOfMonth = new Date(now2.getFullYear(), now2.getMonth(), 1).toISOString().split('T')[0];
@@ -110,7 +95,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-
     const channel = supabase
       .channel('dashboard_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule' }, () => fetchData())
@@ -118,127 +102,72 @@ export default function Dashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'box_settings' }, () => fetchData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'challenges' }, () => fetchData())
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371e3; // metres
+    const R = 6371e3;
     const φ1 = lat1 * Math.PI/180;
     const φ2 = lat2 * Math.PI/180;
     const Δφ = (lat2-lat1) * Math.PI/180;
     const Δλ = (lon2-lon1) * Math.PI/180;
-
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-    return R * c; // in metres
+    return R * c;
   };
 
   const handleCheckin = () => {
-    if (!selectedClass) {
-      setCheckinMessage('Por favor, selecione um horário de aula');
-      return;
-    }
+    if (!selectedClass) { setCheckinMessage('Por favor, selecione um horário de aula'); return; }
     setIsCheckingIn(true);
     setCheckinMessage(null);
-
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
         try {
-          // 1. Get Box Settings for location validation
           const { data: box } = await supabase.from('box_settings').select('*').single();
           if (!box) throw new Error('Configurações do box não encontradas');
-
           const distance = calculateDistance(latitude, longitude, box.lat, box.lng);
           if (distance > (box.radius || 500)) {
             setCheckinMessage(`Você está muito longe do box (${Math.round(distance)}m). Aproxime-se para fazer check-in.`);
             setIsCheckingIn(false);
             return;
           }
-
-          // 2. Register Check-in
           const today = new Date().toISOString().split('T')[0];
-          const { error: checkinError } = await supabase
-            .from('checkins')
-            .insert({
-              user_id: user?.id,
-              date: today,
-              class_time: selectedClass
-            });
-
+          const { error: checkinError } = await supabase.from('checkins').insert({ user_id: user?.id, date: today, class_time: selectedClass });
           if (checkinError) {
-            if (checkinError.code === '23505') { // Unique constraint
-              setCheckinMessage('Você já realizou check-in hoje!');
-            } else {
-              throw checkinError;
-            }
+            if (checkinError.code === '23505') { setCheckinMessage('Você já realizou check-in hoje!'); }
+            else { throw checkinError; }
             setIsCheckingIn(false);
             return;
           }
-
-          // 3. Add Rewards
           const { data: economy } = await supabase.from('avatar_economy_settings').select('*').eq('is_active', true).single();
           const xp = economy?.xp_per_checkin || 20;
           const coins = economy?.coins_per_checkin || 5;
-
           const rewardResult = await addReward(user?.id!, 'checkin', xp, coins, `Check-in: ${selectedClass}`);
-          
           setCheckinMessage(`Check-in realizado! +${xp} XP, +${coins} BrazaCoins`);
           confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-          
           if (rewardResult?.levelUp) {
-            setTimeout(() => {
-              confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] });
-            }, 500);
+            setTimeout(() => { confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }); }, 500);
           }
-
-          // 4. Refresh user profile
-          const { data: updatedProfile } = await supabase
-            .from('profiles').select('*').eq('id', user?.id).maybeSingle();
-          const { data: updatedCheckins } = await supabase
-            .from('checkins').select('*').eq('user_id', user?.id);
-
+          const { data: updatedProfile } = await supabase.from('profiles').select('*').eq('id', user?.id).maybeSingle();
+          const { data: updatedCheckins } = await supabase.from('checkins').select('*').eq('user_id', user?.id);
           if (updatedProfile) {
             const mappedUser: User = {
-              id: updatedProfile.id,
-              email: updatedProfile.email,
-              name: updatedProfile.name,
-              role: updatedProfile.role,
-              status: updatedProfile.status,
-              xp: updatedProfile.xp || 0,
-              coins: updatedProfile.coins || 0,
-              level: updatedProfile.level || 1,
-              avatar: {
-                equipped: updatedProfile.avatar_equipped,
-                inventory: updatedProfile.avatar_inventory || []
-              },
-              checkins: (updatedCheckins || []).map((c: any) => ({
-                date: c.date,
-                timestamp: c.timestamp,
-                classTime: c.class_time
-              })),
-              paidBonuses: updatedProfile.paid_bonuses || [],
-              createdAt: updatedProfile.created_at
+              id: updatedProfile.id, email: updatedProfile.email, name: updatedProfile.name,
+              role: updatedProfile.role, status: updatedProfile.status,
+              xp: updatedProfile.xp || 0, coins: updatedProfile.coins || 0, level: updatedProfile.level || 1,
+              avatar: { equipped: updatedProfile.avatar_equipped, inventory: updatedProfile.avatar_inventory || [] },
+              checkins: (updatedCheckins || []).map((c: any) => ({ date: c.date, timestamp: c.timestamp, classTime: c.class_time })),
+              paidBonuses: updatedProfile.paid_bonuses || [], createdAt: updatedProfile.created_at
             };
             updateUser(mappedUser);
           }
         } catch (e: any) {
           console.error(e);
           setCheckinMessage('Erro ao realizar check-in: ' + (e.message || 'Erro desconhecido'));
-        } finally {
-          setIsCheckingIn(false);
-        }
+        } finally { setIsCheckingIn(false); }
       },
-      (error) => {
-        setCheckinMessage('Erro de geolocalização: ' + error.message);
-        setIsCheckingIn(false);
-      }
+      (error) => { setCheckinMessage('Erro de geolocalização: ' + error.message); setIsCheckingIn(false); }
     );
   };
 
@@ -248,11 +177,8 @@ export default function Dashboard() {
   const handleShare = () => {
     const appUrl = window.location.origin;
     const text = `💪 Estou treinando no BoxLink! Venha acompanhar meu progresso: ${appUrl}`;
-    if (navigator.share) {
-      navigator.share({ title: 'BoxLink', text, url: appUrl }).catch(() => {});
-    } else {
-      setShowShareModal(true);
-    }
+    if (navigator.share) { navigator.share({ title: 'BoxLink', text, url: appUrl }).catch(() => {}); }
+    else { setShowShareModal(true); }
   };
 
   const shareViaWhatsApp = () => {
@@ -303,9 +229,7 @@ export default function Dashboard() {
           </div>
           <div className="flex flex-col gap-2">
             {announcements.map((ann, idx) => (
-              <p key={idx} className="text-xs font-bold text-on-surface leading-tight italic">
-                • {ann}
-              </p>
+              <p key={idx} className="text-xs font-bold text-on-surface leading-tight italic">• {ann}</p>
             ))}
           </div>
         </section>
@@ -356,29 +280,21 @@ export default function Dashboard() {
                 const todayDow = now.getDay();
                 const nowMinutes = now.getHours() * 60 + now.getMinutes();
                 const todaySchedule = schedule.filter((s: any) => s.days?.includes(todayDow));
-
                 if (todaySchedule.length === 0) {
                   return <p className="text-on-surface-variant text-xs font-bold uppercase italic px-2 opacity-50">Nenhuma aula hoje</p>;
                 }
-
                 return todaySchedule.map((s: any) => {
                   const [h, m] = s.time.split(':').map(Number);
                   const startMinutes = h * 60 + m;
                   const expired = nowMinutes > startMinutes + 10;
                   return (
-                    <button
-                      key={s.time}
-                      onClick={() => !expired && setSelectedClass(s.time)}
-                      disabled={expired}
+                    <button key={s.time} onClick={() => !expired && setSelectedClass(s.time)} disabled={expired}
                       className={cn(
                         "flex flex-col items-center min-w-[80px] p-3 rounded-2xl border transition-all",
-                        expired
-                          ? "bg-surface-container-highest/40 border-outline-variant/10 opacity-40 cursor-not-allowed"
-                          : selectedClass === s.time
-                          ? "bg-primary border-primary text-background"
+                        expired ? "bg-surface-container-highest/40 border-outline-variant/10 opacity-40 cursor-not-allowed"
+                          : selectedClass === s.time ? "bg-primary border-primary text-background"
                           : "bg-surface-container-highest border-outline-variant/20 text-on-surface"
-                      )}
-                    >
+                      )}>
                       <span className={cn("text-sm font-headline font-black", expired ? "line-through" : "")}>{s.time}</span>
                       <span className={cn("text-[8px] font-bold uppercase tracking-tighter", selectedClass === s.time ? "text-background/60" : "text-on-surface-variant")}>
                         {expired ? "encerrada" : s.coach.split(' ')[0]}
@@ -390,17 +306,13 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-
-        <button
-          onClick={handleCheckin}
-          disabled={isCheckingIn || alreadyCheckedIn}
+        <button onClick={handleCheckin} disabled={isCheckingIn || alreadyCheckedIn}
           className={cn(
             "w-full py-6 rounded-3xl font-headline font-black text-xl shadow-lg transition-all uppercase italic tracking-tight flex items-center justify-center gap-3",
-            alreadyCheckedIn 
-              ? "bg-surface-container-highest text-on-surface-variant cursor-not-allowed opacity-50" 
+            alreadyCheckedIn
+              ? "bg-surface-container-highest text-on-surface-variant cursor-not-allowed opacity-50"
               : "bg-primary text-background hover:scale-[0.98] active:scale-95 shadow-[0_10px_30px_rgba(202,253,0,0.2)]"
-          )}
-        >
+          )}>
           {isCheckingIn ? "VALIDANDO..." : alreadyCheckedIn ? "CHECK-IN REALIZADO" : "FAZER CHECK-IN AGORA"}
           <MapPin className={cn("w-6 h-6", alreadyCheckedIn ? "text-on-surface-variant" : "fill-current")} />
         </button>
@@ -409,11 +321,12 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* Daily WOD Preview - Compact */}
-      <section
-        onClick={() => navigate('/wod')}
-        className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5 flex items-center justify-between cursor-pointer hover:border-primary/40 transition-all group"
-      >
+      {/* ❤️ Widget de Frequência Cardíaca */}
+      <HeartRateWidget userId={user?.id} />
+
+      {/* Daily WOD Preview */}
+      <section onClick={() => navigate('/wod')}
+        className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5 flex items-center justify-between cursor-pointer hover:border-primary/40 transition-all group">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center shrink-0">
             <Timer className="w-6 h-6 text-primary" />
@@ -464,13 +377,13 @@ export default function Dashboard() {
           </div>
         </div>
       </section>
+
       {/* Modal Compartilhar */}
       <AnimatePresence>
         {showShareModal && (
           <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-background/80 backdrop-blur-sm"
             onClick={() => setShowShareModal(false)}>
-            <motion.div
-              initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }}
+            <motion.div initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }}
               className="w-full max-w-md bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl"
               onClick={e => e.stopPropagation()}>
               <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic mb-6 flex items-center gap-3">
@@ -496,4 +409,4 @@ export default function Dashboard() {
       </AnimatePresence>
     </div>
   );
-  }
+}
