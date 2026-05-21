@@ -991,7 +991,7 @@ export default function Admin() {
           </motion.div>
         )}
 
-        {/* ── SETTINGS ── (idêntico ao original) */}
+        {/* ── SETTINGS ── */}
         {activeTab === 'settings' && (
           <motion.div key="settings" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="flex flex-col gap-6">
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-8">
@@ -1108,7 +1108,6 @@ export default function Admin() {
                   )}
                 </AnimatePresence>
               </div>
-
 
               {/* ── Inatividade do Avatar ── */}
               <div className="space-y-4 border-t border-outline-variant/10 pt-6">
@@ -1275,10 +1274,11 @@ export default function Admin() {
                       <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest pb-1">Escolha o que aparece no ticker da parte inferior da tela da TV:</p>
                       {(
                         [
-                          { key: 'duels',         label: 'Duelos',      desc: 'Mostra os duelos ativos entre atletas' },
-                          { key: 'topPlayer',     label: 'Líder de XP', desc: 'Nome e XP do atleta líder' },
-                          { key: 'announcements', label: 'Comunicados', desc: 'Avisos cadastrados do box' },
-                          { key: 'challenges',    label: 'Desafios',    desc: 'Desafios ativos do box' },
+                          { key: 'duels',         label: 'Duelos',             desc: 'Mostra os duelos ativos entre atletas' },
+                          // ── ALTERADO: label atualizado para refletir check-ins ──
+                          { key: 'topPlayer',     label: 'Líder de Check-ins', desc: 'Nome e total de check-ins do atleta líder no mês' },
+                          { key: 'announcements', label: 'Comunicados',        desc: 'Avisos cadastrados do box' },
+                          { key: 'challenges',    label: 'Desafios',           desc: 'Desafios ativos do box' },
                         ] as const
                       ).map(({ key, label, desc }) => {
                         const tickerItems = (settings as any).tvConfig?.tickerItems || {};
@@ -1465,7 +1465,7 @@ export default function Admin() {
           </motion.div>
         )}
 
-        {/* ── LOJA ── com upload de imagem + calibrador ── */}
+        {/* ── LOJA ── */}
         {activeTab === 'store' && (
           <motion.div key="store" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="flex flex-col gap-6">
             <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-4">
@@ -1505,7 +1505,6 @@ export default function Admin() {
                 </div>
               </div>
 
-              {/* ── Campo de imagem com upload padronizado ── */}
               <div className="space-y-2">
                 <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Imagem do Item</label>
                 <div className="flex gap-3 items-center">
@@ -1538,12 +1537,10 @@ export default function Admin() {
               </div>
             </div>
 
-            {/* Grid de itens com botão calibrador */}
             <div className="grid grid-cols-2 gap-4">
               {items.map((item) => (
                 <div key={item.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-3 group relative">
                   <div className="absolute top-2 right-2 flex gap-1 z-10">
-                    {/* Botão calibrador */}
                     <button
                       onClick={() => setCalibratingItem(calibratingItem?.id === item.id ? null : item)}
                       title="Calibrar camada"
@@ -1691,7 +1688,6 @@ export default function Admin() {
                 );
               })}
 
-              {/* ── Check-ins sem aula vinculada ── */}
               {(() => {
                 const matchedKeys = new Set(
                   activeSlots.flatMap(slot =>
@@ -1843,4 +1839,4 @@ export default function Admin() {
       </AnimatePresence>
     </div>
   );
-      }
+}
