@@ -88,7 +88,7 @@ export interface Challenge {
   repeatable: boolean;
   dailyLimit: number;
   difficulty?: 'easy' | 'medium' | 'hard' | 'special';
-  type?: 'daily_checkin' | 'accumulative'; 
+  type?: 'daily_checkin' | 'accumulative';
   required_days?: number;
   target_value?: number;
   unit?: string;
