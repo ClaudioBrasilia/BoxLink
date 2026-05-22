@@ -1,1144 +1,501 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Trophy,
-  Plus,
-  ChevronDown,
-  Handshake,
-  Sword,
-  Zap,
-  Check,
-  X,
-  Search,
-  Timer,
-  Hash,
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, Share2, Target } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Wod, User } from '../types';
 import confetti from 'canvas-confetti';
-import { supabase } from '../lib/supabase';
 import AvatarPreview from '../components/AvatarPreview';
-import { AvatarSlot } from '../types';
+import { supabase } from '../lib/supabase';
+import { useInactivity } from '../hooks/useInactivity';
+
 import { addReward } from '../utils/rewards';
-import { useToast } from '../context/ToastContext';
-import { createNotification } from '../hooks/useNotifications';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface DuelResult {
-  [userId: string]: string | null;
-}
-
-interface Duel {
-  id: string;
-  challengerId: string;
-  opponentIds: string[];
-  acceptedBy: string[];
-  status: 'pending' | 'active' | 'finished';
-  winnerId?: string | null;
-  betAmount: number;
-  betType: 'xp' | 'coins';
-  betReserved: boolean;
-  betReservedAt?: string | null;
-  betSettledAt?: string | null;
-  betCanceledAt?: string | null;
-  wodId?: string | null;
-  wodName?: string;
-  wodType?: string;
-  wodRx?: string;
-  wodCustom?: boolean;
-  category: string;
-  results: DuelResult;
-  createdAt: string;
-}
-
-interface UserProfile {
-  id: string;
-  name: string;
-  xp: number;
-  coins: number;
-  level: number;
-  avatar_equipped?: any;
-}
-
-interface WodOption {
-  id: string;
-  name: string;
-  type: string;
-  date: string;
-  rx?: string;
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const parseResultValue = (result: string, isTimeBased: boolean): number => {
-  if (!result) return isTimeBased ? 999999 : 0;
-  const str = result.trim();
-  if (/^\d+:\d+/.test(str)) {
-    const parts = str.split(':').map(Number);
-    return parts.length === 2
-      ? parts[0] * 60 + parts[1]
-      : parts[0] * 3600 + parts[1] * 60 + parts[2];
-  }
-  return parseFloat(str.replace(/[^0-9.]/g, '')) || (isTimeBased ? 999999 : 0);
-};
-
-// Keywords que indicam "menor tempo vence"
-const TIME_BASED_KEYWORDS = ['FOR TIME', 'TIME', 'TEMPO', 'RFT', 'CHIPPER'];
-// Keywords que indicam "maior resultado vence"
-const REPS_BASED_KEYWORDS = ['AMRAP', 'EMOM', 'REPS', 'MAX'];
-
-/**
- * Determina se o duelo é time-based (menor = melhor) com estratégia em 3 níveis:
- * 1. wod_type com keyword explícita de tempo
- * 2. wod_type com keyword explícita de reps
- * 3. Inferência pelo formato dos resultados submetidos (maioria com ":" → time-based)
- */
-const isTimeBasedDuel = (wodType: string | undefined, results: DuelResult): boolean => {
-  const upper = (wodType || '').toUpperCase();
-  if (TIME_BASED_KEYWORDS.some(k => upper.includes(k))) return true;
-  if (REPS_BASED_KEYWORDS.some(k => upper.includes(k))) return false;
-  const submitted = Object.values(results).filter(Boolean) as string[];
-  if (submitted.length === 0) return false;
-  const timeFormatCount = submitted.filter(r => /^\d+:\d+/.test(r.trim())).length;
-  return timeFormatCount > submitted.length / 2;
-};
-
-// Mantido apenas para display dos cards (ícone + label), sem resultados disponíveis
-const isTimeBased = (wodType?: string) =>
-  TIME_BASED_KEYWORDS.some(k => (wodType || '').toUpperCase().includes(k));
-
-/**
- * Retorna o id do vencedor, ou null se:
- *   - nenhum participante tem resultado válido/parseável, OU
- *   - há empate (mesmo melhor valor entre os válidos)
- */
-const pickWinner = (
-  results: DuelResult,
-  participantIds: string[],
-  wodType: string | undefined,
-): string | null => {
-  const timeBased = isTimeBasedDuel(wodType, results);
-
-  const validIds = participantIds.filter(id => {
-    if (!results[id]) return false;
-    const val = parseResultValue(results[id]!, timeBased);
-    // Sentinel 999999 = valor não parseável em modo time-based
-    return !(timeBased && val === 999999);
-  });
-
-  if (validIds.length === 0) return null;
-
-  const bestVal = validIds.reduce<number>((best, id) => {
-    const val = parseResultValue(results[id]!, timeBased);
-    return timeBased ? Math.min(best, val) : Math.max(best, val);
-  }, timeBased ? Infinity : -Infinity);
-
-  const tied = validIds.filter(
-    id => parseResultValue(results[id]!, timeBased) === bestVal,
-  );
-
-  // Mais de um com o mesmo melhor valor → empate → null
-  return tied.length === 1 ? tied[0] : null;
-};
-
-const getVisibleResult = (duel: Duel, userId: string): string => {
-  if (duel.status === 'finished') return duel.results[userId] || '—';
-  const allParticipants = [duel.challengerId, ...duel.opponentIds];
-  const allSubmitted = allParticipants.every(id => duel.results[id]);
-  if (allSubmitted) return duel.results[userId] || '—';
-  return duel.results[userId] ? '✓ Enviado' : 'Aguardando';
-};
-
-// ─── Component ────────────────────────────────────────────────────────────────
-
-export default function Duels() {
+export default function Dashboard() {
   const { user, updateUser } = useAuth();
-  const toast = useToast();
+  const { fadePercent: inactivityFade, showSleeping: inactivitySleep } = useInactivity();
+  const navigate = useNavigate();
+  const [wod, setWod] = useState<Wod | null>(null);
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [checkinMessage, setCheckinMessage] = useState<string | null>(null);
+  const [schedule, setSchedule] = useState<{ time: string; endTime: string; coach: string }[]>([]);
+  const [now, setNow] = useState(new Date());
+  const [selectedClass, setSelectedClass] = useState<string | null>(null);
+  const [announcements, setAnnouncements] = useState<string[]>([]);
+  const [activeChallenges, setActiveChallenges] = useState<any[]>([]);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [userRankPosition, setUserRankPosition] = useState<number | null>(null);
 
-  // Data
-  const [duels, setDuels] = useState<Duel[]>([]);
-  const [users, setUsers] = useState<UserProfile[]>([]);
-  const [wods, setWods] = useState<WodOption[]>([]);
-  const [boxSettings, setBoxSettings] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const fetchData = async () => {
+    // Fetch WODs
+    const todayDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    let { data: wodsData } = await supabase.from('wods').select('*').eq('date', todayDate).maybeSingle();
+    
+    // Fallback to most recent WOD if today's WOD is not found
+    if (!wodsData) {
+      const { data: latestWod } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
+      wodsData = latestWod;
+    }
 
-  // UI
-  const [activeTab, setActiveTab] = useState<'all' | 'mine' | 'pending'>('all');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
+    if (wodsData) setWod(wodsData);
+    
+    // Fetch Box Settings
+    const { data: settingsData } = await supabase.from('box_settings').select('*').single();
+    const rawAnn = settingsData?.announcements || settingsData?.tv_config?.announcements || [];
+    if (Array.isArray(rawAnn) && rawAnn.length > 0) {
+      const annTexts = rawAnn
+        .filter((a: any) => a.active !== false)
+        .map((a: any) => {
+          if (typeof a === 'string') {
+            try {
+              const parsed = JSON.parse(a);
+              return parsed.title ? `${parsed.title}${parsed.content ? ': ' + parsed.content : ''}` : a;
+            } catch (e) {
+              return a;
+            }
+          }
+          return a.title ? `${a.title}${a.content ? ': ' + a.content : ''}` : '';
+        })
+        .filter(Boolean);
+      setAnnouncements(annTexts);
+    }
 
-  // Submissão de resultado por duelo
-  const [submission, setSubmission] = useState<Record<string, string>>({});
+    // Fetch active challenges
+    const today = new Date().toISOString().split('T')[0];
+    const { data: challengesData } = await supabase
+      .from('challenges').select('*').eq('active', true)
+      .or(`end_date.is.null,end_date.gte.${today}`)
+      .limit(3);
+    setActiveChallenges(challengesData || []);
 
-  // Criação de duelo
-  const [opponentSearch, setOpponentSearch] = useState('');
-  const [selectedOpponents, setSelectedOpponents] = useState<string[]>([]);
-  const [wodMode, setWodMode] = useState<'existing' | 'custom'>('existing');
-  const [selectedWodId, setSelectedWodId] = useState('');
-  const [category, setCategory] = useState<'RX' | 'SCALED' | 'BEGINNER'>('RX');
-  const [betAmount, setBetAmount] = useState(100);
-  const [betType, setBetType] = useState<'xp' | 'coins'>('xp');
-  const [betEnabled, setBetEnabled] = useState(false);
-  // WOD personalizado
-  const [customWodName, setCustomWodName] = useState('');
-  const [customWodType, setCustomWodType] = useState<'FOR TIME' | 'AMRAP' | 'EMOM'>('FOR TIME');
-  const [customWodDesc, setCustomWodDesc] = useState('');
+    // Fetch Schedule
+    const { data: scheduleData } = await supabase.from('schedule').select('*').eq('is_active', true).order('time', { ascending: true });
+    if (scheduleData) {
+      const mappedSchedule = scheduleData.map((s: any) => ({
+        id: s.id,
+        time: s.time,
+        endTime: s.end_time,
+        coach: s.coach,
+        capacity: s.capacity,
+        days: s.days,
+        isActive: s.is_active,
+        checkinWindowMinutes: s.checkin_window_minutes
+      }));
+      setSchedule(mappedSchedule);
+      const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const current = mappedSchedule.find((s: any) => now >= s.time && now <= s.endTime);
+      if (current) setSelectedClass(current.time);
+    }
 
-  // ─── Load ────────────────────────────────────────────────────────────────
-
-  const loadData = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const [duelsRes, usersRes, wodsRes, settingsRes] = await Promise.all([
-        supabase.from('duels').select('*').order('created_at', { ascending: false }),
-        supabase.from('profiles').select('id, name, xp, coins, level, avatar_equipped').eq('status', 'approved').neq('id', user.id),
-        supabase.from('wods').select('id, name, type, date, rx').order('date', { ascending: false }).limit(30),
-        supabase.from('box_settings').select('*').maybeSingle(),
-      ]);
-
-      if (duelsRes.data) {
-        setDuels(duelsRes.data.map((d: any) => ({
-          id: d.id,
-          challengerId: d.challenger_id,
-          opponentIds: d.opponent_ids ?? (d.opponent_id ? [d.opponent_id] : []),
-          acceptedBy: d.accepted_by ?? [],
-          status: d.status ?? 'pending',
-          winnerId: d.winner_id,
-          betAmount: d.bet_amount ?? d.reward_xp ?? 0,
-          betType: d.bet_type ?? 'xp',
-          betReserved: d.bet_reserved ?? false,
-          betReservedAt: d.bet_reserved_at,
-          betSettledAt: d.bet_settled_at,
-          betCanceledAt: d.bet_canceled_at,
-          wodId: d.wod_id,
-          wodName: d.wod_name,
-          wodType: d.wod_type,
-          wodRx: d.wod_rx,
-          wodCustom: d.wod_custom,
-          category: d.category ?? 'RX',
-          results: d.results ?? {},
-          createdAt: d.created_at,
-        })));
-      }
-      if (usersRes.data) setUsers(usersRes.data);
-      if (wodsRes.data) setWods(wodsRes.data);
-      if (settingsRes.data) setBoxSettings(settingsRes.data);
-    } catch (err) {
-      console.error('Error loading duels:', err);
-    } finally {
-      setLoading(false);
+    // Fetch ranking position (XP do mês)
+    if (user?.id) {
+      const now2 = new Date();
+      const firstDayOfMonth = new Date(now2.getFullYear(), now2.getMonth(), 1).toISOString().split('T')[0];
+      const { data: rewardHistory } = await supabase
+        .from('reward_history').select('user_id, xp')
+        .gte('created_at', firstDayOfMonth + 'T00:00:00');
+      const monthXpByUser: Record<string, number> = {};
+      (rewardHistory || []).forEach((r: any) => {
+        if (r.xp > 0) monthXpByUser[r.user_id] = (monthXpByUser[r.user_id] || 0) + r.xp;
+      });
+      const sorted = Object.entries(monthXpByUser).sort((a, b) => b[1] - a[1]);
+      const pos = sorted.findIndex(([id]) => id === user.id);
+      setUserRankPosition(pos >= 0 ? pos + 1 : null);
     }
   };
 
   useEffect(() => {
-    if (user) loadData();
-  }, [user]);
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
-  // Realtime
   useEffect(() => {
-    if (!user) return;
+    fetchData();
+
     const channel = supabase
-      .channel('duels_rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'duels' }, () => loadData())
+      .channel('dashboard_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'box_settings' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'challenges' }, () => fetchData())
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [user]);
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
-  const getUserName = (id: string) => {
-    if (id === user?.id) return 'Você';
-    return users.find(u => u.id === id)?.name || 'Atleta';
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371e3; // metres
+    const φ1 = lat1 * Math.PI/180;
+    const φ2 = lat2 * Math.PI/180;
+    const Δφ = (lat2-lat1) * Math.PI/180;
+    const Δλ = (lon2-lon1) * Math.PI/180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c; // in metres
   };
 
-  const getUserProfile = (id: string): UserProfile | undefined =>
-    id === user?.id
-      ? { id: user.id, name: user.name, xp: user.xp, coins: user.coins, level: user.level, avatar_equipped: user.avatar?.equipped }
-      : users.find(u => u.id === id);
-
-  const getDuelWinXp = () => boxSettings?.rewards?.duel_win_xp ?? 40;
-  const getDuelWinCoins = () => boxSettings?.rewards?.duel_win_coins ?? 10;
-
-  // ─── Criação de duelo ─────────────────────────────────────────────────────
-
-  const handleCreateDuel = async () => {
-    if (!user || selectedOpponents.length === 0) return;
-
-    if (wodMode === 'existing' && !selectedWodId) {
-      toast.warning('Selecione um WOD.'); return;
+  const handleCheckin = () => {
+    if (!selectedClass) {
+      setCheckinMessage('Por favor, selecione um horário de aula');
+      return;
     }
-    if (wodMode === 'custom' && (!customWodName || !customWodDesc)) {
-      toast.warning('Preencha nome e descrição do WOD personalizado.'); return;
-    }
+    setIsCheckingIn(true);
+    setCheckinMessage(null);
 
-    const myBalance = betType === 'xp' ? user.xp : user.coins;
-    if (betEnabled && betAmount > myBalance) {
-      toast.error(`Você não tem ${betType.toUpperCase()} suficiente para esta aposta.`); return;
-    }
-    if (betEnabled) {
-      for (const opId of selectedOpponents) {
-        const op = getUserProfile(opId);
-        const opBalance = betType === 'xp' ? (op?.xp ?? 0) : (op?.coins ?? 0);
-        if (opBalance < betAmount) {
-          toast.error(`${op?.name || 'Um oponente'} não tem ${betType.toUpperCase()} suficiente.`); return;
-        }
-      }
-    }
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          // 1. Get Box Settings for location validation
+          const { data: box } = await supabase.from('box_settings').select('*').single();
+          if (!box) throw new Error('Configurações do box não encontradas');
 
-    setSaving(true);
-    try {
-      let wodData: { wodId: string | null; wodName: string; wodType: string; wodRx: string; wodCustom: boolean };
-
-      if (wodMode === 'custom') {
-        wodData = {
-          wodId: null,
-          wodName: customWodName,
-          wodType: customWodType,
-          wodRx: customWodDesc,
-          wodCustom: true,
-        };
-      } else {
-        const found = wods.find(w => w.id === selectedWodId);
-        if (!found) return;
-        wodData = {
-          wodId: found.id,
-          wodName: found.name,
-          wodType: found.type,
-          wodRx: found.rx || '',
-          wodCustom: false,
-        };
-      }
-
-      const allParticipants = [user.id, ...selectedOpponents];
-      const initialResults: DuelResult = {};
-      allParticipants.forEach(id => { initialResults[id] = null; });
-
-      const { error } = await supabase.from('duels').insert({
-        challenger_id: user.id,
-        opponent_ids: selectedOpponents,
-        accepted_by: [],
-        status: 'pending',
-        bet_amount: betEnabled ? betAmount : 0,
-        bet_type: betType,
-        bet_reserved: false,
-        wod_id: wodData.wodId,
-        wod_name: wodData.wodName,
-        wod_type: wodData.wodType,
-        wod_rx: wodData.wodRx,
-        wod_custom: wodData.wodCustom,
-        category,
-        results: initialResults,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
-
-      if (error) throw error;
-
-      for (const opId of selectedOpponents) {
-        await createNotification(
-          opId,
-          'duel_created',
-          '⚔️ Novo Duelo!',
-          `${user.name || 'Um atleta'} te desafiou para um duelo — ${wodData.wodName}`,
-          { challengerId: user.id, wodName: wodData.wodName }
-        );
-      }
-
-      setSelectedOpponents([]);
-      setOpponentSearch('');
-      setSelectedWodId('');
-      setCategory('RX');
-      setBetAmount(100);
-      setBetEnabled(false);
-      setCustomWodName('');
-      setCustomWodDesc('');
-      setWodMode('existing');
-      setShowCreate(false);
-      await loadData();
-    } catch (err: any) {
-      console.error('Error creating duel:', err);
-      toast.error('Erro ao criar duelo: ' + err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ─── Aceitar duelo ────────────────────────────────────────────────────────
-
-  const handleAccept = async (duelId: string) => {
-    if (!user) return;
-    setSaving(true);
-    try {
-      const duel = duels.find(d => d.id === duelId);
-      if (!duel) return;
-
-      const newAcceptedBy = [...(duel.acceptedBy || []), user.id];
-      const allAccepted = newAcceptedBy.length === duel.opponentIds.length;
-
-      const updates: any = {
-        accepted_by: newAcceptedBy,
-        status: allAccepted ? 'active' : 'pending',
-        updated_at: new Date().toISOString(),
-      };
-
-      if (allAccepted && !duel.betReserved && duel.betAmount > 0) {
-        const allParticipants = [duel.challengerId, ...duel.opponentIds];
-        for (const pid of allParticipants) {
-          const profile = getUserProfile(pid);
-          if (!profile) continue;
-          if (duel.betType === 'xp') {
-            const newXp = Math.max(0, (profile.xp || 0) - duel.betAmount);
-            await supabase.from('profiles').update({ xp: newXp }).eq('id', pid);
-            if (pid === user.id) updateUser({ ...user, xp: newXp });
-          } else {
-            const newCoins = Math.max(0, (profile.coins || 0) - duel.betAmount);
-            await supabase.from('profiles').update({ coins: newCoins }).eq('id', pid);
-            if (pid === user.id) updateUser({ ...user, coins: newCoins });
+          const distance = calculateDistance(latitude, longitude, box.lat, box.lng);
+          if (distance > (box.radius || 500)) {
+            setCheckinMessage(`Você está muito longe do box (${Math.round(distance)}m). Aproxime-se para fazer check-in.`);
+            setIsCheckingIn(false);
+            return;
           }
-        }
-        updates.bet_reserved = true;
-        updates.bet_reserved_at = new Date().toISOString();
-      }
 
-      await supabase.from('duels').update(updates).eq('id', duelId);
-
-      if (duel.challengerId !== user.id) {
-        await createNotification(
-          duel.challengerId,
-          'duel_accepted',
-          '✅ Duelo Aceito!',
-          `${user.name || 'Um atleta'} aceitou seu duelo — ${duel.wodName || 'duelo'}`,
-          { duelId, acceptedBy: user.id }
-        );
-      }
-      if (allAccepted) {
-        const allParticipants = [duel.challengerId, ...duel.opponentIds];
-        for (const pid of allParticipants) {
-          if (pid === user.id) continue;
-          await createNotification(
-            pid,
-            'duel_accepted',
-            '🥊 Duelo Ativo!',
-            `Todos aceitaram! Submeta seu resultado no duelo — ${duel.wodName || 'duelo'}`,
-            { duelId }
-          );
-        }
-      }
-
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#CAFD00', '#ffffff', '#000000'],
-      });
-
-      await loadData();
-    } catch (err: any) {
-      console.error('Error accepting duel:', err);
-      toast.error('Erro ao aceitar duelo.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ─── Cancelar duelo ───────────────────────────────────────────────────────
-
-  const handleCancel = async (duelId: string) => {
-    if (!user) return;
-    setSaving(true);
-    try {
-      const duel = duels.find(d => d.id === duelId);
-      if (!duel) return;
-
-      if (duel.betReserved && duel.betAmount > 0 && !duel.betSettledAt) {
-        const allParticipants = [duel.challengerId, ...duel.opponentIds];
-        for (const pid of allParticipants) {
-          const profile = getUserProfile(pid);
-          if (!profile) continue;
-          if (duel.betType === 'xp') {
-            const newXp = (profile.xp || 0) + duel.betAmount;
-            await supabase.from('profiles').update({ xp: newXp }).eq('id', pid);
-            if (pid === user.id) updateUser({ ...user, xp: newXp });
-          } else {
-            const newCoins = (profile.coins || 0) + duel.betAmount;
-            await supabase.from('profiles').update({ coins: newCoins }).eq('id', pid);
-            if (pid === user.id) updateUser({ ...user, coins: newCoins });
-          }
-        }
-      }
-
-      await supabase.from('duels').delete().eq('id', duelId);
-      setDuels(prev => prev.filter(d => d.id !== duelId));
-      if (expandedId === duelId) setExpandedId(null);
-      toast.success('Duelo cancelado e removido.');
-    } catch (err: any) {
-      console.error('Error canceling duel:', err);
-      toast.error('Erro ao cancelar duelo.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ─── Submeter resultado ───────────────────────────────────────────────────
-
-  const handleSubmitResult = async (duel: Duel) => {
-    if (!user) return;
-    const result = submission[duel.id]?.trim();
-    if (!result) {
-      toast.warning('Preencha seu resultado.'); return;
-    }
-
-    setSaving(true);
-    try {
-      const newResults: DuelResult = { ...duel.results, [user.id]: result };
-      const allParticipants = [duel.challengerId, ...duel.opponentIds];
-      const allSubmitted = allParticipants.every(id => newResults[id]);
-
-      if (allSubmitted) {
-        const winnerId = pickWinner(newResults, allParticipants, duel.wodType);
-        const isTie = winnerId === null;
-
-        // ── Audit log ──────────────────────────────────────────────────────
-        console.info('[duel_settlement]', {
-          duelId: duel.id,
-          wodType: duel.wodType,
-          results: newResults,
-          winnerId,
-          losers: isTie ? [] : allParticipants.filter(id => id !== winnerId),
-          totalPrize: duel.betAmount * allParticipants.length,
-          isTie,
-        });
-
-        const updates: any = {
-          results: newResults,
-          status: 'finished',
-          winner_id: winnerId,   // null = empate ou sem resultado válido
-          updated_at: new Date().toISOString(),
-        };
-
-        // Busca saldos frescos do banco para evitar usar estado React desatualizado
-        const { data: freshProfiles } = await supabase
-          .from('profiles')
-          .select('id, xp, coins')
-          .in('id', allParticipants);
-
-        if (duel.betReserved && duel.betAmount > 0 && !duel.betSettledAt) {
-          if (isTie) {
-            // ── Empate ou resultado inválido: devolver apostas a todos ────
-            for (const pid of allParticipants) {
-              const fresh = freshProfiles?.find(p => p.id === pid);
-              if (!fresh) continue;
-              if (duel.betType === 'xp') {
-                const newXp = (fresh.xp || 0) + duel.betAmount;
-                await supabase.from('profiles').update({ xp: newXp }).eq('id', pid);
-                if (pid === user.id) updateUser({ ...user, xp: newXp });
-              } else {
-                const newCoins = (fresh.coins || 0) + duel.betAmount;
-                await supabase.from('profiles').update({ coins: newCoins }).eq('id', pid);
-                if (pid === user.id) updateUser({ ...user, coins: newCoins });
-              }
-            }
-          } else {
-            // ── Vencedor recebe tudo: sua aposta + a de cada perdedor ─────
-            const totalPrize = duel.betAmount * allParticipants.length;
-            const fresh = freshProfiles?.find(p => p.id === winnerId);
-            if (fresh) {
-              if (duel.betType === 'xp') {
-                const newXp = (fresh.xp || 0) + totalPrize;
-                await supabase.from('profiles').update({ xp: newXp }).eq('id', winnerId);
-                if (winnerId === user.id) updateUser({ ...user, xp: newXp });
-              } else {
-                const newCoins = (fresh.coins || 0) + totalPrize;
-                await supabase.from('profiles').update({ coins: newCoins }).eq('id', winnerId);
-                if (winnerId === user.id) updateUser({ ...user, coins: newCoins });
-              }
-            }
-          }
-          // Sempre marcar aposta como liquidada, mesmo em empate
-          updates.bet_settled_at = new Date().toISOString();
-        }
-
-        if (isTie) {
-          toast.success('🤝 Duelo empatado — apostas devolvidas!');
-        } else {
-          await addReward(
-            winnerId!,
-            'duel',
-            getDuelWinXp(),
-            getDuelWinCoins(),
-            `Vitória no duelo — ${duel.wodName || 'duelo'}`,
-            duel.id,
-          );
-          if (winnerId === user.id) {
-            confetti({
-              particleCount: 200,
-              spread: 100,
-              origin: { y: 0.5 },
-              colors: ['#CAFD00', '#FFFFFF'],
+          // 2. Register Check-in
+          const today = new Date().toISOString().split('T')[0];
+          const { error: checkinError } = await supabase
+            .from('checkins')
+            .insert({
+              user_id: user?.id,
+              date: today,
+              class_time: selectedClass
             });
-            toast.success(`🏆 Você venceu! +${getDuelWinXp()} XP, +${getDuelWinCoins()} coins`);
-          } else {
-            toast.success(`Duelo finalizado! Vencedor: ${getUserName(winnerId!)}`);
+
+          if (checkinError) {
+            if (checkinError.code === '23505') { // Unique constraint
+              setCheckinMessage('Você já realizou check-in hoje!');
+            } else {
+              throw checkinError;
+            }
+            setIsCheckingIn(false);
+            return;
           }
-        }
 
-        await supabase.from('duels').update(updates).eq('id', duel.id);
+          // 3. Add Rewards
+          const { data: economy } = await supabase.from('avatar_economy_settings').select('*').eq('is_active', true).single();
+          const xp = economy?.xp_per_checkin || 20;
+          const coins = economy?.coins_per_checkin || 5;
 
-        for (const pid of allParticipants) {
-          const isWinner = pid === winnerId;
-          await createNotification(
-            pid,
-            'duel_finished',
-            isTie
-              ? '🤝 Duelo Empatado!'
-              : isWinner ? '🏆 Você Venceu o Duelo!' : '💪 Duelo Finalizado!',
-            isTie
-              ? `Empate! Apostas devolvidas — ${duel.wodName || 'duelo'}`
-              : isWinner
-                ? `Parabéns! Você venceu o duelo — ${duel.wodName || 'duelo'}`
-                : `Duelo encerrado. Vencedor: ${getUserName(winnerId!)} — ${duel.wodName || 'duelo'}`,
-            { duelId: duel.id, winnerId, isTie }
-          );
-        }
-      } else {
-        await supabase.from('duels').update({
-          results: newResults,
-          updated_at: new Date().toISOString(),
-        }).eq('id', duel.id);
+          const rewardResult = await addReward(user?.id!, 'checkin', xp, coins, `Check-in: ${selectedClass}`);
+          
+          setCheckinMessage(`Check-in realizado! +${xp} XP, +${coins} BrazaCoins`);
+          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+          
+          if (rewardResult?.levelUp) {
+            setTimeout(() => {
+              confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] });
+            }, 500);
+          }
 
-        for (const pid of allParticipants) {
-          if (pid === user.id || newResults[pid]) continue;
-          await createNotification(
-            pid,
-            'duel_result',
-            '⏳ Resultado Aguardando',
-            `${user.name || 'Um atleta'} já submeteu o resultado. Submeta o seu! — ${duel.wodName || 'duelo'}`,
-            { duelId: duel.id }
-          );
+          // 4. Refresh user profile
+          const { data: updatedProfile } = await supabase
+            .from('profiles').select('*').eq('id', user?.id).maybeSingle();
+          const { data: updatedCheckins } = await supabase
+            .from('checkins').select('*').eq('user_id', user?.id);
+
+          if (updatedProfile) {
+            const mappedUser: User = {
+              id: updatedProfile.id,
+              email: updatedProfile.email,
+              name: updatedProfile.name,
+              role: updatedProfile.role,
+              status: updatedProfile.status,
+              xp: updatedProfile.xp || 0,
+              coins: updatedProfile.coins || 0,
+              level: updatedProfile.level || 1,
+              avatar: {
+                equipped: updatedProfile.avatar_equipped,
+                inventory: updatedProfile.avatar_inventory || []
+              },
+              checkins: (updatedCheckins || []).map((c: any) => ({
+                date: c.date,
+                timestamp: c.timestamp,
+                classTime: c.class_time
+              })),
+              paidBonuses: updatedProfile.paid_bonuses || [],
+              createdAt: updatedProfile.created_at
+            };
+            updateUser(mappedUser);
+          }
+        } catch (e: any) {
+          console.error(e);
+          setCheckinMessage('Erro ao realizar check-in: ' + (e.message || 'Erro desconhecido'));
+        } finally {
+          setIsCheckingIn(false);
         }
+      },
+      (error) => {
+        setCheckinMessage('Erro de geolocalização: ' + error.message);
+        setIsCheckingIn(false);
       }
+    );
+  };
 
-      setSubmission(prev => ({ ...prev, [duel.id]: '' }));
-      await loadData();
-    } catch (err: any) {
-      console.error('Error submitting result:', err);
-      toast.error('Erro ao submeter resultado: ' + err.message);
-    } finally {
-      setSaving(false);
+  const today = new Date().toISOString().split('T')[0];
+  const alreadyCheckedIn = user?.checkins.some(c => c.date === today);
+
+  const handleShare = () => {
+    const appUrl = window.location.origin;
+    const text = `💪 Estou treinando no BoxLink! Venha acompanhar meu progresso: ${appUrl}`;
+    if (navigator.share) {
+      navigator.share({ title: 'BoxLink', text, url: appUrl }).catch(() => {});
+    } else {
+      setShowShareModal(true);
     }
   };
 
-  // ─── Derived ──────────────────────────────────────────────────────────────
-
-  const filteredDuels = useMemo(() => duels.filter(d => {
-    if (activeTab === 'mine') return d.challengerId === user?.id || d.opponentIds.includes(user?.id || '');
-    if (activeTab === 'pending') return d.status === 'pending' && d.opponentIds.includes(user?.id || '') && !d.acceptedBy.includes(user?.id || '');
-    return true;
-  }), [duels, activeTab, user]);
-
-  const filteredOpponents = users.filter(u =>
-    u.name.toLowerCase().includes(opponentSearch.toLowerCase()) &&
-    !selectedOpponents.includes(u.id)
-  );
-
-  // ─── Render ───────────────────────────────────────────────────────────────
+  const shareViaWhatsApp = () => {
+    const appUrl = window.location.origin;
+    const text = encodeURIComponent(`💪 Estou treinando no BoxLink! Venha acompanhar meu progresso: ${appUrl}`);
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
 
   return (
-    <div className="min-h-screen bg-background pb-32">
-
+    <div className="flex flex-col gap-6 p-4 pt-8">
       {/* Header */}
-      <header className="p-6 pt-12 flex flex-col gap-4">
-        <div className="flex justify-between items-center">
+      <header className="flex justify-between items-start">
+        <div className="flex items-center gap-4">
+          <AvatarPreview equipped={user?.avatar.equipped!} size="sm" className="border-2" fadePercent={inactivityFade} showSleeping={inactivitySleep} />
           <div>
-            <h1 className="text-3xl font-headline font-black italic text-on-surface uppercase tracking-tight">
-              Duelos
+            <h1 className="text-2xl font-headline font-black text-on-surface tracking-tight uppercase italic leading-none">
+              OLÁ, <span className="text-primary">{user?.name.split(' ')[0]}</span>
             </h1>
-            <p className="text-on-surface-variant text-xs font-medium uppercase tracking-widest opacity-60">
-              Desafie e conquiste
-            </p>
-          </div>
-          <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
-            <Sword className="w-6 h-6 text-primary" />
+            <p className="text-on-surface-variant text-[10px] font-bold tracking-widest uppercase mt-1 italic">Pronto para o treino?</p>
           </div>
         </div>
-
-        {/* Tabs */}
-        <div className="flex gap-2 bg-surface-container-highest p-1 rounded-2xl">
-          {(['all', 'mine', 'pending'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                'flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all',
-                activeTab === tab
-                  ? 'bg-primary text-background shadow-lg'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              )}
-            >
-              {tab === 'all' ? 'Todos' : tab === 'mine' ? 'Meus' : 'Pendentes'}
-            </button>
-          ))}
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded-full border border-outline-variant/10">
+            <span className="text-[10px] font-black text-primary uppercase italic">LVL {user?.level}</span>
+            <div className="w-[1px] h-3 bg-outline-variant/20"></div>
+            <Zap className="w-4 h-4 text-primary fill-primary" />
+            <span className="font-headline font-black text-sm text-on-surface">{user?.xp}</span>
+          </div>
+          <div className="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded-full border border-outline-variant/10">
+            <Coins className="w-4 h-4 text-secondary fill-secondary" />
+            <span className="font-headline font-black text-sm text-on-surface">{user?.coins}</span>
+            <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">BC</span>
+          </div>
+          <button onClick={handleShare}
+            className="flex items-center gap-1 bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-full hover:bg-primary/20 transition-all">
+            <Share2 className="w-3 h-3 text-primary" />
+            <span className="text-[8px] font-black text-primary uppercase tracking-widest">SHARE</span>
+          </button>
         </div>
       </header>
 
-      {/* ── Formulário de criação ── */}
-      <AnimatePresence>
-        {showCreate && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mx-6 mb-4 bg-surface-container rounded-3xl border border-outline-variant/10 p-6 flex flex-col gap-5"
-          >
-            <div className="flex justify-between items-center">
-              <h2 className="font-headline font-black text-lg text-on-surface uppercase italic">Novo Desafio</h2>
-              <button onClick={() => setShowCreate(false)}>
-                <X className="w-5 h-5 text-on-surface-variant" />
-              </button>
-            </div>
+      {/* Announcements */}
+      {announcements.length > 0 && (
+        <section className="bg-primary/10 border border-primary/20 rounded-3xl p-4 overflow-hidden relative">
+          <div className="flex items-center gap-3 mb-2">
+            <Zap className="w-4 h-4 text-primary fill-primary animate-pulse" />
+            <h3 className="text-[10px] font-black text-primary uppercase tracking-widest italic">COMUNICADOS</h3>
+          </div>
+          <div className="flex flex-col gap-2">
+            {announcements.map((ann, idx) => (
+              <p key={idx} className="text-xs font-bold text-on-surface leading-tight italic">
+                • {ann}
+              </p>
+            ))}
+          </div>
+        </section>
+      )}
 
-            {/* Busca de oponente */}
-            <div className="flex flex-col gap-2">
-              <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">
-                Oponentes
-              </label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant/50" />
-                <input
-                  type="text"
-                  placeholder="Buscar atleta pelo nome..."
-                  value={opponentSearch}
-                  onChange={e => setOpponentSearch(e.target.value)}
-                  className="w-full bg-surface-container-highest rounded-2xl pl-9 pr-4 py-3 text-sm font-medium text-on-surface placeholder:text-on-surface-variant/40 outline-none"
-                />
+      {/* Desafios Ativos */}
+      {activeChallenges.length > 0 && (
+        <section className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-4 cursor-pointer hover:border-primary/30 transition-all"
+          onClick={() => navigate('/challenges')}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 bg-primary/20 rounded-xl flex items-center justify-center">
+                <Target className="w-4 h-4 text-primary" />
               </div>
-              {opponentSearch.length > 0 && (
-                <div className="bg-surface-container-highest rounded-2xl border border-outline-variant/10 max-h-40 overflow-y-auto">
-                  {filteredOpponents.length === 0 ? (
-                    <p className="text-center text-on-surface-variant text-xs py-4 font-bold uppercase">Nenhum atleta encontrado</p>
-                  ) : filteredOpponents.map(op => (
+              <h3 className="text-[10px] font-black text-on-surface uppercase tracking-widest italic">DESAFIOS ATIVOS</h3>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full">{activeChallenges.length}</span>
+              <ChevronRight className="w-4 h-4 text-on-surface-variant" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            {activeChallenges.slice(0,2).map((c) => (
+              <div key={c.id} className="flex items-center justify-between bg-surface-container-highest/50 rounded-2xl px-3 py-2">
+                <p className="text-xs font-bold text-on-surface uppercase italic truncate flex-1">{c.title}</p>
+                <div className="flex items-center gap-2 ml-2 shrink-0">
+                  <span className="text-[9px] font-black text-primary">+{c.xp} XP</span>
+                  <span className="text-[9px] font-black text-secondary">+{c.coins} BC</span>
+                </div>
+              </div>
+            ))}
+            {activeChallenges.length > 2 && (
+              <p className="text-[9px] text-center text-on-surface-variant font-bold uppercase tracking-widest">
+                +{activeChallenges.length - 2} outros desafios
+              </p>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Check-in Section */}
+      <section className="space-y-4">
+        {!alreadyCheckedIn && (
+          <div className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 space-y-3">
+            <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest px-2">SELECIONE SEU HORÁRIO:</label>
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+              {(() => {
+                const todayDow = now.getDay();
+                const nowMinutes = now.getHours() * 60 + now.getMinutes();
+                const todaySchedule = schedule.filter((s: any) => s.days?.includes(todayDow));
+
+                if (todaySchedule.length === 0) {
+                  return <p className="text-on-surface-variant text-xs font-bold uppercase italic px-2 opacity-50">Nenhuma aula hoje</p>;
+                }
+
+                return todaySchedule.map((s: any) => {
+                  const [h, m] = s.time.split(':').map(Number);
+                  const startMinutes = h * 60 + m;
+                  const expired = nowMinutes > startMinutes + 10;
+                  return (
                     <button
-                      key={op.id}
-                      onClick={() => { setSelectedOpponents(prev => [...prev, op.id]); setOpponentSearch(''); }}
-                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-primary/10 transition-all text-left"
+                      key={s.time}
+                      onClick={() => !expired && setSelectedClass(s.time)}
+                      disabled={expired}
+                      className={cn(
+                        "flex flex-col items-center min-w-[80px] p-3 rounded-2xl border transition-all",
+                        expired
+                          ? "bg-surface-container-highest/40 border-outline-variant/10 opacity-40 cursor-not-allowed"
+                          : selectedClass === s.time
+                          ? "bg-primary border-primary text-background"
+                          : "bg-surface-container-highest border-outline-variant/20 text-on-surface"
+                      )}
                     >
-                      <div className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center font-headline font-black text-sm text-on-surface">
-                        {op.name[0]}
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-on-surface uppercase italic">{op.name}</p>
-                        <p className="text-[10px] text-on-surface-variant font-bold">Nível {op.level} • {op.xp} XP</p>
-                      </div>
+                      <span className={cn("text-sm font-headline font-black", expired ? "line-through" : "")}>{s.time}</span>
+                      <span className={cn("text-[8px] font-bold uppercase tracking-tighter", selectedClass === s.time ? "text-background/60" : "text-on-surface-variant")}>
+                        {expired ? "encerrada" : s.coach.split(' ')[0]}
+                      </span>
                     </button>
-                  ))}
-                </div>
-              )}
-              {selectedOpponents.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {selectedOpponents.map(id => (
-                    <div key={id} className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 text-primary px-3 py-1.5 rounded-full">
-                      <span className="text-[11px] font-black uppercase">{getUserName(id)}</span>
-                      <button onClick={() => setSelectedOpponents(prev => prev.filter(x => x !== id))}>
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+                  );
+                });
+              })()}
             </div>
+          </div>
+        )}
 
-            {/* WOD */}
-            <div className="flex flex-col gap-2">
-              <div className="flex justify-between items-center">
-                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">WOD</label>
-                <button
-                  onClick={() => setWodMode(m => m === 'existing' ? 'custom' : 'existing')}
-                  className="text-[10px] font-black text-primary uppercase tracking-widest"
-                >
-                  {wodMode === 'existing' ? '+ Criar personalizado' : '← Usar existente'}
+        <button
+          onClick={handleCheckin}
+          disabled={isCheckingIn || alreadyCheckedIn}
+          className={cn(
+            "w-full py-6 rounded-3xl font-headline font-black text-xl shadow-lg transition-all uppercase italic tracking-tight flex items-center justify-center gap-3",
+            alreadyCheckedIn 
+              ? "bg-surface-container-highest text-on-surface-variant cursor-not-allowed opacity-50" 
+              : "bg-primary text-background hover:scale-[0.98] active:scale-95 shadow-[0_10px_30px_rgba(202,253,0,0.2)]"
+          )}
+        >
+          {isCheckingIn ? "VALIDANDO..." : alreadyCheckedIn ? "CHECK-IN REALIZADO" : "FAZER CHECK-IN AGORA"}
+          <MapPin className={cn("w-6 h-6", alreadyCheckedIn ? "text-on-surface-variant" : "fill-current")} />
+        </button>
+        {checkinMessage && (
+          <p className="text-center text-[10px] font-bold uppercase tracking-widest mt-2 text-primary">{checkinMessage}</p>
+        )}
+      </section>
+
+      {/* Daily WOD Preview - Compact */}
+      <section
+        onClick={() => navigate('/wod')}
+        className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5 flex items-center justify-between cursor-pointer hover:border-primary/40 transition-all group"
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center shrink-0">
+            <Timer className="w-6 h-6 text-primary" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-[8px] font-black text-primary uppercase tracking-widest bg-primary/10 px-2 py-0.5 rounded-full">HOJE</span>
+              <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">{wod?.type || '—'}</span>
+            </div>
+            <h3 className="font-headline font-black text-base text-on-surface uppercase italic tracking-tight leading-tight">
+              {wod?.name || 'WOD DO DIA'}
+            </h3>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 text-on-surface-variant group-hover:text-primary transition-colors shrink-0">
+          <span className="text-[9px] font-black uppercase tracking-widest">VER</span>
+          <ChevronRight className="w-4 h-4" />
+        </div>
+      </section>
+
+      {/* Quick Stats */}
+      <section className="grid grid-cols-2 gap-4">
+        <div className="bg-surface-container-low p-5 rounded-3xl border border-outline-variant/10 flex flex-col gap-3">
+          <div className="bg-primary/20 w-10 h-10 rounded-xl flex items-center justify-center">
+            <Activity className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Check-ins Semana</p>
+            <p className="text-2xl font-headline font-black text-on-surface">
+              {user?.checkins.filter(c => {
+                const checkinDate = new Date(c.timestamp);
+                const now = new Date();
+                const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+                return checkinDate >= startOfWeek;
+              }).length}/6
+            </p>
+          </div>
+        </div>
+        <div className="bg-surface-container-low p-5 rounded-3xl border border-outline-variant/10 flex flex-col gap-3">
+          <div className="bg-secondary/20 w-10 h-10 rounded-xl flex items-center justify-center">
+            <Trophy className="w-5 h-5 text-secondary" />
+          </div>
+          <div>
+            <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Ranking Box</p>
+            <p className="text-2xl font-headline font-black text-on-surface">
+              {userRankPosition != null ? `#${userRankPosition}` : '—'}
+            </p>
+          </div>
+        </div>
+      </section>
+      {/* Modal Compartilhar */}
+      <AnimatePresence>
+        {showShareModal && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-background/80 backdrop-blur-sm"
+            onClick={() => setShowShareModal(false)}>
+            <motion.div
+              initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }}
+              className="w-full max-w-md bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl"
+              onClick={e => e.stopPropagation()}>
+              <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic mb-6 flex items-center gap-3">
+                <Share2 className="w-6 h-6 text-primary" /> COMPARTILHAR APP
+              </h3>
+              <div className="flex flex-col gap-3">
+                <button onClick={shareViaWhatsApp}
+                  className="w-full bg-[#25D366] text-white py-4 rounded-2xl font-headline font-black uppercase italic flex items-center justify-center gap-3">
+                  📱 COMPARTILHAR VIA WHATSAPP
+                </button>
+                <button onClick={() => { navigator.clipboard.writeText(window.location.origin); alert('Link copiado!'); setShowShareModal(false); }}
+                  className="w-full bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-black uppercase italic flex items-center justify-center gap-3">
+                  🔗 COPIAR LINK
+                </button>
+                <button onClick={() => setShowShareModal(false)}
+                  className="w-full text-on-surface-variant py-3 font-headline font-black uppercase italic text-sm">
+                  CANCELAR
                 </button>
               </div>
-
-              {wodMode === 'existing' ? (
-                <select
-                  value={selectedWodId}
-                  onChange={e => setSelectedWodId(e.target.value)}
-                  className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
-                >
-                  <option value="">Selecione um WOD</option>
-                  {wods.map(w => (
-                    <option key={w.id} value={w.id}>{w.name} • {w.date} • {w.type}</option>
-                  ))}
-                </select>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <input
-                    type="text"
-                    placeholder="Nome do WOD"
-                    value={customWodName}
-                    onChange={e => setCustomWodName(e.target.value)}
-                    className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
-                  />
-                  <select
-                    value={customWodType}
-                    onChange={e => setCustomWodType(e.target.value as any)}
-                    className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
-                  >
-                    <option value="FOR TIME">For Time</option>
-                    <option value="AMRAP">AMRAP</option>
-                    <option value="EMOM">EMOM</option>
-                  </select>
-                  <textarea
-                    placeholder="Descrição / Movimentos"
-                    value={customWodDesc}
-                    onChange={e => setCustomWodDesc(e.target.value)}
-                    rows={3}
-                    className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Categoria */}
-            <div className="flex flex-col gap-2">
-              <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Categoria</label>
-              <div className="flex gap-2">
-                {(['RX', 'SCALED', 'BEGINNER'] as const).map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setCategory(cat)}
-                    className={cn(
-                      'flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all',
-                      category === cat ? 'bg-primary text-background shadow-lg' : 'bg-surface-container-highest text-on-surface-variant'
-                    )}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Aposta */}
-            <div className="bg-surface-container-highest/50 rounded-2xl p-4 flex flex-col gap-3 border border-outline-variant/10">
-              <div className="flex justify-between items-center">
-                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Modo Aposta</label>
-                <button
-                  onClick={() => setBetEnabled(b => !b)}
-                  className={cn(
-                    'w-12 h-6 rounded-full transition-all relative',
-                    betEnabled ? 'bg-primary' : 'bg-outline-variant/30'
-                  )}
-                >
-                  <div className={cn(
-                    'w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all shadow',
-                    betEnabled ? 'left-6' : 'left-0.5'
-                  )} />
-                </button>
-              </div>
-              {betEnabled && (
-                <div className="flex flex-col gap-3">
-                  <div className="flex gap-2">
-                    {(['xp', 'coins'] as const).map(t => (
-                      <button
-                        key={t}
-                        onClick={() => setBetType(t)}
-                        className={cn(
-                          'flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all',
-                          betType === t ? 'bg-primary text-background' : 'bg-surface-container-highest text-on-surface-variant'
-                        )}
-                      >
-                        {t === 'xp' ? '⚡ XP' : '🪙 Coins'}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
-                      Valor por participante (seu saldo: {betType === 'xp' ? user?.xp : user?.coins} {betType.toUpperCase()})
-                    </label>
-                    <input
-                      type="number"
-                      min={50}
-                      max={betType === 'xp' ? user?.xp : user?.coins}
-                      value={betAmount}
-                      onChange={e => setBetAmount(Math.max(50, Number(e.target.value)))}
-                      className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
-                    />
-                    <p className="text-[10px] text-on-surface-variant font-bold">
-                      Total em risco: {betAmount * (selectedOpponents.length + 1)} {betType.toUpperCase()}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Botão criar */}
-            <button
-              onClick={handleCreateDuel}
-              disabled={saving || selectedOpponents.length === 0 || (wodMode === 'existing' && !selectedWodId) || (wodMode === 'custom' && (!customWodName || !customWodDesc))}
-              className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic shadow-lg flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-all"
-            >
-              {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" /> : <Plus className="w-5 h-5" />}
-              CRIAR DUELO
-            </button>
-          </motion.div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
-
-      {/* ── Lista de duelos ── */}
-      <main className="px-6 flex flex-col gap-4">
-        {loading && !duels.length ? (
-          <div className="flex justify-center py-12">
-            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : filteredDuels.length === 0 ? (
-          <div className="bg-surface-container rounded-3xl p-12 flex flex-col items-center text-center gap-4 border border-outline-variant/10">
-            <Handshake className="w-16 h-16 text-on-surface-variant/20 mb-2" />
-            <p className="text-on-surface-variant font-headline font-black uppercase italic">Nenhum duelo encontrado</p>
-          </div>
-        ) : (
-          filteredDuels.map((duel) => {
-            const allParticipants = [duel.challengerId, ...duel.opponentIds];
-            const isChallenger = duel.challengerId === user?.id;
-            const isOpponent = duel.opponentIds.includes(user?.id || '');
-            const isParticipant = isChallenger || isOpponent;
-            const needsMyAcceptance = isOpponent && !duel.acceptedBy.includes(user?.id || '') && duel.status === 'pending';
-            const isExpanded = expandedId === duel.id;
-            const mySubmitted = Boolean(duel.results[user?.id || '']);
-            const allSubmitted = allParticipants.every(id => duel.results[id]);
-            const timeBased = isTimeBased(duel.wodType);
-
-            return (
-              <motion.div
-                key={duel.id}
-                layout
-                initial={{ opacity: 1 }}
-                exit={{ opacity: 0, scale: 0.95, y: -8 }}
-                transition={{ duration: 0.2 }}
-                className={cn(
-                  'bg-surface-container rounded-3xl p-5 border border-outline-variant/10 transition-all flex flex-col gap-4',
-                  isExpanded && 'ring-2 ring-primary/20 bg-surface-container-high',
-                )}
-              >
-                {/* Cabeçalho do card */}
-                <div className="flex justify-between items-start">
-                  <span className={cn(
-                    'text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest border',
-                    duel.status === 'active' ? 'bg-primary/20 text-primary border-primary/30'
-                      : duel.status === 'finished' ? 'bg-outline-variant/20 text-on-surface-variant border-outline-variant/30'
-                      : 'bg-secondary/20 text-secondary border-secondary/30'
-                  )}>
-                    {duel.status === 'active' ? 'ATIVO' : duel.status === 'finished' ? 'FINALIZADO' : 'PENDENTE'}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => setExpandedId(isExpanded ? null : duel.id)}>
-                      <ChevronDown className={cn('w-4 h-4 text-on-surface-variant transition-transform', isExpanded && 'rotate-180')} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* WOD info */}
-                {duel.wodName && (
-                  <div className="bg-surface-container-highest/40 rounded-2xl px-4 py-3 flex items-center gap-3">
-                    {timeBased
-                      ? <Timer className="w-4 h-4 text-primary flex-shrink-0" />
-                      : <Hash className="w-4 h-4 text-primary flex-shrink-0" />}
-                    <div>
-                      <p className="text-sm font-headline font-black text-on-surface uppercase italic">{duel.wodName}</p>
-                      <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
-                        {duel.wodType} • {duel.category}
-                        {timeBased ? ' • Menor tempo vence' : ' • Maior resultado vence'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Detalhes do WOD expansíveis */}
-                <AnimatePresence>
-                  {isExpanded && duel.wodRx && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="bg-surface-container-highest/30 rounded-2xl px-4 py-3 border border-outline-variant/10"
-                    >
-                      <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">{duel.category}</p>
-                      <p className="text-sm text-on-surface font-medium leading-relaxed whitespace-pre-wrap">{duel.wodRx}</p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Avatares VS */}
-                <div className="flex items-center justify-between gap-4">
-                  {allParticipants.map((pid, i) => (
-                    <React.Fragment key={pid}>
-                      {i > 0 && (
-                        <span className="text-on-surface-variant font-headline font-black text-sm italic opacity-40">VS</span>
-                      )}
-                      <div className="flex flex-col items-center gap-1">
-                        <div className={cn(
-                          'w-10 h-10 rounded-full border-2 bg-surface-container-highest flex items-center justify-center font-headline font-black text-base transition-colors overflow-hidden',
-                          pid === duel.challengerId ? 'border-secondary' : 'border-primary'
-                        )}>
-                          <AvatarPreview
-                            equipped={(pid === user?.id ? user?.avatar?.equipped : users.find(u => u.id === pid)?.avatar_equipped) || {} as AvatarSlot}
-                            size="sm"
-                            className="w-full h-full border-none shadow-none"
-                          />
-                        </div>
-                        <span className="text-[9px] font-bold text-on-surface uppercase italic truncate max-w-[56px]">
-                          {pid === user?.id ? 'VOCÊ' : getUserName(pid).split(' ')[0]}
-                        </span>
-                      </div>
-                    </React.Fragment>
-                  ))}
-                </div>
-
-                {/* Resultados */}
-                {(duel.status === 'active' || duel.status === 'finished') && (
-                  <div className="flex flex-col gap-1">
-                    {allParticipants.map(pid => {
-                      const visible = getVisibleResult(duel, pid);
-                      const isWinner = duel.status === 'finished' && duel.winnerId === pid;
-                      const isTieFinished = duel.status === 'finished' && duel.winnerId === null;
-                      return (
-                        <div key={pid} className={cn(
-                          'flex justify-between items-center px-3 py-2 rounded-xl',
-                          isWinner ? 'bg-primary/10 border border-primary/20'
-                            : isTieFinished ? 'bg-secondary/10 border border-secondary/20'
-                            : 'bg-surface-container-highest/30'
-                        )}>
-                          <span className="text-[11px] font-bold text-on-surface uppercase italic">
-                            {getUserName(pid)}
-                            {isWinner && ' 🏆'}
-                            {isTieFinished && ' 🤝'}
-                          </span>
-                          <span className={cn(
-                            'text-[11px] font-black italic',
-                            visible === 'Aguardando' ? 'text-on-surface-variant' : 'text-primary'
-                          )}>
-                            {visible}
-                          </span>
-                        </div>
-                      );
-                    })}
-                    {duel.status === 'active' && !allSubmitted && (
-                      <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest text-center mt-1 italic">
-                        Resultados revelados quando todos enviarem
-                      </p>
-                    )}
-                    {duel.status === 'finished' && duel.winnerId === null && (
-                      <p className="text-[10px] text-secondary font-bold uppercase tracking-widest text-center mt-1 italic">
-                        Empate — apostas devolvidas
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Aposta */}
-                {duel.betAmount > 0 && (
-                  <div className="pt-2 border-t border-outline-variant/5 flex justify-between items-center">
-                    <div className="flex items-center gap-1 text-[10px] text-on-surface-variant font-black uppercase tracking-widest">
-                      {duel.betType === 'xp' ? <Zap className="w-3 h-3 text-primary" /> : <span>🪙</span>}
-                      Aposta: {duel.betAmount} {duel.betType.toUpperCase()} cada
-                    </div>
-                    {duel.betCanceledAt && (
-                      <span className="text-[10px] text-error font-black uppercase">Devolvido</span>
-                    )}
-                  </div>
-                )}
-
-                {/* Pendente: oponente aceita/recusa */}
-                {needsMyAcceptance && (
-                  <div className="flex gap-3 mt-2">
-                    <button
-                      onClick={() => handleAccept(duel.id)}
-                      disabled={saving}
-                      className="flex-1 bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic flex items-center justify-center gap-2 shadow-[0_10px_20px_rgba(202,253,0,0.2)] hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
-                    >
-                      ACEITAR <Check className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => handleCancel(duel.id)}
-                      disabled={saving}
-                      className="flex-1 bg-error-container text-on-error-container py-4 rounded-2xl font-headline font-black text-sm uppercase italic flex items-center justify-center gap-2 border-2 border-error/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
-                    >
-                      RECUSAR <X className="w-5 h-5" />
-                    </button>
-                  </div>
-                )}
-
-                {/* Pendente: desafiante aguarda */}
-                {duel.status === 'pending' && isChallenger && (
-                  <div className="flex flex-col gap-3">
-                    <div className="bg-surface-container-highest/30 rounded-2xl p-4 border border-outline-variant/10">
-                      <p className="text-center text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Aguardando:</p>
-                      <p className="text-center text-xs font-headline font-black text-on-surface uppercase italic">
-                        {duel.opponentIds.filter(id => !duel.acceptedBy.includes(id)).map(id => getUserName(id)).join(', ')}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleCancel(duel.id)}
-                      disabled={saving}
-                      className="w-full bg-error-container/10 text-error py-3 rounded-2xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2 border-2 border-error/20 hover:bg-error-container/20 transition-all disabled:opacity-50"
-                    >
-                      CANCELAR DESAFIO <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-
-                {/* Ativo: submeter resultado */}
-                {duel.status === 'active' && isParticipant && !mySubmitted && (
-                  <div className="flex gap-2 mt-2">
-                    <input
-                      type="text"
-                      placeholder={timeBased ? 'Resultado (ex: 12:45)' : 'Resultado (ex: 150 reps)'}
-                      value={submission[duel.id] || ''}
-                      onChange={e => setSubmission(prev => ({ ...prev, [duel.id]: e.target.value }))}
-                      className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
-                    />
-                    <button
-                      onClick={() => handleSubmitResult(duel)}
-                      disabled={saving || !submission[duel.id]?.trim()}
-                      className="bg-primary text-background px-5 rounded-2xl font-headline font-black text-sm uppercase italic flex items-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
-                    >
-                      {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
-                    </button>
-                  </div>
-                )}
-
-                {/* Ativo: já enviou */}
-                {duel.status === 'active' && isParticipant && mySubmitted && !allSubmitted && (
-                  <p className="text-center text-[10px] text-primary font-black uppercase tracking-widest">
-                    ✓ Resultado enviado — aguardando os outros
-                  </p>
-                )}
-
-                {/* Ativo: cancelar */}
-                {duel.status === 'active' && isParticipant && (
-                  <button
-                    onClick={() => handleCancel(duel.id)}
-                    disabled={saving}
-                    className="w-full bg-transparent text-on-surface-variant/40 py-3 rounded-xl font-headline font-black text-[10px] uppercase italic flex items-center justify-center gap-2 border border-outline-variant/10 hover:text-error hover:border-error/30 transition-all disabled:opacity-50"
-                  >
-                    DESISTIR / CANCELAR <X className="w-3 h-3" />
-                  </button>
-                )}
-              </motion.div>
-            );
-          })
-        )}
-      </main>
-
-      {/* FAB */}
-      <button
-        onClick={() => setShowCreate(s => !s)}
-        className="fixed bottom-28 right-6 w-14 h-14 bg-primary text-background rounded-2xl shadow-xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
-      >
-        {showCreate ? <X className="w-6 h-6" strokeWidth={3} /> : <Plus className="w-6 h-6" strokeWidth={3} />}
-      </button>
     </div>
   );
-}
+  }
