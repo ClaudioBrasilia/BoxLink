@@ -8,11 +8,13 @@ import { Wod, User } from '../types';
 import confetti from 'canvas-confetti';
 import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
+import { useInactivity } from '../hooks/useInactivity';
 
 import { addReward } from '../utils/rewards';
 
 export default function Dashboard() {
   const { user, updateUser } = useAuth();
+  const { fadePercent: inactivityFade, showSleeping: inactivitySleep } = useInactivity();
   const navigate = useNavigate();
   const [wod, setWod] = useState<Wod | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
@@ -266,7 +268,7 @@ export default function Dashboard() {
       {/* Header */}
       <header className="flex justify-between items-start">
         <div className="flex items-center gap-4">
-          <AvatarPreview equipped={user?.avatar.equipped!} size="sm" className="border-2" />
+          <AvatarPreview equipped={user?.avatar.equipped!} size="sm" className="border-2" fadePercent={inactivityFade} showSleeping={inactivitySleep} />
           <div>
             <h1 className="text-2xl font-headline font-black text-on-surface tracking-tight uppercase italic leading-none">
               OLÁ, <span className="text-primary">{user?.name.split(' ')[0]}</span>
