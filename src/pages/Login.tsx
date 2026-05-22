@@ -63,7 +63,16 @@ export default function Login() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest ml-4">Senha</label>
+            {/* Label com link esqueci minha senha na mesma linha */}
+            <div className="flex items-center justify-between px-1">
+              <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest ml-3">Senha</label>
+              <Link
+                to="/forgot-password"
+                className="text-[10px] text-primary font-black uppercase tracking-widest hover:underline"
+              >
+                Esqueci minha senha
+              </Link>
+            </div>
             <input
               type="password"
               value={password}
