@@ -1,0 +1,146 @@
+# 💓 Frequência Cardíaca em Tempo Real — BoxLink
+
+Integração completa para exibir a FC dos alunos na TV do box, via Bluetooth (Web Bluetooth API) + Supabase Realtime.
+
+---
+
+## Arquitetura
+
+```
+Relógio do aluno (Bluetooth GATT)
+         ↓  Web Bluetooth API (Chrome/Edge)
+   App do aluno (Dashboard)
+         ↓  Supabase upsert a cada 3s
+   Tabela: heart_rate_live
+         ↓  Supabase Realtime
+   TV do Box (TV.tsx)
+         → Exibe BPM + zona de FC de todos os atletas conectados
+```
+
+---
+
+## Arquivos criados — onde colocar cada um
+
+| Arquivo entregue               | Destino no projeto                          |
+|-------------------------------|---------------------------------------------|
+| `heart_rate_migration.sql`    | Rodar no SQL Editor do Supabase             |
+| `useHeartRate.ts`             | `src/hooks/useHeartRate.ts`                 |
+| `HeartRateWidget.tsx`         | `src/components/HeartRateWidget.tsx`        |
+| `TVHeartRatePanel.tsx`        | `src/components/TVHeartRatePanel.tsx`       |
+
+---
+
+## Passo a passo
+
+### 1. Banco de dados (Supabase)
+
+No painel do Supabase → **SQL Editor**, cole e execute o conteúdo de `heart_rate_migration.sql`.
+
+Isso cria:
+- Tabela `heart_rate_live` (1 registro por atleta, updated via upsert)
+- RLS: atleta só escreve o próprio; TV lê tudo
+- Realtime habilitado na tabela
+
+---
+
+### 2. Hook Bluetooth
+
+Copie `useHeartRate.ts` para `src/hooks/useHeartRate.ts`.
+
+Este hook usa a **Web Bluetooth API** padrão do navegador para conectar a qualquer relógio/sensor com perfil **Heart Rate GATT** (Garmin, Polar, Wahoo, Mi Band, etc.).
+
+> ⚠️ Web Bluetooth funciona apenas em **Chrome** e **Edge** em desktop e Android. Não funciona em Firefox nem iOS Safari.
+
+---
+
+### 3. Widget no Dashboard do aluno
+
+Copie `HeartRateWidget.tsx` para `src/components/HeartRateWidget.tsx`.
+
+Depois, em **`src/pages/Dashboard.tsx`**, adicione:
+
+**No topo** (imports):
+```tsx
+import HeartRateWidget from '../components/HeartRateWidget';
+```
+
+**No JSX** (após o bloco de check-in, por exemplo):
+```tsx
+{/* Conectar Relógio */}
+<HeartRateWidget userId={user?.id} />
+```
+
+---
+
+### 4. Painel na TV
+
+Copie `TVHeartRatePanel.tsx` para `src/components/TVHeartRatePanel.tsx`.
+
+Depois, em **`src/pages/TV.tsx`**:
+
+**No topo** (imports):
+```tsx
+import TVHeartRatePanel from '../components/TVHeartRatePanel';
+```
+
+**No JSX**, dentro da `<div className="col-span-4 ...">`, entre o bloco de ranking e o bloco de atletas:
+```tsx
+{/* Fechamento do painel TOP 3 */}
+</section>
+
+{/* ✅ NOVO: Painel de FC ao vivo */}
+<TVHeartRatePanel />
+
+{/* Painel de Atletas na Aula (já existente) */}
+<section className="bg-[#111] rounded-[2.5rem] ...">
+```
+
+O painel **some automaticamente** quando nenhum atleta tem relógio conectado.
+
+---
+
+## Como funciona para o aluno
+
+1. Aluno abre o app no celular ou notebook (Chrome/Edge)
+2. No Dashboard, aparece o card **"Frequência Cardíaca"**
+3. Aluno clica **"Conectar Relógio"**
+4. Navegador abre o seletor Bluetooth → aluno escolhe o relógio
+5. BPM aparece em tempo real no app do aluno
+6. A cada 3 segundos, o BPM é salvo no Supabase
+7. A TV exibe automaticamente o painel com todos os atletas conectados
+
+---
+
+## Compatibilidade de relógios
+
+| Relógio/Marca       | Compatível? | Observações                              |
+|--------------------|-------------|------------------------------------------|
+| Garmin (HRM, etc.) | ✅ Sim       | Suporta GATT Heart Rate nativamente      |
+| Polar H10, H9      | ✅ Sim       | Excelente suporte                        |
+| Wahoo TICKR        | ✅ Sim       | Funciona muito bem                       |
+| Mi Band / Amazfit  | ✅ Sim       | Maioria dos modelos modernos             |
+| Apple Watch        | ⚠️ Parcial  | Precisa app companion (ex: HeartBridge)  |
+| Fitbit             | ⚠️ Parcial  | Depende do modelo                        |
+| iOS (todos)        | ❌ Não       | iOS bloqueia Web Bluetooth               |
+
+---
+
+## Zonas de FC exibidas
+
+| Zona        | BPM      | Cor      |
+|-------------|----------|----------|
+| Repouso     | < 100    | 🔵 Azul  |
+| Aquecimento | 100–119  | 🟢 Verde |
+| Aeróbico    | 120–139  | 🟡 Amarelo |
+| Anaeróbico  | 140–159  | 🟠 Laranja |
+| Máximo ⚡   | ≥ 160    | 🔴 Vermelho |
+
+---
+
+## Limpeza automática
+
+Registros não atualizados há mais de 10 minutos são automaticamente ignorados pelo painel da TV. Para limpeza periódica no banco, você pode agendar no Supabase (pg_cron):
+
+```sql
+SELECT cron.schedule('cleanup-hr', '*/10 * * * *', 'SELECT public.cleanup_stale_heart_rates()');
+```
