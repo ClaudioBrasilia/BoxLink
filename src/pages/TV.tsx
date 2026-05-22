@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Timer, Trophy, Zap, Swords, Maximize, LayoutDashboard, Activity, Users, Play, Pause, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Timer, Trophy, Zap, Swords, Maximize, LayoutDashboard, Activity, Users, Play, Pause, RotateCcw, ChevronLeft, ChevronRight, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wod, Challenge, Duel, User, BoxSettings } from '../types';
 import { format } from 'date-fns';
@@ -10,6 +10,123 @@ import AvatarPreview from '../components/AvatarPreview';
 
 const TIMEZONE = "America/Sao_Paulo";
 
+// ─── Painel de Frequência Cardíaca (embutido na TV) ──────────────────────────
+
+interface AthleteHR {
+  user_id: string;
+  bpm: number;
+  updated_at: string;
+  name?: string;
+}
+
+function getHRZone(bpm: number) {
+  if (bpm < 100) return { label: 'REPOUSO',     color: '#60a5fa', bar: 'bg-blue-400',   glow: 'rgba(96,165,250,0.5)' };
+  if (bpm < 120) return { label: 'AQUECIMENTO', color: '#4ade80', bar: 'bg-green-400',  glow: 'rgba(74,222,128,0.5)' };
+  if (bpm < 140) return { label: 'AERÓBICO',    color: '#facc15', bar: 'bg-yellow-400', glow: 'rgba(250,204,21,0.5)' };
+  if (bpm < 160) return { label: 'ANAERÓBICO',  color: '#fb923c', bar: 'bg-orange-400', glow: 'rgba(251,146,60,0.5)' };
+  return               { label: 'MÁXIMO ⚡',    color: '#f87171', bar: 'bg-red-400',    glow: 'rgba(248,113,113,0.6)' };
+}
+
+function intensityPct(bpm: number) {
+  return Math.min(100, Math.max(0, ((bpm - 50) / (200 - 50)) * 100));
+}
+
+function TVHeartRatePanel() {
+  const [athletes, setAthletes] = useState<AthleteHR[]>([]);
+
+  const fetchHR = useCallback(async () => {
+    const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: hrData } = await supabase
+      .from('heart_rate_live')
+      .select('user_id, bpm, updated_at')
+      .gte('updated_at', cutoff)
+      .order('bpm', { ascending: false });
+
+    if (!hrData || hrData.length === 0) { setAthletes([]); return; }
+
+    const ids = hrData.map((r: any) => r.user_id);
+    const { data: profiles } = await supabase
+      .from('profiles').select('id, name').in('id', ids);
+
+    const profileMap = Object.fromEntries((profiles || []).map((p: any) => [p.id, p]));
+    setAthletes(hrData.map((r: any) => ({
+      ...r,
+      name: profileMap[r.user_id]?.name || 'Atleta',
+    })));
+  }, []);
+
+  useEffect(() => {
+    fetchHR();
+    const channel = supabase
+      .channel('tv-heart-rate')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'heart_rate_live' }, fetchHR)
+      .subscribe();
+    const interval = setInterval(fetchHR, 5000);
+    return () => { supabase.removeChannel(channel); clearInterval(interval); };
+  }, [fetchHR]);
+
+  if (athletes.length === 0) return null;
+
+  return (
+    <section className="bg-[#111] rounded-[2.5rem] border border-white/5 p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Heart className="w-4 h-4 text-red-400 animate-pulse" />
+          <h3 className="text-sm font-headline font-black text-white italic uppercase tracking-tight">FC AO VIVO</h3>
+        </div>
+        <span className="bg-red-500/20 border border-red-500/30 text-red-400 px-2 py-0.5 rounded-full font-headline font-black text-[10px] italic">
+          {athletes.length} relógio{athletes.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <AnimatePresence>
+          {athletes.map((athlete) => {
+            const zone = getHRZone(athlete.bpm);
+            const pct = intensityPct(athlete.bpm);
+            const firstName = athlete.name?.split(' ')[0] || 'Atleta';
+            return (
+              <motion.div key={athlete.user_id} layout
+                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.3 }}
+                className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center font-headline font-black text-xs shrink-0"
+                      style={{ backgroundColor: zone.color + '20', border: `1px solid ${zone.color}40`, color: zone.color }}>
+                      {firstName[0]}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-white font-black text-[10px] uppercase italic truncate leading-none">{firstName}</p>
+                      <p className="text-[8px] font-black uppercase tracking-wider mt-0.5" style={{ color: zone.color }}>{zone.label}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-0.5 shrink-0">
+                    <motion.span key={athlete.bpm} initial={{ scale: 1.3, opacity: 0.5 }} animate={{ scale: 1, opacity: 1 }}
+                      className="font-headline font-black text-xl italic tabular-nums"
+                      style={{ color: zone.color, textShadow: `0 0 16px ${zone.glow}` }}>
+                      {athlete.bpm}
+                    </motion.span>
+                    <span className="text-[8px] font-black uppercase" style={{ color: zone.color }}>BPM</span>
+                  </div>
+                </div>
+                <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                  <motion.div className={`h-full rounded-full ${zone.bar}`}
+                    style={{ boxShadow: `0 0 6px ${zone.glow}` }}
+                    initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+                    transition={{ duration: 0.5 }} />
+                </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </div>
+    </section>
+  );
+}
+
+// ─── TV Principal ─────────────────────────────────────────────────────────────
+
 export default function TV() {
   const [data, setData] = useState<any>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -19,12 +136,10 @@ export default function TV() {
   const [rankingView, setRankingView] = useState<'xp' | 'frequency'>('xp');
   const [athleteIndex, setAthleteIndex] = useState(0);
   const [wodTabIndex, setWodTabIndex] = useState(0);
-
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(new Date());
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // Relógio em tempo real
   useEffect(() => {
     const clockInterval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(clockInterval);
@@ -33,15 +148,9 @@ export default function TV() {
   const fetchData = useCallback(async () => {
     try {
       const today = formatInTimeZone(new Date(), TIMEZONE, "yyyy-MM-dd");
-
       const [
-        { data: settings },
-        { data: economy },
-        { data: wod },
-        { data: challenges },
-        { data: duels },
-        { data: rankings },
-        { data: scheduleData }
+        { data: settings }, { data: economy }, { data: wod },
+        { data: challenges }, { data: duels }, { data: rankings }, { data: scheduleData }
       ] = await Promise.all([
         supabase.from('box_settings').select('*').maybeSingle(),
         supabase.from('avatar_economy_settings').select('*').eq('is_active', true).maybeSingle(),
@@ -53,66 +162,34 @@ export default function TV() {
       ]);
 
       const nowStr = formatInTimeZone(new Date(), TIMEZONE, 'HH:mm');
-      const currentClass = (scheduleData || []).find((s: any) => {
-        return nowStr >= s.time && nowStr <= (s.end_time || s.endTime || '23:59');
-      });
+      const currentClass = (scheduleData || []).find((s: any) => nowStr >= s.time && nowStr <= (s.end_time || s.endTime || '23:59'));
 
-      const { data: checkinsRaw } = await supabase
-        .from('checkins').select('*')
-        .gte('date', today)
-        .order('timestamp', { ascending: false })
-        .limit(20);
-
-      const { data: profilesRaw } = await supabase
-        .from('profiles').select('id, name, avatar_equipped, xp, level, role');
-
+      const { data: checkinsRaw } = await supabase.from('checkins').select('*').gte('date', today).order('timestamp', { ascending: false }).limit(20);
+      const { data: profilesRaw } = await supabase.from('profiles').select('id, name, avatar_equipped, xp, level, role');
       const profileMap = Object.fromEntries((profilesRaw || []).map((p: any) => [p.id, p]));
 
       const startOfMonth = format(new Date(), 'yyyy-MM-01');
-      const { data: monthlyCheckins } = await supabase
-        .from('checkins')
-        .select('user_id')
-        .gte('date', startOfMonth);
-
+      const { data: monthlyCheckins } = await supabase.from('checkins').select('user_id').gte('date', startOfMonth);
       const freqMap: Record<string, number> = {};
-      (monthlyCheckins || []).forEach(c => {
-        freqMap[c.user_id] = (freqMap[c.user_id] || 0) + 1;
-      });
-
+      (monthlyCheckins || []).forEach(c => { freqMap[c.user_id] = (freqMap[c.user_id] || 0) + 1; });
       const frequencyRanking = Object.entries(freqMap)
-        .map(([userId, count]) => ({
-          ...(profileMap[userId] || { name: 'Atleta' }),
-          count
-        }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
+        .map(([userId, count]) => ({ ...(profileMap[userId] || { name: 'Atleta' }), count }))
+        .sort((a, b) => b.count - a.count).slice(0, 5);
 
-      const allCheckins = (checkinsRaw || []).map((c: any) => ({
-        ...c,
-        profiles: profileMap[c.user_id] || null
-      }));
-
-      const checkins = currentClass
-        ? allCheckins.filter((c: any) => c.class_time === currentClass.time)
-        : allCheckins;
-
+      const allCheckins = (checkinsRaw || []).map((c: any) => ({ ...c, profiles: profileMap[c.user_id] || null }));
+      const checkins = currentClass ? allCheckins.filter((c: any) => c.class_time === currentClass.time) : allCheckins;
       const stats = {
         checkins: checkins.length,
-        // ── ALTERADO: usa líder de check-ins do mês em vez de XP ──
-        topPlayer: frequencyRanking?.[0]
-          ? `${frequencyRanking[0].name.split(' ')[0].toUpperCase()} • ${frequencyRanking[0].count} CHECK-INS`
-          : null,
+        topPlayer: rankings?.[0] ? `${rankings[0].name.split(' ')[0].toUpperCase()} • ${rankings[0].xp} XP` : null,
         wod: wod?.name || null
       };
 
-      // Fallback to most recent WOD if today's WOD is not found
       let activeWod = wod;
       if (!activeWod) {
         const { data: latestWod } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
         activeWod = latestWod;
       }
 
-      // Normalizar tvConfig com fallback seguro
       const rawTvConfig = settings?.tv_config || settings?.tvConfig || {};
       const tvConfig = {
         ...rawTvConfig,
@@ -128,19 +205,10 @@ export default function TV() {
 
       setData({
         settings: settings || { name: "CrossCity Hub", logo: "" },
-        tvConfig: tvConfig,
-        rewards: economy,
-        wod: activeWod || null,
-        checkins: checkins || [],
+        tvConfig, rewards: economy, wod: activeWod || null, checkins: checkins || [],
         challenges: challenges || [],
-        duels: (duels || []).map((d: any) => ({
-          ...d,
-          challengerName: d.challenger?.name || 'Atleta',
-          opponentName: d.opponent?.name || 'Atleta'
-        })),
-        rankings: rankings || [],
-        stats,
-        frequencyRanking,
+        duels: (duels || []).map((d: any) => ({ ...d, challengerName: d.challenger?.name || 'Atleta', opponentName: d.opponent?.name || 'Atleta' })),
+        rankings: rankings || [], stats, frequencyRanking,
         announcements: settings?.announcements || [],
       });
       setError(null);
@@ -162,22 +230,16 @@ export default function TV() {
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 30000);
-    
     const athleteInterval = setInterval(() => {
-      setAthleteIndex(prev => {
-        const count = athleteCountRef.current || 1;
-        return (prev + 1) % count;
-      });
+      setAthleteIndex(prev => { const count = athleteCountRef.current || 1; return (prev + 1) % count; });
     }, 4000);
-
     const rankingInterval = setInterval(() => {
       setRankingView(prev => prev === 'xp' ? 'frequency' : 'xp');
     }, 10000);
 
     let realtimeChannel: ReturnType<typeof supabase.channel>;
     const subscribeRealtime = () => {
-      realtimeChannel = supabase
-        .channel('tv-realtime')
+      realtimeChannel = supabase.channel('tv-realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, () => fetchData())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchData())
         .subscribe((status) => {
@@ -189,30 +251,18 @@ export default function TV() {
         });
     };
     subscribeRealtime();
-
-    return () => {
-      clearInterval(interval);
-      clearInterval(athleteInterval);
-      clearInterval(rankingInterval);
-      supabase.removeChannel(realtimeChannel);
-    };
+    return () => { clearInterval(interval); clearInterval(athleteInterval); clearInterval(rankingInterval); supabase.removeChannel(realtimeChannel); };
   }, [fetchData]);
 
   useEffect(() => {
     if (!isWodAutoRotationActive) return;
-    const wodInterval = setInterval(() => {
-      setWodTabIndex(prev => (prev + 1) % 3);
-    }, 15000);
+    const wodInterval = setInterval(() => { setWodTabIndex(prev => (prev + 1) % 3); }, 15000);
     return () => clearInterval(wodInterval);
   }, [isWodAutoRotationActive]);
 
   useEffect(() => {
     let interval: any;
-    if (isTimerRunning) {
-      interval = setInterval(() => {
-        setTimer(t => t + 1);
-      }, 1000);
-    }
+    if (isTimerRunning) { interval = setInterval(() => { setTimer(t => t + 1); }, 1000); }
     return () => clearInterval(interval);
   }, [isTimerRunning]);
 
@@ -223,13 +273,8 @@ export default function TV() {
   };
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
+    if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); setIsFullscreen(true); }
+    else { document.exitFullscreen(); setIsFullscreen(false); }
   };
 
   if (error && !data) return (
@@ -249,7 +294,6 @@ export default function TV() {
   );
 
   const { wod, checkins, settings, rankings, stats, duels, challenges, frequencyRanking, tvConfig, announcements } = data;
-  
   const tickerItems = {
     duels: tvConfig?.tickerItems?.duels ?? true,
     checkins: tvConfig?.tickerItems?.checkins ?? true,
@@ -259,10 +303,6 @@ export default function TV() {
     challenges: tvConfig?.tickerItems?.challenges ?? true,
   };
 
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[TV] tvConfig loaded:', tvConfig);
-    console.log('[TV] tickerItems resolved:', tickerItems);
-  }
   const isStale = lastUpdated && (Date.now() - lastUpdated.getTime()) > 60000;
 
   if (!wod) {
@@ -278,7 +318,7 @@ export default function TV() {
           </div>
           <div className="flex flex-col items-center">
             <span className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">HORA ATUAL</span>
-            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(now, 'HH:mm:ss' )}</span>
+            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(now, 'HH:mm:ss')}</span>
           </div>
         </header>
         <div className="flex-1 flex flex-col items-center justify-center bg-[#111] rounded-[3rem] border border-white/5">
@@ -315,13 +355,13 @@ export default function TV() {
     if (lines > 5) return 'gap-4';
     return 'gap-6';
   };
-  
+
   return (
     <div className="min-h-screen bg-black text-white font-sans overflow-hidden flex flex-col p-6 gap-6 relative select-none">
       <header className="flex justify-between items-center bg-[#111] rounded-[2rem] p-6 border border-white/5 shadow-2xl">
         <div className="flex items-center gap-6">
           <div className="relative">
-            <img src={settings.logo || "https://picsum.photos/seed/box/200"} alt="Logo" className="w-16 h-16 rounded-2xl border-2 border-primary shadow-[0_0_20px_rgba(202,253,0,0.3 )]" />
+            <img src={settings.logo || "https://picsum.photos/seed/box/200"} alt="Logo" className="w-16 h-16 rounded-2xl border-2 border-primary shadow-[0_0_20px_rgba(202,253,0,0.3)]" />
             <div className="absolute -bottom-2 -right-2 bg-primary text-black text-[8px] font-black px-2 py-0.5 rounded-full uppercase italic">ELITE</div>
           </div>
           <div>
@@ -335,22 +375,18 @@ export default function TV() {
             <span className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">HORA ATUAL</span>
             <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(now, 'HH:mm:ss')}</span>
           </div>
-          
           <div className="h-12 w-[1px] bg-white/10"></div>
-
           <div className="flex items-center gap-6">
             <div className="flex flex-col items-end">
               <span className="text-primary font-headline font-black text-3xl italic leading-none tabular-nums">{formatTime(timer)}</span>
               <span className="text-white/40 text-[8px] font-black uppercase tracking-widest mt-1">TIMER ATIVO</span>
             </div>
-            <button 
-              onClick={() => setIsTimerRunning(!isTimerRunning)}
+            <button onClick={() => setIsTimerRunning(!isTimerRunning)}
               className={cn("w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-lg",
                 isTimerRunning ? "bg-red-500 text-white" : "bg-primary text-black")}>
               {isTimerRunning ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-1" />}
             </button>
-            <button 
-              onClick={() => { setTimer(0); setIsTimerRunning(false); }}
+            <button onClick={() => { setTimer(0); setIsTimerRunning(false); }}
               className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all">
               <RotateCcw className="w-6 h-6" />
             </button>
@@ -383,8 +419,8 @@ export default function TV() {
                 <button key={label} onClick={() => setWodTabIndex(i)}
                   className={cn(
                     "px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-[0.2em] italic transition-all border relative overflow-hidden",
-                    wodTabIndex === i 
-                      ? "bg-primary text-black border-primary shadow-[0_0_20px_rgba(202,253,0,0.3)]" 
+                    wodTabIndex === i
+                      ? "bg-primary text-black border-primary shadow-[0_0_20px_rgba(202,253,0,0.3)]"
                       : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"
                   )}>
                   <span className="relative z-10">{label}</span>
@@ -396,8 +432,7 @@ export default function TV() {
               ))}
             </div>
             <div className="flex gap-2 mr-2">
-              <button 
-                onClick={() => setIsWodAutoRotationActive(!isWodAutoRotationActive)}
+              <button onClick={() => setIsWodAutoRotationActive(!isWodAutoRotationActive)}
                 className={cn("p-3 rounded-xl border transition-all flex items-center gap-2",
                   isWodAutoRotationActive ? "bg-primary/20 border-primary/30 text-primary" : "bg-white/5 border-white/10 text-white/40")}>
                 {isWodAutoRotationActive ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
@@ -437,7 +472,7 @@ export default function TV() {
                         className="flex items-center gap-6 shrink-0">
                         <div className="w-3 h-3 rounded-full bg-primary shadow-[0_0_20px_#cafd00] shrink-0"></div>
                         <p className="font-headline font-black text-white uppercase italic tracking-tight leading-tight"
-                           style={{ fontSize: getListFontSize(wod?.warmup) }}>{line}</p>
+                          style={{ fontSize: getListFontSize(wod?.warmup) }}>{line}</p>
                       </motion.div>
                     ))}
                   </div>
@@ -463,7 +498,7 @@ export default function TV() {
                         className="flex items-center gap-6 shrink-0">
                         <div className="w-3 h-3 rounded-full bg-secondary shadow-[0_0_20px_#ff7439] shrink-0"></div>
                         <p className="font-headline font-black text-white uppercase italic tracking-tight leading-tight"
-                           style={{ fontSize: getListFontSize(wod?.skill) }}>{line}</p>
+                          style={{ fontSize: getListFontSize(wod?.skill) }}>{line}</p>
                       </motion.div>
                     ))}
                   </div>
@@ -483,29 +518,19 @@ export default function TV() {
                       {wod.type}
                     </div>
                   </div>
-
                   <div className="flex-1 flex flex-col min-h-0 bg-white/5 border border-white/10 rounded-[2rem] p-6 overflow-hidden">
                     <span className="text-primary text-sm font-black uppercase tracking-widest mb-3 shrink-0">RX</span>
                     <div className="flex-1 overflow-y-auto no-scrollbar">
-                      <p
-                        className="text-white font-headline font-black italic leading-relaxed whitespace-pre-wrap"
-                        style={{ fontSize: getWodFontSize(wod.rx) }}
-                      >
-                        {wod.rx}
-                      </p>
+                      <p className="text-white font-headline font-black italic leading-relaxed whitespace-pre-wrap"
+                        style={{ fontSize: getWodFontSize(wod.rx) }}>{wod.rx}</p>
                     </div>
                   </div>
-
                   {wod.scaled && (
                     <div className="shrink-0 max-h-[30%] flex flex-col bg-white/5 border border-white/10 rounded-[2rem] p-5">
                       <span className="text-white/40 text-xs font-black uppercase tracking-widest mb-2 shrink-0 block">SCALED</span>
                       <div className="flex-1 overflow-y-auto no-scrollbar">
-                        <p
-                          className="text-white/70 font-headline font-black italic leading-snug whitespace-pre-wrap"
-                          style={{ fontSize: getWodFontSize(wod.scaled) }}
-                        >
-                          {wod.scaled}
-                        </p>
+                        <p className="text-white/70 font-headline font-black italic leading-snug whitespace-pre-wrap"
+                          style={{ fontSize: getWodFontSize(wod.scaled) }}>{wod.scaled}</p>
                       </div>
                     </div>
                   )}
@@ -515,7 +540,10 @@ export default function TV() {
           </div>
         </div>
 
-        <div className="col-span-4 flex flex-col gap-6">
+        {/* Coluna direita */}
+        <div className="col-span-4 flex flex-col gap-6 overflow-y-auto no-scrollbar">
+
+          {/* Ranking TOP 3 */}
           <section className="bg-[#111] rounded-[2.5rem] p-5 border border-white/5 flex flex-col gap-3" style={{flex: '2 1 0'}}>
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
@@ -593,6 +621,10 @@ export default function TV() {
             </div>
           </section>
 
+          {/* ❤️ PAINEL DE FREQUÊNCIA CARDÍACA AO VIVO */}
+          <TVHeartRatePanel />
+
+          {/* Atletas na Aula */}
           <section className="bg-[#111] rounded-[2.5rem] border border-white/5 relative overflow-hidden flex flex-col" style={{flex: '1 1 0'}}>
             <div className="flex justify-between items-center px-5 pt-4 pb-2">
               <div className="flex items-center gap-2">
@@ -607,8 +639,7 @@ export default function TV() {
             {checkins.length === 0 ? (
               <div className="flex-1 flex items-center justify-center">
                 <p className="text-white/20 text-xs font-black uppercase tracking-widest italic text-center px-4">
-                  Nenhum check-in  
-registrado ainda
+                  Nenhum check-in registrado ainda
                 </p>
               </div>
             ) : (
@@ -680,53 +711,42 @@ registrado ainda
                     <div className="flex items-center gap-4">
                       <Timer className="w-4 h-4 text-primary" />
                       <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">WOD:</span>
-                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">
-                        {wod.name} • {wod.type}
-                      </span>
+                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{wod.name} • {wod.type}</span>
                     </div>
                     <div className="w-2 h-2 rounded-full bg-white/20"></div>
                   </>
                 )}
-
                 {tickerItems.checkins && checkins.length > 0 && (
                   <>
                     <div className="flex items-center gap-4">
                       <Users className="w-4 h-4 text-primary" />
                       <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">CHECK-INS:</span>
-                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">
-                        {checkins.length} atleta{checkins.length !== 1 ? 's' : ''} na aula
-                      </span>
+                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{checkins.length} atleta{checkins.length !== 1 ? 's' : ''} na aula</span>
                     </div>
                     <div className="w-2 h-2 rounded-full bg-white/20"></div>
                   </>
                 )}
-
                 {tickerItems.duels && duels?.map((d: any) => (
                   <React.Fragment key={d.id}>
                     <div className="flex items-center gap-4">
                       <Swords className="w-4 h-4 text-secondary" />
                       <span className="text-secondary text-[10px] font-black uppercase tracking-widest italic">DUELO:</span>
-                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">
-                        {d.challengerName} <span className="text-white/30 mx-2">VS</span> {d.opponentName}
-                      </span>
+                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{d.challengerName} <span className="text-white/30 mx-2">VS</span> {d.opponentName}</span>
                     </div>
                     <div className="w-2 h-2 rounded-full bg-white/20"></div>
                   </React.Fragment>
                 ))}
-
-                {/* ── ALTERADO: Líder de check-ins em vez de líder de XP ── */}
                 {tickerItems.topPlayer && stats.topPlayer && (
                   <>
                     <div className="flex items-center gap-4">
-                      <Users className="w-4 h-4 text-primary" />
-                      <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">LÍDER CHECK-INS:</span>
+                      <Trophy className="w-4 h-4 text-secondary" />
+                      <span className="text-secondary text-[10px] font-black uppercase tracking-widest italic">LÍDER XP:</span>
                       <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.topPlayer}</span>
                     </div>
                     <div className="w-2 h-2 rounded-full bg-white/20"></div>
                   </>
                 )}
-
-                {tickerItems.announcements && announcements?.filter((a: any) => 
+                {tickerItems.announcements && announcements?.filter((a: any) =>
                   typeof a === 'string' ? !!a : a.active !== false && a.title
                 ).map((a: any, idx: number) => {
                   const title = typeof a === 'string' ? a : a.title;
@@ -736,24 +756,19 @@ registrado ainda
                       <div className="flex items-center gap-4">
                         <span className="text-yellow-400 text-[10px] font-black uppercase tracking-widest italic">📢 AVISO:</span>
                         <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{title}</span>
-                        {content && (
-                          <span className="text-white/50 text-base font-black italic tracking-tight">{content}</span>
-                        )}
+                        {content && <span className="text-white/50 text-base font-black italic tracking-tight">{content}</span>}
                       </div>
                       <div className="w-2 h-2 rounded-full bg-white/20"></div>
                     </React.Fragment>
                   );
                 })}
-
                 {tickerItems.challenges && challenges && challenges.length > 0 && challenges.map((c: any) => (
                   <React.Fragment key={c.id}>
                     <div className="flex items-center gap-4">
                       <Trophy className="w-4 h-4 text-yellow-400" />
                       <span className="text-yellow-400 text-[10px] font-black uppercase tracking-widest italic">DESAFIO:</span>
                       <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{c.name || c.title || 'Desafio sem nome'}</span>
-                      {c.description && (
-                        <span className="text-white/50 text-base font-black italic tracking-tight">{c.description}</span>
-                      )}
+                      {c.description && <span className="text-white/50 text-base font-black italic tracking-tight">{c.description}</span>}
                     </div>
                     <div className="w-2 h-2 rounded-full bg-white/20"></div>
                   </React.Fragment>
