@@ -18,6 +18,8 @@ import TV from './pages/TV';
 import Clans from './pages/Clans';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import DebugFlow from './pages/DebugFlow';
 import Benchmarks from './pages/Benchmarks';
 import Install from './pages/Install';
@@ -106,10 +108,12 @@ function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login"   element={<Login />} />
-        <Route path="/signup"  element={<Signup />} />
-        <Route path="/install" element={<Install />} />
-        <Route path="/tv"      element={<TV />} />
+        <Route path="/login"           element={<Login />} />
+        <Route path="/signup"          element={<Signup />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password"  element={<ResetPassword />} />
+        <Route path="/install"         element={<Install />} />
+        <Route path="/tv"              element={<TV />} />
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<Dashboard />} />
           <Route path="wod"         element={<VisitorGuard page="wod"><Wod /></VisitorGuard>} />
