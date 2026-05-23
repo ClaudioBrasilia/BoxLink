@@ -1,6 +1,7 @@
 // src/hooks/useNativeHealth.ts
 // Lê frequência cardíaca via HealthKit (iOS) e Health Connect (Android)
-// Funciona com QUALQUER relógio que sincronize com o celular
+// O pacote @capacitor-community/health é instalado APENAS no app nativo,
+// não no Vercel. A importação é dinâmica para não quebrar o build web.
 
 import { useState, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
@@ -23,9 +24,8 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Só funciona em app nativo (Android/iOS)
   const isNative = Capacitor.isNativePlatform();
-  const platform = Capacitor.getPlatform(); // 'android' | 'ios' | 'web'
+  const platform = Capacitor.getPlatform();
 
   const syncToSupabase = useCallback(async (currentBpm: number) => {
     if (!userId) return;
@@ -76,10 +76,9 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
     setErrorMessage(null);
 
     try {
-      // Importa o plugin dinamicamente (só disponível no app nativo)
+      // Importação dinâmica — só carrega no app nativo, não quebra o build web
       const { Health } = await import('@capacitor-community/health');
 
-      // Solicita permissão para ler FC
       await Health.requestAuthorization({
         read: ['heart_rate'],
         write: [],
@@ -87,11 +86,10 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
 
       setStatus('active');
 
-      // Lê a FC a cada 10 segundos
       const readAndSync = async () => {
         try {
           const endDate = new Date();
-          const startDate = new Date(endDate.getTime() - 5 * 60 * 1000); // últimos 5 min
+          const startDate = new Date(endDate.getTime() - 5 * 60 * 1000);
 
           const result = await Health.query({
             startDate: startDate.toISOString(),
@@ -101,10 +99,8 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
           });
 
           if (result.values && result.values.length > 0) {
-            // Pega o valor mais recente
             const latest = result.values[result.values.length - 1];
             const currentBpm = Math.round(Number(latest.value));
-
             if (currentBpm > 0 && currentBpm < 250) {
               setBpm(currentBpm);
               await syncToSupabase(currentBpm);
@@ -115,7 +111,6 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
         }
       };
 
-      // Lê imediatamente e depois a cada 10 segundos
       await readAndSync();
       intervalRef.current = setInterval(readAndSync, 10000);
 
@@ -128,12 +123,6 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
           platform === 'ios'
             ? 'Permissão negada. Vá em Ajustes > Saúde > BoxLink e ative Frequência Cardíaca.'
             : 'Permissão negada. Vá em Configurações > Health Connect > BoxLink e ative Frequência Cardíaca.'
-        );
-      } else if (err.message?.includes('not available')) {
-        setErrorMessage(
-          platform === 'android'
-            ? 'Health Connect não instalado. Baixe na Play Store.'
-            : 'HealthKit não disponível neste dispositivo.'
         );
       } else {
         setErrorMessage(err.message || 'Erro desconhecido.');
