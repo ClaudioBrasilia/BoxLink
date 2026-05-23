@@ -10,7 +10,6 @@ export const getSupabase = () => {
     if (!supabaseUrl || !supabaseAnonKey || supabaseUrl === 'your-supabase-url') {
       const msg = 'Configuração do Supabase ausente ou inválida. Verifique as variáveis de ambiente no menu Settings.';
       console.error(msg);
-      // Return a proxy that logs errors instead of throwing
       return new Proxy({}, {
         get: () => () => ({ 
           auth: { 
@@ -38,7 +37,14 @@ export const getSupabase = () => {
     if (supabaseAnonKey.startsWith('sb_')) {
       throw new Error("Invalid Supabase Key: It looks like you are using a Stripe key (starting with 'sb_') instead of a Supabase key. Please use the 'anon' key from Supabase Settings -> API.");
     }
-    _supabase = createClient(supabaseUrl, supabaseAnonKey);
+    _supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false, // importante para Capacitor
+        storage: window.localStorage,
+      }
+    });
   }
   return _supabase;
 };
