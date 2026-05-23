@@ -1,16 +1,28 @@
 {
-  "name": "crosscity-hub",
+  "name": "boxlink",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "cap:build:android": "npm run build && npx cap sync android && npx cap open android",
+    "cap:build:ios": "npm run build && npx cap sync ios && npx cap open ios",
+    "cap:sync": "npx cap sync",
+    "cap:update": "npx cap update"
   },
   "dependencies": {
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/haptics": "^8.0.0",
+    "@capacitor/keyboard": "^8.0.0",
+    "@capacitor/network": "^8.0.0",
+    "@capacitor/push-notifications": "^8.0.0",
+    "@capacitor/splash-screen": "^8.0.0",
+    "@capacitor/status-bar": "^8.0.0",
+    "@capacitor-community/health": "^3.1.0",
     "@google/genai": "^1.29.0",
     "@supabase/supabase-js": "^2.101.1",
     "@tailwindcss/vite": "^4.1.14",
@@ -47,7 +59,6 @@
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "typescript": "~5.8.2"
   }
 }
