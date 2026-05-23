@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - Teste-Novo
-  workflow_dispatch: # permite rodar manualmente pelo GitHub
+  workflow_dispatch:
 
 jobs:
   build:
@@ -26,14 +26,11 @@ jobs:
       - name: Build do projeto web
         run: npm run build
 
-      - name: Configurar Java 17
+      - name: Configurar Java 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
-
-      - name: Instalar Capacitor CLI
-        run: npm install -g @capacitor/cli
 
       - name: Adicionar plataforma Android
         run: npx cap add android || true
@@ -44,7 +41,7 @@ jobs:
       - name: Tornar gradlew executável
         run: chmod +x android/gradlew
 
-      - name: Build do APK (debug para teste)
+      - name: Build do APK
         run: |
           cd android
           ./gradlew assembleDebug --no-daemon
