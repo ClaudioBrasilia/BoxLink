@@ -8,7 +8,7 @@ import { Wod, User } from '../types';
 import confetti from 'canvas-confetti';
 import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
-import { addReward } from '../utils/rewards';
+import { addReward, checkAndPayWeeklyBonus, getRewardSettings } from '../utils/rewards';
 import HeartRateWidget from '../components/HeartRateWidget';
 
 export default function Dashboard() {
@@ -41,22 +41,18 @@ export default function Dashboard() {
         .filter((a: any) => a.active !== false)
         .map((a: any) => {
           if (typeof a === 'string') {
-            try {
-              const parsed = JSON.parse(a);
-              return parsed.title ? `${parsed.title}${parsed.content ? ': ' + parsed.content : ''}` : a;
-            } catch (e) { return a; }
+            try { const parsed = JSON.parse(a); return parsed.title ? `${parsed.title}${parsed.content ? ': ' + parsed.content : ''}` : a; }
+            catch (e) { return a; }
           }
           return a.title ? `${a.title}${a.content ? ': ' + a.content : ''}` : '';
-        })
-        .filter(Boolean);
+        }).filter(Boolean);
       setAnnouncements(annTexts);
     }
 
     const today = new Date().toISOString().split('T')[0];
     const { data: challengesData } = await supabase
       .from('challenges').select('*').eq('active', true)
-      .or(`end_date.is.null,end_date.gte.${today}`)
-      .limit(3);
+      .or(`end_date.is.null,end_date.gte.${today}`).limit(3);
     setActiveChallenges(challengesData || []);
 
     const { data: scheduleData } = await supabase.from('schedule').select('*').eq('is_active', true).order('time', { ascending: true });
@@ -76,8 +72,7 @@ export default function Dashboard() {
       const now2 = new Date();
       const firstDayOfMonth = new Date(now2.getFullYear(), now2.getMonth(), 1).toISOString().split('T')[0];
       const { data: rewardHistory } = await supabase
-        .from('reward_history').select('user_id, xp')
-        .gte('created_at', firstDayOfMonth + 'T00:00:00');
+        .from('reward_history').select('user_id, xp').gte('created_at', firstDayOfMonth + 'T00:00:00');
       const monthXpByUser: Record<string, number> = {};
       (rewardHistory || []).forEach((r: any) => {
         if (r.xp > 0) monthXpByUser[r.user_id] = (monthXpByUser[r.user_id] || 0) + r.xp;
@@ -95,8 +90,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-    const channel = supabase
-      .channel('dashboard_changes')
+    const channel = supabase.channel('dashboard_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule' }, () => fetchData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'box_settings' }, () => fetchData())
@@ -107,50 +101,71 @@ export default function Dashboard() {
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371e3;
-    const φ1 = lat1 * Math.PI/180;
-    const φ2 = lat2 * Math.PI/180;
-    const Δφ = (lat2-lat1) * Math.PI/180;
-    const Δλ = (lon2-lon1) * Math.PI/180;
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
+    const φ1 = lat1 * Math.PI/180, φ2 = lat2 * Math.PI/180;
+    const Δφ = (lat2-lat1) * Math.PI/180, Δλ = (lon2-lon1) * Math.PI/180;
+    const a = Math.sin(Δφ/2)**2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   };
 
   const handleCheckin = () => {
     if (!selectedClass) { setCheckinMessage('Por favor, selecione um horário de aula'); return; }
     setIsCheckingIn(true);
     setCheckinMessage(null);
+
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
         try {
           const { data: box } = await supabase.from('box_settings').select('*').single();
           if (!box) throw new Error('Configurações do box não encontradas');
+
           const distance = calculateDistance(latitude, longitude, box.lat, box.lng);
           if (distance > (box.radius || 500)) {
             setCheckinMessage(`Você está muito longe do box (${Math.round(distance)}m). Aproxime-se para fazer check-in.`);
             setIsCheckingIn(false);
             return;
           }
+
           const today = new Date().toISOString().split('T')[0];
-          const { error: checkinError } = await supabase.from('checkins').insert({ user_id: user?.id, date: today, class_time: selectedClass });
+          const { error: checkinError } = await supabase.from('checkins').insert({
+            user_id: user?.id, date: today, class_time: selectedClass
+          });
+
           if (checkinError) {
             if (checkinError.code === '23505') { setCheckinMessage('Você já realizou check-in hoje!'); }
             else { throw checkinError; }
             setIsCheckingIn(false);
             return;
           }
-          const { data: economy } = await supabase.from('avatar_economy_settings').select('*').eq('is_active', true).single();
-          const xp = economy?.xp_per_checkin || 20;
-          const coins = economy?.coins_per_checkin || 5;
+
+          // 🎯 Busca recompensas da fonte unificada (box_settings.rewards)
+          const rewards = await getRewardSettings();
+          const xp    = rewards.xp_per_checkin    ?? 20;
+          const coins = rewards.coins_per_checkin  ?? 5;
+
           const rewardResult = await addReward(user?.id!, 'checkin', xp, coins, `Check-in: ${selectedClass}`);
-          setCheckinMessage(`Check-in realizado! +${xp} XP, +${coins} BrazaCoins`);
-          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-          if (rewardResult?.levelUp) {
-            setTimeout(() => { confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }); }, 500);
+
+          let msg = `Check-in realizado! +${xp} XP, +${coins} BrazaCoins`;
+
+          // 🎯 Verificar e pagar bônus semanal automaticamente
+          const weeklyResult = await checkAndPayWeeklyBonus(user?.id!);
+          if (weeklyResult?.paid) {
+            msg += ` 🎉 Bônus semanal: +${weeklyResult.xp} XP, +${weeklyResult.coins} BC (${weeklyResult.count} treinos na semana!)`;
           }
+
+          setCheckinMessage(msg);
+          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+
+          if (rewardResult?.levelUp) {
+            setTimeout(() => {
+              confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] });
+            }, 500);
+            setCheckinMessage(prev => (prev || '') + ` ⬆️ LEVEL UP! Você é nível ${rewardResult.newLevel}!`);
+          }
+
           const { data: updatedProfile } = await supabase.from('profiles').select('*').eq('id', user?.id).maybeSingle();
           const { data: updatedCheckins } = await supabase.from('checkins').select('*').eq('user_id', user?.id);
+
           if (updatedProfile) {
             const mappedUser: User = {
               id: updatedProfile.id, email: updatedProfile.email, name: updatedProfile.name,
@@ -158,7 +173,8 @@ export default function Dashboard() {
               xp: updatedProfile.xp || 0, coins: updatedProfile.coins || 0, level: updatedProfile.level || 1,
               avatar: { equipped: updatedProfile.avatar_equipped, inventory: updatedProfile.avatar_inventory || [] },
               checkins: (updatedCheckins || []).map((c: any) => ({ date: c.date, timestamp: c.timestamp, classTime: c.class_time })),
-              paidBonuses: updatedProfile.paid_bonuses || [], createdAt: updatedProfile.created_at
+              paidBonuses: updatedProfile.paid_bonuses || [],
+              createdAt: updatedProfile.created_at
             };
             updateUser(mappedUser);
           }
@@ -189,7 +205,6 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col gap-6 p-4 pt-8">
-      {/* Header */}
       <header className="flex justify-between items-start">
         <div className="flex items-center gap-4">
           <AvatarPreview equipped={user?.avatar.equipped!} size="sm" className="border-2" />
@@ -220,7 +235,6 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Announcements */}
       {announcements.length > 0 && (
         <section className="bg-primary/10 border border-primary/20 rounded-3xl p-4 overflow-hidden relative">
           <div className="flex items-center gap-3 mb-2">
@@ -235,7 +249,6 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Desafios Ativos */}
       {activeChallenges.length > 0 && (
         <section className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-4 cursor-pointer hover:border-primary/30 transition-all"
           onClick={() => navigate('/challenges')}>
@@ -270,7 +283,6 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Check-in Section */}
       <section className="space-y-4">
         {!alreadyCheckedIn && (
           <div className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 space-y-3">
@@ -285,8 +297,7 @@ export default function Dashboard() {
                 }
                 return todaySchedule.map((s: any) => {
                   const [h, m] = s.time.split(':').map(Number);
-                  const startMinutes = h * 60 + m;
-                  const expired = nowMinutes > startMinutes + 10;
+                  const expired = nowMinutes > h * 60 + m + 10;
                   return (
                     <button key={s.time} onClick={() => !expired && setSelectedClass(s.time)} disabled={expired}
                       className={cn(
@@ -306,6 +317,7 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
         <button onClick={handleCheckin} disabled={isCheckingIn || alreadyCheckedIn}
           className={cn(
             "w-full py-6 rounded-3xl font-headline font-black text-xl shadow-lg transition-all uppercase italic tracking-tight flex items-center justify-center gap-3",
@@ -321,10 +333,9 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* ❤️ Widget de Frequência Cardíaca */}
+      {/* Widget de Frequência Cardíaca */}
       <HeartRateWidget userId={user?.id} />
 
-      {/* Daily WOD Preview */}
       <section onClick={() => navigate('/wod')}
         className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5 flex items-center justify-between cursor-pointer hover:border-primary/40 transition-all group">
         <div className="flex items-center gap-4">
@@ -347,7 +358,6 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* Quick Stats */}
       <section className="grid grid-cols-2 gap-4">
         <div className="bg-surface-container-low p-5 rounded-3xl border border-outline-variant/10 flex flex-col gap-3">
           <div className="bg-primary/20 w-10 h-10 rounded-xl flex items-center justify-center">
@@ -378,7 +388,6 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* Modal Compartilhar */}
       <AnimatePresence>
         {showShareModal && (
           <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-background/80 backdrop-blur-sm"
