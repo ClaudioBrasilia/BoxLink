@@ -8,7 +8,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
-import { addReward } from '../utils/rewards';
+import { addReward, getRewardSettings } from '../utils/rewards';
 
 const TIMEZONE = 'America/Sao_Paulo';
 
@@ -145,13 +145,10 @@ export default function Wod() {
     setLoading(true); setSubmitted(false); setExistingResultId(null); setResult('');
     const dateStr = formatInTimeZone(selectedDate, TIMEZONE, 'yyyy-MM-dd');
     let { data: wodData } = await supabase.from('wods').select('*').eq('date', dateStr).maybeSingle();
-    
-    // Fallback to most recent WOD if today's WOD is not found and we are looking at "today"
     if (!wodData && isSameDay(selectedDate, new Date())) {
       const { data: latestWod } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
       wodData = latestWod;
     }
-
     setWod(wodData ?? null);
     if (wodData) {
       const { data: resultData } = await supabase.from('wod_results').select('*')
@@ -172,12 +169,21 @@ export default function Wod() {
         const { data } = await supabase.from('wod_results')
           .insert({ wod_id: wod.id, user_id: user.id, result }).select().single();
         setExistingResultId(data?.id ?? null);
-        const { data: settingsData } = await supabase.from('app_settings').select('rewards').eq('id', 1).single();
-        const wodXp    = settingsData?.rewards?.wod_xp    ?? 10;
-        const wodCoins = settingsData?.rewards?.wod_coins ?? 5;
-        await addReward(user.id, 'wod_complete', wodXp, wodCoins, 'WOD concluído', wod.id);
+
+        // 🎯 CORREÇÃO: Busca recompensas da fonte unificada (box_settings.rewards)
+        const rewards = await getRewardSettings();
+        const wodXp    = rewards.wod_xp    ?? 10;
+        const wodCoins = rewards.wod_coins  ?? 5;
+
+        const rewardResult = await addReward(user.id, 'wod_complete', wodXp, wodCoins, 'WOD concluído', wod.id);
         confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-        addToast(`WOD concluído! +${wodXp} XP e +${wodCoins} BrazaCoins 🎉`, 'success');
+
+        let msg = `WOD concluído! +${wodXp} XP e +${wodCoins} BrazaCoins 🎉`;
+        if (rewardResult?.levelUp) {
+          msg += ` ⬆️ LEVEL UP! Nível ${rewardResult.newLevel}!`;
+          setTimeout(() => confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }), 400);
+        }
+        addToast(msg, 'success');
       }
       setSubmitted(true); setEditing(false);
     } catch {
@@ -193,7 +199,6 @@ export default function Wod() {
     <div className="flex flex-col gap-5 pb-24">
       <ToastContainer toasts={toasts} onRemove={(id) => setToasts((p) => p.filter((t) => t.id !== id))} />
 
-      {/* Date Selector */}
       <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
         <button onClick={() => setSelectedDate((d) => subDays(d, 7))} className="shrink-0 p-1 text-on-surface-variant">
           <ChevronLeft className="w-5 h-5" />
@@ -220,7 +225,6 @@ export default function Wod() {
         </button>
       </div>
 
-      {/* Header */}
       <div className="flex items-center gap-2">
         <Calendar className="w-5 h-5 text-primary" />
         <h1 className="text-lg font-black text-on-surface">
@@ -244,35 +248,16 @@ export default function Wod() {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-
-          {/* Warm Up + Skill */}
           {(wod.warmup || wod.skill) && (
             <div className={cn('grid gap-3', wod.warmup && wod.skill ? 'grid-cols-2' : 'grid-cols-1')}>
-              {wod.warmup && (
-                <WodSection icon={<Flame className="w-3.5 h-3.5" />} label="Warm Up" text={wod.warmup} />
-              )}
-              {wod.skill && (
-                <WodSection icon={<Star className="w-3.5 h-3.5" />} label="Skill" text={wod.skill} />
-              )}
+              {wod.warmup && <WodSection icon={<Flame className="w-3.5 h-3.5" />} label="Warm Up" text={wod.warmup} />}
+              {wod.skill && <WodSection icon={<Star className="w-3.5 h-3.5" />} label="Skill" text={wod.skill} />}
             </div>
           )}
+          {wod.rx && <WodSection icon={<Timer className="w-3.5 h-3.5" />} label="RX" labelColor="text-primary" text={wod.rx} />}
+          {wod.scaled && <WodSection icon={<Activity className="w-3.5 h-3.5" />} label="Scaled" labelColor="text-secondary" text={wod.scaled} />}
+          {wod.beginner && <WodSection icon={<Activity className="w-3.5 h-3.5" />} label="Beginner" labelColor="text-on-surface-variant" text={wod.beginner} />}
 
-          {/* RX */}
-          {wod.rx && (
-            <WodSection icon={<Timer className="w-3.5 h-3.5" />} label="RX" labelColor="text-primary" text={wod.rx} />
-          )}
-
-          {/* Scaled */}
-          {wod.scaled && (
-            <WodSection icon={<Activity className="w-3.5 h-3.5" />} label="Scaled" labelColor="text-secondary" text={wod.scaled} />
-          )}
-
-          {/* Beginner */}
-          {wod.beginner && (
-            <WodSection icon={<Activity className="w-3.5 h-3.5" />} label="Beginner" labelColor="text-on-surface-variant" text={wod.beginner} />
-          )}
-
-          {/* Result */}
           <div className="mt-2">
             {submitted && !editing ? (
               <div className="flex flex-col gap-3">
@@ -281,8 +266,7 @@ export default function Wod() {
                   <span className="font-black text-sm">Resultado registrado: {result}</span>
                 </div>
                 <button onClick={() => setEditing(true)} className="flex items-center gap-2 text-xs text-on-surface-variant underline">
-                  <Edit2 className="w-3.5 h-3.5" />
-                  Editar resultado
+                  <Edit2 className="w-3.5 h-3.5" /> Editar resultado
                 </button>
               </div>
             ) : (
@@ -296,8 +280,7 @@ export default function Wod() {
                   return (
                     <input type="number" inputMode="numeric" value={result}
                       onChange={(e) => setResult(e.target.value)}
-                      placeholder={placeholder}
-                      disabled={submitting}
+                      placeholder={placeholder} disabled={submitting}
                       className="w-full bg-surface-container-highest rounded-2xl p-4 text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none"
                     />
                   );
