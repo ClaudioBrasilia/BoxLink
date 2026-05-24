@@ -9,6 +9,7 @@ import confetti from 'canvas-confetti';
 import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
 import { addReward, checkAndPayWeeklyBonus, getRewardSettings } from '../utils/rewards';
+import { useInactivity } from '../hooks/useInactivity';
 import HeartRateWidget from '../components/HeartRateWidget';
 
 export default function Dashboard() {
@@ -24,6 +25,10 @@ export default function Dashboard() {
   const [activeChallenges, setActiveChallenges] = useState<any[]>([]);
   const [showShareModal, setShowShareModal] = useState(false);
   const [userRankPosition, setUserRankPosition] = useState<number | null>(null);
+
+  // 🎯 Inatividade do avatar do próprio atleta
+  const checkinsList = (user?.checkins || []).map(c => ({ date: c.date }));
+  const { fadePercent, showSleeping } = useInactivity(checkinsList);
 
   const fetchData = async () => {
     const todayDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
@@ -138,36 +143,32 @@ export default function Dashboard() {
             return;
           }
 
-          // 🎯 Busca recompensas da fonte unificada (box_settings.rewards)
           const rewards = await getRewardSettings();
-          const xp    = rewards.xp_per_checkin    ?? 20;
-          const coins = rewards.coins_per_checkin  ?? 5;
+          const xp    = rewards.xp_per_checkin   ?? 20;
+          const coins = rewards.coins_per_checkin ?? 5;
 
           const rewardResult = await addReward(user?.id!, 'checkin', xp, coins, `Check-in: ${selectedClass}`);
 
           let msg = `Check-in realizado! +${xp} XP, +${coins} BrazaCoins`;
 
-          // 🎯 Verificar e pagar bônus semanal automaticamente
           const weeklyResult = await checkAndPayWeeklyBonus(user?.id!);
           if (weeklyResult?.paid) {
-            msg += ` 🎉 Bônus semanal: +${weeklyResult.xp} XP, +${weeklyResult.coins} BC (${weeklyResult.count} treinos na semana!)`;
+            msg += ` 🎉 Bônus semanal: +${weeklyResult.xp} XP, +${weeklyResult.coins} BC (${weeklyResult.count} treinos!)`;
+          }
+
+          if (rewardResult?.levelUp) {
+            msg += ` ⬆️ LEVEL UP! Nível ${rewardResult.newLevel}!`;
+            setTimeout(() => confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }), 500);
           }
 
           setCheckinMessage(msg);
           confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
 
-          if (rewardResult?.levelUp) {
-            setTimeout(() => {
-              confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] });
-            }, 500);
-            setCheckinMessage(prev => (prev || '') + ` ⬆️ LEVEL UP! Você é nível ${rewardResult.newLevel}!`);
-          }
-
           const { data: updatedProfile } = await supabase.from('profiles').select('*').eq('id', user?.id).maybeSingle();
           const { data: updatedCheckins } = await supabase.from('checkins').select('*').eq('user_id', user?.id);
 
           if (updatedProfile) {
-            const mappedUser: User = {
+            updateUser({
               id: updatedProfile.id, email: updatedProfile.email, name: updatedProfile.name,
               role: updatedProfile.role, status: updatedProfile.status,
               xp: updatedProfile.xp || 0, coins: updatedProfile.coins || 0, level: updatedProfile.level || 1,
@@ -175,8 +176,7 @@ export default function Dashboard() {
               checkins: (updatedCheckins || []).map((c: any) => ({ date: c.date, timestamp: c.timestamp, classTime: c.class_time })),
               paidBonuses: updatedProfile.paid_bonuses || [],
               createdAt: updatedProfile.created_at
-            };
-            updateUser(mappedUser);
+            } as User);
           }
         } catch (e: any) {
           console.error(e);
@@ -199,20 +199,28 @@ export default function Dashboard() {
 
   const shareViaWhatsApp = () => {
     const appUrl = window.location.origin;
-    const text = encodeURIComponent(`💪 Estou treinando no BoxLink! Venha acompanhar meu progresso: ${appUrl}`);
-    window.open(`https://wa.me/?text=${text}`, '_blank');
+    window.open(`https://wa.me/?text=${encodeURIComponent(`💪 Estou treinando no BoxLink! Venha acompanhar meu progresso: ${appUrl}`)}`, '_blank');
   };
 
   return (
     <div className="flex flex-col gap-6 p-4 pt-8">
       <header className="flex justify-between items-start">
         <div className="flex items-center gap-4">
-          <AvatarPreview equipped={user?.avatar.equipped!} size="sm" className="border-2" />
+          {/* 🎯 Avatar com efeito de inatividade */}
+          <AvatarPreview
+            equipped={user?.avatar.equipped!}
+            size="sm"
+            className="border-2"
+            fadePercent={fadePercent}
+            showSleeping={showSleeping}
+          />
           <div>
             <h1 className="text-2xl font-headline font-black text-on-surface tracking-tight uppercase italic leading-none">
               OLÁ, <span className="text-primary">{user?.name.split(' ')[0]}</span>
             </h1>
-            <p className="text-on-surface-variant text-[10px] font-bold tracking-widest uppercase mt-1 italic">Pronto para o treino?</p>
+            <p className="text-on-surface-variant text-[10px] font-bold tracking-widest uppercase mt-1 italic">
+              {showSleeping ? '💤 Está na preguiça? Volte a treinar!' : 'Pronto para o treino?'}
+            </p>
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
@@ -333,7 +341,6 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* Widget de Frequência Cardíaca */}
       <HeartRateWidget userId={user?.id} />
 
       <section onClick={() => navigate('/wod')}
