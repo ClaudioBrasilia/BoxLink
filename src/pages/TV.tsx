@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Timer, Trophy, Zap, Swords, Maximize, LayoutDashboard, Activity, Users, Play, Pause, RotateCcw, ChevronLeft, ChevronRight, Heart } from 'lucide-react';
+import { Timer, Trophy, Zap, Swords, Maximize, Activity, Users, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wod, Challenge, Duel, User, BoxSettings } from '../types';
 import { format } from 'date-fns';
@@ -7,17 +7,12 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
 import AvatarPreview from '../components/AvatarPreview';
+import AthletePhoto from '../components/AthletePhoto';
 
 const TIMEZONE = "America/Sao_Paulo";
 
-// ─── Painel de Frequência Cardíaca (embutido na TV) ──────────────────────────
-
-interface AthleteHR {
-  user_id: string;
-  bpm: number;
-  updated_at: string;
-  name?: string;
-}
+// ─── Painel de Frequência Cardíaca ───────────────────────────────────────────
+interface AthleteHR { user_id: string; bpm: number; updated_at: string; name?: string; }
 
 function getHRZone(bpm: number) {
   if (bpm < 100) return { label: 'REPOUSO',     color: '#60a5fa', bar: 'bg-blue-400',   glow: 'rgba(96,165,250,0.5)' };
@@ -27,46 +22,26 @@ function getHRZone(bpm: number) {
   return               { label: 'MÁXIMO ⚡',    color: '#f87171', bar: 'bg-red-400',    glow: 'rgba(248,113,113,0.6)' };
 }
 
-function intensityPct(bpm: number) {
-  return Math.min(100, Math.max(0, ((bpm - 50) / (200 - 50)) * 100));
-}
-
 function TVHeartRatePanel() {
   const [athletes, setAthletes] = useState<AthleteHR[]>([]);
-
   const fetchHR = useCallback(async () => {
     const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-    const { data: hrData } = await supabase
-      .from('heart_rate_live')
-      .select('user_id, bpm, updated_at')
-      .gte('updated_at', cutoff)
-      .order('bpm', { ascending: false });
-
+    const { data: hrData } = await supabase.from('heart_rate_live').select('user_id, bpm, updated_at').gte('updated_at', cutoff).order('bpm', { ascending: false });
     if (!hrData || hrData.length === 0) { setAthletes([]); return; }
-
     const ids = hrData.map((r: any) => r.user_id);
-    const { data: profiles } = await supabase
-      .from('profiles').select('id, name').in('id', ids);
-
+    const { data: profiles } = await supabase.from('profiles').select('id, name').in('id', ids);
     const profileMap = Object.fromEntries((profiles || []).map((p: any) => [p.id, p]));
-    setAthletes(hrData.map((r: any) => ({
-      ...r,
-      name: profileMap[r.user_id]?.name || 'Atleta',
-    })));
+    setAthletes(hrData.map((r: any) => ({ ...r, name: profileMap[r.user_id]?.name || 'Atleta' })));
   }, []);
 
   useEffect(() => {
     fetchHR();
-    const channel = supabase
-      .channel('tv-heart-rate')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'heart_rate_live' }, fetchHR)
-      .subscribe();
+    const channel = supabase.channel('tv-heart-rate').on('postgres_changes', { event: '*', schema: 'public', table: 'heart_rate_live' }, fetchHR).subscribe();
     const interval = setInterval(fetchHR, 5000);
     return () => { supabase.removeChannel(channel); clearInterval(interval); };
   }, [fetchHR]);
 
   if (athletes.length === 0) return null;
-
   return (
     <section className="bg-[#111] rounded-[2.5rem] border border-white/5 p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -78,17 +53,14 @@ function TVHeartRatePanel() {
           {athletes.length} relógio{athletes.length !== 1 ? 's' : ''}
         </span>
       </div>
-
       <div className="flex flex-col gap-2">
         <AnimatePresence>
           {athletes.map((athlete) => {
             const zone = getHRZone(athlete.bpm);
-            const pct = intensityPct(athlete.bpm);
+            const pct  = Math.min(100, Math.max(0, ((athlete.bpm - 50) / 150) * 100));
             const firstName = athlete.name?.split(' ')[0] || 'Atleta';
             return (
-              <motion.div key={athlete.user_id} layout
-                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.3 }}
+              <motion.div key={athlete.user_id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}
                 className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
@@ -111,10 +83,8 @@ function TVHeartRatePanel() {
                   </div>
                 </div>
                 <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-                  <motion.div className={`h-full rounded-full ${zone.bar}`}
-                    style={{ boxShadow: `0 0 6px ${zone.glow}` }}
-                    initial={{ width: 0 }} animate={{ width: `${pct}%` }}
-                    transition={{ duration: 0.5 }} />
+                  <motion.div className={`h-full rounded-full ${zone.bar}`} style={{ boxShadow: `0 0 6px ${zone.glow}` }}
+                    initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.5 }} />
                 </div>
               </motion.div>
             );
@@ -126,12 +96,9 @@ function TVHeartRatePanel() {
 }
 
 // ─── TV Principal ─────────────────────────────────────────────────────────────
-
 export default function TV() {
   const [data, setData] = useState<any>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [timer, setTimer] = useState(0);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [isWodAutoRotationActive, setIsWodAutoRotationActive] = useState(true);
   const [rankingView, setRankingView] = useState<'xp' | 'frequency'>('xp');
   const [athleteIndex, setAthleteIndex] = useState(0);
@@ -157,13 +124,12 @@ export default function TV() {
         supabase.from('wods').select('*').eq('date', today).maybeSingle(),
         supabase.from('challenges').select('*').eq('active', true).or(`end_date.is.null,end_date.gte.${today}`),
         supabase.from('duels').select('*, challenger:profiles!challenger_id(name), opponent:profiles!opponent_id(name)').eq('status', 'accepted'),
-        supabase.from('profiles').select('name, xp, level, avatar_equipped').eq('status', 'approved').order('xp', { ascending: false }).limit(10),
+        supabase.from('profiles').select('name, xp, level, avatar_equipped, photo_url').eq('status', 'approved').order('xp', { ascending: false }).limit(10),
         supabase.from('schedule').select('*').order('time', { ascending: true })
       ]);
 
       const nowStr = formatInTimeZone(new Date(), TIMEZONE, 'HH:mm');
       const currentClass = (scheduleData || []).find((s: any) => nowStr >= s.time && nowStr <= (s.end_time || s.endTime || '23:59'));
-
       const { data: checkinsRaw } = await supabase.from('checkins').select('*').gte('date', today).order('timestamp', { ascending: false }).limit(20);
       const { data: profilesRaw } = await supabase.from('profiles').select('id, name, avatar_equipped, xp, level, role');
       const profileMap = Object.fromEntries((profilesRaw || []).map((p: any) => [p.id, p]));
@@ -244,7 +210,6 @@ export default function TV() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchData())
         .subscribe((status) => {
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            console.warn('[TV] Canal realtime perdido, reconectando em 5s...');
             supabase.removeChannel(realtimeChannel);
             setTimeout(subscribeRealtime, 5000);
           }
@@ -259,18 +224,6 @@ export default function TV() {
     const wodInterval = setInterval(() => { setWodTabIndex(prev => (prev + 1) % 3); }, 15000);
     return () => clearInterval(wodInterval);
   }, [isWodAutoRotationActive]);
-
-  useEffect(() => {
-    let interval: any;
-    if (isTimerRunning) { interval = setInterval(() => { setTimer(t => t + 1); }, 1000); }
-    return () => clearInterval(interval);
-  }, [isTimerRunning]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); setIsFullscreen(true); }
@@ -305,31 +258,6 @@ export default function TV() {
 
   const isStale = lastUpdated && (Date.now() - lastUpdated.getTime()) > 60000;
 
-  if (!wod) {
-    return (
-      <div className="min-h-screen bg-black text-white font-sans overflow-hidden flex flex-col p-6 gap-6 relative select-none">
-        <header className="flex justify-between items-center bg-[#111] rounded-[2rem] p-6 border border-white/5 shadow-2xl">
-          <div className="flex items-center gap-6">
-            <img src={settings.logo || "https://picsum.photos/seed/box/200"} alt="Logo" className="w-16 h-16 rounded-2xl border-2 border-primary" />
-            <div>
-              <h1 className="text-4xl font-headline font-black text-white italic tracking-tighter uppercase leading-none">{settings.name}</h1>
-              <p className="text-primary text-[10px] font-black tracking-[0.4em] uppercase italic mt-1">CROSSCITY HUB • PERFORMANCE ELITE</p>
-            </div>
-          </div>
-          <div className="flex flex-col items-center">
-            <span className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">HORA ATUAL</span>
-            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(now, 'HH:mm:ss')}</span>
-          </div>
-        </header>
-        <div className="flex-1 flex flex-col items-center justify-center bg-[#111] rounded-[3rem] border border-white/5">
-          <Activity className="w-24 h-24 text-primary/20 mb-8" />
-          <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter mb-4">AGUARDANDO WOD</h2>
-          <p className="text-white/40 text-xl font-black uppercase tracking-[0.4em] italic">NENHUM TREINO CADASTRADO PARA HOJE</p>
-        </div>
-      </div>
-    );
-  }
-
   const getWodFontSize = (text: string) => {
     const len = (text || '').length;
     const lines = (text || '').split('\n').filter(Boolean).length;
@@ -358,6 +286,8 @@ export default function TV() {
 
   return (
     <div className="min-h-screen bg-black text-white font-sans overflow-hidden flex flex-col p-6 gap-6 relative select-none">
+
+      {/* ── HEADER: Logo + Nome + Fullscreen + Status (sem relógio e sem timer) ── */}
       <header className="flex justify-between items-center bg-[#111] rounded-[2rem] p-6 border border-white/5 shadow-2xl">
         <div className="flex items-center gap-6">
           <div className="relative">
@@ -367,29 +297,6 @@ export default function TV() {
           <div>
             <h1 className="text-4xl font-headline font-black text-white italic tracking-tighter uppercase leading-none">{settings.name}</h1>
             <p className="text-primary text-[10px] font-black tracking-[0.4em] uppercase italic mt-1">CROSSCITY HUB • PERFORMANCE ELITE</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-12">
-          <div className="flex flex-col items-center">
-            <span className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-1">HORA ATUAL</span>
-            <span className="text-4xl font-headline font-black text-white italic tabular-nums">{format(now, 'HH:mm:ss')}</span>
-          </div>
-          <div className="h-12 w-[1px] bg-white/10"></div>
-          <div className="flex items-center gap-6">
-            <div className="flex flex-col items-end">
-              <span className="text-primary font-headline font-black text-3xl italic leading-none tabular-nums">{formatTime(timer)}</span>
-              <span className="text-white/40 text-[8px] font-black uppercase tracking-widest mt-1">TIMER ATIVO</span>
-            </div>
-            <button onClick={() => setIsTimerRunning(!isTimerRunning)}
-              className={cn("w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-lg",
-                isTimerRunning ? "bg-red-500 text-white" : "bg-primary text-black")}>
-              {isTimerRunning ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-1" />}
-            </button>
-            <button onClick={() => { setTimer(0); setIsTimerRunning(false); }}
-              className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all">
-              <RotateCcw className="w-6 h-6" />
-            </button>
           </div>
         </div>
 
@@ -413,45 +320,47 @@ export default function TV() {
 
       <div className="flex-1 grid grid-cols-12 gap-6 overflow-hidden">
         <div className="col-span-8 flex flex-col gap-6">
-          <div className="flex items-center justify-between bg-[#111] rounded-3xl p-3 border border-white/5">
-            <div className="flex gap-3">
-              {['WARM-UP', 'SKILL', 'THE WOD'].map((label, i) => (
-                <button key={label} onClick={() => setWodTabIndex(i)}
-                  className={cn(
-                    "px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-[0.2em] italic transition-all border relative overflow-hidden",
-                    wodTabIndex === i
-                      ? "bg-primary text-black border-primary shadow-[0_0_20px_rgba(202,253,0,0.3)]"
-                      : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"
-                  )}>
-                  <span className="relative z-10">{label}</span>
-                  {wodTabIndex === i && (
-                    <motion.div layoutId="activeTab" className="absolute inset-0 bg-primary"
-                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }} />
-                  )}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2 mr-2">
-              <button onClick={() => setIsWodAutoRotationActive(!isWodAutoRotationActive)}
-                className={cn("p-3 rounded-xl border transition-all flex items-center gap-2",
+
+          {/* ── TABS WOD: só aparecem quando há WOD ── */}
+          {wod && (
+            <div className="flex items-center justify-between bg-[#111] rounded-3xl p-3 border border-white/5">
+              <div className="flex gap-3">
+                {['WARM-UP', 'SKILL', 'THE WOD'].map((label, i) => (
+                  <button key={label} onClick={() => setWodTabIndex(i)}
+                    className={cn(
+                      "px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-[0.2em] italic transition-all border relative overflow-hidden",
+                      wodTabIndex === i
+                        ? "bg-primary text-black border-primary shadow-[0_0_20px_rgba(202,253,0,0.3)]"
+                        : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"
+                    )}>
+                    <span className="relative z-10">{label}</span>
+                    {wodTabIndex === i && (
+                      <motion.div layoutId="activeTab" className="absolute inset-0 bg-primary"
+                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }} />
+                    )}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setIsWodAutoRotationActive(!isWodAutoRotationActive)}
+                className={cn("p-3 rounded-xl border transition-all flex items-center gap-2 mr-2",
                   isWodAutoRotationActive ? "bg-primary/20 border-primary/30 text-primary" : "bg-white/5 border-white/10 text-white/40")}>
-                {isWodAutoRotationActive ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                 <span className="text-[10px] font-black uppercase italic tracking-widest">
                   {isWodAutoRotationActive ? 'AUTO' : 'PAUSADO'}
                 </span>
               </button>
-              <button onClick={() => setWodTabIndex(prev => (prev - 1 + 3) % 3)}
-                className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all">
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <button onClick={() => setWodTabIndex(prev => (prev + 1) % 3)}
-                className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all">
-                <ChevronRight className="w-5 h-5" />
-              </button>
             </div>
-          </div>
+          )}
 
           <div className="flex-1 relative">
+            {/* Placeholder quando não há WOD — coluna direita continua visível */}
+            {!wod && (
+              <div className="absolute inset-0 bg-[#111] rounded-[3rem] border border-white/5 flex flex-col items-center justify-center gap-4">
+                <Activity className="w-20 h-20 text-primary/20" />
+                <h2 className="text-5xl font-headline font-black text-white uppercase italic tracking-tighter">AGUARDANDO WOD</h2>
+                <p className="text-white/30 text-sm font-black uppercase tracking-[0.3em] italic">Nenhum treino cadastrado para hoje</p>
+              </div>
+            )}
             <AnimatePresence mode="wait">
               {wodTabIndex === 0 && (
                 <motion.section key="warmup"
@@ -543,7 +452,7 @@ export default function TV() {
         {/* Coluna direita */}
         <div className="col-span-4 flex flex-col gap-6 overflow-y-auto no-scrollbar">
 
-          {/* Ranking TOP 3 */}
+          {/* TOP 3 */}
           <section className="bg-[#111] rounded-[2.5rem] p-5 border border-white/5 flex flex-col gap-3" style={{flex: '2 1 0'}}>
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
@@ -568,7 +477,7 @@ export default function TV() {
                   const r = (rankingView === 'xp' ? rankings : frequencyRanking)[1];
                   return (
                     <div className="flex flex-col items-center gap-1 flex-1">
-                      <div className="w-10 h-10 rounded-full bg-white/10 border-2 border-white/20 flex items-center justify-center font-headline font-black text-white text-lg">{r.name?.[0]}</div>
+                      <AthletePhoto photoUrl={r.photo_url} name={r.name || '?'} size="sm" ringColor="border-white/20" className="w-10 h-10" />
                       <p className="text-white/80 text-[9px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
                       <p className="text-white/50 text-[8px] font-bold">{rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}</p>
                       <div className="w-full h-8 bg-white/10 rounded-t-lg flex items-center justify-center">
@@ -581,7 +490,7 @@ export default function TV() {
                   const r = (rankingView === 'xp' ? rankings : frequencyRanking)[0];
                   return (
                     <div className="flex flex-col items-center gap-1 flex-1">
-                      <div className="w-12 h-12 rounded-full bg-primary/30 border-2 border-primary flex items-center justify-center font-headline font-black text-primary text-xl shadow-[0_0_15px_rgba(202,253,0,0.4)]">{r.name?.[0]}</div>
+                      <AthletePhoto photoUrl={r.photo_url} name={r.name || '?'} size="md" ringColor="border-primary" className="w-12 h-12 shadow-[0_0_15px_rgba(202,253,0,0.4)]" />
                       <p className="text-primary text-[10px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
                       <p className="text-primary text-[9px] font-black">{rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}</p>
                       <div className="w-full h-12 bg-primary/20 border border-primary/30 rounded-t-lg flex items-center justify-center">
@@ -594,7 +503,7 @@ export default function TV() {
                   const r = (rankingView === 'xp' ? rankings : frequencyRanking)[2];
                   return (
                     <div className="flex flex-col items-center gap-1 flex-1">
-                      <div className="w-9 h-9 rounded-full bg-white/5 border-2 border-white/10 flex items-center justify-center font-headline font-black text-white/60 text-base">{r.name?.[0]}</div>
+                      <AthletePhoto photoUrl={r.photo_url} name={r.name || '?'} size="sm" ringColor="border-white/10" className="w-9 h-9" />
                       <p className="text-white/50 text-[9px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
                       <p className="text-white/40 text-[8px] font-bold">{rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}</p>
                       <div className="w-full h-6 bg-white/5 rounded-t-lg flex items-center justify-center">
@@ -621,10 +530,10 @@ export default function TV() {
             </div>
           </section>
 
-          {/* ❤️ PAINEL DE FREQUÊNCIA CARDÍACA AO VIVO */}
+          {/* FC ao vivo */}
           <TVHeartRatePanel />
 
-          {/* Atletas na Aula */}
+          {/* Atletas na aula */}
           <section className="bg-[#111] rounded-[2.5rem] border border-white/5 relative overflow-hidden flex flex-col" style={{flex: '1 1 0'}}>
             <div className="flex justify-between items-center px-5 pt-4 pb-2">
               <div className="flex items-center gap-2">
