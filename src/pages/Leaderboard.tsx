@@ -5,6 +5,7 @@ import { User as UserType } from '../types';
 import { motion } from 'framer-motion';
 import ShareRankingButton from '../components/ShareRankingButton';
 import AvatarPreview from '../components/AvatarPreview';
+import AthletePhoto from '../components/AthletePhoto';
 import { supabase } from '../lib/supabase';
 import { formatInTimeZone } from 'date-fns-tz';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
@@ -13,6 +14,7 @@ interface RankedUser extends UserType {
   monthXp?: number;
   monthCheckinCount?: number;
   allCheckins?: { date: string }[];
+  photo_url?: string | null;
 }
 
 export default function Leaderboard() {
@@ -295,15 +297,14 @@ export default function Leaderboard() {
             return (
               <div className="flex flex-col items-center gap-2">
                 <div className="relative">
-                  {!isClans && !isWod && (top3[1] as RankedUser).avatar?.equipped ? (
-                    <AvatarPreview equipped={(top3[1] as RankedUser).avatar.equipped} size="sm"
-                      fadePercent={fadePercent} showSleeping={showSleeping}
-                      className="w-16 h-16 rounded-full border-4 border-outline-variant/30" />
-                  ) : (
-                    <div className="w-16 h-16 rounded-full border-4 border-outline-variant/30 bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-on-surface">
-                      {(top3[1].name?.[0] || 'A')}
-                    </div>
-                  )}
+                  <AthletePhoto
+                    photoUrl={!isClans && !isWod ? (top3[1] as RankedUser).photo_url : null}
+                    name={top3[1].name || 'A'}
+                    size="md"
+                    fadePercent={fadePercent}
+                    ringColor="border-outline-variant/30"
+                    className="w-16 h-16"
+                  />
                   <div className="absolute -top-2 -right-2 bg-outline-variant/40 text-on-surface text-[10px] font-black px-2 py-0.5 rounded-full">#2</div>
                 </div>
                 <div className="text-center">
@@ -327,15 +328,14 @@ export default function Leaderboard() {
             return (
               <div className="flex flex-col items-center gap-2 -mt-8">
                 <div className="relative">
-                  {!isClans && !isWod && (top3[0] as RankedUser).avatar?.equipped ? (
-                    <AvatarPreview equipped={(top3[0] as RankedUser).avatar.equipped} size="md"
-                      fadePercent={fadePercent} showSleeping={showSleeping}
-                      className="w-24 h-24 rounded-full border-4 border-primary shadow-[0_0_30px_rgba(202,253,0,0.3)]" />
-                  ) : (
-                    <div className="w-24 h-24 rounded-full border-4 border-primary bg-surface-container-highest shadow-[0_0_30px_rgba(202,253,0,0.3)] flex items-center justify-center font-headline font-black text-3xl text-primary">
-                      {(top3[0].name?.[0] || 'A')}
-                    </div>
-                  )}
+                  <AthletePhoto
+                    photoUrl={!isClans && !isWod ? (top3[0] as RankedUser).photo_url : null}
+                    name={top3[0].name || 'A'}
+                    size="lg"
+                    fadePercent={fadePercent}
+                    ringColor="border-primary"
+                    className="w-24 h-24 shadow-[0_0_30px_rgba(202,253,0,0.3)]"
+                  />
                   <div className="absolute -top-3 -right-3 bg-primary text-background text-xs font-black px-3 py-1 rounded-full shadow-lg">#1</div>
                 </div>
                 <div className="text-center">
@@ -359,15 +359,14 @@ export default function Leaderboard() {
             return (
               <div className="flex flex-col items-center gap-2">
                 <div className="relative">
-                  {!isClans && !isWod && (top3[2] as RankedUser).avatar?.equipped ? (
-                    <AvatarPreview equipped={(top3[2] as RankedUser).avatar.equipped} size="sm"
-                      fadePercent={fadePercent} showSleeping={showSleeping}
-                      className="w-16 h-16 rounded-full border-4 border-secondary/30" />
-                  ) : (
-                    <div className="w-16 h-16 rounded-full border-4 border-secondary/30 bg-surface-container-highest flex items-center justify-center font-headline font-black text-xl text-on-surface">
-                      {(top3[2].name?.[0] || 'A')}
-                    </div>
-                  )}
+                  <AthletePhoto
+                    photoUrl={!isClans && !isWod ? (top3[2] as RankedUser).photo_url : null}
+                    name={top3[2].name || 'A'}
+                    size="md"
+                    fadePercent={fadePercent}
+                    ringColor="border-secondary/30"
+                    className="w-16 h-16"
+                  />
                   <div className="absolute -top-2 -right-2 bg-secondary/30 text-on-surface text-[10px] font-black px-2 py-0.5 rounded-full">#3</div>
                 </div>
                 <div className="text-center">
@@ -411,15 +410,13 @@ export default function Leaderboard() {
                   className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between hover:border-primary/30 transition-all">
                   <div className="flex items-center gap-4">
                     <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i + 4}</span>
-                    {!isClans && !isWod && (u as RankedUser).avatar?.equipped ? (
-                      <AvatarPreview equipped={(u as RankedUser).avatar.equipped} size="sm"
-                        fadePercent={fadePercent} showSleeping={showSleeping}
-                        className="w-10 h-10 rounded-full border border-outline-variant/10" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-sm border border-outline-variant/10">
-                        {(u.name || '?')[0]}
-                      </div>
-                    )}
+                    <AthletePhoto
+                      photoUrl={!isClans && !isWod ? (u as RankedUser).photo_url : null}
+                      name={u.name || '?'}
+                      size="sm"
+                      fadePercent={fadePercent}
+                      ringColor="border-outline-variant/10"
+                    />
                     <div>
                       <p className="text-on-surface font-bold uppercase text-sm italic">{u.name}</p>
                       <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
