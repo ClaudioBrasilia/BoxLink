@@ -7,6 +7,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
 import AvatarPreview from '../components/AvatarPreview';
+import AthletePhoto from '../components/AthletePhoto';
 
 const TIMEZONE = "America/Sao_Paulo";
 
@@ -123,7 +124,7 @@ export default function TV() {
         supabase.from('wods').select('*').eq('date', today).maybeSingle(),
         supabase.from('challenges').select('*').eq('active', true).or(`end_date.is.null,end_date.gte.${today}`),
         supabase.from('duels').select('*, challenger:profiles!challenger_id(name), opponent:profiles!opponent_id(name)').eq('status', 'accepted'),
-        supabase.from('profiles').select('name, xp, level, avatar_equipped').eq('status', 'approved').order('xp', { ascending: false }).limit(10),
+        supabase.from('profiles').select('name, xp, level, avatar_equipped, photo_url').eq('status', 'approved').order('xp', { ascending: false }).limit(10),
         supabase.from('schedule').select('*').order('time', { ascending: true })
       ]);
 
@@ -476,7 +477,7 @@ export default function TV() {
                   const r = (rankingView === 'xp' ? rankings : frequencyRanking)[1];
                   return (
                     <div className="flex flex-col items-center gap-1 flex-1">
-                      <div className="w-10 h-10 rounded-full bg-white/10 border-2 border-white/20 flex items-center justify-center font-headline font-black text-white text-lg">{r.name?.[0]}</div>
+                      <AthletePhoto photoUrl={r.photo_url} name={r.name || '?'} size="sm" ringColor="border-white/20" className="w-10 h-10" />
                       <p className="text-white/80 text-[9px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
                       <p className="text-white/50 text-[8px] font-bold">{rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}</p>
                       <div className="w-full h-8 bg-white/10 rounded-t-lg flex items-center justify-center">
@@ -489,7 +490,7 @@ export default function TV() {
                   const r = (rankingView === 'xp' ? rankings : frequencyRanking)[0];
                   return (
                     <div className="flex flex-col items-center gap-1 flex-1">
-                      <div className="w-12 h-12 rounded-full bg-primary/30 border-2 border-primary flex items-center justify-center font-headline font-black text-primary text-xl shadow-[0_0_15px_rgba(202,253,0,0.4)]">{r.name?.[0]}</div>
+                      <AthletePhoto photoUrl={r.photo_url} name={r.name || '?'} size="md" ringColor="border-primary" className="w-12 h-12 shadow-[0_0_15px_rgba(202,253,0,0.4)]" />
                       <p className="text-primary text-[10px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
                       <p className="text-primary text-[9px] font-black">{rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}</p>
                       <div className="w-full h-12 bg-primary/20 border border-primary/30 rounded-t-lg flex items-center justify-center">
@@ -502,7 +503,7 @@ export default function TV() {
                   const r = (rankingView === 'xp' ? rankings : frequencyRanking)[2];
                   return (
                     <div className="flex flex-col items-center gap-1 flex-1">
-                      <div className="w-9 h-9 rounded-full bg-white/5 border-2 border-white/10 flex items-center justify-center font-headline font-black text-white/60 text-base">{r.name?.[0]}</div>
+                      <AthletePhoto photoUrl={r.photo_url} name={r.name || '?'} size="sm" ringColor="border-white/10" className="w-9 h-9" />
                       <p className="text-white/50 text-[9px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
                       <p className="text-white/40 text-[8px] font-bold">{rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}</p>
                       <div className="w-full h-6 bg-white/5 rounded-t-lg flex items-center justify-center">
