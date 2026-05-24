@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { RewardEvent, PersonalRecord } from '../types';
 import AvatarPreview from '../components/AvatarPreview';
+import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
 import { LayerAdjustment } from '../lib/avatarLayers';
 
@@ -31,6 +32,7 @@ export default function Profile() {
   const [itemAdjustments, setItemAdjustments] = useState<Record<string, Partial<LayerAdjustment>>>({});
   const [inactivityFade, setInactivityFade] = useState(0);
   const [inactivitySleep, setInactivitySleep] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -42,6 +44,10 @@ export default function Profile() {
             itemsData.filter(i => i.layer_adjustment).map(i => [i.id, i.layer_adjustment!])
           ));
         }
+
+        // Fetch photo_url do perfil
+        const { data: profileData } = await supabase.from('profiles').select('photo_url').eq('id', user.id).maybeSingle();
+        if (profileData?.photo_url) setPhotoUrl(profileData.photo_url);
 
         // Fetch inactivity settings and calculate fade
         const { data: boxSettings } = await supabase.from('box_settings').select('inactivity').maybeSingle();
@@ -279,14 +285,23 @@ export default function Profile() {
         </div>
         
         <div className="flex items-center gap-6 mb-8">
-          <div className="relative">
-            <AvatarPreview equipped={user?.avatar.equipped!} size="lg" itemAdjustments={itemAdjustments} fadePercent={inactivityFade} showSleeping={inactivitySleep} />
-            <button 
-              onClick={() => navigate('/avatar')}
-              className="absolute -bottom-2 -right-2 bg-primary text-on-primary p-2 rounded-xl shadow-lg border-2 border-surface-container-low hover:scale-110 transition-transform"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
+          <div className="flex flex-col items-center gap-3">
+            {/* Foto de rosto — aparece na TV e no Ranking */}
+            <ProfilePhotoUpload
+              userId={user?.id!}
+              currentPhotoUrl={photoUrl}
+              onPhotoUpdated={setPhotoUrl}
+              size="lg"
+            />
+            <div className="relative">
+              <AvatarPreview equipped={user?.avatar.equipped!} size="md" itemAdjustments={itemAdjustments} fadePercent={inactivityFade} showSleeping={inactivitySleep} />
+              <button
+                onClick={() => navigate('/avatar')}
+                className="absolute -bottom-2 -right-2 bg-primary text-on-primary p-2 rounded-xl shadow-lg border-2 border-surface-container-low hover:scale-110 transition-transform"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <div>
             {isEditingProfile ? (
