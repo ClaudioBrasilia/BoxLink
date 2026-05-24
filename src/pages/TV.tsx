@@ -257,32 +257,6 @@ export default function TV() {
 
   const isStale = lastUpdated && (Date.now() - lastUpdated.getTime()) > 60000;
 
-  if (!wod) {
-    return (
-      <div className="min-h-screen bg-black text-white font-sans overflow-hidden flex flex-col p-6 gap-6 relative select-none">
-        <header className="flex justify-between items-center bg-[#111] rounded-[2rem] p-6 border border-white/5 shadow-2xl">
-          <div className="flex items-center gap-6">
-            <img src={settings.logo || "https://picsum.photos/seed/box/200"} alt="Logo" className="w-16 h-16 rounded-2xl border-2 border-primary" />
-            <div>
-              <h1 className="text-4xl font-headline font-black text-white italic tracking-tighter uppercase leading-none">{settings.name}</h1>
-              <p className="text-primary text-[10px] font-black tracking-[0.4em] uppercase italic mt-1">CROSSCITY HUB • PERFORMANCE ELITE</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <button onClick={toggleFullscreen} className="p-4 bg-white/5 rounded-2xl border border-white/10 hover:bg-primary hover:text-black transition-all group">
-              <Maximize className="w-6 h-6 group-hover:scale-110 transition-transform" />
-            </button>
-          </div>
-        </header>
-        <div className="flex-1 flex flex-col items-center justify-center bg-[#111] rounded-[3rem] border border-white/5">
-          <Activity className="w-24 h-24 text-primary/20 mb-8" />
-          <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter mb-4">AGUARDANDO WOD</h2>
-          <p className="text-white/40 text-xl font-black uppercase tracking-[0.4em] italic">NENHUM TREINO CADASTRADO PARA HOJE</p>
-        </div>
-      </div>
-    );
-  }
-
   const getWodFontSize = (text: string) => {
     const len = (text || '').length;
     const lines = (text || '').split('\n').filter(Boolean).length;
@@ -346,37 +320,46 @@ export default function TV() {
       <div className="flex-1 grid grid-cols-12 gap-6 overflow-hidden">
         <div className="col-span-8 flex flex-col gap-6">
 
-          {/* ── TABS WOD: sem setas ← → (só o botão AUTO/PAUSADO) ── */}
-          <div className="flex items-center justify-between bg-[#111] rounded-3xl p-3 border border-white/5">
-            <div className="flex gap-3">
-              {['WARM-UP', 'SKILL', 'THE WOD'].map((label, i) => (
-                <button key={label} onClick={() => setWodTabIndex(i)}
-                  className={cn(
-                    "px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-[0.2em] italic transition-all border relative overflow-hidden",
-                    wodTabIndex === i
-                      ? "bg-primary text-black border-primary shadow-[0_0_20px_rgba(202,253,0,0.3)]"
-                      : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"
-                  )}>
-                  <span className="relative z-10">{label}</span>
-                  {wodTabIndex === i && (
-                    <motion.div layoutId="activeTab" className="absolute inset-0 bg-primary"
-                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }} />
-                  )}
-                </button>
-              ))}
+          {/* ── TABS WOD: só aparecem quando há WOD ── */}
+          {wod && (
+            <div className="flex items-center justify-between bg-[#111] rounded-3xl p-3 border border-white/5">
+              <div className="flex gap-3">
+                {['WARM-UP', 'SKILL', 'THE WOD'].map((label, i) => (
+                  <button key={label} onClick={() => setWodTabIndex(i)}
+                    className={cn(
+                      "px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-[0.2em] italic transition-all border relative overflow-hidden",
+                      wodTabIndex === i
+                        ? "bg-primary text-black border-primary shadow-[0_0_20px_rgba(202,253,0,0.3)]"
+                        : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"
+                    )}>
+                    <span className="relative z-10">{label}</span>
+                    {wodTabIndex === i && (
+                      <motion.div layoutId="activeTab" className="absolute inset-0 bg-primary"
+                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }} />
+                    )}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setIsWodAutoRotationActive(!isWodAutoRotationActive)}
+                className={cn("p-3 rounded-xl border transition-all flex items-center gap-2 mr-2",
+                  isWodAutoRotationActive ? "bg-primary/20 border-primary/30 text-primary" : "bg-white/5 border-white/10 text-white/40")}>
+                <span className="text-[10px] font-black uppercase italic tracking-widest">
+                  {isWodAutoRotationActive ? 'AUTO' : 'PAUSADO'}
+                </span>
+              </button>
             </div>
-            {/* Apenas botão AUTO — setas removidas */}
-            <button
-              onClick={() => setIsWodAutoRotationActive(!isWodAutoRotationActive)}
-              className={cn("p-3 rounded-xl border transition-all flex items-center gap-2 mr-2",
-                isWodAutoRotationActive ? "bg-primary/20 border-primary/30 text-primary" : "bg-white/5 border-white/10 text-white/40")}>
-              <span className="text-[10px] font-black uppercase italic tracking-widest">
-                {isWodAutoRotationActive ? 'AUTO' : 'PAUSADO'}
-              </span>
-            </button>
-          </div>
+          )}
 
           <div className="flex-1 relative">
+            {/* Placeholder quando não há WOD — coluna direita continua visível */}
+            {!wod && (
+              <div className="absolute inset-0 bg-[#111] rounded-[3rem] border border-white/5 flex flex-col items-center justify-center gap-4">
+                <Activity className="w-20 h-20 text-primary/20" />
+                <h2 className="text-5xl font-headline font-black text-white uppercase italic tracking-tighter">AGUARDANDO WOD</h2>
+                <p className="text-white/30 text-sm font-black uppercase tracking-[0.3em] italic">Nenhum treino cadastrado para hoje</p>
+              </div>
+            )}
             <AnimatePresence mode="wait">
               {wodTabIndex === 0 && (
                 <motion.section key="warmup"
