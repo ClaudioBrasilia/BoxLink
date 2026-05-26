@@ -50,6 +50,12 @@ export default defineConfig(({mode}) => {
         '~': path.resolve(__dirname, 'src'),
       },
     },
+    build: {
+      rollupOptions: {
+        // Pacotes que só existem no app nativo — ignorar no build web/Vercel
+        external: ['@capacitor-community/health'],
+      },
+    },
     server: {
       host: '0.0.0.0',
       port: 3000,
