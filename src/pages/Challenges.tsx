@@ -199,10 +199,11 @@ export default function Challenges() {
         if (error) throw error;
       }
 
-      await fetchData();
-
-      const newTotal = getTotalProgress(challenge.id) + (existingProgress ? 0 : quantity);
+      const currentTotal = getTotalProgress(challenge.id);
+      const newTotal = currentTotal + quantity;
       const targetValue = challenge.target_value || 0;
+
+      await fetchData();
 
       if (newTotal >= targetValue && !isRewardClaimed(challenge.id)) {
         await grantReward(challenge);
