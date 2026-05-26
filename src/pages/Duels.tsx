@@ -12,10 +12,13 @@ import { useInactivity } from '../hooks/useInactivity';
 
 import { addReward } from '../utils/rewards';
 
-export default function Dashboard() {
+export default function Duels() {
   const { user, updateUser } = useAuth();
-  const { fadePercent: inactivityFade, showSleeping: inactivitySleep } = useInactivity();
   const navigate = useNavigate();
+  
+  // 🎯 Inatividade do avatar do próprio atleta
+  const checkinsList = (user?.checkins || []).map(c => ({ date: c.date }));
+  const { fadePercent: inactivityFade, showSleeping: inactivitySleep } = useInactivity(checkinsList);
   const [wod, setWod] = useState<Wod | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkinMessage, setCheckinMessage] = useState<string | null>(null);
