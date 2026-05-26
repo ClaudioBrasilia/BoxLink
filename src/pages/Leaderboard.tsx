@@ -57,7 +57,6 @@ export default function Leaderboard() {
       const { data: allUsers, error: usersError } = await supabase
         .from('profiles').select('*').eq('status', 'approved');
       if (usersError) throw usersError;
-      if (!allUsers) throw new Error('Nenhum dado retornado da tabela profiles'); // ✅ Fix: evita .map em null
 
       // 🎯 Buscar configurações de inatividade
       const { data: boxSettings } = await supabase.from('box_settings').select('inactivity').maybeSingle();
@@ -86,7 +85,6 @@ export default function Leaderboard() {
         checkins: [], paidBonuses: u.paid_bonuses || [],
         createdAt: u.created_at,
         allCheckins: checkinsMap[u.id] || [],
-        photo_url: u.photo_url ?? null, // ✅ Fix: campo necessário para AthletePhoto
         ...extra
       });
 
