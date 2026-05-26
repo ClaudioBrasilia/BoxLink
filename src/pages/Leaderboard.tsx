@@ -85,6 +85,7 @@ export default function Leaderboard() {
         checkins: [], paidBonuses: u.paid_bonuses || [],
         createdAt: u.created_at,
         allCheckins: checkinsMap[u.id] || [],
+        photo_url: u.photo_url ?? null,
         ...extra
       });
 
