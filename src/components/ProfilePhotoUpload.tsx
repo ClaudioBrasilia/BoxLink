@@ -75,14 +75,13 @@ export default function ProfilePhotoUpload({
         .from('profile-photos')
         .getPublicUrl(path);
 
-      // Adiciona timestamp para forçar atualização do cache
-      const urlWithCache = `${publicUrl}?t=${Date.now()}`;
-
-      // Salva no perfil
+      // Salva a URL limpa no banco (sem timestamp para não acumular lixo)
       await supabase.from('profiles')
-        .update({ photo_url: urlWithCache })
+        .update({ photo_url: publicUrl })
         .eq('id', userId);
 
+      // Usa timestamp só no preview local para forçar reload do cache do browser
+      const urlWithCache = `${publicUrl}?t=${Date.now()}`;
       setPreview(urlWithCache);
       onPhotoUpdated(urlWithCache);
     } catch (err: any) {
