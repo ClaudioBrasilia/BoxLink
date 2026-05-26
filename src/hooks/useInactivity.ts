@@ -19,15 +19,14 @@ async function getInactivitySettings(): Promise<InactivitySettings> {
 }
 
 // Hook para um único atleta (usa os checkins já carregados no contexto)
-export function useInactivity(checkins: { date: string }[] | undefined): InactivityState {
-  const safeCheckins = checkins || []; // ✅ Fix: evita .length em undefined
+export function useInactivity(checkins: { date: string }[]): InactivityState {
   const [state, setState] = useState<InactivityState>({ inactiveDays: 0, fadePercent: 0, showSleeping: false });
 
   useEffect(() => {
     getInactivitySettings().then(settings => {
-      setState(calcInactivity(safeCheckins, settings));
+      setState(calcInactivity(checkins, settings));
     });
-  }, [safeCheckins.length]);
+  }, [checkins.length]);
 
   return state;
 }
@@ -35,21 +34,20 @@ export function useInactivity(checkins: { date: string }[] | undefined): Inactiv
 // Hook para múltiplos atletas (Leaderboard, TV)
 // Recebe array de { id, checkins } e retorna um map id → InactivityState
 export function useInactivityMap(
-  athletes: { id: string; checkins: { date: string }[] }[] | undefined
+  athletes: { id: string; checkins: { date: string }[] }[]
 ): Record<string, InactivityState> {
-  const safeAthletes = athletes || []; // ✅ Fix: evita .length em undefined
   const [map, setMap] = useState<Record<string, InactivityState>>({});
 
   useEffect(() => {
-    if (safeAthletes.length === 0) return;
+    if (athletes.length === 0) return;
     getInactivitySettings().then(settings => {
       const result: Record<string, InactivityState> = {};
-      safeAthletes.forEach(a => {
+      athletes.forEach(a => {
         result[a.id] = calcInactivity(a.checkins, settings);
       });
       setMap(result);
     });
-  }, [safeAthletes.length]);
+  }, [athletes.length]);
 
   return map;
 }
