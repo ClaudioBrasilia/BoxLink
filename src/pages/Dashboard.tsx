@@ -27,7 +27,7 @@ export default function Dashboard() {
   const [userRankPosition, setUserRankPosition] = useState<number | null>(null);
 
   // 🎯 Inatividade do avatar do próprio atleta
-  const checkinsList = (user?.checkins || []).map(c => ({ date: c.date }));
+  const checkinsList = (user?.checkins ?? []).map(c => ({ date: c.date })); // ✅ Fix: usa ?? para garantir array
   const { fadePercent, showSleeping } = useInactivity(checkinsList);
 
   const fetchData = async () => {
