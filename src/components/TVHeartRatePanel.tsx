@@ -1,181 +1,154 @@
-// src/components/TVHeartRatePanel.tsx
-// Painel exibido na TV com a frequência cardíaca de todos os atletas
-// que conectaram seus relógios. Atualiza via Supabase Realtime.
-
-import React, { useEffect, useState } from 'react';
-import { Heart } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '../lib/supabase';
-
-interface AthleteHR {
-  user_id: string;
-  bpm: number;
-  updated_at: string;
-  name?: string;
-  avatar_equipped?: any;
-}
-
-// Cor e zona com base no BPM
-function getZone(bpm: number): { label: string; color: string; glow: string; bar: string } {
-  if (bpm < 100) return { label: 'REPOUSO',    color: '#60a5fa', glow: 'rgba(96,165,250,0.4)',   bar: 'bg-blue-400' };
-  if (bpm < 120) return { label: 'AQUECIMENTO',color: '#4ade80', glow: 'rgba(74,222,128,0.4)',   bar: 'bg-green-400' };
-  if (bpm < 140) return { label: 'AERÓBICO',   color: '#facc15', glow: 'rgba(250,204,21,0.4)',   bar: 'bg-yellow-400' };
-  if (bpm < 160) return { label: 'ANAERÓBICO', color: '#fb923c', glow: 'rgba(251,146,60,0.4)',   bar: 'bg-orange-400' };
-  return               { label: 'MÁXIMO ⚡',   color: '#f87171', glow: 'rgba(248,113,113,0.5)',   bar: 'bg-red-400' };
-}
-
-// Barra de intensidade (0-100%)
-function intensityPercent(bpm: number): number {
-  const min = 50;
-  const max = 200;
-  return Math.min(100, Math.max(0, ((bpm - min) / (max - min)) * 100));
-}
-
-export default function TVHeartRatePanel() {
-  const [athletes, setAthletes] = useState<AthleteHR[]>([]);
+function TVHeartRatePanel() {
+  const [athletesMap, setAthletesMap] = useState<Record<string, AthleteHR>>({});
 
   useEffect(() => {
-    // Busca inicial
-    const fetchHR = async () => {
-      // Busca registros recentes (últimos 10 minutos)
-      const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const { data: hrData } = await supabase
-        .from('heart_rate_live')
-        .select('user_id, bpm, updated_at')
-        .gte('updated_at', cutoff)
-        .order('bpm', { ascending: false });
+    // 1. Cria e escuta o canal rápido de batimentos cardíacos
+    const channel = supabase.channel('boxlink-live-hr');
 
-      if (!hrData || hrData.length === 0) {
-        setAthletes([]);
-        return;
-      }
+    channel
+      .on('broadcast', { event: 'pulse' }, async (payload) => {
+        const { user_id, bpm } = payload.payload;
+        if (!user_id) return;
 
-      // Busca nomes dos atletas
-      const ids = hrData.map((r: any) => r.user_id);
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, name, avatar_equipped')
-        .in('id', ids);
+        // Verifica se já temos o nome desse atleta salvo para evitar buscar no banco toda hora
+        setAthletesMap((prev) => {
+          const existingAthlete = prev[user_id];
+          
+          // Se o atleta acabou de entrar e não tem nome, busca o perfil dele
+          if (!existingAthlete) {
+            supabase
+              .from('profiles')
+              .select('name')
+              .eq('id', user_id)
+              .single()
+              .then(({ data }) => {
+                if (data?.name) {
+                  setAthletesMap((current) => ({
+                    ...current,
+                    [user_id]: {
+                      ...current[user_id],
+                      name: data.name
+                    }
+                  }));
+                }
+              });
+          }
 
-      const profileMap = Object.fromEntries((profiles || []).map((p: any) => [p.id, p]));
-
-      const enriched: AthleteHR[] = hrData.map((r: any) => ({
-        ...r,
-        name: profileMap[r.user_id]?.name || 'Atleta',
-        avatar_equipped: profileMap[r.user_id]?.avatar_equipped,
-      }));
-
-      setAthletes(enriched);
-    };
-
-    fetchHR();
-
-    // Realtime: escuta mudanças na tabela heart_rate_live
-    const channel = supabase
-      .channel('tv-heart-rate')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'heart_rate_live',
-      }, () => {
-        fetchHR();
+          return {
+            ...prev,
+            [user_id]: {
+              user_id,
+              bpm,
+              updated_at: new Date().toISOString(),
+              name: existingAthlete?.name || 'Atleta'
+            }
+          };
+        });
       })
       .subscribe();
 
-    // Atualiza a cada 5 segundos para remover atletas stale
-    const interval = setInterval(fetchHR, 5000);
+    // 2. Sistema de limpeza (Timeout): Varre o estado a cada 4 segundos e remove quem ficou offline
+    const cleanupInterval = setInterval(() => {
+      setAthletesMap((prev) => {
+        const freshMap = { ...prev };
+        const now = Date.now();
+        let changed = false;
+
+        Object.keys(freshMap).forEach((id) => {
+          const lastSeen = new Date(freshMap[id].updated_at).getTime();
+          // Se o aluno não mandar sinal por mais de 15 segundos, sai da tela da TV
+          if (now - lastSeen > 15000) {
+            delete freshMap[id];
+            changed = true;
+          }
+        });
+
+        return changed ? freshMap : prev;
+      });
+    }, 4000);
 
     return () => {
       supabase.removeChannel(channel);
-      clearInterval(interval);
+      clearInterval(cleanupInterval);
     };
   }, []);
+
+  // Transforma o objeto em array ordenado pelo maior BPM para renderizar no seu layout
+  const athletes = Object.values(athletesMap).sort((a, b) => b.bpm - a.bpm);
 
   if (athletes.length === 0) return null;
 
   return (
-    <section className="bg-[#111] rounded-[2.5rem] border border-white/5 p-5 flex flex-col gap-4">
-      {/* Header */}
+    <section className="bg-[#111] rounded-[2.5rem] border border-white/5 p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Heart className="w-5 h-5 text-red-400 animate-pulse" />
-          <h3 className="text-sm font-headline font-black text-white italic uppercase tracking-tight">
-            FC AO VIVO
-          </h3>
+          <Heart className="w-4 h-4 text-red-400 animate-pulse" />
+          <h3 className="text-sm font-headline font-black text-white italic uppercase tracking-tight">FC AO VIVO</h3>
         </div>
-        <span className="bg-red-500/20 border border-red-500/30 text-red-400 px-2 py-0.5 rounded-full font-headline font-black text-xs italic">
+        <span className="bg-red-500/20 border border-red-500/30 text-red-400 px-2 py-0.5 rounded-full font-headline font-black text-[10px] italic">
           {athletes.length} relógio{athletes.length !== 1 ? 's' : ''}
         </span>
       </div>
 
-      {/* Cards de atletas */}
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2">
         <AnimatePresence>
           {athletes.map((athlete) => {
-            const zone = getZone(athlete.bpm);
-            const pct = intensityPercent(athlete.bpm);
+            const zone = getHRZone(athlete.bpm);
+            const pct = Math.min(100, Math.max(0, ((athlete.bpm - 50) / 150) * 100));
             const firstName = athlete.name?.split(' ')[0] || 'Atleta';
 
             return (
               <motion.div
                 key={athlete.user_id}
                 layout
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
+                exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.3 }}
-                className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-2"
+                className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-1.5"
               >
-                {/* Linha principal: nome + BPM */}
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    {/* Avatar initials */}
                     <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center font-headline font-black text-sm shrink-0"
+                      className="w-7 h-7 rounded-full flex items-center justify-center font-headline font-black text-xs shrink-0"
                       style={{
                         backgroundColor: zone.color + '20',
                         border: `1px solid ${zone.color}40`,
-                        color: zone.color,
+                        color: zone.color
                       }}
                     >
                       {firstName[0]}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-white font-black text-xs uppercase italic truncate leading-none">
+                      <p className="text-white font-black text-[10px] uppercase italic truncate leading-none">
                         {firstName}
                       </p>
-                      <p className="text-[9px] font-black uppercase tracking-widest mt-0.5"
-                         style={{ color: zone.color }}>
+                      <p className="text-[8px] font-black uppercase tracking-wider mt-0.5" style={{ color: zone.color }}>
                         {zone.label}
                       </p>
                     </div>
                   </div>
 
-                  {/* BPM em destaque */}
-                  <div className="flex items-baseline gap-1 shrink-0">
+                  <div className="flex items-baseline gap-0.5 shrink-0">
                     <motion.span
                       key={athlete.bpm}
-                      initial={{ scale: 1.3, opacity: 0.6 }}
+                      initial={{ scale: 1.3, opacity: 0.5 }}
                       animate={{ scale: 1, opacity: 1 }}
-                      className="font-headline font-black text-2xl italic tabular-nums"
-                      style={{
-                        color: zone.color,
-                        textShadow: `0 0 20px ${zone.glow}`,
-                      }}
+                      className="font-headline font-black text-xl italic tabular-nums"
+                      style={{ color: zone.color, textShadow: `0 0 16px ${zone.glow}` }}
                     >
                       {athlete.bpm}
                     </motion.span>
-                    <span className="text-[9px] font-black uppercase" style={{ color: zone.color }}>
+                    <span className="text-[8px] font-black uppercase" style={{ color: zone.color }}>
                       BPM
                     </span>
                   </div>
                 </div>
 
-                {/* Barra de intensidade */}
-                <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
                   <motion.div
                     className={`h-full rounded-full ${zone.bar}`}
-                    style={{ boxShadow: `0 0 8px ${zone.glow}` }}
+                    style={{ boxShadow: `0 0 6px ${zone.glow}` }}
                     initial={{ width: 0 }}
                     animate={{ width: `${pct}%` }}
                     transition={{ duration: 0.5 }}
@@ -185,24 +158,6 @@ export default function TVHeartRatePanel() {
             );
           })}
         </AnimatePresence>
-      </div>
-
-      {/* Legenda de zonas compacta */}
-      <div className="flex gap-2 flex-wrap pt-1 border-t border-white/5">
-        {[
-          { label: 'Repouso',    color: '#60a5fa', max: '<100' },
-          { label: 'Aquecimento',color: '#4ade80', max: '<120' },
-          { label: 'Aeróbico',  color: '#facc15', max: '<140' },
-          { label: 'Anaeróbico',color: '#fb923c', max: '<160' },
-          { label: 'Máximo',    color: '#f87171', max: '160+' },
-        ].map(z => (
-          <div key={z.label} className="flex items-center gap-1">
-            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: z.color }} />
-            <span className="text-[8px] font-black uppercase" style={{ color: z.color }}>
-              {z.label} {z.max}
-            </span>
-          </div>
-        ))}
       </div>
     </section>
   );
