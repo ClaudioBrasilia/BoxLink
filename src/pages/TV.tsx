@@ -12,7 +12,7 @@ import AthletePhoto from '../components/AthletePhoto';
 const TIMEZONE = "America/Sao_Paulo";
 
 // ─── Painel de Frequência Cardíaca ───────────────────────────────────────────
-interface AthleteHR { user_id: string; bpm: number; updated_at: string; name?: string; }
+interface AthleteHR { user_id: string; bpm: number; updated_at: string; name?: string; photo_url?: string | null; }
 
 function getHRZone(bpm: number) {
   if (bpm < 100) return { label: 'REPOUSO',     color: '#60a5fa', bar: 'bg-blue-400',   glow: 'rgba(96,165,250,0.5)' };
@@ -29,9 +29,9 @@ function TVHeartRatePanel() {
     const { data: hrData } = await supabase.from('heart_rate_live').select('user_id, bpm, updated_at').gte('updated_at', cutoff).order('bpm', { ascending: false });
     if (!hrData || hrData.length === 0) { setAthletes([]); return; }
     const ids = hrData.map((r: any) => r.user_id);
-    const { data: profiles } = await supabase.from('profiles').select('id, name').in('id', ids);
+    const { data: profiles } = await supabase.from('profiles').select('id, name, photo_url').in('id', ids);
     const profileMap = Object.fromEntries((profiles || []).map((p: any) => [p.id, p]));
-    setAthletes(hrData.map((r: any) => ({ ...r, name: profileMap[r.user_id]?.name || 'Atleta' })));
+    setAthletes(hrData.map((r: any) => ({ ...r, name: profileMap[r.user_id]?.name || 'Atleta', photo_url: profileMap[r.user_id]?.photo_url || null })));
   }, []);
 
   useEffect(() => {
@@ -64,9 +64,11 @@ function TVHeartRatePanel() {
                 className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center font-headline font-black text-xs shrink-0"
+                    <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center font-headline font-black text-xs"
                       style={{ backgroundColor: zone.color + '20', border: `1px solid ${zone.color}40`, color: zone.color }}>
-                      {firstName[0]}
+                      {athlete.photo_url
+                        ? <img src={athlete.photo_url} alt={firstName} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display='none'; }} />
+                        : firstName[0]}
                     </div>
                     <div className="min-w-0">
                       <p className="text-white font-black text-[10px] uppercase italic truncate leading-none">{firstName}</p>
