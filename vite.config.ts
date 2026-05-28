@@ -27,16 +27,8 @@ export default defineConfig(({mode}) => {
           background_color: '#0e0e0e',
           display: 'standalone',
           icons: [
-            {
-              src: 'pwa-192x192.png',
-              sizes: '192x192',
-              type: 'image/png'
-            },
-            {
-              src: 'pwa-512x512.png',
-              sizes: '512x512',
-              type: 'image/png'
-            }
+            { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+            { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' }
           ]
         }
       })
@@ -52,8 +44,11 @@ export default defineConfig(({mode}) => {
     },
     build: {
       rollupOptions: {
-        // Pacotes que só existem no app nativo — ignorar no build web/Vercel
-        external: ['@capacitor-community/health'],
+        // Pacotes nativos — só existem no app nativo, ignorar no build web/Vercel
+        external: [
+          '@capacitor-community/health',
+          '@capgo/capacitor-health',
+        ],
       },
     },
     server: {
