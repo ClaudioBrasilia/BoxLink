@@ -9,6 +9,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
 import { addReward, getRewardSettings } from '../utils/rewards';
+import BluetoothScanner from '../components/BluetoothScanner';
+import HeartRateDisplay from '../components/HeartRateDisplay';
 
 const TIMEZONE = 'America/Sao_Paulo';
 
@@ -236,6 +238,13 @@ export default function Wod() {
           </span>
         )}
       </div>
+
+      {/* NOVO: Scanner Bluetooth e Display de FC */}
+      {isToday && (
+        <>
+          <BluetoothScanner userId={user?.id} />
+        </>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-12">
