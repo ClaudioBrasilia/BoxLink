@@ -48,4 +48,4 @@ VITE_SUPABASE_ANON_KEY=sua_chave_anon_do_supabase
 
 ---
 Desenvolvido para **CrossCity Hub - CrossFit Elite**. 
-*Pronto para escalar e vender.*
+*Pronto para escalar e vender.*          Teste de build APK main
