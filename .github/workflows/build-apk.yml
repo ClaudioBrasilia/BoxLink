@@ -3,7 +3,7 @@ name: Build APK
 on:
   push:
     branches: [main, master]
-  workflow_dispatch: # Permite rodar manualmente pelo GitHub
+  workflow_dispatch:
 
 jobs:
   build:
@@ -29,35 +29,48 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # 4. Instalar dependências
+      # 4. Cache do Gradle (evita erro de Jar corrompido)
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # 5. Instalar dependências
       - name: Instalar dependências
         run: npm ci
 
-      # 5. Criar arquivo .env com as variáveis do Supabase
+      # 6. Criar arquivo .env com as variáveis do Supabase
       - name: Criar arquivo .env
         run: |
           echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .env
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .env
 
-      # 6. Build do projeto web (Vite)
+      # 7. Build do projeto web (Vite)
       - name: Build web (Vite)
         run: npm run build
 
-      # 7. Sincronizar com o Capacitor (copia dist/ para android/app/src/main/assets)
+      # 8. Sincronizar com o Capacitor
       - name: Sincronizar Capacitor
         run: npx cap sync android
 
-      # 8. Permissão de execução no Gradle
+      # 9. Permissão de execução no Gradle
       - name: Permissão no gradlew
         run: chmod +x android/gradlew
 
-      # 9. Build do APK debug
+      # 10. Build do APK debug
       - name: Build APK (debug)
         run: |
           cd android
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2"
 
-      # 10. Upload do APK como artefato
+      # 11. Upload do APK como artefato
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -65,7 +78,7 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      # 11. Criar Release automático (apenas em push na main/master)
+      # 12. Criar Release automático (apenas em push na main/master)
       - name: Criar Release com APK
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
