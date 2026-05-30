@@ -1,14 +1,26 @@
-// src/hooks/useBluetooth.ts
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { BleClient, BleDevice, numberToUUID } from '@capacitor-community/bluetooth-le';
 import { supabase } from '../lib/supabase';
 
-// UUIDs Padronizados Bluetooth
-const HEART_RATE_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb';
-const HEART_RATE_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb';
+// UUIDs Padronizados Bluetooth e Comuns para Dispositivos de Frequência Cardíaca
+const HEART_RATE_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb'; // Padrão Bluetooth SIG
+const HEART_RATE_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb'; // Característica de Medição de FC
 const BATTERY_SERVICE = numberToUUID(0x180f);
 const BATTERY_LEVEL = numberToUUID(0x2a19);
+
+// UUIDs adicionais para aumentar a compatibilidade com smartwatches genéricos/chineses
+// Adicione aqui outros UUIDs de serviço de FC que seu relógio possa anunciar.
+// O UUID '00003802-0000-1000-8000-00805f9b34fb' foi identificado no dispositivo do usuário.
+const ADDITIONAL_HEART_RATE_SERVICES = [
+  '00003802-0000-1000-8000-00805f9b34fb', // UUID identificado no relógio do usuário
+  // Exemplo de outros UUIDs comuns para dispositivos como Xiaomi, Huawei, Polar, Garmin, etc.
+  // '00002a37-0000-1000-8000-00805f9b34fb', // Heart Rate Measurement Characteristic (já incluído como HEART_RATE_MEASUREMENT, mas pode ser útil aqui se o dispositivo o anunciar como serviço)
+  // '00002a39-0000-1000-8000-00805f9b34fb', // Heart Rate Control Point Characteristic
+  // '00002a19-0000-1000-8000-00805f9b34fb', // Battery Level Characteristic (já incluído como BATTERY_LEVEL, mas pode ser útil aqui se o dispositivo o anunciar como serviço)
+  // '0000fe00-0000-1000-8000-00805f9b34fb', // Exemplo de UUID genérico/proprietário (muitas vezes usado por Xiaomi Mi Band)
+  // '0000fe01-0000-1000-8000-00805f9b34fb', // Outro exemplo de UUID genérico/proprietário
+];
 
 export type BluetoothStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'error' | 'unsupported';
 
@@ -195,7 +207,7 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
       // Listener para dispositivos encontrados
       listenerRef.current = await BleClient.requestLEScan(
         {
-          services: [HEART_RATE_SERVICE],
+          services: [HEART_RATE_SERVICE, ...ADDITIONAL_HEART_RATE_SERVICES],
         },
         (result) => {
           const device: BluetoothDevice = {
