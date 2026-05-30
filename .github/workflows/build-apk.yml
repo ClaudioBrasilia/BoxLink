@@ -43,12 +43,72 @@ jobs:
       - name: Permissão no gradlew
         run: chmod +x android/gradlew
 
+      - name: Forçar versões corretas do Gradle e AGP
+        run: |
+          # Reescrever gradle-wrapper.properties corretamente
+          cat > android/gradle/wrapper/gradle-wrapper.properties << 'PROPS'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-all.zip
+          networkTimeout=10000
+          validateDistributionUrl=true
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          PROPS
+
+          # Reescrever build.gradle com AGP 8.9.1
+          cat > android/build.gradle << 'GRADLE'
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.9.1'
+                  classpath 'com.google.gms:google-services:4.4.0'
+              }
+          }
+          apply from: "variables.gradle"
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          task clean(type: Delete) {
+              delete rootProject.buildDir
+          }
+          GRADLE
+
+          # Reescrever variables.gradle com compileSdk 36
+          cat > android/variables.gradle << 'VARS'
+          ext {
+              minSdkVersion = 22
+              compileSdkVersion = 36
+              targetSdkVersion = 36
+              androidxActivityVersion = '1.9.0'
+              androidxAppCompatVersion = '1.6.1'
+              androidxCoordinatorLayoutVersion = '1.2.0'
+              androidxCoreVersion = '1.12.0'
+              androidxFragmentVersion = '1.6.2'
+              coreSplashScreenVersion = '1.0.1'
+              androidxWebkitVersion = '1.9.0'
+              junitVersion = '4.13.2'
+              androidxJunitVersion = '1.1.5'
+              androidxEspressoCoreVersion = '3.5.1'
+              cordovaAndroidVersion = '10.1.1'
+          }
+          VARS
+
+          echo "✅ Arquivos reescritos com sucesso"
+          cat android/gradle/wrapper/gradle-wrapper.properties
+
       - name: Build APK (debug)
         run: |
           cd android
           ./gradlew assembleDebug --no-daemon
         env:
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false -Dorg.gradle.configuration-cache=false"
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false"
           JAVA_TOOL_OPTIONS: "-Xmx2048m"
 
       - name: Upload APK
