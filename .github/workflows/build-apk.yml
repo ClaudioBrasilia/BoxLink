@@ -43,17 +43,12 @@ jobs:
       - name: Permissão no gradlew
         run: chmod +x android/gradlew
 
-      - name: Limpar cache do Gradle
-        run: |
-          rm -rf ~/.gradle/caches
-          rm -rf ~/.gradle/wrapper
-
       - name: Build APK (debug)
         run: |
           cd android
           ./gradlew assembleDebug --no-daemon
         env:
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false -Dorg.gradle.configuration-cache=false -Dorg.gradle.unsafe.configuration-cache=false"
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false -Dorg.gradle.configuration-cache=false"
           JAVA_TOOL_OPTIONS: "-Xmx2048m"
 
       - name: Upload APK
