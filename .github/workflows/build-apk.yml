@@ -83,7 +83,7 @@ jobs:
           # Reescrever variables.gradle com compileSdk 36
           cat > android/variables.gradle << 'VARS'
           ext {
-              minSdkVersion = 22
+              minSdkVersion = 26
               compileSdkVersion = 36
               targetSdkVersion = 36
               androidxActivityVersion = '1.9.0'
