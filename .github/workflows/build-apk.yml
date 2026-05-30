@@ -5,6 +5,9 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Android APK
@@ -60,7 +63,7 @@ jobs:
           cat > android/build.gradle << 'GRADLE'
           buildscript {
               repositories {
-                  google()
+                  google( )
                   mavenCentral()
               }
               dependencies {
