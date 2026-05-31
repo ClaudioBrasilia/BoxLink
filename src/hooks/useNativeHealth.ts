@@ -1,6 +1,6 @@
 // src/hooks/useNativeHealth.ts
 // Lê frequência cardíaca via HealthKit (iOS) e Health Connect (Android)
-// Usa @capgo/capacitor-health — já listado no package.json
+// Usa @capgo/capacitor-health v8+ — API: readSamples() com dataType
 
 import { useState, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
@@ -23,8 +23,8 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isNative   = Capacitor.isNativePlatform();
-  const platform   = Capacitor.getPlatform();
+  const isNative = Capacitor.isNativePlatform();
+  const platform = Capacitor.getPlatform();
 
   const syncToSupabase = useCallback(async (currentBpm: number) => {
     if (!userId) return;
@@ -66,13 +66,21 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
     setErrorMessage(null);
 
     try {
-      // Importação dinâmica do @capgo/capacitor-health
-      // Não quebra o build web (está no external do vite.config.ts)
+      // Importação dinâmica — não quebra o build web
       const { Health } = await import('@capgo/capacitor-health');
 
-      // Solicita permissão para leitura de FC
+      // Verifica disponibilidade (Health Connect no Android precisa estar instalado)
+      const availability = await Health.isAvailable();
+      if (!availability.available) {
+        throw new Error(
+          platform === 'android'
+            ? 'Health Connect não instalado. Baixe na Play Store e tente novamente.'
+            : 'HealthKit não disponível neste dispositivo.'
+        );
+      }
+
+      // API v8+: requestAuthorization sem campo "all"
       await Health.requestAuthorization({
-        all: [],
         read: ['heartRate'],
         write: [],
       });
@@ -84,16 +92,18 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
           const endDate   = new Date().toISOString();
           const startDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
-          const result = await Health.queryHKitSampleType({
-            sampleName: 'heartRate',
+          // API v8+: readSamples com dataType (não queryHKitSampleType)
+          const result = await Health.readSamples({
+            dataType: 'heartRate',
             startDate,
             endDate,
             limit: 1,
+            ascending: false,
           });
 
-          const samples = result?.resultData || [];
+          const samples = result?.samples ?? [];
           if (samples.length > 0) {
-            const latest   = samples[samples.length - 1];
+            const latest     = samples[0];
             const currentBpm = Math.round(Number(latest.value));
             if (currentBpm > 0 && currentBpm < 250) {
               setBpm(currentBpm);
@@ -115,15 +125,11 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
       if (err.message?.includes('permission') || err.message?.includes('authorization')) {
         setErrorMessage(
           platform === 'ios'
-            ? 'Permissão negada. Vá em Ajustes > Saúde > BoxLink e ative Frequência Cardíaca.'
-            : 'Permissão negada. Vá em Configurações > Health Connect > BoxLink e ative Frequência Cardíaca.'
+            ? 'Permissão negada. Vá em Ajustes > Saúde > CrossCity Hub e ative Frequência Cardíaca.'
+            : 'Permissão negada. Vá em Configurações > Health Connect > CrossCity Hub e ative Frequência Cardíaca.'
         );
-      } else if (err.message?.includes('not available') || err.message?.includes('not installed')) {
-        setErrorMessage(
-          platform === 'android'
-            ? 'Health Connect não instalado. Baixe na Play Store e tente novamente.'
-            : 'HealthKit não disponível neste dispositivo.'
-        );
+      } else if (err.message?.includes('not available') || err.message?.includes('not installed') || err.message?.includes('Health Connect')) {
+        setErrorMessage(err.message);
       } else {
         setErrorMessage(err.message || 'Erro desconhecido. Tente novamente.');
       }
