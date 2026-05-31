@@ -46,7 +46,7 @@ export default defineConfig(({mode}) => {
       rollupOptions: {
         // Pacotes nativos — só existem no app nativo, ignorar no build web/Vercel
         external: [
-          '@capacitor-community/health',
+          '@capgo/capacitor-health',
         ],
       },
     },
