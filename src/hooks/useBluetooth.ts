@@ -1,26 +1,14 @@
+// src/hooks/useBluetooth.ts
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { BleClient, BleDevice, numberToUUID } from '@capacitor-community/bluetooth-le';
 import { supabase } from '../lib/supabase';
 
-// UUIDs Padronizados Bluetooth e Comuns para Dispositivos de Frequência Cardíaca
-const HEART_RATE_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb'; // Padrão Bluetooth SIG
-const HEART_RATE_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb'; // Característica de Medição de FC
+// UUIDs Padronizados Bluetooth
+const HEART_RATE_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb';
+const HEART_RATE_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb';
 const BATTERY_SERVICE = numberToUUID(0x180f);
 const BATTERY_LEVEL = numberToUUID(0x2a19);
-
-// UUIDs adicionais para aumentar a compatibilidade com smartwatches genéricos/chineses
-// Adicione aqui outros UUIDs de serviço de FC que seu relógio possa anunciar.
-// O UUID '00003802-0000-1000-8000-00805f9b34fb' foi identificado no dispositivo do usuário.
-const ADDITIONAL_HEART_RATE_SERVICES = [
-  '00003802-0000-1000-8000-00805f9b34fb', // UUID identificado no relógio do usuário
-  // Exemplo de outros UUIDs comuns para dispositivos como Xiaomi, Huawei, Polar, Garmin, etc.
-  // '00002a37-0000-1000-8000-00805f9b34fb', // Heart Rate Measurement Characteristic (já incluído como HEART_RATE_MEASUREMENT, mas pode ser útil aqui se o dispositivo o anunciar como serviço)
-  // '00002a39-0000-1000-8000-00805f9b34fb', // Heart Rate Control Point Characteristic
-  // '00002a19-0000-1000-8000-00805f9b34fb', // Battery Level Characteristic (já incluído como BATTERY_LEVEL, mas pode ser útil aqui se o dispositivo o anunciar como serviço)
-  // '0000fe00-0000-1000-8000-00805f9b34fb', // Exemplo de UUID genérico/proprietário (muitas vezes usado por Xiaomi Mi Band)
-  // '0000fe01-0000-1000-8000-00805f9b34fb', // Outro exemplo de UUID genérico/proprietário
-];
 
 export type BluetoothStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'error' | 'unsupported';
 
@@ -53,7 +41,6 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
   const listenerRef = useRef<any>(null);
   const isNative = Capacitor.isNativePlatform();
 
-  // Sincronizar com Supabase
   const syncToSupabase = useCallback(async (deviceId: string, bpm: number, deviceName: string) => {
     if (!userId) return;
     try {
@@ -74,7 +61,6 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     }
   }, [userId]);
 
-  // Remover do Supabase
   const removeFromSupabase = useCallback(async () => {
     if (!userId) return;
     try {
@@ -84,7 +70,6 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     }
   }, [userId]);
 
-  // Inicializar BLE
   const initializeBle = useCallback(async () => {
     try {
       await BleClient.initialize();
@@ -95,7 +80,6 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     }
   }, []);
 
-  // Parsear frequência cardíaca
   const parseHeartRate = (value: DataView): number => {
     const flags = value.getUint8(0);
     const rate16Bits = flags & 0x1;
@@ -105,7 +89,6 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     return value.getUint8(1);
   };
 
-  // Ler bateria
   const readBattery = useCallback(async (deviceId: string): Promise<number | null> => {
     try {
       const battery = await BleClient.read(deviceId, BATTERY_SERVICE, BATTERY_LEVEL);
@@ -116,7 +99,6 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     }
   }, []);
 
-  // Conectar a um dispositivo
   const connectDevice = useCallback(async (deviceId: string) => {
     try {
       const device = devicesRef.current.get(deviceId);
@@ -132,16 +114,13 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
         }
       });
 
-      // Descobrir serviços
       await BleClient.discoverServices(deviceId);
 
-      // Ler bateria
       const battery = await readBattery(deviceId);
       if (battery !== null) {
         device.battery = battery;
       }
 
-      // Iniciar notificações de FC
       await BleClient.startNotifications(
         deviceId,
         HEART_RATE_SERVICE,
@@ -165,12 +144,10 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     }
   }, [readBattery, syncToSupabase]);
 
-  // Desconectar de um dispositivo
   const disconnectDevice = useCallback(async (deviceId: string) => {
     try {
       await BleClient.stopNotifications(deviceId, HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT);
       await BleClient.disconnect(deviceId);
-      
       const device = devicesRef.current.get(deviceId);
       if (device) {
         device.status = 'disconnected';
@@ -182,7 +159,6 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     }
   }, []);
 
-  // Desconectar de todos
   const disconnectAll = useCallback(async () => {
     for (const [deviceId] of devicesRef.current) {
       await disconnectDevice(deviceId);
@@ -191,7 +167,6 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     setStatus('idle');
   }, [disconnectDevice, removeFromSupabase]);
 
-  // Iniciar scanning
   const startScanning = useCallback(async () => {
     if (!isNative) {
       setStatus('unsupported');
@@ -204,10 +179,9 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
       setErrorMessage(null);
       await initializeBle();
 
-      // Listener para dispositivos encontrados
       listenerRef.current = await BleClient.requestLEScan(
         {
-          services: [HEART_RATE_SERVICE, ...ADDITIONAL_HEART_RATE_SERVICES],
+          services: [HEART_RATE_SERVICE],
         },
         (result) => {
           const device: BluetoothDevice = {
@@ -232,7 +206,6 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     }
   }, [isNative, initializeBle]);
 
-  // Parar scanning
   const stopScanning = useCallback(async () => {
     try {
       await BleClient.stopLEScan();
@@ -242,7 +215,6 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     }
   }, []);
 
-  // Cleanup
   useEffect(() => {
     return () => {
       disconnectAll();
