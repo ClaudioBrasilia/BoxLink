@@ -68,10 +68,10 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
     try {
       // Importação dinâmica do @capgo/capacitor-health
       // Não quebra o build web (está no external do vite.config.ts)
-      const { CapacitorHealthkit } = await import('@capgo/capacitor-health');
+      const { Health } = await import('@capgo/capacitor-health');
 
       // Solicita permissão para leitura de FC
-      await CapacitorHealthkit.requestAuthorization({
+      await Health.requestAuthorization({
         all: [],
         read: ['heartRate'],
         write: [],
@@ -84,7 +84,7 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
           const endDate   = new Date().toISOString();
           const startDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
-          const result = await CapacitorHealthkit.queryHKitSampleType({
+          const result = await Health.queryHKitSampleType({
             sampleName: 'heartRate',
             startDate,
             endDate,
