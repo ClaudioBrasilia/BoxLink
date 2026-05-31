@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Trophy, Zap, Calendar, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { cn, compareBy } from '../lib/utils';
 import { User as UserType } from '../types';
 import { motion } from 'framer-motion';
 import ShareRankingButton from '../components/ShareRankingButton';
-import AvatarPreview from '../components/AvatarPreview';
 import AthletePhoto from '../components/AthletePhoto';
 import { supabase } from '../lib/supabase';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -18,52 +17,61 @@ interface RankedUser extends UserType {
 }
 
 export default function Leaderboard() {
-  const [xpAllTime, setXpAllTime] = useState<RankedUser[]>([]);
-  const [xpMonthly, setXpMonthly] = useState<RankedUser[]>([]);
-  const [freqRank, setFreqRank] = useState<RankedUser[]>([]);
+  const [xpAllTime, setXpAllTime]       = useState<RankedUser[]>([]);
+  const [xpMonthly, setXpMonthly]       = useState<RankedUser[]>([]);
+  const [freqRank, setFreqRank]         = useState<RankedUser[]>([]);
   const [clanRankings, setClanRankings] = useState<any[]>([]);
-  const [wodRanking, setWodRanking] = useState<any[]>([]);
-  const [wodInfo, setWodInfo] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'xp_mes' | 'freq' | 'xp_total' | 'clans' | 'wod'>('xp_mes');
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [wodRanking, setWodRanking]     = useState<any[]>([]);
+  const [wodInfo, setWodInfo]           = useState<any>(null);
+  const [activeTab, setActiveTab]       = useState<'xp_mes' | 'freq' | 'xp_total' | 'clans' | 'wod'>('xp_mes');
+  const [isExpanded, setIsExpanded]     = useState(false);
+  const [loading, setLoading]           = useState(true);
+  const [refreshing, setRefreshing]     = useState(false);
+  const [error, setError]               = useState<string | null>(null);
   const [inactivitySettings, setInactivitySettings] = useState<InactivitySettings | null>(null);
-  const [checkinsByUser, setCheckinsByUser] = useState<Record<string, { date: string }[]>>({});
+  const [checkinsByUser, setCheckinsByUser]          = useState<Record<string, { date: string }[]>>({});
 
-  const now = new Date();
+  const now       = new Date();
   const monthName = now.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
 
-  useEffect(() => {
-    fetchAll();
-    const channel = supabase.channel('leaderboard_rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wod_results' }, () => fetchAll(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchAll(true))
-      .subscribe();
-    const poll = setInterval(() => fetchAll(true), 20000);
-    return () => { supabase.removeChannel(channel); clearInterval(poll); };
-  }, []);
-
-  const fetchAll = async (silent = false) => {
+  const fetchAll = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
     else setLoading(true);
-    try {
-      const now = new Date();
-      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-      const todayStr = formatInTimeZone(now, 'America/Sao_Paulo', 'yyyy-MM-dd');
+    setError(null);
 
-      // Perfis aprovados
-      const { data: allUsers, error: usersError } = await supabase
-        .from('profiles').select('*').eq('status', 'approved');
+    try {
+      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      const todayStr        = formatInTimeZone(now, 'America/Sao_Paulo', 'yyyy-MM-dd');
+
+      // ── Todas as queries base em paralelo ─────────────────────────────────
+      const [
+        { data: allUsers,       error: usersError },
+        { data: boxSettings },
+        { data: rewardHistory },
+        { data: checkinsMonth },
+        { data: clansData },
+        { data: eventsData },
+        { data: membershipsData },
+        { data: todayWod },
+      ] = await Promise.all([
+        supabase.from('profiles').select('*').eq('status', 'approved'),
+        supabase.from('box_settings').select('inactivity').maybeSingle(),
+        supabase.from('reward_history').select('user_id, xp').gte('created_at', firstDayOfMonth + 'T00:00:00'),
+        supabase.from('checkins').select('user_id, date').gte('date', firstDayOfMonth),
+        supabase.from('clans').select('*').eq('is_active', true),
+        supabase.from('domination_events').select('clan_id, energy'),
+        supabase.from('clan_memberships').select('clan_id').eq('status', 'approved'),
+        supabase.from('wods').select('*').eq('date', todayStr).maybeSingle(),
+      ]);
+
       if (usersError) throw usersError;
 
-      // 🎯 Buscar configurações de inatividade
-      const { data: boxSettings } = await supabase.from('box_settings').select('inactivity').maybeSingle();
-      const inactSettings: InactivitySettings = boxSettings?.inactivity || { enabled: false, mode: 'consecutive', startDays: 5, maxDays: 14 };
+      // ── Configurações de inatividade ──────────────────────────────────────
+      const inactSettings: InactivitySettings = boxSettings?.inactivity ||
+        { enabled: false, mode: 'consecutive', startDays: 5, maxDays: 14 };
       setInactivitySettings(inactSettings);
 
-      // 🎯 Buscar checkins recentes de todos os atletas (para calcular inatividade)
+      // ── Checkins para inatividade (query separada pois depende de inactSettings) ──
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - (inactSettings.maxDays || 30));
       const { data: allCheckins } = await supabase
@@ -77,6 +85,7 @@ export default function Leaderboard() {
       });
       setCheckinsByUser(checkinsMap);
 
+      // ── Helpers ───────────────────────────────────────────────────────────
       const mapUser = (u: any, extra = {}): RankedUser => ({
         id: u.id, email: u.email, name: u.name ?? 'Atleta',
         role: u.role, status: u.status, xp: u.xp || 0,
@@ -86,7 +95,7 @@ export default function Leaderboard() {
         createdAt: u.created_at,
         allCheckins: checkinsMap[u.id] || [],
         photo_url: u.photo_url ?? null,
-        ...extra
+        ...extra,
       });
 
       const byLevelDesc = (a: RankedUser, b: RankedUser) => (b.level || 1) - (a.level || 1);
@@ -96,14 +105,14 @@ export default function Leaderboard() {
       const byNameAsc   = (a: RankedUser, b: RankedUser) =>
         (a.name || '').localeCompare(b.name || '', 'pt-BR');
 
+      // ── XP all time ───────────────────────────────────────────────────────
       setXpAllTime([...(allUsers || [])]
         .map(u => mapUser(u))
         .filter(u => (u.xp || 0) > 0)
         .sort(compareBy<RankedUser>((a, b) => (b.xp || 0) - (a.xp || 0), byLevelDesc, byAgeAsc, byNameAsc))
         .slice(0, 50));
 
-      const { data: rewardHistory } = await supabase
-        .from('reward_history').select('user_id, xp').gte('created_at', firstDayOfMonth + 'T00:00:00');
+      // ── XP mensal ─────────────────────────────────────────────────────────
       const monthXpByUser: Record<string, number> = {};
       (rewardHistory || []).forEach((r: any) => {
         if (r.xp > 0) monthXpByUser[r.user_id] = (monthXpByUser[r.user_id] || 0) + r.xp;
@@ -114,18 +123,18 @@ export default function Leaderboard() {
         .sort(compareBy<RankedUser>((a, b) => (b.monthXp || 0) - (a.monthXp || 0), byXpDesc, byLevelDesc, byAgeAsc, byNameAsc))
         .slice(0, 50));
 
-      const { data: checkinsData } = await supabase.from('checkins').select('user_id').gte('date', firstDayOfMonth);
+      // ── Frequência ────────────────────────────────────────────────────────
       const checkinCounts: Record<string, number> = {};
-      (checkinsData || []).forEach((c: any) => { checkinCounts[c.user_id] = (checkinCounts[c.user_id] || 0) + 1; });
+      (checkinsMonth || []).forEach((c: any) => {
+        checkinCounts[c.user_id] = (checkinCounts[c.user_id] || 0) + 1;
+      });
       setFreqRank([...(allUsers || [])]
         .map(u => mapUser(u, { monthCheckinCount: checkinCounts[u.id] || 0 }))
         .filter(u => (u.monthCheckinCount || 0) > 0)
         .sort(compareBy<RankedUser>((a, b) => (b.monthCheckinCount || 0) - (a.monthCheckinCount || 0), byXpDesc, byLevelDesc, byAgeAsc, byNameAsc))
         .slice(0, 50));
 
-      const { data: clansData } = await supabase.from('clans').select('*').eq('is_active', true);
-      const { data: eventsData } = await supabase.from('domination_events').select('clan_id, energy');
-      const { data: membershipsData } = await supabase.from('clan_memberships').select('clan_id').eq('status', 'approved');
+      // ── Clãs ──────────────────────────────────────────────────────────────
       if (clansData) {
         setClanRankings(clansData.map(clan => ({
           ...clan,
@@ -139,11 +148,12 @@ export default function Leaderboard() {
         )));
       }
 
-      const { data: todayWod } = await supabase.from('wods').select('*').eq('date', todayStr).maybeSingle();
-      const { data: latestWods } = !todayWod
-        ? await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1)
-        : { data: null };
-      const activeWod = todayWod || (latestWods?.[0] ?? null);
+      // ── WOD ───────────────────────────────────────────────────────────────
+      let activeWod = todayWod;
+      if (!activeWod) {
+        const { data: latestWods } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1);
+        activeWod = latestWods?.[0] ?? null;
+      }
       setWodInfo(activeWod);
 
       const parseResult = (r: string, timeBased: boolean): number => {
@@ -175,23 +185,40 @@ export default function Leaderboard() {
       };
 
       if (activeWod) {
-        const { data: wodResults } = await supabase.from('wod_results').select('*, profiles(name, level)').eq('wod_id', activeWod.id);
+        const { data: wodResults } = await supabase
+          .from('wod_results').select('*, profiles(name, level)').eq('wod_id', activeWod.id);
         if (wodResults && wodResults.length > 0) {
           setWodRanking(processWodResults(wodResults, activeWod.type));
         } else {
           const todayStart = formatInTimeZone(now, 'America/Sao_Paulo', "yyyy-MM-dd'T'00:00:00xxx");
           const todayEnd   = formatInTimeZone(now, 'America/Sao_Paulo', "yyyy-MM-dd'T'23:59:59xxx");
-          const { data: todayResults } = await supabase.from('wod_results').select('*, profiles(name, level)').gte('created_at', todayStart).lte('created_at', todayEnd);
-          setWodRanking(todayResults && todayResults.length > 0 ? processWodResults(todayResults, activeWod.type) : []);
+          const { data: todayResults } = await supabase
+            .from('wod_results').select('*, profiles(name, level)')
+            .gte('created_at', todayStart).lte('created_at', todayEnd);
+          setWodRanking(todayResults?.length ? processWodResults(todayResults, activeWod.type) : []);
         }
       } else {
         setWodRanking([]);
       }
-    } catch (err: any) { setError(err.message); }
-    finally { setLoading(false); setRefreshing(false); }
-  };
 
-  // 🎯 Calcula inatividade de um atleta
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAll();
+    // Realtime só para mudanças relevantes — sem polling
+    const channel = supabase.channel('leaderboard_rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wod_results' }, () => fetchAll(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchAll(true))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchAll]);
+
   const getInactivity = (u: RankedUser) => {
     if (!inactivitySettings) return { fadePercent: 0, showSleeping: false };
     return calcInactivity(u.allCheckins || [], inactivitySettings);
@@ -251,10 +278,10 @@ export default function Leaderboard() {
 
       <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10 gap-1 overflow-x-auto no-scrollbar">
         {([
-          { key: 'xp_mes', label: 'XP MÊS' },
-          { key: 'freq', label: 'FREQUÊNCIA' },
-          { key: 'wod', label: 'RANK WOD' },
-          { key: 'clans', label: 'TIMES' },
+          { key: 'xp_mes',   label: 'XP MÊS' },
+          { key: 'freq',     label: 'FREQUÊNCIA' },
+          { key: 'wod',      label: 'RANK WOD' },
+          { key: 'clans',    label: 'TIMES' },
           { key: 'xp_total', label: 'XP TOTAL' },
         ] as const).map(({ key, label }) => (
           <button key={key} onClick={() => setActiveTab(key)}
@@ -289,23 +316,16 @@ export default function Leaderboard() {
         </div>
       )}
 
-      {/* Pódio com inatividade nos avatares */}
       {top3.length > 0 && (
         <div className="flex items-end justify-center gap-4 pt-8 pb-4">
-          {/* 2º lugar */}
           {top3[1] && (() => {
-            const { fadePercent, showSleeping } = !isClans && !isWod ? getInactivity(top3[1] as RankedUser) : { fadePercent: 0, showSleeping: false };
+            const { fadePercent } = !isClans && !isWod ? getInactivity(top3[1] as RankedUser) : { fadePercent: 0 };
             return (
               <div className="flex flex-col items-center gap-2">
                 <div className="relative">
-                  <AthletePhoto
-                    photoUrl={!isClans && !isWod ? (top3[1] as RankedUser).photo_url : null}
-                    name={top3[1].name || 'A'}
-                    size="md"
-                    fadePercent={fadePercent}
-                    ringColor="border-outline-variant/30"
-                    className="w-16 h-16"
-                  />
+                  <AthletePhoto photoUrl={!isClans && !isWod ? (top3[1] as RankedUser).photo_url : null}
+                    name={top3[1].name || 'A'} size="md" fadePercent={fadePercent}
+                    ringColor="border-outline-variant/30" className="w-16 h-16" />
                   <div className="absolute -top-2 -right-2 bg-outline-variant/40 text-on-surface text-[10px] font-black px-2 py-0.5 rounded-full">#2</div>
                 </div>
                 <div className="text-center">
@@ -323,20 +343,14 @@ export default function Leaderboard() {
             );
           })()}
 
-          {/* 1º lugar */}
           {top3[0] && (() => {
-            const { fadePercent, showSleeping } = !isClans && !isWod ? getInactivity(top3[0] as RankedUser) : { fadePercent: 0, showSleeping: false };
+            const { fadePercent } = !isClans && !isWod ? getInactivity(top3[0] as RankedUser) : { fadePercent: 0 };
             return (
               <div className="flex flex-col items-center gap-2 -mt-8">
                 <div className="relative">
-                  <AthletePhoto
-                    photoUrl={!isClans && !isWod ? (top3[0] as RankedUser).photo_url : null}
-                    name={top3[0].name || 'A'}
-                    size="lg"
-                    fadePercent={fadePercent}
-                    ringColor="border-primary"
-                    className="w-24 h-24 shadow-[0_0_30px_rgba(202,253,0,0.3)]"
-                  />
+                  <AthletePhoto photoUrl={!isClans && !isWod ? (top3[0] as RankedUser).photo_url : null}
+                    name={top3[0].name || 'A'} size="lg" fadePercent={fadePercent}
+                    ringColor="border-primary" className="w-24 h-24 shadow-[0_0_30px_rgba(202,253,0,0.3)]" />
                   <div className="absolute -top-3 -right-3 bg-primary text-background text-xs font-black px-3 py-1 rounded-full shadow-lg">#1</div>
                 </div>
                 <div className="text-center">
@@ -354,20 +368,14 @@ export default function Leaderboard() {
             );
           })()}
 
-          {/* 3º lugar */}
           {top3[2] && (() => {
-            const { fadePercent, showSleeping } = !isClans && !isWod ? getInactivity(top3[2] as RankedUser) : { fadePercent: 0, showSleeping: false };
+            const { fadePercent } = !isClans && !isWod ? getInactivity(top3[2] as RankedUser) : { fadePercent: 0 };
             return (
               <div className="flex flex-col items-center gap-2">
                 <div className="relative">
-                  <AthletePhoto
-                    photoUrl={!isClans && !isWod ? (top3[2] as RankedUser).photo_url : null}
-                    name={top3[2].name || 'A'}
-                    size="md"
-                    fadePercent={fadePercent}
-                    ringColor="border-secondary/30"
-                    className="w-16 h-16"
-                  />
+                  <AthletePhoto photoUrl={!isClans && !isWod ? (top3[2] as RankedUser).photo_url : null}
+                    name={top3[2].name || 'A'} size="md" fadePercent={fadePercent}
+                    ringColor="border-secondary/30" className="w-16 h-16" />
                   <div className="absolute -top-2 -right-2 bg-secondary/30 text-on-surface text-[10px] font-black px-2 py-0.5 rounded-full">#3</div>
                 </div>
                 <div className="text-center">
@@ -405,7 +413,7 @@ export default function Leaderboard() {
           </div>
           <div className={cn("space-y-3 transition-all duration-500 overflow-hidden", isExpanded ? "max-h-[2000px]" : "max-h-[300px]")}>
             {others.map((u, i) => {
-              const { fadePercent, showSleeping } = !isClans && !isWod ? getInactivity(u as RankedUser) : { fadePercent: 0, showSleeping: false };
+              const { fadePercent } = !isClans && !isWod ? getInactivity(u as RankedUser) : { fadePercent: 0 };
               return (
                 <motion.div key={u.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
                   className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between hover:border-primary/30 transition-all">
@@ -413,11 +421,8 @@ export default function Leaderboard() {
                     <span className="w-6 text-on-surface-variant font-headline font-black text-xs italic">#{i + 4}</span>
                     <AthletePhoto
                       photoUrl={!isClans && !isWod ? (u as RankedUser).photo_url : null}
-                      name={u.name || '?'}
-                      size="sm"
-                      fadePercent={fadePercent}
-                      ringColor="border-outline-variant/10"
-                    />
+                      name={u.name || '?'} size="sm" fadePercent={fadePercent}
+                      ringColor="border-outline-variant/10" />
                     <div>
                       <p className="text-on-surface font-bold uppercase text-sm italic">{u.name}</p>
                       <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
