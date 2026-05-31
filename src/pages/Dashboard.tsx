@@ -10,7 +10,7 @@ import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
 import { addReward, checkAndPayWeeklyBonus, getRewardSettings } from '../utils/rewards';
 import { useInactivity } from '../hooks/useInactivity';
-import HeartRateWidget from '../components/HeartRateWidget';
+import HeartRateUnified from '../components/HeartRateUnified';
 
 export default function Dashboard() {
   const { user, updateUser } = useAuth();
@@ -341,7 +341,7 @@ export default function Dashboard() {
         )}
       </section>
 
-      <HeartRateWidget userId={user?.id} />
+      <HeartRateUnified userId={user?.id} />
 
       <section onClick={() => navigate('/wod')}
         className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5 flex items-center justify-between cursor-pointer hover:border-primary/40 transition-all group">
