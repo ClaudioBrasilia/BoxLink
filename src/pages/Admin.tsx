@@ -262,7 +262,10 @@ export default function Admin() {
     dailyLimit: 1,
     difficulty: 'easy',
     required_days: 1,
-    require_photo: false
+    require_photo: false,
+    type: 'daily_checkin',   // 'daily_checkin' | 'accumulative'
+    target_value: 100,        // Meta total (repetições, metros, etc.)
+    unit: 'reps',             // Unidade exibida ao aluno
   });
   
   const [newSchedule, setNewSchedule] = useState<Schedule>({ 
@@ -585,11 +588,14 @@ export default function Admin() {
       start_date: newChallenge.startDate, end_date: newChallenge.endDate,
       xp: newChallenge.xp, coins: newChallenge.coins, repeatable: newChallenge.repeatable,
       daily_limit: newChallenge.dailyLimit, difficulty: newChallenge.difficulty,
-      required_days: newChallenge.required_days, require_photo: newChallenge.require_photo
+      required_days: newChallenge.required_days, require_photo: newChallenge.require_photo,
+      type: newChallenge.type,
+      target_value: newChallenge.type === 'accumulative' ? newChallenge.target_value : null,
+      unit: newChallenge.type === 'accumulative' ? newChallenge.unit : null,
     }).select();
     if (!error && data) {
       setChallenges([data[0], ...challenges]);
-      setNewChallenge({ title: '', description: '', active: true, startDate: format(new Date(), 'yyyy-MM-dd'), endDate: format(new Date(new Date().setDate(new Date().getDate() + 7)), 'yyyy-MM-dd'), xp: 50, coins: 10, repeatable: false, dailyLimit: 1, difficulty: 'easy', required_days: 1, require_photo: false });
+      setNewChallenge({ title: '', description: '', active: true, startDate: format(new Date(), 'yyyy-MM-dd'), endDate: format(new Date(new Date().setDate(new Date().getDate() + 7)), 'yyyy-MM-dd'), xp: 50, coins: 10, repeatable: false, dailyLimit: 1, difficulty: 'easy', required_days: 1, require_photo: false, type: 'daily_checkin', target_value: 100, unit: 'reps' });
       toast.success('Desafio criado com sucesso!');
       // Notifica todos os usuários sobre o novo desafio
       for (const u of users) {
@@ -657,7 +663,10 @@ export default function Admin() {
       start_date: editingChallenge.startDate, end_date: editingChallenge.endDate,
       xp: editingChallenge.xp, coins: editingChallenge.coins, repeatable: editingChallenge.repeatable,
       daily_limit: editingChallenge.dailyLimit, difficulty: editingChallenge.difficulty,
-      required_days: editingChallenge.required_days, require_photo: editingChallenge.require_photo
+      required_days: editingChallenge.required_days, require_photo: editingChallenge.require_photo,
+      type: editingChallenge.type || 'daily_checkin',
+      target_value: (editingChallenge.type === 'accumulative') ? editingChallenge.target_value : null,
+      unit: (editingChallenge.type === 'accumulative') ? editingChallenge.unit : null,
     }).eq('id', editingChallenge.id);
     if (!error) {
       setChallenges(challenges.map(c => c.id === editingChallenge.id ? editingChallenge : c));
@@ -1410,21 +1419,53 @@ export default function Admin() {
                 <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP</label><input type="number" value={newChallenge.xp} onChange={e => setNewChallenge({...newChallenge, xp: parseInt(e.target.value)})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
                 <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Coins</label><input type="number" value={newChallenge.coins} onChange={e => setNewChallenge({...newChallenge, coins: parseInt(e.target.value)})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dificuldade</label>
-                  <select value={newChallenge.difficulty} onChange={e => setNewChallenge({...newChallenge, difficulty: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
-                    <option value="easy">Fácil</option>
-                    <option value="medium">Médio</option>
-                    <option value="hard">Difícil</option>
-                    <option value="special">Especial</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dias necessários</label>
-                  <input type="number" min={1} value={newChallenge.required_days} onChange={e => setNewChallenge({...newChallenge, required_days: parseInt(e.target.value) || 1})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+
+              {/* ── Tipo do Desafio ── */}
+              <div className="space-y-2">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo de Desafio</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button type="button" onClick={() => setNewChallenge({...newChallenge, type: 'daily_checkin'})}
+                    className={`p-4 rounded-2xl border-2 text-left transition-all ${(newChallenge as any).type === 'daily_checkin' ? 'bg-primary/10 border-primary' : 'bg-surface-container-highest border-outline-variant/10'}`}>
+                    <p className={`text-xs font-black uppercase italic ${(newChallenge as any).type === 'daily_checkin' ? 'text-primary' : 'text-on-surface'}`}>📅 Por Dias</p>
+                    <p className="text-[9px] text-on-surface-variant mt-1">Aluno marca OK a cada dia que treina</p>
+                  </button>
+                  <button type="button" onClick={() => setNewChallenge({...newChallenge, type: 'accumulative'} as any)}
+                    className={`p-4 rounded-2xl border-2 text-left transition-all ${(newChallenge as any).type === 'accumulative' ? 'bg-secondary/10 border-secondary' : 'bg-surface-container-highest border-outline-variant/10'}`}>
+                    <p className={`text-xs font-black uppercase italic ${(newChallenge as any).type === 'accumulative' ? 'text-secondary' : 'text-on-surface'}`}>🔢 Acumulativo</p>
+                    <p className="text-[9px] text-on-surface-variant mt-1">Aluno soma repetições/metros por dia até bater a meta</p>
+                  </button>
                 </div>
               </div>
+
+              {/* ── Campos condicionais por tipo ── */}
+              {(newChallenge as any).type === 'accumulative' ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Meta total</label>
+                    <input type="number" min={1} value={(newChallenge as any).target_value} onChange={e => setNewChallenge({...newChallenge, target_value: parseInt(e.target.value) || 1} as any)} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" placeholder="Ex: 5000" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Unidade</label>
+                    <input type="text" value={(newChallenge as any).unit} onChange={e => setNewChallenge({...newChallenge, unit: e.target.value} as any)} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" placeholder="reps, metros, km..." />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dificuldade</label>
+                    <select value={newChallenge.difficulty} onChange={e => setNewChallenge({...newChallenge, difficulty: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                      <option value="easy">Fácil</option>
+                      <option value="medium">Médio</option>
+                      <option value="hard">Difícil</option>
+                      <option value="special">Especial</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dias necessários</label>
+                    <input type="number" min={1} value={newChallenge.required_days} onChange={e => setNewChallenge({...newChallenge, required_days: parseInt(e.target.value) || 1})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Inicial</label>
@@ -1783,24 +1824,53 @@ export default function Admin() {
                   <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP</label><input type="number" value={editingChallenge.xp} onChange={e => setEditingChallenge({...editingChallenge, xp: parseInt(e.target.value)})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
                   <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Coins</label><input type="number" value={editingChallenge.coins} onChange={e => setEditingChallenge({...editingChallenge, coins: parseInt(e.target.value)})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dificuldade</label>
-                    <select value={editingChallenge.difficulty} onChange={e => setEditingChallenge({...editingChallenge, difficulty: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
-                      <option value="easy">Fácil</option>
-                      <option value="medium">Médio</option>
-                      <option value="hard">Difícil</option>
-                      <option value="special">Especial</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Status</label>
-                    <select value={editingChallenge.active ? 'true' : 'false'} onChange={e => setEditingChallenge({...editingChallenge, active: e.target.value === 'true'})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
-                      <option value="true">Ativo</option>
-                      <option value="false">Inativo</option>
-                    </select>
+
+                {/* ── Tipo no modal de edição ── */}
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo de Desafio</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button type="button" onClick={() => setEditingChallenge({...editingChallenge, type: 'daily_checkin'})}
+                      className={`p-3 rounded-2xl border-2 text-left transition-all ${(editingChallenge.type || 'daily_checkin') === 'daily_checkin' ? 'bg-primary/10 border-primary' : 'bg-surface-container-highest border-outline-variant/10'}`}>
+                      <p className={`text-xs font-black uppercase italic ${(editingChallenge.type || 'daily_checkin') === 'daily_checkin' ? 'text-primary' : 'text-on-surface'}`}>📅 Por Dias</p>
+                    </button>
+                    <button type="button" onClick={() => setEditingChallenge({...editingChallenge, type: 'accumulative'})}
+                      className={`p-3 rounded-2xl border-2 text-left transition-all ${editingChallenge.type === 'accumulative' ? 'bg-secondary/10 border-secondary' : 'bg-surface-container-highest border-outline-variant/10'}`}>
+                      <p className={`text-xs font-black uppercase italic ${editingChallenge.type === 'accumulative' ? 'text-secondary' : 'text-on-surface'}`}>🔢 Acumulativo</p>
+                    </button>
                   </div>
                 </div>
+
+                {editingChallenge.type === 'accumulative' ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Meta total</label>
+                      <input type="number" min={1} value={editingChallenge.target_value || 100} onChange={e => setEditingChallenge({...editingChallenge, target_value: parseInt(e.target.value) || 1})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Unidade</label>
+                      <input type="text" value={editingChallenge.unit || ''} onChange={e => setEditingChallenge({...editingChallenge, unit: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" placeholder="reps, metros, km..." />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dificuldade</label>
+                      <select value={editingChallenge.difficulty} onChange={e => setEditingChallenge({...editingChallenge, difficulty: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                        <option value="easy">Fácil</option>
+                        <option value="medium">Médio</option>
+                        <option value="hard">Difícil</option>
+                        <option value="special">Especial</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Status</label>
+                      <select value={editingChallenge.active ? 'true' : 'false'} onChange={e => setEditingChallenge({...editingChallenge, active: e.target.value === 'true'})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                        <option value="true">Ativo</option>
+                        <option value="false">Inativo</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dias necessários</label>
                   <input type="number" min={1} value={editingChallenge.required_days || 1} onChange={e => setEditingChallenge({...editingChallenge, required_days: parseInt(e.target.value) || 1})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
@@ -1839,4 +1909,4 @@ export default function Admin() {
       </AnimatePresence>
     </div>
   );
-}
+    }
