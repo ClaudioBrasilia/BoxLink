@@ -54,7 +54,7 @@ export default function Dashboard() {
       setAnnouncements(annTexts);
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
     const { data: challengesData } = await supabase
       .from('challenges').select('*').eq('active', true)
       .or(`end_date.is.null,end_date.gte.${today}`).limit(3);
