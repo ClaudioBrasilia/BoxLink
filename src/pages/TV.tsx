@@ -148,7 +148,9 @@ export default function TV() {
       const checkins = currentClass ? allCheckins.filter((c: any) => c.class_time === currentClass.time) : allCheckins;
       const stats = {
         checkins: checkins.length,
-        topPlayer: rankings?.[0] ? `${rankings[0].name.split(' ')[0].toUpperCase()} • ${rankings[0].xp} XP` : null,
+        topPlayer: frequencyRanking?.[0]
+          ? `${frequencyRanking[0].name.split(' ')[0].toUpperCase()} • ${frequencyRanking[0].count} CHECK-INS`
+          : null,
         wod: wod?.name || null
       };
 
@@ -650,8 +652,8 @@ export default function TV() {
                 {tickerItems.topPlayer && stats.topPlayer && (
                   <>
                     <div className="flex items-center gap-4">
-                      <Trophy className="w-4 h-4 text-secondary" />
-                      <span className="text-secondary text-[10px] font-black uppercase tracking-widest italic">LÍDER XP:</span>
+                      <Users className="w-4 h-4 text-primary" />
+                      <span className="text-primary text-[10px] font-black uppercase tracking-widest italic">LÍDER CHECK-INS:</span>
                       <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{stats.topPlayer}</span>
                     </div>
                     <div className="w-2 h-2 rounded-full bg-white/20"></div>
@@ -705,4 +707,4 @@ export default function TV() {
       `}</style>
     </div>
   );
-}
+    }
