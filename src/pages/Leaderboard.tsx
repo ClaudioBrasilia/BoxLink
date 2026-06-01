@@ -42,6 +42,7 @@ export default function Leaderboard() {
     setError(null);
 
     try {
+      const now             = new Date(); // Recalculado a cada chamada — corrige bug do ranking WOD não atualizar
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
       const todayStr        = formatInTimeZone(now, 'America/Sao_Paulo', 'yyyy-MM-dd');
 
@@ -195,8 +196,10 @@ export default function Leaderboard() {
         if (wodResults && wodResults.length > 0) {
           setWodRanking(processWodResults(wodResults, activeWod.type));
         } else {
-          const todayStart = formatInTimeZone(now, 'America/Sao_Paulo', "yyyy-MM-dd'T'00:00:00xxx");
-          const todayEnd   = formatInTimeZone(now, 'America/Sao_Paulo', "yyyy-MM-dd'T'23:59:59xxx");
+          // Fallback: usa a data do WOD (não o now congelado) para buscar resultados do dia certo
+          const wodDate    = activeWod.date;
+          const todayStart = wodDate + 'T00:00:00';
+          const todayEnd   = wodDate + 'T23:59:59';
           const { data: todayResults } = await supabase
             .from('wod_results').select('*, profiles(name, level)')
             .gte('created_at', todayStart).lte('created_at', todayEnd);
