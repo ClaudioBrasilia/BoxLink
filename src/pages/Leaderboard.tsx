@@ -29,6 +29,8 @@ export default function Leaderboard() {
   const [refreshing, setRefreshing]     = useState(false);
   const [error, setError]               = useState<string | null>(null);
   const [inactivitySettings, setInactivitySettings] = useState<InactivitySettings | null>(null);
+  const [boxName, setBoxName] = useState<string>('CrossCity Hub');
+  const [boxLogo, setBoxLogo] = useState<string>('');
   const [checkinsByUser, setCheckinsByUser]          = useState<Record<string, { date: string }[]>>({});
 
   const now       = new Date();
@@ -55,7 +57,7 @@ export default function Leaderboard() {
         { data: todayWod },
       ] = await Promise.all([
         supabase.from('profiles').select('*').eq('status', 'approved'),
-        supabase.from('box_settings').select('inactivity').maybeSingle(),
+        supabase.from('box_settings').select('inactivity, name, logo').maybeSingle(),
         supabase.from('reward_history').select('user_id, xp').gte('created_at', firstDayOfMonth + 'T00:00:00'),
         supabase.from('checkins').select('user_id, date').gte('date', firstDayOfMonth),
         supabase.from('clans').select('*').eq('is_active', true),
@@ -67,6 +69,9 @@ export default function Leaderboard() {
       if (usersError) throw usersError;
 
       // ── Configurações de inatividade ──────────────────────────────────────
+      if (boxSettings?.name) setBoxName(boxSettings.name);
+      if (boxSettings?.logo) setBoxLogo(boxSettings.logo);
+
       const inactSettings: InactivitySettings = boxSettings?.inactivity ||
         { enabled: false, mode: 'consecutive', startDays: 5, maxDays: 14 };
       setInactivitySettings(inactSettings);
@@ -271,6 +276,9 @@ export default function Leaderboard() {
               top3={top3 as any}
               rankingType={activeTab === 'xp_mes' || activeTab === 'xp_total' ? 'xp' : activeTab === 'freq' ? 'freq' : 'clans'}
               title={activeTab === 'xp_mes' ? 'XP DO MÊS' : activeTab === 'freq' ? 'FREQUÊNCIA' : activeTab === 'xp_total' ? 'XP TOTAL' : 'TIMES'}
+              boxName={boxName}
+              boxLogo={boxLogo}
+              monthName={monthName}
             />
           )}
         </div>
@@ -451,4 +459,4 @@ export default function Leaderboard() {
       )}
     </div>
   );
-}
+         }
