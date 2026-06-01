@@ -233,4 +233,4 @@ export default function HeartRateWidget({ userId, className }: Props) {
   return isNative
     ? <NativeWidget userId={userId} className={className} />
     : <WebBluetoothWidget userId={userId} className={className} />;
-}
+                         }
