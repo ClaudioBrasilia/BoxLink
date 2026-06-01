@@ -21,18 +21,35 @@ function intensityPct(bpm: number) {
   return Math.min(100, Math.max(0, ((bpm - 50) / 150) * 100));
 }
 
-// Instruções por marca de dispositivo
 const DEVICE_TIPS: { name: string; tip: string }[] = [
-  { name: 'Garmin (relógio)',   tip: 'Inicie uma atividade no relógio → Configurações → Transmitir FC → depois conecte aqui.' },
+  { name: 'Garmin (relógio)',    tip: 'Inicie uma atividade no relógio → Configurações → Transmitir FC → depois conecte aqui.' },
   { name: 'Garmin HRM-Pro/Dual', tip: 'Coloque o cinto, molhe os eletrodos. Ele aparece na lista automaticamente.' },
-  { name: 'Polar H10 / H9',    tip: 'Molhe os eletrodos antes de colocar. Deve aparecer como "Polar H10" ou "Polar H9".' },
-  { name: 'Wahoo TICKR',       tip: 'Coloque o cinto. Aparece automaticamente como "TICKR".' },
-  { name: 'Mi Band / Amazfit', tip: 'Certifique-se que não está conectado ao app Mi Fitness ao mesmo tempo.' },
+  { name: 'Polar H10 / H9',     tip: 'Molhe os eletrodos antes de colocar. Deve aparecer como "Polar H10" ou "Polar H9".' },
+  { name: 'Wahoo TICKR',        tip: 'Coloque o cinto. Aparece automaticamente como "TICKR".' },
+  { name: 'Mi Band / Amazfit',  tip: 'Certifique-se que não está conectado ao app Mi Fitness ao mesmo tempo.' },
 ];
 
 function BpmDisplay({ bpm, deviceName }: { bpm: number | null; deviceName: string | null }) {
   const zone = bpm ? getZone(bpm) : null;
-  if (!bpm) return null;
+
+  // Conectado mas aguardando o primeiro BPM chegar
+  if (!bpm) {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+        className="rounded-2xl bg-green-400/5 border border-green-400/20 p-6 flex flex-col items-center gap-2">
+        <Loader2 className="w-8 h-8 text-green-400 animate-spin" />
+        <p className="text-green-400 text-xs font-black uppercase tracking-widest text-center">
+          Relógio conectado — aguardando leitura de FC...
+        </p>
+        {deviceName && (
+          <div className="flex items-center gap-1 text-white/40 text-[9px] font-black uppercase tracking-widest mt-1">
+            <Bluetooth className="w-2.5 h-2.5" />{deviceName}
+          </div>
+        )}
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
       className={cn('rounded-2xl border p-4 flex flex-col items-center gap-2', zone?.bg, zone?.border)}>
@@ -75,13 +92,15 @@ function WebBluetoothWidget({ userId, className }: Props) {
       </div>
 
       <AnimatePresence mode="wait">
-        {status === 'connected' && bpm ? (
+        {status === 'connected' ? (
           <BpmDisplay key="bpm" bpm={bpm} deviceName={deviceName} />
         ) : status === 'connecting' ? (
           <motion.div key="connecting" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             className="rounded-2xl bg-yellow-400/5 border border-yellow-400/20 p-6 flex flex-col items-center gap-2">
             <Loader2 className="w-10 h-10 text-yellow-400 animate-spin" />
-            <p className="text-yellow-400 text-xs font-black uppercase tracking-widest text-center">Selecione seu dispositivo na janela do navegador</p>
+            <p className="text-yellow-400 text-xs font-black uppercase tracking-widest text-center">
+              Selecione seu dispositivo na janela do navegador
+            </p>
           </motion.div>
         ) : (
           <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -109,14 +128,14 @@ function WebBluetoothWidget({ userId, className }: Props) {
       ) : status !== 'connecting' && (
         <button onClick={connect} disabled={!isSupported}
           className={cn('flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all',
-            isSupported ? 'bg-primary text-black hover:scale-[1.02] shadow-[0_0_20px_rgba(202,253,0,0.2)]'
+            isSupported
+              ? 'bg-primary text-black hover:scale-[1.02] shadow-[0_0_20px_rgba(202,253,0,0.2)]'
               : 'bg-white/5 text-white/20 cursor-not-allowed border border-white/10')}>
           <Bluetooth className="w-4 h-4" />
           {isSupported ? 'Conectar Relógio / Cinto' : 'Use Chrome ou Edge'}
         </button>
       )}
 
-      {/* Dicas por dispositivo */}
       {status !== 'connected' && isSupported && (
         <div>
           <button onClick={() => setShowTips(!showTips)}
@@ -163,7 +182,7 @@ function NativeWidget({ userId, className }: Props) {
       </div>
 
       <AnimatePresence mode="wait">
-        {status === 'active' && bpm ? (
+        {status === 'active' ? (
           <BpmDisplay key="bpm" bpm={bpm} deviceName={platform === 'ios' ? 'Apple Health' : 'Health Connect'} />
         ) : status === 'requesting' ? (
           <motion.div key="req" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
