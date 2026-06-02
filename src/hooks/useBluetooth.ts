@@ -19,7 +19,7 @@ const NAME_PREFIXES = [
 
 export type BluetoothStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'error' | 'unsupported';
 
-interface BluetoothDevice {
+export interface BluetoothDevice {
   id: string;
   name: string;
   bpm: number | null;
