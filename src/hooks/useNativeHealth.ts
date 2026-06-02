@@ -1,43 +1,188 @@
-// src/hooks/useNativeHealth.ts
-// Stub temporário para remover dependência do Health Connect.
-// O BoxLink passará a utilizar apenas Bluetooth BLE.
+// src/hooks/useBluetooth.ts
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { BleClient, numberToUUID } from '@capacitor-community/bluetooth-le';
+import { supabase } from '../lib/supabase';
 
-export type HealthStatus =
-  | 'idle'
-  | 'requesting'
-  | 'active'
-  | 'error'
-  | 'unsupported';
+// UUIDs Padronizados Bluetooth
+const HEART_RATE_SERVICE     = '0000180d-0000-1000-8000-00805f9b34fb';
+const HEART_RATE_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb';
+const BATTERY_SERVICE        = numberToUUID(0x180f);
+const BATTERY_LEVEL          = numberToUUID(0x2a19);
 
-interface UseNativeHealthReturn {
+// Prefixos de nome aceitos no scan
+const NAME_PREFIXES = [
+  'Watch', 'Smart', 'Band', 'Fit', 'Heart', 'HRM', 'BT', 'ID',
+  'Garmin', 'Polar', 'Wahoo', 'TICKR', 'CooSpo', 'Amazfit',
+  'MiSmart', 'Mi Band', 'H',
+];
+
+export type BluetoothStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'error' | 'unsupported';
+
+interface BluetoothDevice {
+  id: string;
+  name: string;
   bpm: number | null;
-  status: HealthStatus;
-  errorMessage: string | null;
-  isNative: boolean;
-  startReading: () => Promise<void>;
-  stopReading: () => void;
+  battery: number | null;
+  status: 'connected' | 'disconnected';
+  lastUpdate: Date | null;
 }
 
-export function useNativeHealth(): UseNativeHealthReturn {
-  const startReading = async (): Promise<void> => {
-    console.warn(
-      '[NativeHealth] Health Connect temporariamente desabilitado. Use Bluetooth BLE.'
-    );
+interface UseBluetoothReturn {
+  devices: BluetoothDevice[];
+  status: BluetoothStatus;
+  errorMessage: string | null;
+  isNative: boolean;
+  startScanning: () => Promise<void>;
+  stopScanning: () => Promise<void>;
+  connectDevice: (deviceId: string) => Promise<void>;
+  disconnectDevice: (deviceId: string) => Promise<void>;
+  disconnectAll: () => Promise<void>;
+}
+
+export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
+  const [devices, setDevices]           = useState<BluetoothDevice[]>([]);
+  const [status, setStatus]             = useState<BluetoothStatus>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const devicesRef  = useRef<Map<string, BluetoothDevice>>(new Map());
+  const listenerRef = useRef<any>(null);
+  const isNative    = Capacitor.isNativePlatform();
+
+  const syncToSupabase = useCallback(async (deviceId: string, bpm: number, deviceName: string) => {
+    if (!userId) return;
+    try {
+      await supabase.from('heart_rate_live').upsert(
+        { user_id: userId, bpm, device_id: deviceId, device_name: deviceName, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' }
+      );
+    } catch (err) { console.error('[Bluetooth] Erro ao sincronizar:', err); }
+  }, [userId]);
+
+  const removeFromSupabase = useCallback(async () => {
+    if (!userId) return;
+    try { await supabase.from('heart_rate_live').delete().eq('user_id', userId); }
+    catch (err) { console.error('[Bluetooth] Erro ao remover:', err); }
+  }, [userId]);
+
+  const initializeBle = useCallback(async () => {
+    try {
+      await BleClient.initialize();
+    } catch (err) {
+      console.error('[Bluetooth] Erro ao inicializar:', err);
+      setErrorMessage('Bluetooth não disponível neste dispositivo');
+      setStatus('unsupported');
+    }
+  }, []);
+
+  const parseHeartRate = (value: DataView): number => {
+    const flags = value.getUint8(0);
+    return (flags & 0x1) ? value.getUint16(1, true) : value.getUint8(1);
   };
 
-  const stopReading = (): void => {
-    console.warn(
-      '[NativeHealth] Health Connect temporariamente desabilitado.'
-    );
-  };
+  const readBattery = useCallback(async (deviceId: string): Promise<number | null> => {
+    try {
+      const battery = await BleClient.read(deviceId, BATTERY_SERVICE, BATTERY_LEVEL);
+      return battery.getUint8(0);
+    } catch { return null; }
+  }, []);
 
-  return {
-    bpm: null,
-    status: 'unsupported',
-    errorMessage:
-      'Health Connect temporariamente desabilitado. Utilize Bluetooth BLE.',
-    isNative: true,
-    startReading,
-    stopReading,
-  };
+  const connectDevice = useCallback(async (deviceId: string) => {
+    try {
+      const device = devicesRef.current.get(deviceId);
+      if (!device) return;
+
+      setStatus('connecting');
+      await BleClient.connect(deviceId, (id) => {
+        const dev = devicesRef.current.get(id);
+        if (dev) { dev.status = 'disconnected'; setDevices(Array.from(devicesRef.current.values())); }
+      });
+
+      await BleClient.discoverServices(deviceId);
+
+      const battery = await readBattery(deviceId);
+      if (battery !== null) device.battery = battery;
+
+      await BleClient.startNotifications(
+        deviceId, HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT,
+        (value) => {
+          const bpm = parseHeartRate(value);
+          device.bpm = bpm;
+          device.lastUpdate = new Date();
+          setDevices(Array.from(devicesRef.current.values()));
+          syncToSupabase(deviceId, bpm, device.name);
+        }
+      );
+
+      device.status = 'connected';
+      setStatus('connected');
+      setDevices(Array.from(devicesRef.current.values()));
+    } catch (err: any) {
+      console.error('[Bluetooth] Erro ao conectar:', err);
+      setStatus('error');
+      setErrorMessage(err.message || 'Erro ao conectar');
+    }
+  }, [readBattery, syncToSupabase]);
+
+  const disconnectDevice = useCallback(async (deviceId: string) => {
+    try {
+      await BleClient.stopNotifications(deviceId, HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT);
+      await BleClient.disconnect(deviceId);
+      const device = devicesRef.current.get(deviceId);
+      if (device) { device.status = 'disconnected'; device.bpm = null; setDevices(Array.from(devicesRef.current.values())); }
+    } catch (err) { console.error('[Bluetooth] Erro ao desconectar:', err); }
+  }, []);
+
+  const disconnectAll = useCallback(async () => {
+    for (const [deviceId] of devicesRef.current) { await disconnectDevice(deviceId); }
+    removeFromSupabase();
+    setStatus('idle');
+  }, [disconnectDevice, removeFromSupabase]);
+
+  const startScanning = useCallback(async () => {
+    if (!isNative) {
+      setStatus('unsupported');
+      setErrorMessage('Esta função requer o app instalado no celular.');
+      return;
+    }
+    try {
+      setStatus('scanning');
+      setErrorMessage(null);
+      await initializeBle();
+
+      // Sem filtro de serviço — relógios genéricos não anunciam UUID Heart Rate
+      // no advertisement packet. Filtramos por nome para não listar fones, etc.
+      listenerRef.current = await BleClient.requestLEScan(
+        {},
+        (result) => {
+          const name = result.device.name || '';
+          const knownName = NAME_PREFIXES.some(p => name.toLowerCase().startsWith(p.toLowerCase()));
+          const hasHRUuid = (result as any).uuids?.includes(HEART_RATE_SERVICE) ?? false;
+          if (!knownName && !hasHRUuid) return;
+
+          const device: BluetoothDevice = {
+            id: result.device.deviceId,
+            name: name || `Dispositivo ${result.device.deviceId.substring(0, 8)}`,
+            bpm: null, battery: null, status: 'disconnected', lastUpdate: null,
+          };
+          if (!devicesRef.current.has(result.device.deviceId)) {
+            devicesRef.current.set(result.device.deviceId, device);
+            setDevices(Array.from(devicesRef.current.values()));
+          }
+        }
+      );
+    } catch (err: any) {
+      console.error('[Bluetooth] Erro ao escanear:', err);
+      setStatus('error');
+      setErrorMessage(err.message || 'Erro ao escanear');
+    }
+  }, [isNative, initializeBle]);
+
+  const stopScanning = useCallback(async () => {
+    try { await BleClient.stopLEScan(); setStatus('idle'); }
+    catch (err) { console.error('[Bluetooth] Erro ao parar scan:', err); }
+  }, []);
+
+  useEffect(() => { return () => { disconnectAll(); }; }, [disconnectAll]);
+
+  return { devices, status, errorMessage, isNative, startScanning, stopScanning, connectDevice, disconnectDevice, disconnectAll };
 }
