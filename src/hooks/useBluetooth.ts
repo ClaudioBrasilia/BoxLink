@@ -14,7 +14,7 @@ const BATTERY_LEVEL          = numberToUUID(0x2a19);
 const NAME_PREFIXES = [
   'Watch', 'Smart', 'Band', 'Fit', 'Heart', 'HRM', 'BT', 'ID',
   'Garmin', 'Polar', 'Wahoo', 'TICKR', 'CooSpo', 'Amazfit',
-  'MiSmart', 'Mi Band', 'H',
+  'MiSmart', 'Mi Band', 'H', 'Relógio', 'Pulseira'
 ];
 
 export type BluetoothStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'error' | 'unsupported';
@@ -149,23 +149,30 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
       setErrorMessage(null);
       await initializeBle();
 
-      // Sem filtro de serviço — relógios genéricos não anunciam UUID Heart Rate
-      // no advertisement packet. Filtramos por nome para não listar fones, etc.
-      listenerRef.current = await BleClient.requestLEScan(
-        {},
+      // Scan sem filtro de serviço para encontrar dispositivos que não anunciam o UUID Heart Rate
+      await BleClient.requestLEScan(
+        {
+          // Alguns dispositivos Garmin/Polar só aparecem se não houver filtro de serviço no scan
+        },
         (result) => {
           const name = result.device.name || '';
-          const knownName = NAME_PREFIXES.some(p => name.toLowerCase().startsWith(p.toLowerCase()));
-          const hasHRUuid = (result as any).uuids?.includes(HEART_RATE_SERVICE) ?? false;
+          const deviceId = result.device.deviceId;
+
+          // Filtramos manualmente por nome ou por UUIDs conhecidos
+          const knownName = NAME_PREFIXES.some(p => name.toLowerCase().includes(p.toLowerCase()));
+          const hasHRUuid = (result as any).uuids?.includes(HEART_RATE_SERVICE) ||
+                            (result as any).services?.includes(HEART_RATE_SERVICE);
+
           if (!knownName && !hasHRUuid) return;
 
           const device: BluetoothDevice = {
-            id: result.device.deviceId,
-            name: name || `Dispositivo ${result.device.deviceId.substring(0, 8)}`,
+            id: deviceId,
+            name: name || `Dispositivo ${deviceId.substring(0, 8)}`,
             bpm: null, battery: null, status: 'disconnected', lastUpdate: null,
           };
-          if (!devicesRef.current.has(result.device.deviceId)) {
-            devicesRef.current.set(result.device.deviceId, device);
+
+          if (!devicesRef.current.has(deviceId)) {
+            devicesRef.current.set(deviceId, device);
             setDevices(Array.from(devicesRef.current.values()));
           }
         }
