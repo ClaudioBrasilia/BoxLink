@@ -1,6 +1,5 @@
 // src/hooks/useHeartRate.ts
 // Hook para conectar relógio/sensor via Web Bluetooth API (GATT padrão)
-// Corrigido: optionalServices expandido para Polar, Garmin broadcast e outros
 
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
@@ -60,6 +59,7 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
   const parseHeartRate = (value: DataView): number => {
     const flags = value.getUint8(0);
     const is16bit = (flags & 0x1) !== 0;
+    // O valor do batimento começa no offset 1
     return is16bit ? value.getUint16(1, true) : value.getUint8(1);
   };
 
@@ -103,10 +103,8 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
       setErrorMessage(null);
 
       const device = await (navigator as any).bluetooth.requestDevice({
-        // Aceita qualquer dispositivo que tenha o serviço Heart Rate
         filters: [
           { services: [HEART_RATE_SERVICE] },
-          // Garmin HRM-Pro, HRM-Dual — às vezes anunciam com o nome
           { namePrefix: 'Garmin' },
           { namePrefix: 'HRM' },
           { namePrefix: 'Polar' },
@@ -116,18 +114,16 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
           { namePrefix: 'Amazfit' },
           { namePrefix: 'CooSpo' },
           { namePrefix: 'Wahoo' },
+          { namePrefix: 'Watch' },
         ],
-        // CRÍTICO: declarar todos os serviços que serão acessados
-        // Sem isso o browser bloqueia mesmo que o dispositivo suporte
         optionalServices: [
           HEART_RATE_SERVICE,
           BATTERY_SERVICE,
           DEVICE_INFO_SERVICE,
           POLAR_PMD_SERVICE,
-          // UUIDs adicionais de fabricantes
-          '0000180d-0000-1000-8000-00805f9b34fb', // Heart Rate full UUID
-          '00001800-0000-1000-8000-00805f9b34fb', // Generic Access
-          '00001801-0000-1000-8000-00805f9b34fb', // Generic Attribute
+          '0000180d-0000-1000-8000-00805f9b34fb',
+          '00001800-0000-1000-8000-00805f9b34fb',
+          '00001801-0000-1000-8000-00805f9b34fb',
         ],
       });
 
@@ -144,12 +140,10 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
 
       const server = await device.gatt!.connect();
 
-      // Tenta o serviço Heart Rate padrão
       let service: BluetoothRemoteGATTService;
       try {
         service = await server.getPrimaryService(HEART_RATE_SERVICE);
       } catch {
-        // Fallback: tenta com UUID completo (alguns firmwares antigos)
         service = await server.getPrimaryService('0000180d-0000-1000-8000-00805f9b34fb');
       }
 
@@ -161,36 +155,18 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
 
       setStatus('connected');
 
-      // Sincroniza com Supabase a cada 3 segundos
       syncIntervalRef.current = setInterval(() => {
         if (lastBpmRef.current !== null) syncToSupabase(lastBpmRef.current);
       }, 3000);
 
     } catch (err: any) {
       console.error('[HeartRate] Connection error:', err);
-
-      // Usuário cancelou o seletor
-      if (err.name === 'NotFoundError' || err.message?.includes('cancelled') || err.message?.includes('User cancelled')) {
+      if (err.name === 'NotFoundError' || err.message?.includes('cancelled')) {
         setStatus('disconnected');
         return;
       }
-
       setStatus('error');
-
-      if (err.name === 'SecurityError') {
-        setErrorMessage('Permissão Bluetooth negada. Verifique as configurações do navegador.');
-      } else if (err.name === 'NotSupportedError' || err.message?.includes('not found')) {
-        setErrorMessage(
-          'Dispositivo não suporta o perfil Heart Rate padrão. ' +
-          'Se for um relógio Garmin, ative o modo "Transmitir FC" antes de conectar.'
-        );
-      } else if (err.message?.includes('GATT')) {
-        setErrorMessage(
-          'Erro ao conectar ao sensor. Verifique se o dispositivo está em modo de transmissão e tente novamente.'
-        );
-      } else {
-        setErrorMessage(err.message || 'Erro desconhecido ao conectar.');
-      }
+      setErrorMessage(err.message || 'Erro ao conectar.');
     }
   }, [isSupported, userId, handleHeartRateChange, syncToSupabase, removeFromSupabase]);
 
