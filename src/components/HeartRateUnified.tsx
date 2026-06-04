@@ -29,12 +29,12 @@ const DEVICE_TIPS = [
   { name: 'Apple Watch', tip: 'Abra o app Heart Graph ou similar que transmita via Bluetooth no Watch.' },
   { name: 'Samsung / WearOS', tip: 'Certifique-se de que o relógio não está conectado a outro app de treino.' },
   { name: 'Cintas (Polar/Garmin)', tip: 'Umedeça os sensores e vista a cinta antes de iniciar a busca.' },
+  { name: 'Relógios Genéricos', tip: 'Se o nome aparecer como "Watch", verifique o endereço (ex: 41:42) para confirmar o seu.' },
 ];
 
 // ─── Versão Web (Web Bluetooth) ──────────────────────────────────────────────
 function WebVersion({ userId, className }: Props) {
-  // CORRIGIDO: mapeando os nomes do useHeartRate para os usados no componente
-  const { bpm, status, errorMessage: error, connect: startReading, disconnect: stopReading } = useHeartRate(userId);
+  const { bpm, status, errorMessage: error, connect: startReading, disconnect: stopReading, deviceName } = useHeartRate(userId);
   const isConnected = status === 'connected';
   const isConnecting = status === 'connecting';
   const zone = bpm ? getZone(bpm) : null;
@@ -67,7 +67,7 @@ function WebVersion({ userId, className }: Props) {
           <div className="flex flex-col gap-1.5">
             <div className="flex justify-between items-center">
               <span className={cn("text-[10px] font-black uppercase tracking-widest", zone?.color)}>{zone?.label}</span>
-              <span className="text-white/20 text-[9px] font-black">{Math.min(100, Math.round((bpm/190)*100))}%</span>
+              <span className="text-white/20 text-[9px] font-black">{deviceName}</span>
             </div>
             <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
               <motion.div className={cn("h-full", zone?.bar)} initial={{ width: 0 }} animate={{ width: `${Math.min(100, (bpm/190)*100)}%` }} />
@@ -184,8 +184,9 @@ function NativeVersion({ userId, className }: Props) {
           <div className="max-h-40 overflow-y-auto flex flex-col gap-2">
             {availableDevices.map((d) => (
               <button key={d.id} onClick={() => connectDevice(d.id)}
-                className="bg-yellow-500/10 border border-yellow-500/30 hover:bg-yellow-500/20 rounded-xl p-2 text-left transition-colors">
+                className="bg-yellow-500/10 border border-yellow-500/30 hover:bg-yellow-500/20 rounded-xl p-3 text-left transition-colors flex flex-col gap-1">
                 <p className="text-xs font-black text-white">{d.name}</p>
+                <p className="text-[8px] font-black text-white/30 uppercase tracking-widest">ID: {d.id}</p>
               </button>
             ))}
           </div>
@@ -208,9 +209,12 @@ function NativeVersion({ userId, className }: Props) {
         </button>
       ) : (
         <button onClick={isScanning ? undefined : startScanning} disabled={isScanning}
-          className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-primary text-black text-xs font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-[0_0_20px_rgba(202,253,0,0.2)] disabled:opacity-60 disabled:scale-100">
+          className={cn(
+            "flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-[0_0_20px_rgba(202,253,0,0.2)] disabled:opacity-60 disabled:scale-100",
+            isScanning ? "bg-white/10 text-white/40" : "bg-primary text-black"
+          )}>
           {isScanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Heart className="w-4 h-4" />}
-          {isScanning ? 'Buscando...' : 'Iniciar Leitura de FC'}
+          {isScanning ? 'Buscando dispositivos...' : 'Iniciar Leitura de FC'}
         </button>
       )}
 
