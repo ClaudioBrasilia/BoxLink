@@ -59,7 +59,6 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
   const parseHeartRate = (value: DataView): number => {
     const flags = value.getUint8(0);
     const is16bit = (flags & 0x1) !== 0;
-    // O valor do batimento começa no offset 1
     return is16bit ? value.getUint16(1, true) : value.getUint8(1);
   };
 
@@ -102,19 +101,11 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
       setStatus('connecting');
       setErrorMessage(null);
 
+      // Web Bluetooth exige pelo menos um filtro ou acceptAllDevices
       const device = await (navigator as any).bluetooth.requestDevice({
         filters: [
           { services: [HEART_RATE_SERVICE] },
-          { namePrefix: 'Garmin' },
-          { namePrefix: 'HRM' },
-          { namePrefix: 'Polar' },
-          { namePrefix: 'TICKR' },
-          { namePrefix: 'MiSmart' },
-          { namePrefix: 'Mi Band' },
-          { namePrefix: 'Amazfit' },
-          { namePrefix: 'CooSpo' },
-          { namePrefix: 'Wahoo' },
-          { namePrefix: 'Watch' },
+          { namePrefix: '' } // Aceita qualquer dispositivo com nome
         ],
         optionalServices: [
           HEART_RATE_SERVICE,
