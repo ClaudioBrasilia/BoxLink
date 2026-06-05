@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>CrossCity Hub</string>
+	<string>CrossCity Hub</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -45,15 +45,21 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<!-- PERMISSÕES PARA BLUETOOTH -->
+
+	<!-- BLUETOOTH -->
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>O BoxLink precisa conectar a dispositivos Bluetooth (relógios, pulseiras) para ler frequência cardíaca em tempo real durante treinos.</string>
+	<string>O BoxLink precisa conectar a dispositivos Bluetooth (relógios, cintas) para ler frequência cardíaca em tempo real durante treinos.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>O BoxLink precisa acessar Bluetooth para conectar a monitores de frequência cardíaca.</string>
-	<!-- PARA BACKGROUND (OPCIONAL) -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
 	</array>
+
+	<!-- HEALTHKIT (Apple Watch) -->
+	<key>NSHealthShareUsageDescription</key>
+	<string>O BoxLink lê sua frequência cardíaca do Apple Health para exibir durante o treino em tempo real.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>O BoxLink não grava dados de saúde.</string>
 </dict>
 </plist>
