@@ -51,7 +51,7 @@ jobs:
           # Garantir que os diretórios existam
           mkdir -p android/gradle/wrapper
 
-          # Reescrever gradle-wrapper.properties
+          # Reescrever gradle-wrapper.properties para a versão 8.11.1
           cat > android/gradle/wrapper/gradle-wrapper.properties << 'PROPS'
           distributionBase=GRADLE_USER_HOME
           distributionPath=wrapper/dists
@@ -62,7 +62,7 @@ jobs:
           zipStorePath=wrapper/dists
           PROPS
 
-          # Reescrever build.gradle com AGP estável
+          # Reescrever build.gradle com AGP 8.9.1 (exigido pela biblioteca Health Connect)
           cat > android/build.gradle << 'GRADLE'
           buildscript {
               repositories {
@@ -70,7 +70,7 @@ jobs:
                   mavenCentral()
               }
               dependencies {
-                  classpath 'com.android.tools.build:gradle:8.7.2'
+                  classpath 'com.android.tools.build:gradle:8.9.1'
                   classpath 'com.google.gms:google-services:4.4.2'
               }
           }
@@ -86,12 +86,12 @@ jobs:
           }
           GRADLE
 
-          # Reescrever variables.gradle com SDK estável (35)
+          # Reescrever variables.gradle com compileSdk 36 (exigido pela biblioteca Health Connect)
           cat > android/variables.gradle << 'VARS'
           ext {
               minSdkVersion = 26
-              compileSdkVersion = 35
-              targetSdkVersion = 35
+              compileSdkVersion = 36
+              targetSdkVersion = 36
               androidxActivityVersion = '1.9.3'
               androidxAppCompatVersion = '1.7.0'
               androidxCoordinatorLayoutVersion = '1.2.0'
@@ -105,8 +105,11 @@ jobs:
               cordovaAndroidVersion = '10.1.1'
           }
           VARS
+          
+          # Adicionar supressão de aviso para SDK 36 no gradle.properties
+          echo "android.suppressUnsupportedCompileSdk=36" >> android/gradle.properties
 
-          echo "✅ Configurações de build atualizadas"
+          echo "✅ Configurações atualizadas para AGP 8.9.1 e SDK 36"
 
       - name: Build APK (debug)
         run: |
