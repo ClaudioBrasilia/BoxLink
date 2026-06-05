@@ -1,188 +1,128 @@
-// src/hooks/useBluetooth.ts
-import { useState, useCallback, useRef, useEffect } from 'react';
+// src/hooks/useNativeHealth.ts
+// Lê FC via HealthKit (iOS) ou Health Connect (Android)
+// Usa o plugin @capgo/capacitor-health que já está no package.json do projeto
+
+import { useState, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { BleClient, numberToUUID } from '@capacitor-community/bluetooth-le';
+import { Health } from '@capgo/capacitor-health';
 import { supabase } from '../lib/supabase';
 
-// UUIDs Padronizados Bluetooth
-const HEART_RATE_SERVICE     = '0000180d-0000-1000-8000-00805f9b34fb';
-const HEART_RATE_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb';
-const BATTERY_SERVICE        = numberToUUID(0x180f);
-const BATTERY_LEVEL          = numberToUUID(0x2a19);
+export type NativeHealthStatus = 'idle' | 'requesting' | 'active' | 'error';
 
-// Prefixos de nome aceitos no scan
-const NAME_PREFIXES = [
-  'Watch', 'Smart', 'Band', 'Fit', 'Heart', 'HRM', 'BT', 'ID',
-  'Garmin', 'Polar', 'Wahoo', 'TICKR', 'CooSpo', 'Amazfit',
-  'MiSmart', 'Mi Band', 'H',
-];
-
-export type BluetoothStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'error' | 'unsupported';
-
-interface BluetoothDevice {
-  id: string;
-  name: string;
+interface UseNativeHealthReturn {
   bpm: number | null;
-  battery: number | null;
-  status: 'connected' | 'disconnected';
-  lastUpdate: Date | null;
-}
-
-interface UseBluetoothReturn {
-  devices: BluetoothDevice[];
-  status: BluetoothStatus;
+  status: NativeHealthStatus;
   errorMessage: string | null;
-  isNative: boolean;
-  startScanning: () => Promise<void>;
-  stopScanning: () => Promise<void>;
-  connectDevice: (deviceId: string) => Promise<void>;
-  disconnectDevice: (deviceId: string) => Promise<void>;
-  disconnectAll: () => Promise<void>;
+  startReading: () => Promise<void>;
+  stopReading: () => void;
 }
 
-export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
-  const [devices, setDevices]           = useState<BluetoothDevice[]>([]);
-  const [status, setStatus]             = useState<BluetoothStatus>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const devicesRef  = useRef<Map<string, BluetoothDevice>>(new Map());
-  const listenerRef = useRef<any>(null);
-  const isNative    = Capacitor.isNativePlatform();
+export function useNativeHealth(userId: string | undefined): UseNativeHealthReturn {
+  const [bpm, setBpm]            = useState<number | null>(null);
+  const [status, setStatus]      = useState<NativeHealthStatus>('idle');
+  const [errorMessage, setError] = useState<string | null>(null);
+  const intervalRef              = useRef<ReturnType<typeof setInterval> | null>(null);
+  const platform                 = Capacitor.getPlatform(); // 'ios' | 'android'
 
-  const syncToSupabase = useCallback(async (deviceId: string, bpm: number, deviceName: string) => {
+  const syncToSupabase = useCallback(async (currentBpm: number) => {
     if (!userId) return;
     try {
       await supabase.from('heart_rate_live').upsert(
-        { user_id: userId, bpm, device_id: deviceId, device_name: deviceName, updated_at: new Date().toISOString() },
+        {
+          user_id: userId,
+          bpm: currentBpm,
+          device_name: platform === 'ios' ? 'Apple Health' : 'Health Connect',
+          updated_at: new Date().toISOString(),
+        },
         { onConflict: 'user_id' }
       );
-    } catch (err) { console.error('[Bluetooth] Erro ao sincronizar:', err); }
-  }, [userId]);
+    } catch (err) { console.error('[NativeHealth] Sync error:', err); }
+  }, [userId, platform]);
 
-  const removeFromSupabase = useCallback(async () => {
-    if (!userId) return;
-    try { await supabase.from('heart_rate_live').delete().eq('user_id', userId); }
-    catch (err) { console.error('[Bluetooth] Erro ao remover:', err); }
-  }, [userId]);
-
-  const initializeBle = useCallback(async () => {
-    try {
-      await BleClient.initialize();
-    } catch (err) {
-      console.error('[Bluetooth] Erro ao inicializar:', err);
-      setErrorMessage('Bluetooth não disponível neste dispositivo');
-      setStatus('unsupported');
+  const stopReading = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
-  }, []);
+    setBpm(null);
+    setStatus('idle');
+    if (userId) {
+      supabase.from('heart_rate_live').delete().eq('user_id', userId).then(() => {});
+    }
+  }, [userId]);
 
-  const parseHeartRate = (value: DataView): number => {
-    const flags = value.getUint8(0);
-    return (flags & 0x1) ? value.getUint16(1, true) : value.getUint8(1);
-  };
+  const startReading = useCallback(async () => {
+    setStatus('requesting');
+    setError(null);
 
-  const readBattery = useCallback(async (deviceId: string): Promise<number | null> => {
     try {
-      const battery = await BleClient.read(deviceId, BATTERY_SERVICE, BATTERY_LEVEL);
-      return battery.getUint8(0);
-    } catch { return null; }
-  }, []);
+      // 1. Verificar se o SDK de saúde está disponível no dispositivo
+      const { available, reason } = await Health.isAvailable();
+      if (!available) {
+        setError(
+          platform === 'ios'
+            ? 'Apple Health não está disponível neste dispositivo.'
+            : `Health Connect não disponível: ${reason ?? 'instale o app Health Connect'}`
+        );
+        setStatus('error');
+        return;
+      }
 
-  const connectDevice = useCallback(async (deviceId: string) => {
-    try {
-      const device = devicesRef.current.get(deviceId);
-      if (!device) return;
-
-      setStatus('connecting');
-      await BleClient.connect(deviceId, (id) => {
-        const dev = devicesRef.current.get(id);
-        if (dev) { dev.status = 'disconnected'; setDevices(Array.from(devicesRef.current.values())); }
+      // 2. Solicitar permissão de leitura de frequência cardíaca
+      await Health.requestAuthorization({
+        read: ['heartRate'],
+        write: [],
       });
 
-      await BleClient.discoverServices(deviceId);
+      setStatus('active');
 
-      const battery = await readBattery(deviceId);
-      if (battery !== null) device.battery = battery;
+      // 3. Polling a cada 5 segundos — HealthKit/Health Connect não tem streaming nativo
+      // O relógio sincroniza dados periodicamente, então polling é a abordagem correta
+      const poll = async () => {
+        try {
+          const endDate   = new Date().toISOString();
+          const startDate = new Date(Date.now() - 2 * 60 * 1000).toISOString(); // últimos 2 min
 
-      await BleClient.startNotifications(
-        deviceId, HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT,
-        (value) => {
-          const bpm = parseHeartRate(value);
-          device.bpm = bpm;
-          device.lastUpdate = new Date();
-          setDevices(Array.from(devicesRef.current.values()));
-          syncToSupabase(deviceId, bpm, device.name);
-        }
-      );
+          const { samples } = await Health.readSamples({
+            dataType: 'heartRate',
+            startDate,
+            endDate,
+            limit: 1,
+          });
 
-      device.status = 'connected';
-      setStatus('connected');
-      setDevices(Array.from(devicesRef.current.values()));
-    } catch (err: any) {
-      console.error('[Bluetooth] Erro ao conectar:', err);
-      setStatus('error');
-      setErrorMessage(err.message || 'Erro ao conectar');
-    }
-  }, [readBattery, syncToSupabase]);
-
-  const disconnectDevice = useCallback(async (deviceId: string) => {
-    try {
-      await BleClient.stopNotifications(deviceId, HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT);
-      await BleClient.disconnect(deviceId);
-      const device = devicesRef.current.get(deviceId);
-      if (device) { device.status = 'disconnected'; device.bpm = null; setDevices(Array.from(devicesRef.current.values())); }
-    } catch (err) { console.error('[Bluetooth] Erro ao desconectar:', err); }
-  }, []);
-
-  const disconnectAll = useCallback(async () => {
-    for (const [deviceId] of devicesRef.current) { await disconnectDevice(deviceId); }
-    removeFromSupabase();
-    setStatus('idle');
-  }, [disconnectDevice, removeFromSupabase]);
-
-  const startScanning = useCallback(async () => {
-    if (!isNative) {
-      setStatus('unsupported');
-      setErrorMessage('Esta função requer o app instalado no celular.');
-      return;
-    }
-    try {
-      setStatus('scanning');
-      setErrorMessage(null);
-      await initializeBle();
-
-      // Sem filtro de serviço — relógios genéricos não anunciam UUID Heart Rate
-      // no advertisement packet. Filtramos por nome para não listar fones, etc.
-      listenerRef.current = await BleClient.requestLEScan(
-        {},
-        (result) => {
-          const name = result.device.name || '';
-          const knownName = NAME_PREFIXES.some(p => name.toLowerCase().startsWith(p.toLowerCase()));
-          const hasHRUuid = (result as any).uuids?.includes(HEART_RATE_SERVICE) ?? false;
-          if (!knownName && !hasHRUuid) return;
-
-          const device: BluetoothDevice = {
-            id: result.device.deviceId,
-            name: name || `Dispositivo ${result.device.deviceId.substring(0, 8)}`,
-            bpm: null, battery: null, status: 'disconnected', lastUpdate: null,
-          };
-          if (!devicesRef.current.has(result.device.deviceId)) {
-            devicesRef.current.set(result.device.deviceId, device);
-            setDevices(Array.from(devicesRef.current.values()));
+          if (samples && samples.length > 0) {
+            // O valor vem em BPM (unidade padrão do plugin para heartRate)
+            const latestBpm = Math.round(samples[0].value ?? 0);
+            if (latestBpm > 30 && latestBpm < 250) {
+              setBpm(latestBpm);
+              syncToSupabase(latestBpm);
+            }
           }
+        } catch (err) {
+          console.warn('[NativeHealth] Erro ao ler amostra:', err);
         }
-      );
+      };
+
+      // Leitura imediata + polling
+      await poll();
+      intervalRef.current = setInterval(poll, 5000);
+
     } catch (err: any) {
-      console.error('[Bluetooth] Erro ao escanear:', err);
+      console.error('[NativeHealth] Erro:', err);
+
+      // Tratamento específico para permissão negada
+      if (err?.message?.toLowerCase().includes('denied') || err?.message?.toLowerCase().includes('not authorized')) {
+        setError(
+          platform === 'ios'
+            ? 'Permissão negada. Vá em Ajustes → Saúde → BoxLink e autorize a leitura.'
+            : 'Permissão negada. Verifique as permissões do Health Connect.'
+        );
+      } else {
+        setError(err?.message ?? 'Erro ao acessar dados de saúde.');
+      }
       setStatus('error');
-      setErrorMessage(err.message || 'Erro ao escanear');
     }
-  }, [isNative, initializeBle]);
+  }, [platform, syncToSupabase]);
 
-  const stopScanning = useCallback(async () => {
-    try { await BleClient.stopLEScan(); setStatus('idle'); }
-    catch (err) { console.error('[Bluetooth] Erro ao parar scan:', err); }
-  }, []);
-
-  useEffect(() => { return () => { disconnectAll(); }; }, [disconnectAll]);
-
-  return { devices, status, errorMessage, isNative, startScanning, stopScanning, connectDevice, disconnectDevice, disconnectAll };
+  return { bpm, status, errorMessage, startReading, stopReading };
 }
