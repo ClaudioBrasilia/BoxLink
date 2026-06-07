@@ -293,6 +293,10 @@ export default function Admin() {
 
   // ── Comunicados ──
   const [announcements, setAnnouncements] = useState<any[]>([]);
+
+  // ── Patrocinadores ──
+  const [sponsors, setSponsors] = useState<any[]>([]);
+  const [sponsorsLoading, setSponsorsLoading] = useState(false);
   const [isVisitorPanelOpen, setIsVisitorPanelOpen] = useState(false);
   const [visitorPermissions, setVisitorPermissions] = useState<VisitorPermissions>({
     wod: 'allowed',
@@ -393,6 +397,10 @@ export default function Admin() {
     const { data: clanMembershipsData } = await supabase.from('clan_memberships').select('*');
     if (clanMembershipsData) setClanMemberships(clanMembershipsData);
 
+    // ── Patrocinadores ──
+    const { data: sponsorsData } = await supabase.from('sponsors').select('*').order('order_index', { ascending: true });
+    if (sponsorsData) setSponsors(sponsorsData);
+
   };
 
   useEffect(() => {
@@ -410,6 +418,67 @@ export default function Admin() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
+
+  // ── CRUD Patrocinadores ──────────────────────────────────────
+  const saveSponsor = async (sponsor: any) => {
+    setSponsorsLoading(true);
+    try {
+      if (sponsor.id && !sponsor.id.startsWith('new_')) {
+        const { error } = await supabase.from('sponsors').update({
+          name: sponsor.name,
+          logo_url: sponsor.logo_url || null,
+          description: sponsor.description || null,
+          display_duration: sponsor.display_duration,
+          show_on_tv: sponsor.show_on_tv,
+          show_on_app: sponsor.show_on_app,
+          active: sponsor.active,
+          order_index: sponsor.order_index,
+        }).eq('id', sponsor.id);
+        if (error) throw error;
+        toast.success('Patrocinador atualizado!');
+      } else {
+        const { error } = await supabase.from('sponsors').insert({
+          name: sponsor.name,
+          logo_url: sponsor.logo_url || null,
+          description: sponsor.description || null,
+          display_duration: sponsor.display_duration || 8,
+          show_on_tv: sponsor.show_on_tv ?? true,
+          show_on_app: sponsor.show_on_app ?? false,
+          active: sponsor.active ?? true,
+          order_index: sponsor.order_index || sponsors.length,
+        });
+        if (error) throw error;
+        toast.success('Patrocinador adicionado!');
+      }
+      await fetchAll();
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao salvar patrocinador');
+    } finally {
+      setSponsorsLoading(false);
+    }
+  };
+
+  const deleteSponsor = async (id: string) => {
+    if (id.startsWith('new_')) {
+      setSponsors(prev => prev.filter(s => s.id !== id));
+      return;
+    }
+    setSponsorsLoading(true);
+    try {
+      const { error } = await supabase.from('sponsors').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Patrocinador removido!');
+      await fetchAll();
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao remover patrocinador');
+    } finally {
+      setSponsorsLoading(false);
+    }
+  };
+
+  const updateSponsorLocal = (id: string, field: string, value: any) => {
+    setSponsors(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
+  };
 
   const handleStatusChange = async (userId: string, status: string) => {
     const updateData: Record<string, any> = { status };
@@ -1201,6 +1270,192 @@ export default function Admin() {
                           </div>
                         </>
                       )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* ── Patrocinadores / Publicidade ── */}
+              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                <button onClick={() => toggleSection('sponsors')} className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">PATROCINADORES</h3>
+                    {sponsors.filter(s => s.active).length > 0 && (
+                      <span className="bg-primary text-black text-[9px] font-black px-2 py-0.5 rounded-full">
+                        {sponsors.filter(s => s.active).length} ativo{sponsors.filter(s => s.active).length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  {openSections.includes('sponsors') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+                <AnimatePresence>
+                  {openSections.includes('sponsors') && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden px-2 space-y-4">
+
+                      {/* Dica */}
+                      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 text-[10px] text-primary/80 font-black uppercase tracking-widest leading-relaxed">
+                        📺 Os logos aparecem no HEADER DA TV em rotação automática.<br/>
+                        📱 Ative "Mostrar no App" para exibir também no celular dos atletas.
+                      </div>
+
+                      {/* Botão adicionar */}
+                      <button
+                        onClick={() => setSponsors(prev => [...prev, {
+                          id: `new_${Date.now()}`,
+                          name: '',
+                          logo_url: '',
+                          description: '',
+                          display_duration: 8,
+                          show_on_tv: true,
+                          show_on_app: false,
+                          active: true,
+                          order_index: prev.length,
+                        }])}
+                        className="w-full py-3 border-2 border-dashed border-outline-variant/20 rounded-2xl text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:border-primary/30 hover:text-primary transition-all flex items-center justify-center gap-2"
+                      >
+                        <Plus className="w-4 h-4" /> ADICIONAR PATROCINADOR
+                      </button>
+
+                      {sponsors.map((sp: any, idx: number) => (
+                        <div key={sp.id} className="p-4 bg-surface-container-highest/30 rounded-2xl border border-outline-variant/10 space-y-4">
+                          {/* Header do card */}
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-primary font-black uppercase tracking-widest">PATROCINADOR #{idx + 1}</span>
+                              <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${sp.active ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/30'}`}>
+                                {sp.active ? 'ATIVO' : 'INATIVO'}
+                              </span>
+                            </div>
+                            <button onClick={() => deleteSponsor(sp.id)} className="text-error hover:scale-110 transition-transform">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Nome */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Nome do Patrocinador</label>
+                            <input
+                              type="text"
+                              placeholder="Ex: Mel Nobilis"
+                              value={sp.name}
+                              onChange={e => updateSponsorLocal(sp.id, 'name', e.target.value)}
+                              className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm"
+                            />
+                          </div>
+
+                          {/* URL do logo + Upload */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Logo do Patrocinador</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="https://... ou faça upload abaixo"
+                                value={sp.logo_url || ''}
+                                onChange={e => updateSponsorLocal(sp.id, 'logo_url', e.target.value)}
+                                className="flex-1 bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm"
+                              />
+                              <label className={`flex items-center gap-1 px-3 py-2 rounded-xl border cursor-pointer transition-all text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${uploading === `sponsor_${sp.id}` ? 'bg-primary/10 border-primary/20 text-primary/50' : 'bg-primary/20 border-primary/30 text-primary hover:bg-primary/30'}`}>
+                                {uploading === `sponsor_${sp.id}` ? '⏳ ENVIANDO...' : '📤 UPLOAD'}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  disabled={uploading === `sponsor_${sp.id}`}
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    setUploading(`sponsor_${sp.id}` as any);
+                                    try {
+                                      const fileName = `sponsor_${sp.id}_${Date.now()}.jpg`;
+                                      const url = await uploadImage(file, 'box-assets', fileName, 'logo');
+                                      updateSponsorLocal(sp.id, 'logo_url', url);
+                                      toast.success('Logo enviado!');
+                                    } catch (err: any) {
+                                      toast.error('Erro no upload: ' + err.message);
+                                    } finally {
+                                      setUploading(null);
+                                    }
+                                  }}
+                                />
+                              </label>
+                            </div>
+                            {sp.logo_url && (
+                              <div className="bg-black/40 rounded-xl p-3 flex items-center justify-center">
+                                <img src={sp.logo_url} alt={sp.name} className="max-h-16 max-w-full object-contain"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }} />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Descrição */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Slogan / Descrição (opcional)</label>
+                            <input
+                              type="text"
+                              placeholder="Ex: Apicultura e Conservação da Fauna"
+                              value={sp.description || ''}
+                              onChange={e => updateSponsorLocal(sp.id, 'description', e.target.value)}
+                              className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm"
+                            />
+                          </div>
+
+                          {/* Duração + controles */}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Tempo na Tela (segundos)</label>
+                              <input
+                                type="number"
+                                min={3}
+                                max={60}
+                                value={sp.display_duration}
+                                onChange={e => updateSponsorLocal(sp.id, 'display_duration', parseInt(e.target.value) || 8)}
+                                className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Ordem</label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={sp.order_index}
+                                onChange={e => updateSponsorLocal(sp.id, 'order_index', parseInt(e.target.value) || 0)}
+                                className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Toggles */}
+                          <div className="flex gap-3 flex-wrap">
+                            {[
+                              { field: 'active', label: '✅ Ativo' },
+                              { field: 'show_on_tv', label: '📺 Mostrar na TV' },
+                              { field: 'show_on_app', label: '📱 Mostrar no App' },
+                            ].map(({ field, label }) => (
+                              <button
+                                key={field}
+                                onClick={() => updateSponsorLocal(sp.id, field, !sp[field])}
+                                className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                                  sp[field]
+                                    ? 'bg-primary/20 border-primary/30 text-primary'
+                                    : 'bg-white/5 border-white/10 text-white/30'
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Botão salvar */}
+                          <button
+                            onClick={() => saveSponsor(sp)}
+                            disabled={!sp.name || sponsorsLoading}
+                            className="w-full py-3 bg-primary text-black font-black text-[11px] uppercase tracking-widest rounded-xl hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {sponsorsLoading ? 'SALVANDO...' : '💾 SALVAR PATROCINADOR'}
+                          </button>
+                        </div>
+                      ))}
+
                     </motion.div>
                   )}
                 </AnimatePresence>
