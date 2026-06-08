@@ -120,15 +120,12 @@ export function AppSponsorBanner({ sponsors, className = '' }: AppSponsorBannerP
   const sponsor = appSponsors[currentIndex % appSponsors.length];
 
   const handleClick = () => {
-    if (sponsor.website_url) {
-      window.open(sponsor.website_url, '_blank', 'noopener,noreferrer');
-    }
+    // campo website_url reservado para uso futuro
   };
 
   return (
     <div
-      className={`rounded-2xl bg-surface-container border border-outline-variant/20 overflow-hidden ${sponsor.website_url ? 'cursor-pointer active:scale-[0.98] transition-transform' : ''} ${className}`}
-      onClick={handleClick}
+      className={`rounded-2xl bg-surface-container border border-outline-variant/20 overflow-hidden ${className}`}
     >
       <AnimatePresence mode="wait">
         <motion.div
