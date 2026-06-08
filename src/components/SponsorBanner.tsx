@@ -42,9 +42,7 @@ export function TVSponsorBanner({ sponsors, className = '' }: TVSponsorBannerPro
   return (
     <div className={`relative flex flex-col items-center justify-center overflow-hidden rounded-2xl bg-white/5 border border-white/10 min-w-[220px] max-w-[320px] px-4 py-2 ${className}`}>
       {/* Label */}
-      <span className="text-white/20 text-[8px] font-black uppercase tracking-[0.3em] absolute top-1.5 left-3">
-        PATROCINADOR
-      </span>
+
 
       <AnimatePresence mode="wait">
         <motion.div
@@ -122,11 +120,6 @@ export function AppSponsorBanner({ sponsors, className = '' }: AppSponsorBannerP
 
   return (
     <div className={`rounded-2xl bg-surface-container border border-outline-variant/20 overflow-hidden ${className}`}>
-      <div className="px-3 py-1 border-b border-outline-variant/10">
-        <span className="text-on-surface-variant text-[9px] font-black uppercase tracking-[0.3em]">
-          PATROCINADOR
-        </span>
-      </div>
       <AnimatePresence mode="wait">
         <motion.div
           key={sponsor.id}
