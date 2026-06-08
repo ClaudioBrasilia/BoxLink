@@ -11,10 +11,12 @@ import { supabase } from '../lib/supabase';
 import { addReward, checkAndPayWeeklyBonus, getRewardSettings } from '../utils/rewards';
 import { useInactivity } from '../hooks/useInactivity';
 import HeartRateUnified from '../components/HeartRateUnified';
+import { AppSponsorBanner, useSponsors } from '../components/SponsorBanner';
 
 export default function Dashboard() {
   const { user, updateUser } = useAuth();
   const navigate = useNavigate();
+  const sponsors = useSponsors();
   const [wod, setWod] = useState<Wod | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkinMessage, setCheckinMessage] = useState<string | null>(null);
@@ -256,6 +258,9 @@ export default function Dashboard() {
           </div>
         </section>
       )}
+
+      {/* ── Banner de Patrocinadores ── */}
+      <AppSponsorBanner sponsors={sponsors} />
 
       {activeChallenges.length > 0 && (
         <section className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-4 cursor-pointer hover:border-primary/30 transition-all"
