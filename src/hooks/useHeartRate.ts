@@ -1,6 +1,6 @@
 // src/hooks/useHeartRate.ts
-// Hook para conectar relógio/sensor via Web Bluetooth API (GATT padrão)
 import { useState, useCallback, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -15,51 +15,52 @@ interface UseHeartRateReturn {
   isSupported: boolean;
 }
 
-// UUIDs padrão Bluetooth SIG
-const HEART_RATE_SERVICE = 0x180D;
+const HEART_RATE_SERVICE     = 0x180D;
 const HEART_RATE_MEASUREMENT = 0x2A37;
-const BATTERY_SERVICE = 0x180F;
-const DEVICE_INFO_SERVICE = 0x180A;
-
-// UUID proprietário do Polar (PMD — dados de sensor avançados)
-const POLAR_PMD_SERVICE = 'fb005c80-02e7-f387-1cad-8acd2d8df0c8';
+const BATTERY_SERVICE        = 0x180F;
+const DEVICE_INFO_SERVICE    = 0x180A;
+const POLAR_PMD_SERVICE      = 'fb005c80-02e7-f387-1cad-8acd2d8df0c8';
 
 export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
-  const [bpm, setBpm] = useState<number | null>(null);
-  const [status, setStatus] = useState<ConnectionStatus>('disconnected');
-  const [deviceName, setDeviceName] = useState<string | null>(null);
+  const [bpm, setBpm]                   = useState<number | null>(null);
+  const [status, setStatus]             = useState<ConnectionStatus>('disconnected');
+  const [deviceName, setDeviceName]     = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const deviceRef = useRef<BluetoothDevice | null>(null);
+  const deviceRef         = useRef<BluetoothDevice | null>(null);
   const characteristicRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
-  const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastBpmRef = useRef<number | null>(null);
+  const syncIntervalRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastBpmRef        = useRef<number | null>(null);
 
-  const isSupported = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+  const isNative = Capacitor.isNativePlatform();
+
+  // Web Bluetooth só funciona em Chrome/Edge no Android e Desktop
+  // No iOS a Apple bloqueia em todos os navegadores
+  const isIOS =
+    typeof navigator !== 'undefined' &&
+    (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+  const isSupported =
+    !isNative &&
+    !isIOS &&
+    typeof navigator !== 'undefined' &&
+    'bluetooth' in navigator;
 
   const syncToSupabase = useCallback(async (currentBpm: number) => {
     if (!userId) return;
     try {
       await supabase.from('heart_rate_live').upsert(
-        {
-          user_id: userId,
-          bpm: currentBpm,
-          updated_at: new Date().toISOString()
-        },
+        { user_id: userId, bpm: currentBpm, updated_at: new Date().toISOString() },
         { onConflict: 'user_id' }
       );
-    } catch (err) {
-      console.error('[HeartRate] Sync error:', err);
-    }
+    } catch (err) { console.error('[HeartRate] Sync error:', err); }
   }, [userId]);
 
   const removeFromSupabase = useCallback(async () => {
     if (!userId) return;
-    try {
-      await supabase.from('heart_rate_live').delete().eq('user_id', userId);
-    } catch (err) {
-      console.error('[HeartRate] Remove error:', err);
-    }
+    try { await supabase.from('heart_rate_live').delete().eq('user_id', userId); }
+    catch (err) { console.error('[HeartRate] Remove error:', err); }
   }, [userId]);
 
   const parseHeartRate = (value: DataView): number => {
@@ -79,28 +80,28 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
   }, []);
 
   const disconnect = useCallback(() => {
-    if (syncIntervalRef.current) {
-      clearInterval(syncIntervalRef.current);
-      syncIntervalRef.current = null;
-    }
+    if (syncIntervalRef.current) { clearInterval(syncIntervalRef.current); syncIntervalRef.current = null; }
     if (characteristicRef.current) {
       characteristicRef.current.removeEventListener('characteristicvaluechanged', handleHeartRateChange);
       characteristicRef.current = null;
     }
-    if (deviceRef.current?.gatt?.connected) {
-      deviceRef.current.gatt.disconnect();
-    }
+    if (deviceRef.current?.gatt?.connected) deviceRef.current.gatt.disconnect();
     deviceRef.current = null;
     removeFromSupabase();
-    setBpm(null);
-    setStatus('disconnected');
-    setDeviceName(null);
+    setBpm(null); setStatus('disconnected'); setDeviceName(null); setErrorMessage(null);
     lastBpmRef.current = null;
   }, [handleHeartRateChange, removeFromSupabase]);
 
   const connect = useCallback(async () => {
+    // iPhone/iPad — mensagem clara, não confunde com Chrome
+    if (isIOS && !isNative) {
+      setErrorMessage('No iPhone, instale o app BoxLink para conectar o relógio. O iOS não permite Bluetooth em navegadores.');
+      setStatus('error');
+      return;
+    }
+
     if (!isSupported) {
-      setErrorMessage('Use Chrome ou Edge para conectar via Bluetooth.');
+      setErrorMessage('Use Chrome ou Edge no computador ou Android para conectar via Bluetooth.');
       setStatus('error');
       return;
     }
@@ -115,69 +116,83 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
       setStatus('connecting');
       setErrorMessage(null);
 
-      // CORREÇÃO: Usar acceptAllDevices para evitar erro de namePrefix vazio
       const device = await (navigator as any).bluetooth.requestDevice({
-        acceptAllDevices: true,
+        filters: [
+          { services: [HEART_RATE_SERVICE] },
+          // Cintos e sensores dedicados
+          { namePrefix: 'HRM' },
+          { namePrefix: 'Polar' },
+          { namePrefix: 'TICKR' },
+          { namePrefix: 'CooSpo' },
+          { namePrefix: 'Coospo' },
+          { namePrefix: 'Magene' },
+          // Relógios
+          { namePrefix: 'Garmin' },
+          { namePrefix: 'Amazfit' },
+          { namePrefix: 'MiSmart' },
+          { namePrefix: 'Mi Band' },
+          { namePrefix: 'Wahoo' },
+          { namePrefix: 'Galaxy Watch' },
+          { namePrefix: 'Galaxy Fit' },
+          { namePrefix: 'SM-R' },
+          // Genéricos
+          { namePrefix: 'Watch' },
+          { namePrefix: 'Relógio' },
+          { namePrefix: 'Pulseira' },
+        ],
         optionalServices: [
           HEART_RATE_SERVICE,
           BATTERY_SERVICE,
           DEVICE_INFO_SERVICE,
           POLAR_PMD_SERVICE,
           '0000180d-0000-1000-8000-00805f9b34fb',
-          '0000180f-0000-1000-8000-00805f9b34fb',
-          '0000180a-0000-1000-8000-00805f9b34fb'
-        ]
+          '00001800-0000-1000-8000-00805f9b34fb',
+          '00001801-0000-1000-8000-00805f9b34fb',
+        ],
       });
 
       deviceRef.current = device;
-      setDeviceName(device.name || 'Dispositivo Bluetooth');
+      setDeviceName(device.name || 'Dispositivo');
 
       device.addEventListener('gattserverdisconnected', () => {
         setStatus('disconnected');
-        if (syncIntervalRef.current) {
-          clearInterval(syncIntervalRef.current);
-          syncIntervalRef.current = null;
-        }
+        if (syncIntervalRef.current) { clearInterval(syncIntervalRef.current); syncIntervalRef.current = null; }
         removeFromSupabase();
         setBpm(null);
         setDeviceName(null);
       });
 
       const server = await device.gatt!.connect();
-      const service = await server.getPrimaryService(HEART_RATE_SERVICE);
-      const characteristic = await service.getCharacteristic(HEART_RATE_MEASUREMENT);
 
+      let service: BluetoothRemoteGATTService;
+      try {
+        service = await server.getPrimaryService(HEART_RATE_SERVICE);
+      } catch {
+        service = await server.getPrimaryService('0000180d-0000-1000-8000-00805f9b34fb');
+      }
+
+      const characteristic = await service.getCharacteristic(HEART_RATE_MEASUREMENT);
       characteristicRef.current = characteristic;
+
       await characteristic.startNotifications();
       characteristic.addEventListener('characteristicvaluechanged', handleHeartRateChange);
 
       setStatus('connected');
 
-      // Sync loop
       syncIntervalRef.current = setInterval(() => {
-        if (lastBpmRef.current) {
-          syncToSupabase(lastBpmRef.current);
-        }
-      }, 5000);
+        if (lastBpmRef.current !== null) syncToSupabase(lastBpmRef.current);
+      }, 3000);
 
     } catch (err: any) {
       console.error('[HeartRate] Connection error:', err);
-      if (err.name !== 'NotFoundError') {
-        setErrorMessage(err.message || 'Erro ao conectar dispositivo.');
-        setStatus('error');
-      } else {
+      if (err.name === 'NotFoundError' || err.message?.includes('cancelled')) {
         setStatus('disconnected');
+        return;
       }
+      setStatus('error');
+      setErrorMessage(err.message || 'Erro ao conectar.');
     }
-  }, [isSupported, userId, handleHeartRateChange, syncToSupabase, removeFromSupabase]);
+  }, [isSupported, isIOS, isNative, userId, handleHeartRateChange, syncToSupabase, removeFromSupabase]);
 
-  return {
-    bpm,
-    status,
-    deviceName,
-    errorMessage,
-    connect,
-    disconnect,
-    isSupported
-  };
+  return { bpm, status, deviceName, errorMessage, connect, disconnect, isSupported };
 }
