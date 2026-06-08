@@ -12,6 +12,7 @@ export interface Sponsor {
   show_on_app: boolean;
   active: boolean;
   order_index: number;
+  website_url?: string | null; // link clicável no app
 }
 
 // ─── Banner na TV (área do header) ─────────────────────────────────────────
@@ -118,8 +119,17 @@ export function AppSponsorBanner({ sponsors, className = '' }: AppSponsorBannerP
 
   const sponsor = appSponsors[currentIndex % appSponsors.length];
 
+  const handleClick = () => {
+    if (sponsor.website_url) {
+      window.open(sponsor.website_url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
-    <div className={`rounded-2xl bg-surface-container border border-outline-variant/20 overflow-hidden ${className}`}>
+    <div
+      className={`rounded-2xl bg-surface-container border border-outline-variant/20 overflow-hidden ${sponsor.website_url ? 'cursor-pointer active:scale-[0.98] transition-transform' : ''} ${className}`}
+      onClick={handleClick}
+    >
       <AnimatePresence mode="wait">
         <motion.div
           key={sponsor.id}
@@ -147,6 +157,11 @@ export function AppSponsorBanner({ sponsors, className = '' }: AppSponsorBannerP
             <p className="text-on-surface-variant text-xs font-medium flex-1 leading-snug">
               {sponsor.description}
             </p>
+          )}
+          {sponsor.website_url && (
+            <svg className="w-3.5 h-3.5 text-on-surface-variant/30 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M7 17L17 7M17 7H7M17 7v10"/>
+            </svg>
           )}
         </motion.div>
       </AnimatePresence>
