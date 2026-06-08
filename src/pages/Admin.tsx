@@ -433,6 +433,7 @@ export default function Admin() {
           show_on_app: sponsor.show_on_app,
           active: sponsor.active,
           order_index: sponsor.order_index,
+          website_url: sponsor.website_url || null,
         }).eq('id', sponsor.id);
         if (error) throw error;
         toast.success('Patrocinador atualizado!');
@@ -446,6 +447,7 @@ export default function Admin() {
           show_on_app: sponsor.show_on_app ?? false,
           active: sponsor.active ?? true,
           order_index: sponsor.order_index || sponsors.length,
+          website_url: sponsor.website_url || null,
         });
         if (error) throw error;
         toast.success('Patrocinador adicionado!');
@@ -1397,6 +1399,21 @@ export default function Admin() {
                               onChange={e => updateSponsorLocal(sp.id, 'description', e.target.value)}
                               className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm"
                             />
+                          </div>
+
+                          {/* Link */}
+                          <div className="space-y-1">
+                            <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Link (site ou rede social)</label>
+                            <input
+                              type="url"
+                              placeholder="https://instagram.com/... ou https://..."
+                              value={sp.website_url || ''}
+                              onChange={e => updateSponsorLocal(sp.id, 'website_url', e.target.value)}
+                              className="w-full bg-surface-container-highest border-none rounded-xl p-3 font-headline font-bold text-on-surface text-sm"
+                            />
+                            <p className="text-[9px] text-on-surface-variant/50 font-black uppercase tracking-widest">
+                              📱 Ao clicar no banner no app, abre esse link
+                            </p>
                           </div>
 
                           {/* Duração + controles */}
