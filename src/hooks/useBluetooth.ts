@@ -4,19 +4,33 @@ import { Capacitor } from '@capacitor/core';
 import { BleClient, numberToUUID } from '@capacitor-community/bluetooth-le';
 import { supabase } from '../lib/supabase';
 
-// UUIDs Padronizados Bluetooth SIG
 const HEART_RATE_SERVICE     = '0000180d-0000-1000-8000-00805f9b34fb';
 const HEART_RATE_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb';
 const BATTERY_SERVICE        = numberToUUID(0x180f);
 const BATTERY_LEVEL          = numberToUUID(0x2a19);
 
-// Prefixos de nome aceitos no scan
+// Lista restrita — só dispositivos que realmente transmitem FC
 const NAME_PREFIXES = [
-  'Watch', 'Smart', 'Band', 'Fit', 'Heart', 'HRM', 'BT', 'ID',
-  'Garmin', 'Polar', 'Wahoo', 'TICKR', 'CooSpo', 'Amazfit',
-  'MiSmart', 'Mi Band', 'H', 'Relógio', 'Pulseira', 'Coros',
-  'Suunto', 'Fitbit', 'Apple', 'Samsung', 'Huawei', 'Honor',
-  'TicWatch', 'Fossil', 'Casio', 'Withings',
+  // Cintos e sensores dedicados de FC
+  'HRM',          // Garmin HRM-Pro, HRM-Dual, HRM-Run
+  'Polar',        // Polar H10, H9, OH1
+  'TICKR',        // Wahoo TICKR
+  'CooSpo',       // CooSpo H808S
+  'Coospo',       // variação de grafia
+  'Magene',       // Magene H64
+  // Relógios com transmissão de FC conhecidos
+  'Garmin',       // Forerunner, Fenix, Vívoactive
+  'Amazfit',      // GTR, GTS, T-Rex
+  'MiSmart',      // Mi Smart Band
+  'Mi Band',      // Xiaomi Mi Band
+  'Wahoo',        // Wahoo Elemnt
+  'Galaxy Watch', // Samsung Galaxy Watch
+  'Galaxy Fit',   // Samsung Galaxy Fit
+  'SM-R',         // Samsung Watch pelo modelo
+  // Genérico mas específico o suficiente
+  'Watch',        // relógios genéricos/chineses
+  'Relógio',
+  'Pulseira',
 ];
 
 export type BluetoothStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'error' | 'unsupported';
@@ -47,8 +61,8 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
   const [status, setStatus]             = useState<BluetoothStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const devicesRef  = useRef<Map<string, BluetoothDevice>>(new Map());
+  const listenerRef = useRef<any>(null);
   const isNative    = Capacitor.isNativePlatform();
-  const platform    = Capacitor.getPlatform(); // 'ios' | 'android' | 'web'
 
   const syncToSupabase = useCallback(async (deviceId: string, bpm: number, deviceName: string) => {
     if (!userId) return;
@@ -68,12 +82,11 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
 
   const initializeBle = useCallback(async () => {
     try {
-      await BleClient.initialize({ androidNeverForLocation: true });
+      await BleClient.initialize();
     } catch (err) {
       console.error('[Bluetooth] Erro ao inicializar:', err);
       setErrorMessage('Bluetooth não disponível neste dispositivo');
       setStatus('unsupported');
-      throw err;
     }
   }, []);
 
@@ -141,13 +154,6 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     setStatus('idle');
   }, [disconnectDevice, removeFromSupabase]);
 
-  const stopScanning = useCallback(async () => {
-    try {
-      await BleClient.stopLEScan();
-      if (status === 'scanning') setStatus('idle');
-    } catch (err) { console.error('[Bluetooth] Erro ao parar scan:', err); }
-  }, [status]);
-
   const startScanning = useCallback(async () => {
     if (!isNative) {
       setStatus('unsupported');
@@ -159,55 +165,44 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
       setErrorMessage(null);
       await initializeBle();
 
-      devicesRef.current.clear();
-      setDevices([]);
+      await BleClient.requestLEScan(
+        {},
+        (result) => {
+          const name = result.device.name || '';
+          const deviceId = result.device.deviceId;
 
-      const onResult = (result: any) => {
-        const name = result.device.name || '';
-        const deviceId = result.device.deviceId;
+          const knownName = NAME_PREFIXES.some(p =>
+            name.toLowerCase().includes(p.toLowerCase())
+          );
+          const hasHRUuid =
+            (result as any).uuids?.includes(HEART_RATE_SERVICE) ||
+            (result as any).services?.includes(HEART_RATE_SERVICE);
 
-        const nameMatch = NAME_PREFIXES.some(p => name.toLowerCase().includes(p.toLowerCase()));
-        const hrMatch =
-          result.uuids?.some((u: string) => u.toLowerCase().includes('180d')) ||
-          result.serviceData?.hasOwnProperty(HEART_RATE_SERVICE);
+          if (!knownName && !hasHRUuid) return;
 
-        // No iOS, relógios Garmin/Polar costumam aparecer só com UUID 180D sem nome no advertisement
-        if (!nameMatch && !hrMatch && !name) return;
+          const device: BluetoothDevice = {
+            id: deviceId,
+            name: name || `Dispositivo ${deviceId.substring(0, 8)}`,
+            bpm: null, battery: null, status: 'disconnected', lastUpdate: null,
+          };
 
-        const device: BluetoothDevice = {
-          id: deviceId,
-          name: name || `Monitor (${deviceId.split('-').pop()?.substring(0, 8) ?? deviceId.substring(0, 8)})`,
-          bpm: null, battery: null, status: 'disconnected', lastUpdate: null,
-        };
-
-        if (!devicesRef.current.has(deviceId)) {
-          devicesRef.current.set(deviceId, device);
-          setDevices(Array.from(devicesRef.current.values()));
+          if (!devicesRef.current.has(deviceId)) {
+            devicesRef.current.set(deviceId, device);
+            setDevices(Array.from(devicesRef.current.values()));
+          }
         }
-      };
-
-      if (platform === 'ios') {
-        // ✅ iOS OBRIGATÓRIO: filtrar pelo UUID do serviço Heart Rate no scan
-        // Sem isso, o Core Bluetooth do iPhone simplesmente não retorna nenhum resultado.
-        // Relógios Garmin e Polar anunciam o UUID 180D no advertisement packet.
-        await BleClient.requestLEScan(
-          { services: [HEART_RATE_SERVICE] },
-          onResult
-        );
-      } else {
-        // Android: scan sem filtro funciona bem, filtramos por nome/UUID no callback
-        await BleClient.requestLEScan({}, onResult);
-      }
-
-      // Auto-stop após 30s
-      setTimeout(() => stopScanning(), 30_000);
-
+      );
     } catch (err: any) {
       console.error('[Bluetooth] Erro ao escanear:', err);
       setStatus('error');
-      setErrorMessage(err.message || 'Erro ao escanear dispositivos Bluetooth');
+      setErrorMessage(err.message || 'Erro ao escanear');
     }
-  }, [isNative, platform, initializeBle, stopScanning]);
+  }, [isNative, initializeBle]);
+
+  const stopScanning = useCallback(async () => {
+    try { await BleClient.stopLEScan(); setStatus('idle'); }
+    catch (err) { console.error('[Bluetooth] Erro ao parar scan:', err); }
+  }, []);
 
   useEffect(() => { return () => { disconnectAll(); }; }, [disconnectAll]);
 
