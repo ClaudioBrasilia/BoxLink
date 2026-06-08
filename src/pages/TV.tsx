@@ -1,202 +1,43 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '../lib/supabase';
-
-export interface Sponsor {
-  id: string;
-  name: string;
-  logo_url?: string | null;
-  description?: string | null;
-  display_duration: number; // segundos
-  show_on_tv: boolean;
-  show_on_app: boolean;
-  active: boolean;
-  order_index: number;
-}
-
-// ─── Banner na TV (área do header) ─────────────────────────────────────────
-interface TVSponsorBannerProps {
-  sponsors: Sponsor[];
-  className?: string;
-}
-
-export function TVSponsorBanner({ sponsors, className = '' }: TVSponsorBannerProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-
-  const tvSponsors = sponsors.filter(s => s.show_on_tv && s.active);
-
-  useEffect(() => {
-    if (tvSponsors.length <= 1) return;
-    const current = tvSponsors[currentIndex];
-    const duration = (current?.display_duration || 8) * 1000;
-    const timer = setTimeout(() => {
-      setCurrentIndex(prev => (prev + 1) % tvSponsors.length);
-    }, duration);
-    return () => clearTimeout(timer);
-  }, [currentIndex, tvSponsors]);
-
-  if (tvSponsors.length === 0) return null;
-
-  const sponsor = tvSponsors[currentIndex % tvSponsors.length];
-
-  return (
-    <div className={`relative flex flex-col items-center justify-center overflow-hidden rounded-2xl bg-white/5 border border-white/10 min-w-[220px] max-w-[320px] px-4 py-2 ${className}`}>
-      {/* Label */}
-      <span className="text-white/20 text-[8px] font-black uppercase tracking-[0.3em] absolute top-1.5 left-3">
-        PATROCINADOR
-      </span>
-
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={sponsor.id}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.5 }}
-          className="flex flex-col items-center justify-center gap-1 mt-3"
-        >
-          {sponsor.logo_url ? (
-            <img
-              src={sponsor.logo_url}
-              alt={sponsor.name}
-              className="max-h-12 max-w-[200px] object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          ) : (
-            <p className="text-white font-headline font-black text-xl italic uppercase tracking-tight">
-              {sponsor.name}
-            </p>
-          )}
-          {sponsor.description && (
-            <p className="text-white/50 text-[9px] font-black uppercase tracking-widest text-center leading-tight">
-              {sponsor.description}
-            </p>
-          )}
-        </motion.div>
-      </AnimatePresence>
-
-      {/* Dots de progresso */}
-      {tvSponsors.length > 1 && (
-        <div className="flex gap-1 mt-2">
-          {tvSponsors.map((_, i) => (
-            <div
-              key={i}
-              className={`rounded-full transition-all duration-300 ${
-                i === currentIndex % tvSponsors.length
-                  ? 'w-3 h-1 bg-primary'
-                  : 'w-1 h-1 bg-white/20'
-              }`}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Banner no App (mobile) ─────────────────────────────────────────────────
-interface AppSponsorBannerProps {
-  sponsors: Sponsor[];
-  className?: string;
-}
-
-export function AppSponsorBanner({ sponsors, className = '' }: AppSponsorBannerProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const appSponsors = sponsors.filter(s => s.show_on_app && s.active);
-
-  useEffect(() => {
-    if (appSponsors.length <= 1) return;
-    const current = appSponsors[currentIndex];
-    const duration = (current?.display_duration || 8) * 1000;
-    const timer = setTimeout(() => {
-      setCurrentIndex(prev => (prev + 1) % appSponsors.length);
-    }, duration);
-    return () => clearTimeout(timer);
-  }, [currentIndex, appSponsors]);
-
-  if (appSponsors.length === 0) return null;
-
-  const sponsor = appSponsors[currentIndex % appSponsors.length];
-
-  return (
-    <div className={`rounded-2xl bg-surface-container border border-outline-variant/20 overflow-hidden ${className}`}>
-      <div className="px-3 py-1 border-b border-outline-variant/10">
-        <span className="text-on-surface-variant text-[9px] font-black uppercase tracking-[0.3em]">
-          PATROCINADOR
-        </span>
-      </div>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={sponsor.id}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.4 }}
-          className="flex items-center gap-3 px-4 py-3"
-        >
-          {sponsor.logo_url ? (
-            <img
-              src={sponsor.logo_url}
-              alt={sponsor.name}
-              className="h-10 max-w-[120px] object-contain rounded-lg"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-            />
-          ) : (
-            <div className="bg-primary/10 border border-primary/20 rounded-xl px-3 py-2">
-              <p className="text-primary font-headline font-black text-sm italic uppercase">
-                {sponsor.name}
-              </p>
-            </div>
-          )}
-          {sponsor.description && (
-            <p className="text-on-surface-variant text-xs font-medium flex-1 leading-snug">
-              {sponsor.description}
-            </p>
-          )}
-        </motion.div>
-      </AnimatePresence>
-
-      {appSponsors.length > 1 && (
-        <div className="flex gap-1 px-4 pb-2">
-          {appSponsors.map((_, i) => (
-            <div
-              key={i}
-              className={`rounded-full h-1 transition-all duration-300 ${
-                i === currentIndex % appSponsors.length
-                  ? 'w-4 bg-primary'
-                  : 'w-1 bg-on-surface-variant/20'
-              }`}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Hook para buscar patrocinadores ───────────────────────────────────────
-export function useSponsors() {
-  const [sponsors, setSponsors] = useState<Sponsor[]>([]);
-
-  const fetchSponsors = useCallback(async () => {
-    const { data } = await supabase
-      .from('sponsors')
-      .select('*')
-      .eq('active', true)
-      .order('order_index', { ascending: true });
-    setSponsors(data || []);
-  }, []);
-
-  useEffect(() => {
-    fetchSponsors();
-    const channel = supabase
-      .channel('sponsors-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sponsors' }, fetchSponsors)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [fetchSponsors]);
-
-  return sponsors;
-}
+20:41:38.251 Running build in Washington, D.C., USA (East) – iad1
+20:41:38.252 Build machine configuration: 2 cores, 8 GB
+20:41:38.371 Cloning github.com/ClaudioBrasilia/BoxLink (Branch: 7-de-junho-patrocinio-teste, Commit: c6ef791)
+20:41:38.697 Cloning completed: 326.000ms
+20:41:39.012 Restored build cache from previous deployment (GTxkCHnFrJoqSnivNkEdPKFtYMrV)
+20:41:39.282 Running "vercel build"
+20:41:39.304 Vercel CLI 54.9.0
+20:41:39.826 Installing dependencies...
+20:41:40.924 
+20:41:40.925 up to date in 981ms
+20:41:40.925 
+20:41:40.926 152 packages are looking for funding
+20:41:40.926   run `npm fund` for details
+20:41:40.957 Running "npm run build"
+20:41:41.063 
+20:41:41.064 > vite-react-typescript-starter@0.0.0 build
+20:41:41.064 > vite build
+20:41:41.064 
+20:41:41.470 vite v5.4.21 building for production...
+20:41:41.528 transforming...
+20:41:46.422 ✓ 3575 modules transformed.
+20:41:46.427 x Build failed in 4.93s
+20:41:46.428 error during build:
+20:41:46.428 [vite-plugin-pwa:build] There was an error during the build:
+20:41:46.428   src/App.tsx (17:7): "default" is not exported by "src/pages/TV.tsx", imported by "src/App.tsx".
+20:41:46.430 Additionally, handling the error in the 'buildEnd' hook caused the following error:
+20:41:46.431   src/App.tsx (17:7): "default" is not exported by "src/pages/TV.tsx", imported by "src/App.tsx".
+20:41:46.431 file: /vercel/path0/src/App.tsx:17:7
+20:41:46.431 
+20:41:46.431 15: import Admin from './pages/Admin';
+20:41:46.432 16: import Coach from './pages/Coach';
+20:41:46.432 17: import TV from './pages/TV';
+20:41:46.432            ^
+20:41:46.432 18: import Clans from './pages/Clans';
+20:41:46.432 19: import Login from './pages/Login';
+20:41:46.432 
+20:41:46.432     at getRollupError (file:///vercel/path0/node_modules/rollup/dist/es/shared/parseAst.js:406:41)
+20:41:46.432     at file:///vercel/path0/node_modules/rollup/dist/es/shared/node-entry.js:23863:39
+20:41:46.432     at async catchUnfinishedHookActions (file:///vercel/path0/node_modules/rollup/dist/es/shared/node-entry.js:23321:16)
+20:41:46.433     at async rollupInternal (file:///vercel/path0/node_modules/rollup/dist/es/shared/node-entry.js:23846:5)
+20:41:46.433     at async build (file:///vercel/path0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:65709:14)
+20:41:46.433     at async CAC.<anonymous> (file:///vercel/path0/node_modules/vite/dist/node/cli.js:829:5)
+20:41:46.472 Error: Command "npm run build" exited with 1
