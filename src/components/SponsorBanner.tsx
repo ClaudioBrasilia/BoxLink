@@ -25,23 +25,23 @@ export function TVSponsorBanner({ sponsors, className = '' }: TVSponsorBannerPro
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const tvSponsors = sponsors.filter(s => s.show_on_tv && s.active);
+  const tvSponsorsLen = tvSponsors.length;
+  const currentDuration = (tvSponsors[currentIndex % Math.max(tvSponsorsLen, 1)]?.display_duration || 8) * 1000;
 
   useEffect(() => {
-    if (tvSponsors.length <= 1) return;
-    const current = tvSponsors[currentIndex];
-    const duration = (current?.display_duration || 8) * 1000;
+    if (tvSponsorsLen <= 1) return;
     const timer = setTimeout(() => {
-      setCurrentIndex(prev => (prev + 1) % tvSponsors.length);
-    }, duration);
+      setCurrentIndex(prev => (prev + 1) % tvSponsorsLen);
+    }, currentDuration);
     return () => clearTimeout(timer);
-  }, [currentIndex, tvSponsors]);
+  }, [currentIndex, tvSponsorsLen, currentDuration]);
 
   if (tvSponsors.length === 0) return null;
 
   const sponsor = tvSponsors[currentIndex % tvSponsors.length];
 
   return (
-    <div className={`relative flex flex-col items-center justify-center overflow-hidden rounded-2xl bg-white/5 border border-white/10 min-w-[220px] max-w-[320px] px-4 py-2 ${className}`}>
+    <div className={`relative flex flex-col items-center justify-center overflow-hidden rounded-2xl bg-white/5 border border-white/10 min-w-[320px] max-w-[480px] px-6 py-3 flex-1 ${className}`}>
       {/* Label */}
 
 
@@ -52,13 +52,13 @@ export function TVSponsorBanner({ sponsors, className = '' }: TVSponsorBannerPro
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.5 }}
-          className="flex flex-col items-center justify-center gap-1 mt-3"
+          className="flex flex-col items-center justify-center gap-1"
         >
           {sponsor.logo_url ? (
             <img
               src={sponsor.logo_url}
               alt={sponsor.name}
-              className="max-h-12 max-w-[200px] object-contain"
+              className="max-h-16 max-w-[320px] object-contain"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
               }}
@@ -104,16 +104,16 @@ interface AppSponsorBannerProps {
 export function AppSponsorBanner({ sponsors, className = '' }: AppSponsorBannerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const appSponsors = sponsors.filter(s => s.show_on_app && s.active);
+  const appSponsorsLen = appSponsors.length;
+  const currentDuration = (appSponsors[currentIndex % Math.max(appSponsorsLen, 1)]?.display_duration || 8) * 1000;
 
   useEffect(() => {
-    if (appSponsors.length <= 1) return;
-    const current = appSponsors[currentIndex];
-    const duration = (current?.display_duration || 8) * 1000;
+    if (appSponsorsLen <= 1) return;
     const timer = setTimeout(() => {
-      setCurrentIndex(prev => (prev + 1) % appSponsors.length);
-    }, duration);
+      setCurrentIndex(prev => (prev + 1) % appSponsorsLen);
+    }, currentDuration);
     return () => clearTimeout(timer);
-  }, [currentIndex, appSponsors]);
+  }, [currentIndex, appSponsorsLen, currentDuration]);
 
   if (appSponsors.length === 0) return null;
 
@@ -143,7 +143,7 @@ export function AppSponsorBanner({ sponsors, className = '' }: AppSponsorBannerP
             <img
               src={sponsor.logo_url}
               alt={sponsor.name}
-              className="h-10 max-w-[120px] object-contain rounded-lg"
+              className="h-14 max-w-[200px] w-full object-contain"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
           ) : (
