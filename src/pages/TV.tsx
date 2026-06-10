@@ -135,7 +135,7 @@ export default function TV() {
       const nowStr = formatInTimeZone(new Date(), TIMEZONE, 'HH:mm');
       const currentClass = (scheduleData || []).find((s: any) => nowStr >= s.time && nowStr <= (s.end_time || s.endTime || '23:59'));
       const { data: checkinsRaw } = await supabase.from('checkins').select('*').gte('date', today).order('timestamp', { ascending: false }).limit(20);
-      const { data: profilesRaw } = await supabase.from('profiles').select('id, name, avatar_equipped, xp, level, role');
+      const { data: profilesRaw } = await supabase.from('profiles').select('id, name, avatar_equipped, xp, level, role, photo_url');
       const profileMap = Object.fromEntries((profilesRaw || []).map((p: any) => [p.id, p]));
 
       const startOfMonth = format(new Date(), 'yyyy-MM-01');
