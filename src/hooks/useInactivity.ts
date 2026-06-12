@@ -22,11 +22,16 @@ async function getInactivitySettings(): Promise<InactivitySettings> {
 export function useInactivity(checkins: { date: string }[]): InactivityState {
   const [state, setState] = useState<InactivityState>({ inactiveDays: 0, fadePercent: 0, showSleeping: false });
 
+  // FIX: usar JSON.stringify para detectar qualquer mudança no conteúdo dos checkins,
+  // não apenas na quantidade — evita bug onde o hook não recalcula após novo check-in.
+  const checkinsKey = JSON.stringify(checkins.map(c => c.date).sort());
+
   useEffect(() => {
     getInactivitySettings().then(settings => {
       setState(calcInactivity(checkins, settings));
     });
-  }, [checkins.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkinsKey]);
 
   return state;
 }
@@ -38,6 +43,11 @@ export function useInactivityMap(
 ): Record<string, InactivityState> {
   const [map, setMap] = useState<Record<string, InactivityState>>({});
 
+  // FIX: reagir a mudanças de conteúdo, não só de tamanho
+  const athletesKey = JSON.stringify(
+    athletes.map(a => ({ id: a.id, dates: a.checkins.map(c => c.date).sort() }))
+  );
+
   useEffect(() => {
     if (athletes.length === 0) return;
     getInactivitySettings().then(settings => {
@@ -47,7 +57,8 @@ export function useInactivityMap(
       });
       setMap(result);
     });
-  }, [athletes.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [athletesKey]);
 
   return map;
 }
@@ -60,7 +71,7 @@ export async function fetchCheckinsForAthletes(
   if (userIds.length === 0) return {};
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - windowDays);
-  const cutoffStr = cutoff.toISOString().split('T')[0];
+  const cutoffStr = cutoff.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
   const { data } = await supabase
     .from('checkins')
