@@ -47,5 +47,10 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       hmr: process.env.DISABLE_HMR !== 'true',
     },
+    build: {
+      rollupOptions: {
+        external: ['@capacitor-community/health-kit']
+      }
+    }
   };
 });
