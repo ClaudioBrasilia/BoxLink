@@ -26,6 +26,7 @@ export interface BluetoothDevice {
   status: 'connected' | 'disconnected';
   lastUpdate: Date | null;
   isPriority?: boolean;
+  _webDevice?: any; // Guardamos a referência do dispositivo para a Web
 }
 
 interface UseBluetoothReturn {
@@ -79,12 +80,11 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     } catch (err) { console.error('[Supabase] Erro ao remover:', err); }
   }, [userId]);
 
-  // Inicializa Bluetooth
+  // Inicializa Bluetooth (Somente Nativo)
   const initializeBle = useCallback(async () => {
     try {
       await BleClient.initialize({ androidNeverForLocation: true });
       
-      // HealthKit apenas em iOS nativo
       if (isNative && platform === 'ios' && HealthKit) {
         await HealthKit.requestAuthorization({
           read: ['heartRate'],
@@ -105,17 +105,68 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     if (!device) return;
 
     setStatus('connecting');
+
+    // ==== CONEXÃO WEB (Navegador) ====
+    if (!isNative) {
+      try {
+        const webDevice = device._webDevice;
+        if (!webDevice) throw new Error('Dispositivo Web não encontrado');
+
+        const server = await webDevice.gatt.connect();
+
+        // Tenta ler a bateria (algumas cintas não têm isso na web)
+        try {
+          const batteryService = await server.getPrimaryService('battery_service');
+          const batteryChar = await batteryService.getCharacteristic('battery_level');
+          const batteryValue = await batteryChar.readValue();
+          device.battery = batteryValue.getUint8(0);
+        } catch (e) {
+          console.log('[Web Bluetooth] Sem serviço de bateria');
+        }
+
+        // Conecta ao monitor de batimentos
+        const heartRateService = await server.getPrimaryService(HEART_RATE_SERVICE);
+        const heartRateChar = await heartRateService.getCharacteristic(HEART_RATE_MEASUREMENT);
+
+        await heartRateChar.startNotifications();
+        heartRateChar.addEventListener('characteristicvaluechanged', (event: any) => {
+          const value = event.target.value;
+          const flags = value.getUint8(0);
+          const bpm = (flags & 0x1) ? value.getUint16(1, true) : value.getUint8(1);
+          
+          device.bpm = bpm;
+          device.lastUpdate = new Date();
+          setDevices(Array.from(devicesRef.current.values()));
+          syncToSupabase(deviceId, bpm, device.name);
+        });
+
+        // Evento se a fita/relógio desconectar sozinho ou descarregar
+        webDevice.addEventListener('gattserverdisconnected', () => {
+          device.status = 'disconnected';
+          device.bpm = null;
+          setDevices(Array.from(devicesRef.current.values()));
+        });
+
+        device.status = 'connected';
+        setStatus('connected');
+      } catch (err: any) {
+        console.error('[Web Conexão] Erro:', err);
+        setStatus('error');
+        setErrorMessage(err.message || 'Erro ao conectar via Web');
+      }
+      return;
+    }
+
+    // ==== CONEXÃO NATIVA (App Celular) ====
     try {
       await BleClient.connect(deviceId);
       await BleClient.discoverServices(deviceId);
 
-      // Lê bateria (se disponível)
       try {
         const battery = await BleClient.read(deviceId, BATTERY_SERVICE, BATTERY_LEVEL);
         device.battery = battery.getUint8(0);
       } catch {}
 
-      // Monitora batimentos
       await BleClient.startNotifications(
         deviceId, HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT,
         (value) => {
@@ -133,26 +184,31 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     } catch (err: any) {
       console.error('[Conexão] Erro:', err);
       setStatus('error');
-      setErrorMessage(platform === 'ios' 
-        ? 'Conecte via HealthKit (Apple Watch)' 
-        : err.message
-      );
+      setErrorMessage(platform === 'ios' ? 'Conecte via HealthKit (Apple Watch)' : err.message);
     }
-  }, [syncToSupabase, platform]);
+  }, [syncToSupabase, platform, isNative]);
 
   // Desconecta dispositivo
   const disconnectDevice = useCallback(async (deviceId: string) => {
     try {
-      await BleClient.stopNotifications(deviceId, HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT);
-      await BleClient.disconnect(deviceId);
       const device = devicesRef.current.get(deviceId);
+      
+      if (!isNative) {
+        if (device && device._webDevice && device._webDevice.gatt.connected) {
+          device._webDevice.gatt.disconnect();
+        }
+      } else {
+        await BleClient.stopNotifications(deviceId, HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT);
+        await BleClient.disconnect(deviceId);
+      }
+      
       if (device) { 
         device.status = 'disconnected'; 
         device.bpm = null; 
         setDevices(Array.from(devicesRef.current.values())); 
       }
     } catch (err) { console.error('[Bluetooth] Erro ao desconectar:', err); }
-  }, []);
+  }, [isNative]);
 
   // Desconecta todos
   const disconnectAll = useCallback(async () => {
@@ -166,21 +222,65 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
   // Para escaneamento
   const stopScanning = useCallback(async () => {
     try {
-      await BleClient.stopLEScan();
+      if (isNative) {
+        await BleClient.stopLEScan();
+      }
       if (status === 'scanning') setStatus('idle');
     } catch (err) { console.error('[Bluetooth] Erro ao parar scan:', err); }
-  }, [status]);
+  }, [status, isNative]);
 
   // Inicia escaneamento
   const startScanning = useCallback(async () => {
+    setStatus('scanning');
+    setErrorMessage(null);
+    
+    // ==== SCANNER WEB (Navegador) ====
     if (!isNative) {
-      setErrorMessage('Requer app nativo');
-      setStatus('unsupported');
+      const nav = navigator as any;
+      if (!nav.bluetooth) {
+        setErrorMessage('Seu navegador não suporta Bluetooth. Use o Google Chrome no Android ou Computador.');
+        setStatus('unsupported');
+        return;
+      }
+
+      try {
+        // Abre a janela de seleção nativa do Google Chrome
+        const webDevice = await nav.bluetooth.requestDevice({
+          filters: [{ services: [HEART_RATE_SERVICE] }],
+          optionalServices: ['battery_service']
+        });
+
+        const deviceId = webDevice.id;
+        const name = webDevice.name || `Dispositivo Web`;
+        const isPriority = isPriorityDevice(name);
+
+        const device: BluetoothDevice = {
+          id: deviceId,
+          name,
+          bpm: null,
+          battery: null,
+          status: 'disconnected',
+          lastUpdate: null,
+          isPriority,
+          _webDevice: webDevice // Salva para conectar logo abaixo
+        };
+
+        devicesRef.current.set(deviceId, device);
+        setDevices(Array.from(devicesRef.current.values()));
+        setStatus('idle'); // Fica "idle" pois o usuário já escolheu na janela
+      } catch (err: any) {
+        console.error('[Web Scan] Erro:', err);
+        setStatus('error');
+        setErrorMessage(
+          err.name === 'NotFoundError' 
+            ? 'Busca cancelada ou nenhum dispositivo encontrado.'
+            : 'Erro ao acessar o Bluetooth pelo navegador.'
+        );
+      }
       return;
     }
 
-    setStatus('scanning');
-    setErrorMessage(null);
+    // ==== SCANNER NATIVO (Capacitor App) ====
     devicesRef.current.clear();
     setDevices([]);
 
@@ -192,7 +292,6 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
         const deviceId = result.device.deviceId;
         const isPriority = isPriorityDevice(name);
 
-        // Filtra dispositivos com BPM ou prioritários
         const hasHeartRate = result.uuids?.includes(HEART_RATE_SERVICE);
         if (!hasHeartRate && !isPriority) return;
 
@@ -212,23 +311,17 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
         }
       };
 
-      // Configura escaneamento por plataforma
       await BleClient.requestLEScan(
-        platform === 'ios' 
-          ? { services: [HEART_RATE_SERVICE] }
-          : {},
+        platform === 'ios' ? { services: [HEART_RATE_SERVICE] } : {},
         onResult
       );
 
-      // Para após 30 segundos
       setTimeout(() => stopScanning(), 30000);
     } catch (err: any) {
       console.error('[Scan] Erro:', err);
       setStatus('error');
       setErrorMessage(
-        platform === 'android' 
-          ? 'Ative Bluetooth e Localização' 
-          : 'Permita acesso ao HealthKit'
+        platform === 'android' ? 'Ative Bluetooth e Localização' : 'Permita acesso ao HealthKit'
       );
     }
   }, [isNative, platform, initializeBle, stopScanning]);
