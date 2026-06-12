@@ -2,10 +2,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { BleClient, numberToUUID } from '@capacitor-community/bluetooth-le';
-import { HealthKit } from '@capacitor-community/health-kit'; // Para iOS
 import { supabase } from '../lib/supabase';
 
-// UUIDs Bluetooth SIG + APIs de relógios
+// UUIDs Bluetooth SIG
 const HEART_RATE_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb';
 const HEART_RATE_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb';
 const BATTERY_SERVICE = numberToUUID(0x180f);
@@ -26,7 +25,7 @@ export interface BluetoothDevice {
   battery: number | null;
   status: 'connected' | 'disconnected';
   lastUpdate: Date | null;
-  isPriority?: boolean; // Novo campo para relógios
+  isPriority?: boolean;
 }
 
 interface UseBluetoothReturn {
@@ -48,6 +47,14 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
   const isNative = Capacitor.isNativePlatform();
   const platform = Capacitor.getPlatform();
 
+  // HealthKit (importação segura para iOS)
+  let HealthKit: any = null;
+  if (isNative && platform === 'ios') {
+    import('@capacitor-community/health-kit').then(mod => {
+      HealthKit = mod.HealthKit;
+    });
+  }
+
   // Verifica se é um relógio prioritário
   const isPriorityDevice = (name: string) => (
     PRIORITY_DEVICES.some(keyword => name.toLowerCase().includes(keyword))
@@ -64,13 +71,21 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     } catch (err) { console.error('[Supabase] Erro:', err); }
   }, [userId]);
 
-  // Inicializa Bluetooth e APIs de saúde
-  const initialize = useCallback(async () => {
+  // Remove dados do Supabase
+  const removeFromSupabase = useCallback(async () => {
+    if (!userId) return;
+    try { 
+      await supabase.from('heart_rate_live').delete().eq('user_id', userId); 
+    } catch (err) { console.error('[Supabase] Erro ao remover:', err); }
+  }, [userId]);
+
+  // Inicializa Bluetooth
+  const initializeBle = useCallback(async () => {
     try {
       await BleClient.initialize({ androidNeverForLocation: true });
       
-      // Configura HealthKit (iOS)
-      if (platform === 'ios') {
+      // HealthKit apenas em iOS nativo
+      if (isNative && platform === 'ios' && HealthKit) {
         await HealthKit.requestAuthorization({
           read: ['heartRate'],
           write: []
@@ -82,16 +97,15 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
       setErrorMessage('Dispositivo não compatível');
       throw err;
     }
-  }, [platform]);
+  }, [isNative, platform]);
 
-  // Conecta a um dispositivo
+  // Conecta dispositivo
   const connectDevice = useCallback(async (deviceId: string) => {
     const device = devicesRef.current.get(deviceId);
     if (!device) return;
 
     setStatus('connecting');
     try {
-      // Conexão padrão para BLE
       await BleClient.connect(deviceId);
       await BleClient.discoverServices(deviceId);
 
@@ -101,7 +115,7 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
         device.battery = battery.getUint8(0);
       } catch {}
 
-      // Inicia monitoramento de BPM
+      // Monitora batimentos
       await BleClient.startNotifications(
         deviceId, HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT,
         (value) => {
@@ -126,7 +140,38 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     }
   }, [syncToSupabase, platform]);
 
-  // Escaneia dispositivos
+  // Desconecta dispositivo
+  const disconnectDevice = useCallback(async (deviceId: string) => {
+    try {
+      await BleClient.stopNotifications(deviceId, HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT);
+      await BleClient.disconnect(deviceId);
+      const device = devicesRef.current.get(deviceId);
+      if (device) { 
+        device.status = 'disconnected'; 
+        device.bpm = null; 
+        setDevices(Array.from(devicesRef.current.values())); 
+      }
+    } catch (err) { console.error('[Bluetooth] Erro ao desconectar:', err); }
+  }, []);
+
+  // Desconecta todos
+  const disconnectAll = useCallback(async () => {
+    for (const [deviceId] of devicesRef.current) { 
+      await disconnectDevice(deviceId); 
+    }
+    removeFromSupabase();
+    setStatus('idle');
+  }, [disconnectDevice, removeFromSupabase]);
+
+  // Para escaneamento
+  const stopScanning = useCallback(async () => {
+    try {
+      await BleClient.stopLEScan();
+      if (status === 'scanning') setStatus('idle');
+    } catch (err) { console.error('[Bluetooth] Erro ao parar scan:', err); }
+  }, [status]);
+
+  // Inicia escaneamento
   const startScanning = useCallback(async () => {
     if (!isNative) {
       setErrorMessage('Requer app nativo');
@@ -140,14 +185,14 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
     setDevices([]);
 
     try {
-      await initialize();
+      await initializeBle();
 
       const onResult = (result: any) => {
         const name = result.device.name || '';
         const deviceId = result.device.deviceId;
         const isPriority = isPriorityDevice(name);
 
-        // Filtra apenas dispositivos com serviço de BPM ou prioritários
+        // Filtra dispositivos com BPM ou prioritários
         const hasHeartRate = result.uuids?.includes(HEART_RATE_SERVICE);
         if (!hasHeartRate && !isPriority) return;
 
@@ -167,11 +212,11 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
         }
       };
 
-      // Configuração específica por plataforma
+      // Configura escaneamento por plataforma
       await BleClient.requestLEScan(
         platform === 'ios' 
-          ? { services: [HEART_RATE_SERVICE] } // iOS requer filtro explícito
-          : {}, // Android pode escanear sem filtro
+          ? { services: [HEART_RATE_SERVICE] }
+          : {},
         onResult
       );
 
@@ -186,13 +231,16 @@ export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
           : 'Permita acesso ao HealthKit'
       );
     }
-  }, [isNative, platform, initialize, stopScanning]);
+  }, [isNative, platform, initializeBle, stopScanning]);
 
-  // ... (disconnectDevice, stopScanning, etc. mantidos iguais)
+  // Limpeza ao desmontar
+  useEffect(() => { 
+    return () => { disconnectAll(); }; 
+  }, [disconnectAll]);
 
   return { 
     devices: Array.from(devicesRef.current.values()).sort((a, b) => 
-      (b.isPriority ? 1 : 0) - (a.isPriority ? 1 : 0) // Relógios primeiro
+      (b.isPriority ? 1 : 0) - (a.isPriority ? 1 : 0)
     ),
     status,
     errorMessage,
