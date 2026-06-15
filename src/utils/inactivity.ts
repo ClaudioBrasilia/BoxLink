@@ -23,15 +23,29 @@ export interface InactivityState {
   showSleeping: boolean;  // mostrar ícone 💤
 }
 
+/**
+ * Retorna a data de hoje no fuso de São Paulo (America/Sao_Paulo)
+ * no formato YYYY-MM-DD, sem depender de UTC.
+ */
+function todayBR(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+
+/**
+ * Retorna a data de N dias atrás no fuso de São Paulo, formato YYYY-MM-DD.
+ */
+function daysBefore(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+
 /** Dias consecutivos sem check-in, contados de hoje para trás */
 function consecutiveDaysWithout(checkins: { date: string }[]): number {
   const dates = new Set(checkins.map((c) => c.date));
   let days = 0;
-  const today = new Date();
   while (days <= 365) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - days);
-    const str = d.toISOString().split('T')[0];
+    const str = daysBefore(days);
     if (dates.has(str)) break;
     days++;
   }
@@ -39,17 +53,14 @@ function consecutiveDaysWithout(checkins: { date: string }[]): number {
 }
 
 /**
- * Dias sem check-in dentro de uma janela de `maxDays` dias.
+ * Dias sem check-in dentro de uma janela de `windowDays` dias.
  * Ex: em 14 dias, quantos dias não teve treino.
  */
 function alternatedDaysWithout(checkins: { date: string }[], windowDays: number): number {
   const dates = new Set(checkins.map((c) => c.date));
   let missing = 0;
-  const today = new Date();
   for (let i = 0; i < windowDays; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const str = d.toISOString().split('T')[0];
+    const str = daysBefore(i);
     if (!dates.has(str)) missing++;
   }
   return missing;
@@ -81,12 +92,10 @@ export function calcInactivity(
   const rawFade = (inactiveDays - settings.startDays) / range;
 
   // Recuperação gradual: cada treino nos últimos maxDays recupera 1/maxDays do fade
-  const today = new Date();
-  const windowStart = new Date(today);
-  windowStart.setDate(today.getDate() - settings.maxDays);
+  const windowStart = daysBefore(settings.maxDays);
+  const today = todayBR();
   const recentCheckins = checkins.filter((c) => {
-    const d = new Date(c.date);
-    return d >= windowStart && d <= today;
+    return c.date >= windowStart && c.date <= today;
   }).length;
 
   // Cada treino recente recupera (1/maxDays) de fade — quanto mais treinos, menos cinza
