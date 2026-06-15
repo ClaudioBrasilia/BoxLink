@@ -1,11 +1,6 @@
 /**
  * Calcula o estado de inatividade de um atleta baseado nos checkins
  * e nas configurações do admin.
- *
- * Lógica base: atleta saudável treina 3x/semana (~1 treino a cada 2-3 dias).
- * Sugestão de defaults: startDays=4, maxDays=14.
- *
- * Recuperação gradual: cada treino feito recupera (100 / maxDays) % de cor.
  */
 
 export type InactivityMode = 'consecutive' | 'alternated';
@@ -23,29 +18,21 @@ export interface InactivityState {
   showSleeping: boolean;  // mostrar ícone 💤
 }
 
-/**
- * Retorna a data de hoje no fuso de São Paulo (America/Sao_Paulo)
- * no formato YYYY-MM-DD, sem depender de UTC.
- */
-function todayBR(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-}
-
-/**
- * Retorna a data de N dias atrás no fuso de São Paulo, formato YYYY-MM-DD.
- */
-function daysBefore(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-}
-
 /** Dias consecutivos sem check-in, contados de hoje para trás */
 function consecutiveDaysWithout(checkins: { date: string }[]): number {
   const dates = new Set(checkins.map((c) => c.date));
   let days = 0;
+  
   while (days <= 365) {
-    const str = daysBefore(days);
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    // ✅ CORREÇÃO: Usar São Paulo para calcular data (mesmo timezone que os check-ins são gravados)
+    const str = d.toLocaleString('en-CA', { 
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
     if (dates.has(str)) break;
     days++;
   }
@@ -53,24 +40,27 @@ function consecutiveDaysWithout(checkins: { date: string }[]): number {
 }
 
 /**
- * Dias sem check-in dentro de uma janela de `windowDays` dias.
- * Ex: em 14 dias, quantos dias não teve treino.
+ * Dias sem check-in dentro de uma janela de `maxDays` dias.
  */
 function alternatedDaysWithout(checkins: { date: string }[], windowDays: number): number {
   const dates = new Set(checkins.map((c) => c.date));
   let missing = 0;
+  
   for (let i = 0; i < windowDays; i++) {
-    const str = daysBefore(i);
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    // ✅ CORREÇÃO: Usar São Paulo para calcular data
+    const str = d.toLocaleString('en-CA', { 
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
     if (!dates.has(str)) missing++;
   }
   return missing;
 }
 
-/**
- * Calcula o fadePercent atual.
- * A recuperação é gradual: cada treino feito nos últimos `maxDays` dias
- * "devolve" uma fatia da cor de volta.
- */
 export function calcInactivity(
   checkins: { date: string }[],
   settings: InactivitySettings
@@ -92,13 +82,17 @@ export function calcInactivity(
   const rawFade = (inactiveDays - settings.startDays) / range;
 
   // Recuperação gradual: cada treino nos últimos maxDays recupera 1/maxDays do fade
-  const windowStart = daysBefore(settings.maxDays);
-  const today = todayBR();
+  const today = new Date();
+  const windowStart = new Date(today);
+  windowStart.setDate(today.getDate() - settings.maxDays);
+  
+  // ✅ CORREÇÃO: Converter datas de string para Date para comparação correta
   const recentCheckins = checkins.filter((c) => {
-    return c.date >= windowStart && c.date <= today;
+    const [year, month, day] = c.date.split('-').map(Number);
+    const d = new Date(year, month - 1, day);
+    return d >= windowStart && d <= today;
   }).length;
 
-  // Cada treino recente recupera (1/maxDays) de fade — quanto mais treinos, menos cinza
   const recoveryFactor = Math.min(recentCheckins / settings.maxDays, 1);
   const finalFade = Math.max(rawFade - recoveryFactor, 0);
 
