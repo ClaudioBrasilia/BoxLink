@@ -191,15 +191,18 @@ export default function Leaderboard() {
       };
 
       if (activeWod) {
+        // Busca por wod_id (principal) e por data de hoje como fallback
+        // O fallback cobre casos em que o WOD exibido é de outro dia (ex: não há WOD hoje)
+        // e o resultado foi gravado com wod_id correto mas created_at é de hoje.
         const { data: wodResults } = await supabase
           .from('wod_results').select('*, profiles(name, level)').eq('wod_id', activeWod.id);
+
         if (wodResults && wodResults.length > 0) {
           setWodRanking(processWodResults(wodResults, activeWod.type));
         } else {
-          // Fallback: usa a data do WOD (não o now congelado) para buscar resultados do dia certo
-          const wodDate    = activeWod.date;
-          const todayStart = wodDate + 'T00:00:00';
-          const todayEnd   = wodDate + 'T23:59:59';
+          // Fallback: busca resultados com created_at de HOJE (timezone SP) — cobre registro no mesmo dia
+          const todayStart = todayStr + 'T00:00:00-03:00';
+          const todayEnd   = todayStr + 'T23:59:59-03:00';
           const { data: todayResults } = await supabase
             .from('wod_results').select('*, profiles(name, level)')
             .gte('created_at', todayStart).lte('created_at', todayEnd);
@@ -314,12 +317,20 @@ export default function Leaderboard() {
         <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-4 flex flex-col gap-1">
           {wodInfo ? (
             <>
-              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">WOD de Hoje</p>
-              <p className="text-sm font-headline font-black text-primary uppercase italic">{wodInfo.name} — {wodInfo.type}</p>
-              <p className="text-[10px] text-on-surface-variant mt-1">
-                {['FOR TIME', 'TIME', 'TEMPO'].some(t => (wodInfo.type || '').toUpperCase().includes(t))
-                  ? '⏱ Menor tempo = melhor resultado' : '🔁 Maior número = melhor resultado'}
-              </p>
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">WOD de Hoje</p>
+                  <p className="text-sm font-headline font-black text-primary uppercase italic">{wodInfo.name} — {wodInfo.type}</p>
+                  <p className="text-[10px] text-on-surface-variant mt-1">
+                    {['FOR TIME', 'TIME', 'TEMPO'].some(t => (wodInfo.type || '').toUpperCase().includes(t))
+                      ? '⏱ Menor tempo = melhor resultado' : '🔁 Maior número = melhor resultado'}
+                  </p>
+                </div>
+                <button onClick={() => fetchAll(true)} disabled={refreshing}
+                  className="text-[9px] font-black uppercase tracking-widest text-primary border border-primary/30 px-3 py-1.5 rounded-xl hover:bg-primary/10 transition-all disabled:opacity-40">
+                  {refreshing ? '...' : '↻ Atualizar'}
+                </button>
+              </div>
             </>
           ) : (
             <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-1">Nenhum WOD cadastrado para hoje</p>
