@@ -121,14 +121,13 @@ export default function TV() {
       const today = formatInTimeZone(new Date(), TIMEZONE, "yyyy-MM-dd");
       const [
         { data: settings }, { data: economy }, { data: wod },
-        { data: challenges }, { data: duels }, { data: rankings }, { data: scheduleData }
+        { data: challenges }, { data: duels }, { data: scheduleData }
       ] = await Promise.all([
         supabase.from('box_settings').select('*').maybeSingle(),
         supabase.from('avatar_economy_settings').select('*').eq('is_active', true).maybeSingle(),
         supabase.from('wods').select('*').eq('date', today).maybeSingle(),
         supabase.from('challenges').select('*').eq('active', true).or(`end_date.is.null,end_date.gte.${today}`),
         supabase.from('duels').select('*, challenger:profiles!challenger_id(name), opponent:profiles!opponent_id(name)').eq('status', 'accepted'),
-        supabase.from('profiles').select('name, xp, level, avatar_equipped, photo_url').eq('status', 'approved').order('xp', { ascending: false }).limit(10),
         supabase.from('schedule').select('*').order('time', { ascending: true })
       ]);
 
@@ -139,6 +138,22 @@ export default function TV() {
       const profileMap = Object.fromEntries((profilesRaw || []).map((p: any) => [p.id, p]));
 
       const startOfMonth = format(new Date(), 'yyyy-MM-01');
+
+      // ── Ranking de XP do mês: soma da reward_history no mês atual ──
+      const { data: monthlyXpRaw } = await supabase
+        .from('reward_history')
+        .select('user_id, xp')
+        .gte('created_at', `${startOfMonth}T00:00:00.000Z`);
+
+      const xpMonthMap: Record<string, number> = {};
+      (monthlyXpRaw || []).forEach((r: any) => {
+        if (r.xp > 0) xpMonthMap[r.user_id] = (xpMonthMap[r.user_id] || 0) + r.xp;
+      });
+      const rankings = Object.entries(xpMonthMap)
+        .map(([userId, monthXp]) => ({ ...(profileMap[userId] || { name: 'Atleta' }), xp: monthXp }))
+        .sort((a, b) => b.xp - a.xp)
+        .slice(0, 10);
+
       const { data: monthlyCheckins } = await supabase.from('checkins').select('user_id').gte('date', startOfMonth);
       const freqMap: Record<string, number> = {};
       (monthlyCheckins || []).forEach(c => { freqMap[c.user_id] = (freqMap[c.user_id] || 0) + 1; });
@@ -293,8 +308,9 @@ export default function TV() {
   return (
     <div className="min-h-screen bg-black text-white font-sans overflow-hidden flex flex-col p-6 gap-6 relative select-none">
 
-      {/* ── HEADER: Logo + Nome + Fullscreen + Status (sem relógio e sem timer) ── */}
+      {/* ── HEADER: Logo + Nome | Relógio | Publicidade + Fullscreen ── */}
       <header className="flex justify-between items-center bg-[#111] rounded-[2rem] p-6 border border-white/5 shadow-2xl">
+        {/* Esquerda: Logo + Nome */}
         <div className="flex items-center gap-6">
           <div className="relative">
             <img src={settings.logo || "https://picsum.photos/seed/box/200"} alt="Logo" className="w-16 h-16 rounded-2xl border-2 border-primary shadow-[0_0_20px_rgba(202,253,0,0.3)]" />
@@ -306,24 +322,35 @@ export default function TV() {
           </div>
         </div>
 
+        {/* Centro: Relógio */}
+        <div className="flex flex-col items-center">
+          <div className="flex items-baseline gap-1 tabular-nums leading-none"
+            style={{ textShadow: '0 0 30px rgba(202,253,0,0.25)' }}>
+            <span className="text-6xl font-headline font-black text-white italic tracking-tighter">
+              {formatInTimeZone(now, TIMEZONE, 'HH:mm')}
+            </span>
+            <span className="text-primary text-4xl font-headline font-black italic animate-pulse">:</span>
+            <span className="text-4xl font-headline font-black text-white/70 italic tracking-tighter">
+              {formatInTimeZone(now, TIMEZONE, 'ss')}
+            </span>
+          </div>
+
+        </div>
+
+        {/* Direita: Banner de Patrocinadores + Fullscreen */}
         <div className="flex items-center gap-4">
+          {isStale && (
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-yellow-400 text-[9px] font-black uppercase tracking-widest animate-pulse">⚠ SEM ATUALIZAÇÃO</span>
+              <button onClick={fetchData} className="text-yellow-400/70 text-[8px] font-black uppercase tracking-wider hover:text-yellow-400 transition-colors">RECONECTAR</button>
+            </div>
+          )}
           {/* ── Banner de Patrocinadores ── */}
           <TVSponsorBanner sponsors={sponsors} className="h-20" />
 
           <button onClick={toggleFullscreen} className="p-4 bg-white/5 rounded-2xl border border-white/10 hover:bg-primary hover:text-black transition-all group">
             <Maximize className="w-6 h-6 group-hover:scale-110 transition-transform" />
           </button>
-          {isStale ? (
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-yellow-400 text-[9px] font-black uppercase tracking-widest animate-pulse">⚠ SEM ATUALIZAÇÃO</span>
-              <button onClick={fetchData} className="text-yellow-400/70 text-[8px] font-black uppercase tracking-wider hover:text-yellow-400 transition-colors">RECONECTAR</button>
-            </div>
-          ) : lastUpdated ? (
-            <div className="flex flex-col items-center">
-              <span className="text-green-400/60 text-[8px] font-black uppercase tracking-widest">● AO VIVO</span>
-              <span className="text-white/20 text-[7px] font-black uppercase">{format(lastUpdated, 'HH:mm:ss')}</span>
-            </div>
-          ) : null}
         </div>
       </header>
 
