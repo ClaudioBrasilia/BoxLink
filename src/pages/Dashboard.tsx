@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, Share2, Target } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -20,7 +20,7 @@ export default function Dashboard() {
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkinMessage, setCheckinMessage] = useState<string | null>(null);
   const sponsors = useSponsors();
-  const [schedule, setSchedule] = useState<{ time: string; endTime: string; coach: string }[]>([]);
+  const [schedule, setSchedule] = useState<{ time: string; endTime: string; coach: string; checkinWindowMinutes: number }[]>([]);
   const [now, setNow] = useState(new Date());
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [announcements, setAnnouncements] = useState<string[]>([]);
@@ -28,8 +28,11 @@ export default function Dashboard() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [userRankPosition, setUserRankPosition] = useState<number | null>(null);
 
-  // 🎯 Inatividade do avatar do próprio atleta
-  const checkinsList = (user?.checkins || []).map(c => ({ date: c.date }));
+  // 🔧 FIX: useMemo evita novo array a cada render → quebra o loop infinito do useInactivity
+  const checkinsList = useMemo(
+    () => (user?.checkins || []).map(c => ({ date: c.date })),
+    [user?.checkins]
+  );
   const { fadePercent, showSleeping } = useInactivity(checkinsList);
 
   const fetchData = async () => {
@@ -67,11 +70,11 @@ export default function Dashboard() {
       const mappedSchedule = scheduleData.map((s: any) => ({
         id: s.id, time: s.time, endTime: s.end_time, coach: s.coach,
         capacity: s.capacity, days: s.days, isActive: s.is_active,
-        checkinWindowMinutes: s.checkin_window_minutes
+        checkinWindowMinutes: s.checkin_window_minutes ?? 30
       }));
       setSchedule(mappedSchedule);
-      const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
-      const current = mappedSchedule.find((s: any) => now >= s.time && now <= s.endTime);
+      const nowTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const current = mappedSchedule.find((s: any) => nowTime >= s.time && nowTime <= s.endTime);
       if (current) setSelectedClass(current.time);
     }
 
@@ -119,77 +122,97 @@ export default function Dashboard() {
     setIsCheckingIn(true);
     setCheckinMessage(null);
 
+    // 🔧 FIX: data sempre no fuso Brasil
+    const todayBR = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+
+    const doCheckin = async (latitude: number, longitude: number) => {
+      try {
+        const { data: box } = await supabase.from('box_settings').select('*').single();
+        if (!box) throw new Error('Configurações do box não encontradas');
+
+        const distance = calculateDistance(latitude, longitude, box.lat, box.lng);
+        if (distance > (box.radius || 500)) {
+          setCheckinMessage(`Você está muito longe do box (${Math.round(distance)}m). Aproxime-se para fazer check-in.`);
+          setIsCheckingIn(false);
+          return;
+        }
+
+        const { error: checkinError } = await supabase.from('checkins').insert({
+          user_id: user?.id, date: todayBR, class_time: selectedClass
+        });
+
+        if (checkinError) {
+          if (checkinError.code === '23505') { setCheckinMessage('Você já realizou check-in hoje!'); }
+          else { throw checkinError; }
+          setIsCheckingIn(false);
+          return;
+        }
+
+        const rewards = await getRewardSettings();
+        const xp    = rewards.xp_per_checkin   ?? 20;
+        const coins = rewards.coins_per_checkin ?? 5;
+
+        const rewardResult = await addReward(user?.id!, 'checkin', xp, coins, `Check-in: ${selectedClass}`);
+
+        let msg = `Check-in realizado! +${xp} XP, +${coins} BrazaCoins`;
+
+        const weeklyResult = await checkAndPayWeeklyBonus(user?.id!);
+        if (weeklyResult?.paid) {
+          msg += ` 🎉 Bônus semanal: +${weeklyResult.xp} XP, +${weeklyResult.coins} BC (${weeklyResult.count} treinos!)`;
+        }
+
+        if (rewardResult?.levelUp) {
+          msg += ` ⬆️ LEVEL UP! Nível ${rewardResult.newLevel}!`;
+          setTimeout(() => confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }), 500);
+        }
+
+        setCheckinMessage(msg);
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+
+        const { data: updatedProfile } = await supabase.from('profiles').select('*').eq('id', user?.id).maybeSingle();
+        const { data: updatedCheckins } = await supabase.from('checkins').select('*').eq('user_id', user?.id);
+
+        if (updatedProfile) {
+          updateUser({
+            id: updatedProfile.id, email: updatedProfile.email, name: updatedProfile.name,
+            role: updatedProfile.role, status: updatedProfile.status,
+            xp: updatedProfile.xp || 0, coins: updatedProfile.coins || 0, level: updatedProfile.level || 1,
+            avatar: { equipped: updatedProfile.avatar_equipped, inventory: updatedProfile.avatar_inventory || [] },
+            checkins: (updatedCheckins || []).map((c: any) => ({ date: c.date, timestamp: c.timestamp, classTime: c.class_time })),
+            paidBonuses: updatedProfile.paid_bonuses || [],
+            createdAt: updatedProfile.created_at
+          } as User);
+        }
+      } catch (e: any) {
+        console.error(e);
+        setCheckinMessage('Erro ao realizar check-in: ' + (e.message || 'Erro desconhecido'));
+      } finally { setIsCheckingIn(false); }
+    };
+
+    if (!navigator.geolocation) {
+      setCheckinMessage('Seu dispositivo não suporta geolocalização. Use o app no celular.');
+      setIsCheckingIn(false);
+      return;
+    }
+
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        try {
-          const { data: box } = await supabase.from('box_settings').select('*').single();
-          if (!box) throw new Error('Configurações do box não encontradas');
-
-          const distance = calculateDistance(latitude, longitude, box.lat, box.lng);
-          if (distance > (box.radius || 500)) {
-            setCheckinMessage(`Você está muito longe do box (${Math.round(distance)}m). Aproxime-se para fazer check-in.`);
-            setIsCheckingIn(false);
-            return;
-          }
-
-          const today = new Date().toISOString().split('T')[0];
-          const { error: checkinError } = await supabase.from('checkins').insert({
-            user_id: user?.id, date: today, class_time: selectedClass
-          });
-
-          if (checkinError) {
-            if (checkinError.code === '23505') { setCheckinMessage('Você já realizou check-in hoje!'); }
-            else { throw checkinError; }
-            setIsCheckingIn(false);
-            return;
-          }
-
-          const rewards = await getRewardSettings();
-          const xp    = rewards.xp_per_checkin   ?? 20;
-          const coins = rewards.coins_per_checkin ?? 5;
-
-          const rewardResult = await addReward(user?.id!, 'checkin', xp, coins, `Check-in: ${selectedClass}`);
-
-          let msg = `Check-in realizado! +${xp} XP, +${coins} BrazaCoins`;
-
-          const weeklyResult = await checkAndPayWeeklyBonus(user?.id!);
-          if (weeklyResult?.paid) {
-            msg += ` 🎉 Bônus semanal: +${weeklyResult.xp} XP, +${weeklyResult.coins} BC (${weeklyResult.count} treinos!)`;
-          }
-
-          if (rewardResult?.levelUp) {
-            msg += ` ⬆️ LEVEL UP! Nível ${rewardResult.newLevel}!`;
-            setTimeout(() => confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }), 500);
-          }
-
-          setCheckinMessage(msg);
-          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-
-          const { data: updatedProfile } = await supabase.from('profiles').select('*').eq('id', user?.id).maybeSingle();
-          const { data: updatedCheckins } = await supabase.from('checkins').select('*').eq('user_id', user?.id);
-
-          if (updatedProfile) {
-            updateUser({
-              id: updatedProfile.id, email: updatedProfile.email, name: updatedProfile.name,
-              role: updatedProfile.role, status: updatedProfile.status,
-              xp: updatedProfile.xp || 0, coins: updatedProfile.coins || 0, level: updatedProfile.level || 1,
-              avatar: { equipped: updatedProfile.avatar_equipped, inventory: updatedProfile.avatar_inventory || [] },
-              checkins: (updatedCheckins || []).map((c: any) => ({ date: c.date, timestamp: c.timestamp, classTime: c.class_time })),
-              paidBonuses: updatedProfile.paid_bonuses || [],
-              createdAt: updatedProfile.created_at
-            } as User);
-          }
-        } catch (e: any) {
-          console.error(e);
-          setCheckinMessage('Erro ao realizar check-in: ' + (e.message || 'Erro desconhecido'));
-        } finally { setIsCheckingIn(false); }
+      (position) => doCheckin(position.coords.latitude, position.coords.longitude),
+      (error) => {
+        setIsCheckingIn(false);
+        if (error.code === error.PERMISSION_DENIED) {
+          setCheckinMessage('Permissão de localização negada. Ative o GPS nas configurações do celular e tente novamente.');
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          setCheckinMessage('Localização indisponível. Verifique se o GPS está ativado.');
+        } else {
+          setCheckinMessage('Erro ao obter localização. Tente novamente.');
+        }
       },
-      (error) => { setCheckinMessage('Erro de geolocalização: ' + error.message); setIsCheckingIn(false); }
+      { timeout: 15000, maximumAge: 0, enableHighAccuracy: true }
     );
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  // 🔧 FIX: data no fuso Brasil (igual ao que é salvo no banco)
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
   const alreadyCheckedIn = (user?.checkins || []).some(c => c.date === today);
 
   const handleShare = () => {
@@ -208,7 +231,6 @@ export default function Dashboard() {
     <div className="flex flex-col gap-6 p-4 pt-8">
       <header className="flex justify-between items-start">
         <div className="flex items-center gap-4">
-          {/* 🎯 Avatar com efeito de inatividade */}
           <AvatarPreview
             equipped={user?.avatar.equipped!}
             size="sm"
@@ -259,7 +281,6 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* ── Banner de Patrocinadores ── */}
       <AppSponsorBanner sponsors={sponsors} />
 
       {activeChallenges.length > 0 && (
@@ -310,7 +331,8 @@ export default function Dashboard() {
                 }
                 return todaySchedule.map((s: any) => {
                   const [h, m] = s.time.split(':').map(Number);
-                  const expired = nowMinutes > h * 60 + m + 10;
+                  const windowMinutes = s.checkinWindowMinutes ?? 30;
+                  const expired = nowMinutes > h * 60 + m + windowMinutes;
                   return (
                     <button key={s.time} onClick={() => !expired && setSelectedClass(s.time)} disabled={expired}
                       className={cn(
