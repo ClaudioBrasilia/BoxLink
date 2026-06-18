@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, Sparkles, LogOut } from 'lucide-react';
+import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, Sparkles, LogOut, Clock, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DominationEnergyButton } from '../components/DominationEnergyButton';
 
@@ -14,6 +14,9 @@ interface Clan {
   created_by: string;
   is_active: boolean;
   created_at: string;
+  season_name?: string;
+  start_date?: string;
+  end_date?: string;
 }
 
 interface ClanMembership {
@@ -73,6 +76,7 @@ export default function Clans() {
   const [myClan, setMyClan] = useState<Clan | null>(null);
   const [myMembership, setMyMembership] = useState<ClanMembership | null>(null);
   const [clansEnabled, setClansEnabled] = useState(false);
+  const [currentSeason, setCurrentSeason] = useState<{ name: string; start_date: string; end_date: string } | null>(null);
   const [maxClanMembers, setMaxClanMembers] = useState(10);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -103,10 +107,11 @@ export default function Clans() {
     try {
       const { data: settings } = await supabase
         .from('box_settings')
-        .select('clans_enabled, max_clan_members')
+        .select('clans_enabled, max_clan_members, current_season')
         .maybeSingle();
       setClansEnabled(settings?.clans_enabled || false);
       setMaxClanMembers(settings?.max_clan_members || 10);
+      setCurrentSeason((settings as any)?.current_season || null);
 
       const { data: clansData } = await supabase
         .from('clans')
@@ -279,7 +284,18 @@ export default function Clans() {
     try {
       const { data: clan, error } = await supabase
         .from('clans')
-        .insert({ name: newClanName.trim(), motto: newClanMotto.trim(), color: newClanColor, banner: newClanBanner, created_by: user.id })
+        .insert({
+          name: newClanName.trim(),
+          motto: newClanMotto.trim(),
+          color: newClanColor,
+          banner: newClanBanner,
+          created_by: user.id,
+          ...(currentSeason ? {
+            season_name: currentSeason.name,
+            start_date: currentSeason.start_date,
+            end_date: currentSeason.end_date,
+          } : {}),
+        })
         .select().single();
       if (error) { alert('Erro ao criar time: ' + error.message); return; }
       await supabase.from('clan_memberships').insert({ clan_id: clan.id, user_id: user.id, role: 'captain', status: 'approved' });
@@ -327,6 +343,7 @@ export default function Clans() {
   };
 
   const isCaptain = myMembership?.role === 'captain' && myMembership?.status === 'approved';
+  const historicClansExist = false; // futuro: buscar times inativos se necessário
   const isApprovedMember = myMembership?.status === 'approved' && !!myClan;
 
   if (loading) {
@@ -366,6 +383,45 @@ export default function Clans() {
           </button>
         )}
       </div>
+
+      {/* ── Banner de Temporada ── */}
+      {(clans.length > 0 || (currentSeason && clans.length === 0 && historicClansExist)) && (() => {
+        const seasonData = clans[0] || currentSeason;
+        if (!seasonData?.season_name) return null;
+        const endDate = seasonData.end_date ? new Date(seasonData.end_date + 'T12:00:00') : null;
+        const daysLeft = endDate ? Math.ceil((endDate.getTime() - Date.now()) / 86400000) : null;
+        const ended = daysLeft !== null && daysLeft <= 0;
+        return (
+          <div className={`rounded-2xl border p-4 flex items-center justify-between ${ended ? 'bg-surface-container-highest border-outline-variant/20' : 'bg-primary/10 border-primary/20'}`}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{ended ? '🏁' : '🏆'}</span>
+              <div>
+                <p className={`text-[10px] font-black uppercase tracking-widest ${ended ? 'text-on-surface-variant' : 'text-primary'}`}>
+                  {ended ? 'Temporada Encerrada' : 'Temporada em Andamento'}
+                </p>
+                <p className="text-on-surface font-headline font-black italic text-sm">{seasonData.season_name}</p>
+              </div>
+            </div>
+            {daysLeft !== null && !ended && (
+              <div className="flex items-center gap-1 text-primary font-black text-xs">
+                <Clock className="w-3.5 h-3.5" />
+                {daysLeft === 0 ? 'Último dia!' : `${daysLeft}d`}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Tela de temporada encerrada — sem times ativos */}
+      {clans.length === 0 && currentSeason && (
+        <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-8 flex flex-col items-center gap-3 text-center">
+          <History className="w-12 h-12 text-on-surface-variant opacity-40" />
+          <p className="font-headline font-black text-on-surface uppercase italic text-base">Aguardando nova temporada</p>
+          <p className="text-on-surface-variant text-xs max-w-xs">
+            A temporada atual foi encerrada. Fique de olho — em breve o admin vai abrir inscrições para a próxima!
+          </p>
+        </div>
+      )}
 
       {/* Território do Dia */}
       {territory && (
