@@ -10,19 +10,22 @@ interface UseHeartRateReturn {
   status: ConnectionStatus;
   deviceName: string | null;
   errorMessage: string | null;
-  connect: () => Promise<void>;
+  connect: (opts?: { showAll?: boolean }) => Promise<void>;
   disconnect: () => void;
   isSupported: boolean;
 }
 
 const HEART_RATE_SERVICE = 0x180D;
 const HEART_RATE_MEASUREMENT = 0x2A37;
+const BATTERY_SERVICE = 0x180F;
+const DEVICE_INFO = 0x180A;
 
-// Lista de prefixos sugerida para limpar a busca sem perder os relógios sem marca
 const NAME_PREFIXES = [
-  'HRM', 'Polar', 'TICKR', 'CooSpo', 'Magene', 'Coospo',
-  'Garmin', 'Amazfit', 'MiSmart', 'Mi Band', 'Wahoo',
-  'Galaxy Watch', 'Galaxy Fit', 'SM-R', 'Watch', 'Relógio', 'Pulseira'
+  'HRM', 'Polar', 'H10', 'OH1', 'Verity', 'TICKR', 'Wahoo',
+  'CooSpo', 'Coospo', 'Magene', 'Scosche', 'Rhythm', 'BerryMed',
+  'Garmin', 'Amazfit', 'MiSmart', 'Mi Band', 'Xiaomi', 'Huawei',
+  'Galaxy Watch', 'Galaxy Fit', 'SM-R', 'Watch', 'Relógio', 'Pulseira',
+  'Fitbit', 'Withings', 'Apple Watch'
 ];
 
 export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
@@ -47,18 +50,13 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
         { user_id: userId, bpm: currentBpm, updated_at: new Date().toISOString() },
         { onConflict: 'user_id' }
       );
-    } catch (err) {
-      console.error('[HeartRate] Sync error:', err);
-    }
+    } catch (err) { console.error('[HR] sync:', err); }
   }, [userId]);
 
   const removeFromSupabase = useCallback(async () => {
     if (!userId) return;
-    try {
-      await supabase.from('heart_rate_live').delete().eq('user_id', userId);
-    } catch (err) {
-      console.error('[HeartRate] Remove error:', err);
-    }
+    try { await supabase.from('heart_rate_live').delete().eq('user_id', userId); }
+    catch (err) { console.error('[HR] remove:', err); }
   }, [userId]);
 
   const handleHeartRateChange = useCallback((event: Event) => {
@@ -75,7 +73,8 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
 
   const disconnect = useCallback(() => {
     if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
-    if (characteristicRef.current) characteristicRef.current.removeEventListener('characteristicvaluechanged', handleHeartRateChange);
+    if (characteristicRef.current)
+      characteristicRef.current.removeEventListener('characteristicvaluechanged', handleHeartRateChange);
     if (deviceRef.current?.gatt?.connected) deviceRef.current.gatt.disconnect();
     deviceRef.current = null;
     removeFromSupabase();
@@ -84,15 +83,15 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
     setDeviceName(null);
   }, [handleHeartRateChange, removeFromSupabase]);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (opts?: { showAll?: boolean }) => {
     setErrorMessage(null);
+    const showAll = !!opts?.showAll;
 
     if (isIOS && !isNative) {
       setErrorMessage('No iPhone, o Bluetooth só funciona pelo aplicativo CrossCity Hub instalado.');
       setStatus('error');
       return;
     }
-
     if (!isSupported) {
       setErrorMessage('Bluetooth não disponível. Use o Chrome no Android ou instale o App.');
       setStatus('error');
@@ -102,15 +101,20 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
     try {
       setStatus('connecting');
 
-      // Lógica de Filtro Aprimorada:
-      // Buscamos por dispositivos que tenham o serviço de Heart Rate OU que comecem com os nomes da lista.
-      const device = await (navigator as any).bluetooth.requestDevice({
-        filters: [
-          { services: [HEART_RATE_SERVICE] }, // Filtro por serviço (mais preciso)
-          ...NAME_PREFIXES.map(prefix => ({ namePrefix: prefix })) // Filtro pelos nomes da lista
-        ],
-        optionalServices: [HEART_RATE_SERVICE, 0x180F, 0x180A]
-      });
+      const requestOptions: any = showAll
+        ? {
+            acceptAllDevices: true,
+            optionalServices: [HEART_RATE_SERVICE, BATTERY_SERVICE, DEVICE_INFO]
+          }
+        : {
+            filters: [
+              { services: [HEART_RATE_SERVICE] },
+              ...NAME_PREFIXES.map(prefix => ({ namePrefix: prefix }))
+            ],
+            optionalServices: [HEART_RATE_SERVICE, BATTERY_SERVICE, DEVICE_INFO]
+          };
+
+      const device = await (navigator as any).bluetooth.requestDevice(requestOptions);
 
       deviceRef.current = device;
       setDeviceName(device.name || 'Dispositivo');
@@ -136,14 +140,19 @@ export function useHeartRate(userId: string | undefined): UseHeartRateReturn {
       syncIntervalRef.current = setInterval(() => {
         if (lastBpmRef.current) syncToSupabase(lastBpmRef.current);
       }, 5000);
-
     } catch (err: any) {
-      console.error('[HeartRate] Connection error:', err);
-      if (err.name !== 'NotFoundError') {
-        setErrorMessage(err.message || 'Erro ao conectar.');
+      console.error('[HR] connect:', err);
+      if (err?.name === 'NotFoundError') {
+        setStatus('disconnected');
+        if (!showAll) {
+          setErrorMessage('Não achou seu monitor? Toque em "Mostrar todos os dispositivos".');
+        }
+      } else if (err?.message?.includes('GATT')) {
+        setErrorMessage('Esse dispositivo não expõe Frequência Cardíaca via Bluetooth. Use um broadcaster (ex.: HeartCast no Apple Watch).');
         setStatus('error');
       } else {
-        setStatus('disconnected');
+        setErrorMessage(err?.message || 'Erro ao conectar.');
+        setStatus('error');
       }
     }
   }, [isIOS, isNative, isSupported, handleHeartRateChange, syncToSupabase, removeFromSupabase]);
