@@ -1,413 +1,437 @@
-// src/hooks/useBluetooth.ts
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { BleClient, numberToUUID, ScanMode } from '@capacitor-community/bluetooth-le';
-import { supabase } from '../lib/supabase';
+import { BleClient, ScanResult, BleDevice } from '@capacitor-community/bluetooth-le';
 
-const HEART_RATE_SERVICE = numberToUUID(0x180d);
-const HEART_RATE_MEASUREMENT = numberToUUID(0x2a37);
-const BATTERY_SERVICE = numberToUUID(0x180f);
-const BATTERY_LEVEL = numberToUUID(0x2a19);
+// ============================================================================
+// UUIDs - padrão e proprietários conhecidos
+// ============================================================================
+const HEART_RATE_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb';
+const HEART_RATE_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb';
+const BATTERY_SERVICE = '0000180f-0000-1000-8000-00805f9b34fb';
+const DEVICE_INFO_SERVICE = '0000180a-0000-1000-8000-00805f9b34fb';
+const CYCLING_CADENCE_SERVICE = '00001816-0000-1000-8000-00805f9b34fb';
+const RUNNING_SPEED_SERVICE = '00001814-0000-1000-8000-00805f9b34fb';
+const FITNESS_MACHINE_SERVICE = '00001826-0000-1000-8000-00805f9b34fb';
 
-// Marcas conhecidas — usadas para destacar (não para filtrar).
-const PRIORITY_KEYWORDS = [
-  'apple watch', 'galaxy watch', 'galaxy fit', 'fitbit', 'garmin',
-  'polar', 'h10', 'oh1', 'verity', 'withings', 'amazfit', 'huawei',
-  'mi band', 'xiaomi', 'tickr', 'wahoo', 'coospo', 'magene',
-  'scosche', 'rhythm', 'berrymed', 'hrm'
+// Serviços proprietários (fallback de conexão)
+const POLAR_PMD_SERVICE = 'fb005c80-02e7-f387-1cad-8acd2d8df0c8';
+const WAHOO_SERVICE = 'a026ee0b-0a7d-4ab3-97fa-f1500f9feb8b';
+
+const OPTIONAL_SERVICES = [
+  HEART_RATE_SERVICE,
+  BATTERY_SERVICE,
+  DEVICE_INFO_SERVICE,
+  CYCLING_CADENCE_SERVICE,
+  RUNNING_SPEED_SERVICE,
+  FITNESS_MACHINE_SERVICE,
+  POLAR_PMD_SERVICE,
+  WAHOO_SERVICE,
+  'battery_service',
+  'device_information',
 ];
 
-const LAST_DEVICE_KEY = 'boxlink:lastDeviceId';
+// Prefixos de nome conhecidos (relógios, pulseiras, cintas)
+const NAME_PREFIXES = [
+  // Cintas peitorais
+  'Polar', 'H10', 'H9', 'H7', 'OH1', 'Verity',
+  'Wahoo', 'TICKR', 'TICKR X',
+  'HRM', 'HRM-Dual', 'HRM-Pro', 'HRM-Run', 'HRM-Tri',
+  'CooSpo', 'Magene', 'Moofit', 'BerryMed', 'Pulsoid',
+  'Decathlon', 'Kalenji', 'Geonaute',
+  'Stryd', 'Suunto',
+  // Garmin
+  'Garmin', 'Forerunner', 'Fenix', 'Venu', 'Vivoactive', 'Vivosmart', 'Vivofit', 'Edge', 'Instinct', 'Epix', 'Enduro',
+  // Xiaomi / Amazfit / Huami
+  'Mi', 'Mi Band', 'Mi Watch', 'Xiaomi', 'Redmi',
+  'Amazfit', 'Bip', 'Stratos', 'GTS', 'GTR', 'T-Rex', 'Verge', 'Cor',
+  // Huawei / Honor
+  'Huawei', 'Honor', 'Band', 'Watch GT', 'TalkBand',
+  // Samsung
+  'Galaxy', 'Galaxy Watch', 'Galaxy Fit', 'Gear',
+  // Apple
+  'Apple Watch',
+  // Fitbit
+  'Fitbit', 'Charge', 'Versa', 'Sense', 'Inspire', 'Luxe',
+  // Genéricos / chineses
+  'ZeFit', 'Lefun', 'ID115', 'ID130', 'M4', 'M5', 'M6', 'Y68', 'D13', 'D20',
+  'Watch', 'Smart', 'Fit', 'HR', 'BP', 'Pulse', 'Cardio',
+];
 
-export type BluetoothStatus =
-  | 'idle' | 'scanning' | 'connecting' | 'connected' | 'error' | 'unsupported';
-
-export interface BluetoothDevice {
+// ============================================================================
+// Tipos
+// ============================================================================
+export interface DiscoveredDevice {
   id: string;
   name: string;
-  bpm: number | null;
-  battery: number | null;
-  rssi: number | null;
-  status: 'connected' | 'disconnected';
-  lastUpdate: Date | null;
-  isPriority?: boolean;
-  hasHeartRateService?: boolean;
-  _webDevice?: any;
+  rssi?: number;
+  hasHeartRateService: boolean;
 }
+
+export type ConnectionStatus = 'disconnected' | 'scanning' | 'connecting' | 'connected' | 'error';
 
 interface UseBluetoothReturn {
-  devices: BluetoothDevice[];
-  status: BluetoothStatus;
-  errorMessage: string | null;
+  isSupported: boolean;
   isNative: boolean;
-  startScanning: (options?: { showAll?: boolean }) => Promise<void>;
-  stopScanning: () => Promise<void>;
-  connectDevice: (deviceId: string) => Promise<void>;
-  disconnectDevice: (deviceId: string) => Promise<void>;
-  connectWebAcceptAll: () => Promise<void>;
+  isIOSWeb: boolean;
+  status: ConnectionStatus;
+  error: string | null;
+  devices: DiscoveredDevice[];
+  connectedDevice: DiscoveredDevice | null;
+  heartRate: number | null;
+  scan: () => Promise<void>;
+  stopScan: () => Promise<void>;
+  connect: (deviceId: string) => Promise<void>;
+  disconnect: () => Promise<void>;
 }
 
-export function useBluetooth(userId: string | undefined): UseBluetoothReturn {
-  const [, setVersion] = useState(0);
-  const [status, setStatus] = useState<BluetoothStatus>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+// ============================================================================
+// Helpers
+// ============================================================================
+function detectIOSWeb(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in document);
+  return isIOS && !Capacitor.isNativePlatform();
+}
 
-  const devicesRef = useRef<Map<string, BluetoothDevice>>(new Map());
-  const bumpDevices = useCallback(() => setVersion(v => v + 1), []);
+function parseHeartRate(value: DataView): number {
+  const flags = value.getUint8(0);
+  const is16bit = (flags & 0x01) !== 0;
+  return is16bit ? value.getUint16(1, true) : value.getUint8(1);
+}
 
+function isLikelyHRDevice(name: string): boolean {
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  return /watch|band|hr|pulse|cardio|fit|polar|garmin|wahoo|tickr|amazfit|fitbit|mi |huawei|honor|galaxy|forerunner|fenix|venu/i.test(lower);
+}
+
+// ============================================================================
+// Hook
+// ============================================================================
+export function useBluetooth(): UseBluetoothReturn {
   const isNative = Capacitor.isNativePlatform();
-  const platform = Capacitor.getPlatform();
+  const isIOSWeb = detectIOSWeb();
+  const isSupported =
+    isNative ||
+    (typeof navigator !== 'undefined' && 'bluetooth' in navigator && !isIOSWeb);
 
-  // HealthKit (carregamento opcional)
-  const healthKitRef = useRef<any>(null);
+  const [status, setStatus] = useState<ConnectionStatus>('disconnected');
+  const [error, setError] = useState<string | null>(null);
+  const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
+  const [connectedDevice, setConnectedDevice] = useState<DiscoveredDevice | null>(null);
+  const [heartRate, setHeartRate] = useState<number | null>(null);
+
+  const webDeviceRef = useRef<BluetoothDevice | null>(null);
+  const webCharRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
+  const nativeDeviceIdRef = useRef<string | null>(null);
+
+  // --------------------------------------------------------------------------
+  // Inicialização
+  // --------------------------------------------------------------------------
   useEffect(() => {
-    if (isNative && platform === 'ios') {
-      import('@capgo/capacitor-health')
-        .then(mod => { healthKitRef.current = mod.CapacitorHealth ?? mod.default ?? mod; })
-        .catch(err => console.warn('[HealthKit] indisponível:', err));
-    }
-  }, [isNative, platform]);
-
-  const isPriorityDevice = (name: string) =>
-    PRIORITY_KEYWORDS.some(k => name.toLowerCase().includes(k));
-
-  // ───── Supabase live sync ────────────────────────────────────────────────
-  const syncToSupabase = useCallback(async (deviceId: string, bpm: number, deviceName: string) => {
-    if (!userId) return;
-    try {
-      await supabase.from('heart_rate_live').upsert(
-        { user_id: userId, bpm, device_id: deviceId, device_name: deviceName, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id' }
-      );
-    } catch (err) { console.error('[Supabase] sync:', err); }
-  }, [userId]);
-
-  const removeFromSupabase = useCallback(async () => {
-    if (!userId) return;
-    try { await supabase.from('heart_rate_live').delete().eq('user_id', userId); }
-    catch (err) { console.error('[Supabase] remove:', err); }
-  }, [userId]);
-
-  // ───── Init BLE ──────────────────────────────────────────────────────────
-  const initializeBle = useCallback(async () => {
-    try {
-      await BleClient.initialize({ androidNeverForLocation: true });
-    } catch (err) {
-      console.error('[BLE] init:', err);
-      setStatus('unsupported');
-      setErrorMessage('Bluetooth indisponível neste aparelho.');
-      throw err;
-    }
-  }, []);
-
-  // ───── Conectar dispositivo ──────────────────────────────────────────────
-  const connectDevice = useCallback(async (deviceId: string) => {
-    const device = devicesRef.current.get(deviceId);
-    if (!device) return;
-
-    setStatus('connecting');
-    setErrorMessage(null);
-
-    // Web ─────────────────────────────────────────────
-    if (!isNative) {
-      try {
-        const webDevice = device._webDevice;
-        if (!webDevice) throw new Error('Dispositivo Web não encontrado');
-
-        const server = await webDevice.gatt.connect();
-
-        try {
-          const bs = await server.getPrimaryService('battery_service');
-          const bc = await bs.getCharacteristic('battery_level');
-          const bv = await bc.readValue();
-          device.battery = bv.getUint8(0);
-        } catch { /* sem bateria */ }
-
-        const hrService = await server.getPrimaryService(HEART_RATE_SERVICE);
-        const hrChar = await hrService.getCharacteristic(HEART_RATE_MEASUREMENT);
-
-        await hrChar.startNotifications();
-        hrChar.addEventListener('characteristicvaluechanged', (event: any) => {
-          const value = event.target.value as DataView;
-          const flags = value.getUint8(0);
-          const bpm = (flags & 0x1) ? value.getUint16(1, true) : value.getUint8(1);
-          if (bpm > 0 && bpm < 250) {
-            device.bpm = bpm;
-            device.lastUpdate = new Date();
-            bumpDevices();
-            syncToSupabase(deviceId, bpm, device.name);
-          }
-        });
-
-        webDevice.addEventListener('gattserverdisconnected', () => {
-          device.status = 'disconnected';
-          device.bpm = null;
-          bumpDevices();
-        });
-
-        device.status = 'connected';
-        try { localStorage.setItem(LAST_DEVICE_KEY, deviceId); } catch {}
-        setStatus('connected');
-        bumpDevices();
-      } catch (err: any) {
-        console.error('[Web] connect:', err);
-        setStatus('error');
-        setErrorMessage(err.message || 'Erro ao conectar via Web Bluetooth.');
-      }
-      return;
-    }
-
-    // Nativo ──────────────────────────────────────────
-    try {
-      await BleClient.connect(deviceId, () => {
-        device.status = 'disconnected';
-        device.bpm = null;
-        bumpDevices();
-      });
-      await BleClient.discoverServices(deviceId);
-
-      try {
-        const batt = await BleClient.read(deviceId, BATTERY_SERVICE, BATTERY_LEVEL);
-        device.battery = batt.getUint8(0);
-      } catch { /* sem bateria */ }
-
-      await BleClient.startNotifications(
-        deviceId, HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT,
-        (value) => {
-          const flags = value.getUint8(0);
-          const bpm = (flags & 0x1) ? value.getUint16(1, true) : value.getUint8(1);
-          if (bpm > 0 && bpm < 250) {
-            device.bpm = bpm;
-            device.lastUpdate = new Date();
-            bumpDevices();
-            syncToSupabase(deviceId, bpm, device.name);
-          }
-        }
-      );
-
-      device.status = 'connected';
-      try { localStorage.setItem(LAST_DEVICE_KEY, deviceId); } catch {}
-      setStatus('connected');
-      bumpDevices();
-    } catch (err: any) {
-      console.error('[BLE] connect:', err);
-      setStatus('error');
-      setErrorMessage(
-        platform === 'ios'
-          ? 'Não foi possível conectar. Para Apple Watch use HealthKit.'
-          : (err?.message || 'Falha ao conectar ao dispositivo.')
+    if (isNative) {
+      BleClient.initialize({ androidNeverForLocation: true }).catch((e) =>
+        console.warn('[BLE] initialize falhou', e)
       );
     }
-  }, [isNative, platform, syncToSupabase, bumpDevices]);
-
-  // ───── Desconectar ───────────────────────────────────────────────────────
-  const disconnectDevice = useCallback(async (deviceId: string) => {
-    try {
-      const device = devicesRef.current.get(deviceId);
-
-      if (!isNative) {
-        if (device?._webDevice?.gatt?.connected) device._webDevice.gatt.disconnect();
-      } else {
-        try { await BleClient.stopNotifications(deviceId, HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT); } catch {}
-        try { await BleClient.disconnect(deviceId); } catch {}
-      }
-
-      if (device) {
-        device.status = 'disconnected';
-        device.bpm = null;
-        bumpDevices();
-      }
-    } catch (err) { console.error('[BLE] disconnect:', err); }
-  }, [isNative, bumpDevices]);
-
-  const disconnectAllRef = useRef<() => Promise<void>>(async () => {});
-  disconnectAllRef.current = async () => {
-    for (const [id] of devicesRef.current) await disconnectDevice(id);
-    removeFromSupabase();
-    setStatus('idle');
-  };
-
-  // ───── Parar scan ────────────────────────────────────────────────────────
-  const stopScanning = useCallback(async () => {
-    try {
-      if (isNative) await BleClient.stopLEScan();
-    } catch (err) { console.error('[BLE] stopLEScan:', err); }
-    setStatus(prev => (prev === 'scanning' ? 'idle' : prev));
   }, [isNative]);
 
-  // ───── Iniciar scan ──────────────────────────────────────────────────────
-  const startScanning = useCallback(async (options?: { showAll?: boolean }) => {
-    const showAll = !!options?.showAll;
-    setErrorMessage(null);
+  // --------------------------------------------------------------------------
+  // SCAN
+  // --------------------------------------------------------------------------
+  const scan = useCallback(async () => {
+    setError(null);
+    setDevices([]);
     setStatus('scanning');
 
-    // Web ─────────────────────────────────────────────
-    if (!isNative) {
-      const nav = navigator as any;
-      if (!nav.bluetooth) {
-        setStatus('unsupported');
-        setErrorMessage(
-          'Seu navegador não suporta Web Bluetooth. Use Chrome/Edge no Android, macOS, Windows ou Linux. No iPhone, instale o app nativo.'
+    try {
+      if (isIOSWeb) {
+        throw new Error(
+          'iOS Safari não suporta Bluetooth Web. Instale o aplicativo nativo para conectar dispositivos.'
         );
+      }
+
+      // ---------------- NATIVO (Android via Capacitor) ----------------
+      if (isNative) {
+        await BleClient.initialize({ androidNeverForLocation: true });
+        try {
+          await BleClient.requestEnable();
+        } catch {
+          // Em alguns Androids requestEnable não está disponível; segue.
+        }
+
+        const found = new Map<string, DiscoveredDevice>();
+
+        await BleClient.requestLEScan(
+          { allowDuplicates: false }, // sem filtro de serviço — pega tudo
+          (result: ScanResult) => {
+            const id = result.device.deviceId;
+            const name =
+              result.device.name ||
+              result.localName ||
+              `Dispositivo ${id.slice(-5)}`;
+            const services = (result.uuids || []).map((u) => u.toLowerCase());
+            const hasHR = services.includes(HEART_RATE_SERVICE);
+
+            const existing = found.get(id);
+            if (!existing || (result.rssi && (!existing.rssi || result.rssi > existing.rssi))) {
+              found.set(id, { id, name, rssi: result.rssi, hasHeartRateService: hasHR });
+              const sorted = Array.from(found.values()).sort((a, b) => {
+                if (a.hasHeartRateService !== b.hasHeartRateService) return a.hasHeartRateService ? -1 : 1;
+                const aLikely = isLikelyHRDevice(a.name);
+                const bLikely = isLikelyHRDevice(b.name);
+                if (aLikely !== bLikely) return aLikely ? -1 : 1;
+                return (b.rssi ?? -999) - (a.rssi ?? -999);
+              });
+              setDevices(sorted);
+            }
+          }
+        );
+
+        // Para o scan após 15s
+        setTimeout(async () => {
+          try {
+            await BleClient.stopLEScan();
+          } catch {}
+          setStatus((s) => (s === 'scanning' ? 'disconnected' : s));
+        }, 15000);
         return;
       }
 
+      // ---------------- WEB (Chrome desktop / Android) ----------------
+      const filters: BluetoothLEScanFilter[] = [
+        { services: [HEART_RATE_SERVICE] },
+        { services: [CYCLING_CADENCE_SERVICE] },
+        { services: [RUNNING_SPEED_SERVICE] },
+        { services: [FITNESS_MACHINE_SERVICE] },
+        ...NAME_PREFIXES.map((namePrefix) => ({ namePrefix })),
+      ];
+
+      let device: BluetoothDevice;
       try {
-        const requestOptions: any = showAll
-          ? {
-              acceptAllDevices: true,
-              optionalServices: [HEART_RATE_SERVICE, BATTERY_SERVICE, numberToUUID(0x180a)]
-            }
-          : {
-              filters: [
-                { services: [HEART_RATE_SERVICE] },
-                ...PRIORITY_KEYWORDS.map(k => ({ namePrefix: k[0].toUpperCase() + k.slice(1) }))
-              ],
-              optionalServices: [HEART_RATE_SERVICE, BATTERY_SERVICE, numberToUUID(0x180a)]
-            };
-
-        const webDevice = await nav.bluetooth.requestDevice(requestOptions);
-
-        const id = webDevice.id;
-        const name = webDevice.name || 'Dispositivo Bluetooth';
-        const device: BluetoothDevice = {
-          id, name,
-          bpm: null, battery: null, rssi: null,
-          status: 'disconnected', lastUpdate: null,
-          isPriority: isPriorityDevice(name),
-          hasHeartRateService: !showAll,
-          _webDevice: webDevice
-        };
-        devicesRef.current.set(id, device);
-        bumpDevices();
-        setStatus('idle');
-        // Conecta imediatamente — o picker do navegador já é a "lista"
-        await connectDevice(id);
+        device = await navigator.bluetooth.requestDevice({
+          filters,
+          optionalServices: OPTIONAL_SERVICES,
+        });
       } catch (err: any) {
-        console.error('[Web] scan:', err);
         if (err?.name === 'NotFoundError') {
-          setStatus('idle');
-          setErrorMessage(showAll
-            ? 'Nenhum dispositivo selecionado.'
-            : 'Não achou seu monitor? Toque em "Mostrar todos os dispositivos".');
+          // Retry mostrando todos os dispositivos
+          device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: OPTIONAL_SERVICES,
+          });
         } else {
-          setStatus('error');
-          setErrorMessage('Erro ao acessar o Bluetooth do navegador.');
+          throw err;
         }
       }
-      return;
+
+      const discovered: DiscoveredDevice = {
+        id: device.id,
+        name: device.name || `Dispositivo ${device.id.slice(-5)}`,
+        hasHeartRateService: true, // assume — só descobre ao conectar
+      };
+      webDeviceRef.current = device;
+      setDevices([discovered]);
+      setStatus('disconnected');
+    } catch (err: any) {
+      console.error('[BLE] scan erro', err);
+      const msg = err?.message || 'Erro ao escanear dispositivos';
+      if (err?.name !== 'NotFoundError') setError(msg);
+      setStatus(err?.name === 'NotFoundError' ? 'disconnected' : 'error');
     }
+  }, [isNative, isIOSWeb]);
 
-    // Nativo ──────────────────────────────────────────
-    devicesRef.current.clear();
-    bumpDevices();
+  const stopScan = useCallback(async () => {
+    if (isNative) {
+      try {
+        await BleClient.stopLEScan();
+      } catch {}
+    }
+    setStatus((s) => (s === 'scanning' ? 'disconnected' : s));
+  }, [isNative]);
 
-    try {
-      await initializeBle();
+  // --------------------------------------------------------------------------
+  // CONNECT
+  // --------------------------------------------------------------------------
+  const connect = useCallback(
+    async (deviceId: string) => {
+      setError(null);
+      setStatus('connecting');
 
-      const onResult = (result: any) => {
-        const id = result.device.deviceId;
-        const rawName = result.device.name || result.localName || '';
-        const advUuids: string[] = (result.uuids || []).map((u: string) => u.toLowerCase());
-        const hasHrService = advUuids.includes(HEART_RATE_SERVICE);
-        const name = rawName || (hasHrService ? 'Monitor Cardíaco' : `Dispositivo ${id.slice(-4)}`);
+      try {
+        // ---------------- NATIVO ----------------
+        if (isNative) {
+          try {
+            await BleClient.stopLEScan();
+          } catch {}
 
-        const existing = devicesRef.current.get(id);
-        if (existing) {
-          existing.rssi = typeof result.rssi === 'number' ? result.rssi : existing.rssi;
-          if (rawName && existing.name !== rawName) existing.name = rawName;
-          if (hasHrService) existing.hasHeartRateService = true;
-          bumpDevices();
+          await BleClient.connect(deviceId, () => {
+            console.log('[BLE] desconectado');
+            setStatus('disconnected');
+            setConnectedDevice(null);
+            setHeartRate(null);
+            nativeDeviceIdRef.current = null;
+          });
+
+          nativeDeviceIdRef.current = deviceId;
+
+          // Tenta HR service padrão; se falhar tenta proprietários
+          const servicesToTry = [HEART_RATE_SERVICE, POLAR_PMD_SERVICE, WAHOO_SERVICE];
+          let subscribed = false;
+
+          for (const svc of servicesToTry) {
+            try {
+              await BleClient.startNotifications(
+                deviceId,
+                svc,
+                HEART_RATE_MEASUREMENT,
+                (value) => {
+                  const bpm = parseHeartRate(value);
+                  if (bpm > 0 && bpm < 250) setHeartRate(bpm);
+                }
+              );
+              subscribed = true;
+              break;
+            } catch (e) {
+              console.warn(`[BLE] HR não disponível em ${svc}`, e);
+            }
+          }
+
+          if (!subscribed) {
+            throw new Error(
+              'Dispositivo conectado mas não expõe Heart Rate. Verifique se está no modo "transmissão" ou use outro app.'
+            );
+          }
+
+          const dev = devices.find((d) => d.id === deviceId) || {
+            id: deviceId,
+            name: `Dispositivo ${deviceId.slice(-5)}`,
+            hasHeartRateService: true,
+          };
+          setConnectedDevice(dev);
+          setStatus('connected');
           return;
         }
 
-        const device: BluetoothDevice = {
-          id, name,
-          bpm: null, battery: null,
-          rssi: typeof result.rssi === 'number' ? result.rssi : null,
-          status: 'disconnected', lastUpdate: null,
-          isPriority: isPriorityDevice(name),
-          hasHeartRateService: hasHrService
-        };
-        devicesRef.current.set(id, device);
-        bumpDevices();
-      };
+        // ---------------- WEB ----------------
+        const device = webDeviceRef.current;
+        if (!device) throw new Error('Nenhum dispositivo selecionado.');
 
-      // Filtro no SO quando possível; fallback "showAll" pega tudo
-      const scanOptions: any = showAll
-        ? { allowDuplicates: true, scanMode: ScanMode.SCAN_MODE_LOW_LATENCY }
-        : { services: [HEART_RATE_SERVICE], allowDuplicates: true, scanMode: ScanMode.SCAN_MODE_LOW_LATENCY };
+        device.addEventListener('gattserverdisconnected', () => {
+          setStatus('disconnected');
+          setConnectedDevice(null);
+          setHeartRate(null);
+          webCharRef.current = null;
+        });
 
-      await BleClient.requestLEScan(scanOptions, onResult);
+        const server = await device.gatt!.connect();
 
-      // Auto-stop em 20s (ou 45s no modo showAll)
-      window.setTimeout(() => { stopScanning(); }, showAll ? 45000 : 20000);
-    } catch (err: any) {
-      console.error('[BLE] scan:', err);
-      setStatus('error');
-      const msg = (err?.message || '').toLowerCase();
-      if (platform === 'android') {
-        if (msg.includes('location') || msg.includes('gps'))
-          setErrorMessage('Ative o GPS/Localização do celular (necessário só em Android 11 ou anterior).');
-        else if (msg.includes('permission'))
-          setErrorMessage('Permita Bluetooth nas configurações do app.');
-        else if (msg.includes('disabled') || msg.includes('off'))
-          setErrorMessage('Bluetooth desligado. Ative no painel rápido.');
-        else
-          setErrorMessage('Erro ao escanear. Verifique se Bluetooth está ligado.');
-      } else {
-        setErrorMessage('Permita acesso ao Bluetooth nas configurações do iPhone.');
+        const servicesToTry = [HEART_RATE_SERVICE, POLAR_PMD_SERVICE, WAHOO_SERVICE];
+        let characteristic: BluetoothRemoteGATTCharacteristic | null = null;
+
+        for (const svc of servicesToTry) {
+          try {
+            const service = await server.getPrimaryService(svc);
+            characteristic = await service.getCharacteristic(HEART_RATE_MEASUREMENT);
+            break;
+          } catch {
+            // tenta próximo
+          }
+        }
+
+        if (!characteristic) {
+          throw new Error(
+            'Dispositivo conectado mas não expõe Heart Rate. Tente outro dispositivo ou ative o modo de transmissão.'
+          );
+        }
+
+        await characteristic.startNotifications();
+        characteristic.addEventListener('characteristicvaluechanged', (e: any) => {
+          const value: DataView = e.target.value;
+          const bpm = parseHeartRate(value);
+          if (bpm > 0 && bpm < 250) setHeartRate(bpm);
+        });
+        webCharRef.current = characteristic;
+
+        setConnectedDevice({
+          id: device.id,
+          name: device.name || `Dispositivo ${device.id.slice(-5)}`,
+          hasHeartRateService: true,
+        });
+        setStatus('connected');
+      } catch (err: any) {
+        console.error('[BLE] connect erro', err);
+        setError(err?.message || 'Erro ao conectar');
+        setStatus('error');
       }
+    },
+    [isNative, devices]
+  );
+
+  // --------------------------------------------------------------------------
+  // DISCONNECT
+  // --------------------------------------------------------------------------
+  const disconnect = useCallback(async () => {
+    try {
+      if (isNative && nativeDeviceIdRef.current) {
+        try {
+          await BleClient.stopNotifications(
+            nativeDeviceIdRef.current,
+            HEART_RATE_SERVICE,
+            HEART_RATE_MEASUREMENT
+          );
+        } catch {}
+        await BleClient.disconnect(nativeDeviceIdRef.current);
+        nativeDeviceIdRef.current = null;
+      } else if (webDeviceRef.current?.gatt?.connected) {
+        webDeviceRef.current.gatt.disconnect();
+      }
+    } catch (e) {
+      console.warn('[BLE] disconnect erro', e);
     }
-  }, [isNative, platform, initializeBle, stopScanning, bumpDevices, connectDevice]);
-
-  // ───── Atalho: Web "aceitar todos" ──────────────────────────────────────
-  const connectWebAcceptAll = useCallback(async () => {
-    return startScanning({ showAll: true });
-  }, [startScanning]);
-
-  // ───── Reconexão automática do último dispositivo (nativo) ──────────────
-  useEffect(() => {
-    if (!isNative) return;
-    const lastId = (() => { try { return localStorage.getItem(LAST_DEVICE_KEY); } catch { return null; } })();
-    if (!lastId) return;
-    (async () => {
-      try {
-        await initializeBle();
-        const stub: BluetoothDevice = {
-          id: lastId, name: 'Último dispositivo',
-          bpm: null, battery: null, rssi: null,
-          status: 'disconnected', lastUpdate: null
-        };
-        devicesRef.current.set(lastId, stub);
-        await connectDevice(lastId);
-      } catch (e) { /* silencioso */ }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setStatus('disconnected');
+    setConnectedDevice(null);
+    setHeartRate(null);
   }, [isNative]);
 
-  // ───── Cleanup apenas no unmount real ───────────────────────────────────
+  // --------------------------------------------------------------------------
+  // Auto-reconexão Web (Chrome 122+)
+  // --------------------------------------------------------------------------
   useEffect(() => {
-    return () => { void disconnectAllRef.current(); };
-  }, []);
+    if (isNative || isIOSWeb || typeof navigator === 'undefined' || !('bluetooth' in navigator)) return;
+    const bt: any = navigator.bluetooth;
+    if (typeof bt.getDevices !== 'function') return;
 
-  const sorted = Array.from(devicesRef.current.values()).sort((a, b) => {
-    if ((b.hasHeartRateService ? 1 : 0) !== (a.hasHeartRateService ? 1 : 0))
-      return (b.hasHeartRateService ? 1 : 0) - (a.hasHeartRateService ? 1 : 0);
-    if ((b.isPriority ? 1 : 0) !== (a.isPriority ? 1 : 0))
-      return (b.isPriority ? 1 : 0) - (a.isPriority ? 1 : 0);
-    return (b.rssi ?? -999) - (a.rssi ?? -999);
-  });
+    bt.getDevices()
+      .then((known: BluetoothDevice[]) => {
+        if (known.length > 0 && !webDeviceRef.current) {
+          const last = known[0];
+          webDeviceRef.current = last;
+          setDevices([
+            {
+              id: last.id,
+              name: last.name || `Dispositivo ${last.id.slice(-5)}`,
+              hasHeartRateService: true,
+            },
+          ]);
+        }
+      })
+      .catch(() => {});
+  }, [isNative, isIOSWeb]);
 
   return {
-    devices: sorted,
-    status,
-    errorMessage,
+    isSupported,
     isNative,
-    startScanning,
-    stopScanning,
-    connectDevice,
-    disconnectDevice,
-    connectWebAcceptAll
+    isIOSWeb,
+    status,
+    error,
+    devices,
+    connectedDevice,
+    heartRate,
+    scan,
+    stopScan,
+    connect,
+    disconnect,
   };
 }
