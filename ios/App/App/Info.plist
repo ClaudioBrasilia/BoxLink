@@ -28,7 +28,7 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
@@ -54,12 +54,13 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
+		<string>bluetooth-peripheral</string>
 	</array>
 
 	<!-- HEALTHKIT (Apple Watch) -->
 	<key>NSHealthShareUsageDescription</key>
 	<string>O BoxLink lê sua frequência cardíaca do Apple Health para exibir durante o treino em tempo real.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>O BoxLink não grava dados de saúde.</string>
+	<string>O BoxLink registra sessões de treino no Apple Health quando você autorizar.</string>
 </dict>
 </plist>
