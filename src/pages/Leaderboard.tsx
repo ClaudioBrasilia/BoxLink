@@ -172,6 +172,23 @@ export default function Leaderboard() {
         return parseFloat(str.replace(/[^0-9.]/g, '')) || (timeBased ? 999999 : 0);
       };
 
+      // ── Helper: enriquece wod_results com dados de perfil manualmente ────
+      // wod_results.user_id → auth.users(id), mas profiles.id → auth.users(id)
+      // O join automático via PostgREST não funciona porque a FK não aponta
+      // diretamente para public.profiles. Fazemos o join manual aqui.
+      const enrichWodResults = async (rawResults: any[]): Promise<any[]> => {
+        if (!rawResults.length) return [];
+        const userIds = [...new Set(rawResults.map((r: any) => r.user_id))];
+        const { data: profilesData } = await supabase
+          .from('profiles').select('id, name, level').in('id', userIds);
+        const profileMap: Record<string, any> = {};
+        (profilesData || []).forEach((p: any) => { profileMap[p.id] = p; });
+        return rawResults.map((r: any) => ({
+          ...r,
+          profiles: profileMap[r.user_id] ?? null,
+        }));
+      };
+
       const processWodResults = (wodResults: any[], wodType: string) => {
         const isTimeBased = ['FOR TIME', 'TIME', 'TEMPO'].some(t => (wodType || '').toUpperCase().includes(t));
         const bestByUser: Record<string, any> = {};
@@ -191,22 +208,27 @@ export default function Leaderboard() {
       };
 
       if (activeWod) {
-        // Busca por wod_id (principal) e por data de hoje como fallback
-        // O fallback cobre casos em que o WOD exibido é de outro dia (ex: não há WOD hoje)
-        // e o resultado foi gravado com wod_id correto mas created_at é de hoje.
-        const { data: wodResults } = await supabase
-          .from('wod_results').select('*, profiles(name, level)').eq('wod_id', activeWod.id);
+        // Busca wod_results por wod_id — sem join automático (FK aponta para auth.users, não profiles)
+        const { data: rawWodResults } = await supabase
+          .from('wod_results').select('*').eq('wod_id', activeWod.id);
 
-        if (wodResults && wodResults.length > 0) {
+        if (rawWodResults && rawWodResults.length > 0) {
+          const wodResults = await enrichWodResults(rawWodResults);
           setWodRanking(processWodResults(wodResults, activeWod.type));
         } else {
-          // Fallback: busca resultados com created_at de HOJE (timezone SP) — cobre registro no mesmo dia
+          // Fallback: busca resultados com created_at de HOJE (timezone SP)
+          // Cobre casos em que wod_id pode ter sido salvo nulo ou de dia anterior
           const todayStart = todayStr + 'T00:00:00-03:00';
           const todayEnd   = todayStr + 'T23:59:59-03:00';
-          const { data: todayResults } = await supabase
-            .from('wod_results').select('*, profiles(name, level)')
+          const { data: rawTodayResults } = await supabase
+            .from('wod_results').select('*')
             .gte('created_at', todayStart).lte('created_at', todayEnd);
-          setWodRanking(todayResults?.length ? processWodResults(todayResults, activeWod.type) : []);
+          if (rawTodayResults?.length) {
+            const todayResults = await enrichWodResults(rawTodayResults);
+            setWodRanking(processWodResults(todayResults, activeWod.type));
+          } else {
+            setWodRanking([]);
+          }
         }
       } else {
         setWodRanking([]);
