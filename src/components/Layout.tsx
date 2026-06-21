@@ -13,61 +13,38 @@ export default function Layout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { notifications, markRead } = useNotifications();
 
-  // Auto-marca notificações como lidas quando visita a página correspondente
   useEffect(() => {
     const unreadToMark = notifications.filter(n => !n.read);
-    
     if (location.pathname === '/' || location.pathname === '/dashboard') {
-      // Marca comunicados como lidos ao visitar Início
-      unreadToMark
-        .filter(n => n.type === 'announcement')
-        .forEach(n => markRead(n.id));
+      unreadToMark.filter(n => n.type === 'announcement').forEach(n => markRead(n.id));
     } else if (location.pathname === '/duels') {
-      // Marca notificações de duelo como lidas ao visitar Duelos
-      unreadToMark
-        .filter(n => ['duel_created', 'duel_accepted', 'duel_finished', 'duel_result'].includes(n.type))
-        .forEach(n => markRead(n.id));
+      unreadToMark.filter(n => ['duel_created', 'duel_accepted', 'duel_finished', 'duel_result'].includes(n.type)).forEach(n => markRead(n.id));
     } else if (location.pathname === '/feed') {
-      // Marca notificações de feed como lidas ao visitar Feed
-      unreadToMark
-        .filter(n => ['like', 'comment', 'feed_post'].includes(n.type))
-        .forEach(n => markRead(n.id));
+      unreadToMark.filter(n => ['like', 'comment', 'feed_post'].includes(n.type)).forEach(n => markRead(n.id));
     } else if (location.pathname === '/challenges') {
-      // Marca notificações de desafios como lidas ao visitar Desafios
-      unreadToMark
-        .filter(n => ['challenge_done', 'challenge_new'].includes(n.type))
-        .forEach(n => markRead(n.id));
+      unreadToMark.filter(n => ['challenge_done', 'challenge_new'].includes(n.type)).forEach(n => markRead(n.id));
     }
   }, [location.pathname, notifications, markRead]);
 
-  // Contagem de badges por seção
-  const duelBadge = notifications.filter(n =>
-    !n.read && ['duel_created', 'duel_accepted', 'duel_finished', 'duel_result'].includes(n.type)
-  ).length;
-  const feedBadge = notifications.filter(n =>
-    !n.read && ['like', 'comment', 'feed_post'].includes(n.type)
-  ).length;
-  const challengeBadge = notifications.filter(n =>
-    !n.read && ['challenge_done', 'challenge_new'].includes(n.type)
-  ).length;
-  const homeBadge = notifications.filter(n =>
-    !n.read && ['announcement'].includes(n.type)
-  ).length;
+  const duelBadge = notifications.filter(n => !n.read && ['duel_created', 'duel_accepted', 'duel_finished', 'duel_result'].includes(n.type)).length;
+  const feedBadge = notifications.filter(n => !n.read && ['like', 'comment', 'feed_post'].includes(n.type)).length;
+  const challengeBadge = notifications.filter(n => !n.read && ['challenge_done', 'challenge_new'].includes(n.type)).length;
+  const homeBadge = notifications.filter(n => !n.read && ['announcement'].includes(n.type)).length;
 
   const navItems = [
-    { icon: Home,   label: 'Início',  path: '/',          badge: homeBadge },
-    { icon: Swords, label: 'Duelos',  path: '/duels',     badge: duelBadge },
-    { icon: Users,  label: 'Feed',    path: '/feed',      badge: feedBadge },
-    { icon: Trophy, label: 'Ranking', path: '/leaderboard', badge: 0 },
-    { icon: User,   label: 'Perfil',  path: '/profile',   badge: 0 },
+    { icon: Home,   label: 'Início',   path: '/',            badge: homeBadge },
+    { icon: Swords, label: 'Duelos',   path: '/duels',       badge: duelBadge },
+    { icon: Users,  label: 'Feed',     path: '/feed',        badge: feedBadge },
+    { icon: Trophy, label: 'Ranking',  path: '/leaderboard', badge: 0 },
+    { icon: User,   label: 'Perfil',   path: '/profile',     badge: 0 },
   ];
 
   const moreItems = [
-    { icon: Zap, label: 'Desafios', path: '/challenges' },
-    { icon: LineChart, label: 'Evolução', path: '/progress' },
-    { icon: Box, label: 'Meu Box', path: '/mybox' },
-    { icon: Users, label: 'Times', path: '/clans' },
-    { icon: Sparkles, label: 'Avatar', path: '/avatar' },
+    { icon: Zap,         label: 'Desafios', path: '/challenges' },
+    { icon: LineChart,   label: 'Evolução', path: '/progress' },
+    { icon: Box,         label: 'Meu Box',  path: '/mybox' },
+    { icon: Users,       label: 'Times',    path: '/clans' },
+    { icon: Sparkles,    label: 'Avatar',   path: '/avatar' },
     ...(user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Admin', path: '/admin' }] : []),
     ...(user?.role === 'coach' || user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Coach', path: '/coach' }] : []),
   ];
@@ -79,8 +56,9 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-background text-on-surface font-body selection:bg-primary selection:text-background">
-      {/* HR Bar - Parity with CrossCity */}
-      <div className="bg-surface-container-highest/50 border-b border-outline-variant/10 px-4 py-1.5 flex items-center justify-between overflow-hidden z-50 sticky top-0 backdrop-blur-md">
+
+      {/* 🔧 FIX: pointer-events-none na barra animada para não bloquear toques abaixo */}
+      <div className="bg-surface-container-highest/50 border-b border-outline-variant/10 px-4 py-1.5 flex items-center justify-between overflow-hidden z-10 sticky top-0 backdrop-blur-md pointer-events-none">
         <div className="flex items-center gap-4 animate-marquee-slow whitespace-nowrap flex-1 overflow-hidden mr-3">
           <div className="flex items-center gap-2">
             <Activity className="w-3 h-3 text-primary animate-pulse" />
@@ -89,27 +67,20 @@ export default function Layout() {
           {[72, 85, 110, 92, 125, 88, 140, 95, 102, 118].map((bpm, i) => (
             <div key={i} className="flex items-center gap-1.5 bg-surface-container-low px-2 py-0.5 rounded-full border border-outline-variant/10">
               <span className="text-[8px] font-bold text-on-surface-variant">ATLETA {i+1}</span>
-              <span className={cn(
-                "text-[8px] font-black italic",
-                bpm > 110 ? "text-secondary" : "text-primary"
-              )}>{bpm} BPM</span>
+              <span className={cn("text-[8px] font-black italic", bpm > 110 ? "text-secondary" : "text-primary")}>{bpm} BPM</span>
             </div>
           ))}
-          {/* Duplicate for seamless loop */}
           {[72, 85, 110, 92, 125, 88, 140, 95, 102, 118].map((bpm, i) => (
             <div key={`dup-${i}`} className="flex items-center gap-1.5 bg-surface-container-low px-2 py-0.5 rounded-full border border-outline-variant/10">
               <span className="text-[8px] font-bold text-on-surface-variant">ATLETA {i+1}</span>
-              <span className={cn(
-                "text-[8px] font-black italic",
-                bpm > 110 ? "text-secondary" : "text-primary"
-              )}>{bpm} BPM</span>
+              <span className={cn("text-[8px] font-black italic", bpm > 110 ? "text-secondary" : "text-primary")}>{bpm} BPM</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Main Content */}
-      <main className="max-w-md mx-auto min-h-screen relative pb-24">
+      {/* 🔧 FIX: overflow-y-auto garante scroll correto no WebView do Capacitor */}
+      <main className="max-w-md mx-auto min-h-screen relative pb-24 overflow-y-auto">
         <Outlet />
       </main>
 
@@ -203,4 +174,4 @@ export default function Layout() {
       </nav>
     </div>
   );
-}
+     }
