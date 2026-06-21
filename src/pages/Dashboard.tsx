@@ -12,6 +12,8 @@ import { addReward, checkAndPayWeeklyBonus, getRewardSettings } from '../utils/r
 import { useInactivity } from '../hooks/useInactivity';
 import HeartRateUnified from '../components/HeartRateUnified';
 import { AppSponsorBanner, useSponsors } from '../components/SponsorBanner';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 
 export default function Dashboard() {
   const { user, updateUser } = useAuth();
@@ -28,12 +30,17 @@ export default function Dashboard() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [userRankPosition, setUserRankPosition] = useState<number | null>(null);
 
-  // 🔧 FIX: useMemo evita novo array a cada render → quebra o loop infinito do useInactivity
   const checkinsList = useMemo(
     () => (user?.checkins || []).map(c => ({ date: c.date })),
     [user?.checkins]
   );
   const { fadePercent, showSleeping } = useInactivity(checkinsList);
+
+  // 🔧 FIX: dia da semana sempre no fuso Brasil
+  const getNowBR = () => {
+    const brTime = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
+    return new Date(brTime);
+  };
 
   const fetchData = async () => {
     const todayDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
@@ -73,7 +80,10 @@ export default function Dashboard() {
         checkinWindowMinutes: s.checkin_window_minutes ?? 30
       }));
       setSchedule(mappedSchedule);
-      const nowTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+      // 🔧 FIX: usar horário no fuso Brasil para auto-selecionar aula
+      const nowBR = getNowBR();
+      const nowTime = nowBR.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
       const current = mappedSchedule.find((s: any) => nowTime >= s.time && nowTime <= s.endTime);
       if (current) setSelectedClass(current.time);
     }
@@ -117,12 +127,15 @@ export default function Dashboard() {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   };
 
-  const handleCheckin = () => {
-    if (!selectedClass) { setCheckinMessage('Por favor, selecione um horário de aula'); return; }
+  // 🔧 FIX PRINCIPAL: handleCheckin agora é async e usa Capacitor Geolocation no app nativo
+  const handleCheckin = async () => {
+    if (!selectedClass) {
+      setCheckinMessage('Por favor, selecione um horário de aula');
+      return;
+    }
     setIsCheckingIn(true);
     setCheckinMessage(null);
 
-    // 🔧 FIX: data sempre no fuso Brasil
     const todayBR = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
     const doCheckin = async (latitude: number, longitude: number) => {
@@ -189,29 +202,45 @@ export default function Dashboard() {
       } finally { setIsCheckingIn(false); }
     };
 
-    if (!navigator.geolocation) {
-      setCheckinMessage('Seu dispositivo não suporta geolocalização. Use o app no celular.');
-      setIsCheckingIn(false);
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => doCheckin(position.coords.latitude, position.coords.longitude),
-      (error) => {
-        setIsCheckingIn(false);
-        if (error.code === error.PERMISSION_DENIED) {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        // ✅ App nativo Android/iOS: usa plugin @capacitor/geolocation
+        const permission = await Geolocation.requestPermissions();
+        if (permission.location !== 'granted') {
           setCheckinMessage('Permissão de localização negada. Ative o GPS nas configurações do celular e tente novamente.');
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          setCheckinMessage('Localização indisponível. Verifique se o GPS está ativado.');
-        } else {
-          setCheckinMessage('Erro ao obter localização. Tente novamente.');
+          setIsCheckingIn(false);
+          return;
         }
-      },
-      { timeout: 15000, maximumAge: 0, enableHighAccuracy: true }
-    );
+        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000 });
+        await doCheckin(pos.coords.latitude, pos.coords.longitude);
+      } else {
+        // ✅ Web/PWA: usa navigator.geolocation normalmente
+        if (!navigator.geolocation) {
+          setCheckinMessage('Seu dispositivo não suporta geolocalização. Use o app no celular.');
+          setIsCheckingIn(false);
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (position) => doCheckin(position.coords.latitude, position.coords.longitude),
+          (error) => {
+            setIsCheckingIn(false);
+            if (error.code === error.PERMISSION_DENIED) {
+              setCheckinMessage('Permissão de localização negada. Ative o GPS nas configurações do celular e tente novamente.');
+            } else if (error.code === error.POSITION_UNAVAILABLE) {
+              setCheckinMessage('Localização indisponível. Verifique se o GPS está ativado.');
+            } else {
+              setCheckinMessage('Erro ao obter localização. Tente novamente.');
+            }
+          },
+          { timeout: 15000, maximumAge: 0, enableHighAccuracy: true }
+        );
+      }
+    } catch (e: any) {
+      setIsCheckingIn(false);
+      setCheckinMessage('Erro ao obter localização: ' + (e.message || 'Verifique se o GPS está ativado.'));
+    }
   };
 
-  // 🔧 FIX: data no fuso Brasil (igual ao que é salvo no banco)
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
   const alreadyCheckedIn = (user?.checkins || []).some(c => c.date === today);
 
@@ -226,6 +255,20 @@ export default function Dashboard() {
     const appUrl = window.location.origin;
     window.open(`https://wa.me/?text=${encodeURIComponent(`💪 Estou treinando no BoxLink! Venha acompanhar meu progresso: ${appUrl}`)}`, '_blank');
   };
+
+  // 🔧 FIX: dia da semana e hora no fuso Brasil para filtrar aulas
+  const nowBR = getNowBR();
+  const todayDowBR = nowBR.getDay();
+  const nowMinutesBR = nowBR.getHours() * 60 + nowBR.getMinutes();
+
+  // 🔧 FIX: contador de check-ins da semana usando c.date (string) em vez de c.timestamp (undefined)
+  const checkinsThisWeek = (user?.checkins || []).filter(c => {
+    const checkinDate = new Date(c.date + 'T00:00:00');
+    const startOfWeek = new Date(nowBR);
+    startOfWeek.setDate(nowBR.getDate() - nowBR.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    return checkinDate >= startOfWeek;
+  }).length;
 
   return (
     <div className="flex flex-col gap-6 p-4 pt-8">
@@ -323,16 +366,15 @@ export default function Dashboard() {
             <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest px-2">SELECIONE SEU HORÁRIO:</label>
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
               {(() => {
-                const todayDow = now.getDay();
-                const nowMinutes = now.getHours() * 60 + now.getMinutes();
-                const todaySchedule = schedule.filter((s: any) => s.days?.includes(todayDow));
+                // 🔧 FIX: usa dia da semana e hora no fuso Brasil
+                const todaySchedule = schedule.filter((s: any) => s.days?.includes(todayDowBR));
                 if (todaySchedule.length === 0) {
                   return <p className="text-on-surface-variant text-xs font-bold uppercase italic px-2 opacity-50">Nenhuma aula hoje</p>;
                 }
                 return todaySchedule.map((s: any) => {
                   const [h, m] = s.time.split(':').map(Number);
                   const windowMinutes = s.checkinWindowMinutes ?? 30;
-                  const expired = nowMinutes > h * 60 + m + windowMinutes;
+                  const expired = nowMinutesBR > h * 60 + m + windowMinutes;
                   return (
                     <button key={s.time} onClick={() => !expired && setSelectedClass(s.time)} disabled={expired}
                       className={cn(
@@ -400,12 +442,7 @@ export default function Dashboard() {
           <div>
             <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Check-ins Semana</p>
             <p className="text-2xl font-headline font-black text-on-surface">
-              {(user?.checkins || []).filter(c => {
-                const checkinDate = new Date(c.timestamp);
-                const now = new Date();
-                const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
-                return checkinDate >= startOfWeek;
-              }).length}/6
+              {checkinsThisWeek}/6
             </p>
           </div>
         </div>
