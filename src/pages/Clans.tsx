@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, Sparkles, LogOut, Clock, History } from 'lucide-react';
+import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, Sparkles, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DominationEnergyButton } from '../components/DominationEnergyButton';
 
@@ -40,7 +40,19 @@ interface DominationEvent {
   energy: number;
 }
 
-// Team rewards — economia de time (inspirado no crosscity-hub)
+interface BoxSettings {
+  id: string;
+  clans_enabled: boolean;
+  max_clan_members: number;
+  current_season?: { name: string; start_date: string; end_date: string };
+  competition_mode: 'challenge' | 'season';
+  allow_multiple_clans_per_user: boolean;
+  auto_approve_members: boolean;
+  clan_creation_requires_approval: boolean;
+  is_active: boolean;
+}
+
+// Team rewards — economia de time
 const teamRewards = [
   {
     id: 'reward_surprise',
@@ -65,7 +77,8 @@ const teamRewards = [
   },
 ];
 
-const BANNER_OPTIONS = ['🛡️', '⚔️', '🔥', '💪', '🦅', '🐺', '🏆', '⚡', '🌪️', '🗡️'];
+// Sugestões de emblemas (o usuário pode digitar qualquer um)
+const SUGGESTED_BANNERS = ['🛡️', '⚔️', '🔥', '💪', '🦅', '🐺', '🏆', '⚡', '🌪️', '🗡️', '🎯', '🚀', '💎', '👑', '🔱', '⚓', '🌟', '🔥'];
 
 export default function Clans() {
   const { user } = useAuth();
@@ -75,12 +88,20 @@ export default function Clans() {
   const [territory, setTerritory] = useState<Territory | null>(null);
   const [myClan, setMyClan] = useState<Clan | null>(null);
   const [myMembership, setMyMembership] = useState<ClanMembership | null>(null);
-  const [clansEnabled, setClansEnabled] = useState(false);
-  const [currentSeason, setCurrentSeason] = useState<{ name: string; start_date: string; end_date: string } | null>(null);
-  const [maxClanMembers, setMaxClanMembers] = useState(10);
+  const [boxSettings, setBoxSettings] = useState<BoxSettings>({
+    id: '',
+    clans_enabled: false,
+    max_clan_members: 10,
+    competition_mode: 'season',
+    allow_multiple_clans_per_user: false,
+    auto_approve_members: false,
+    clan_creation_requires_approval: false,
+    is_active: true,
+  });
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showClanDetailModal, setShowClanDetailModal] = useState<Clan | null>(null);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [clanMembers, setClanMembers] = useState<{ id: string; name: string; role: string; xp: number; membershipId: string }[]>([]);
   const [pendingRequests, setPendingRequests] = useState<(ClanMembership & { profiles: { name: string } })[]>([]);
   const [invitations, setInvitations] = useState<(ClanMembership & { clans: Clan })[]>([]);
@@ -91,9 +112,12 @@ export default function Clans() {
   const [newClanMotto, setNewClanMotto] = useState('');
   const [newClanColor, setNewClanColor] = useState('#CAFD00');
   const [newClanBanner, setNewClanBanner] = useState('🛡️');
+  const [customBannerInput, setCustomBannerInput] = useState('');
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const colors = ['#CAFD00', '#FF4444', '#4444FF', '#FF8800', '#AA44FF', '#00CCFF', '#FF44AA'];
   const today = new Date().toISOString().split('T')[0];
@@ -105,17 +129,39 @@ export default function Clans() {
   const fetchAll = async () => {
     setLoading(true);
     try {
+      // Fetch admin status
+      if (user) {
+        const { data: adminData } = await supabase
+          .from('profiles')
+          .select('is_admin')
+          .eq('id', user.id)
+          .maybeSingle();
+        setIsAdmin(adminData?.is_admin || false);
+      }
+
       const { data: settings, error: settingsError } = await supabase
         .from('box_settings')
         .select('*')
         .eq('is_active', true)
         .maybeSingle();
+      
       if (settingsError) {
         console.error('Erro ao ler box_settings em Clans:', settingsError);
       }
-      setClansEnabled((settings as any)?.clans_enabled || false);
-      setMaxClanMembers((settings as any)?.max_clan_members || 10);
-      setCurrentSeason((settings as any)?.current_season || null);
+
+      if (settings) {
+        setBoxSettings({
+          id: settings.id,
+          clans_enabled: settings.clans_enabled || false,
+          max_clan_members: settings.max_clan_members || 10,
+          current_season: settings.current_season || null,
+          competition_mode: settings.competition_mode || 'season',
+          allow_multiple_clans_per_user: settings.allow_multiple_clans_per_user || false,
+          auto_approve_members: settings.auto_approve_members || false,
+          clan_creation_requires_approval: settings.clan_creation_requires_approval || false,
+          is_active: settings.is_active || true,
+        });
+      }
 
       const { data: clansData } = await supabase
         .from('clans')
@@ -249,7 +295,6 @@ export default function Clans() {
     if (!error) setTick((v) => v + 1);
   };
 
-  // Capitão remove membro aprovado
   const handleRemoveApprovedMember = async (membershipId: string) => {
     if (!confirm('Remover este membro do time?')) return;
     const { error } = await supabase.from('clan_memberships').delete().eq('id', membershipId);
@@ -284,6 +329,10 @@ export default function Clans() {
 
   const handleCreateClan = async () => {
     if (!newClanName.trim() || !user) return;
+    
+    // Usar emblema customizado se fornecido, senão usar o selecionado
+    const bannerToUse = customBannerInput.trim() || newClanBanner;
+    
     setCreating(true);
     try {
       const { data: clan, error } = await supabase
@@ -292,22 +341,47 @@ export default function Clans() {
           name: newClanName.trim(),
           motto: newClanMotto.trim(),
           color: newClanColor,
-          banner: newClanBanner,
+          banner: bannerToUse,
           created_by: user.id,
-          ...(currentSeason ? {
-            season_name: currentSeason.name,
-            start_date: currentSeason.start_date,
-            end_date: currentSeason.end_date,
-          } : {}),
+          is_active: true,
+          requires_approval: boxSettings.clan_creation_requires_approval,
         })
-        .select().single();
-      if (error) { alert('Erro ao criar time: ' + error.message); return; }
-      await supabase.from('clan_memberships').insert({ clan_id: clan.id, user_id: user.id, role: 'captain', status: 'approved' });
+        .select()
+        .single();
+      
+      if (error) { 
+        console.error('Erro ao criar time:', error);
+        alert('Erro ao criar time: ' + error.message); 
+        return; 
+      }
+      
+      if (!clan) {
+        alert('Erro: Não foi possível criar o time');
+        return;
+      }
+
+      const { error: memberError } = await supabase.from('clan_memberships').insert({ 
+        clan_id: clan.id, 
+        user_id: user.id, 
+        role: 'captain', 
+        status: 'approved' 
+      });
+
+      if (memberError) {
+        alert('Erro ao adicionar você como capitão: ' + memberError.message);
+        return;
+      }
+
       setShowCreateModal(false);
       setNewClanName('');
       setNewClanMotto('');
       setNewClanBanner('🛡️');
+      setCustomBannerInput('');
       setTick((v) => v + 1);
+      alert('Time criado com sucesso!');
+    } catch (err: any) {
+      console.error('Erro inesperado:', err);
+      alert('Erro inesperado: ' + err.message);
     } finally {
       setCreating(false);
     }
@@ -318,16 +392,21 @@ export default function Clans() {
 
     // Verifica limite de membros
     const approvedCount = memberships.filter(m => m.clan_id === clanId && m.status === 'approved').length;
-    if (approvedCount >= maxClanMembers) {
-      alert(`Este time está cheio! O limite é de ${maxClanMembers} membros.`);
+    if (approvedCount >= boxSettings.max_clan_members) {
+      alert(`Este time está cheio! O limite é de ${boxSettings.max_clan_members} membros.`);
       return;
     }
 
     setJoining(clanId);
     try {
-      const { error } = await supabase.from('clan_memberships').insert({ clan_id: clanId, user_id: user.id, role: 'member', status: 'pending' });
+      const { error } = await supabase.from('clan_memberships').insert({ 
+        clan_id: clanId, 
+        user_id: user.id, 
+        role: 'member', 
+        status: boxSettings.auto_approve_members ? 'approved' : 'pending' 
+      });
       if (error) { alert('Erro ao entrar no time: ' + error.message); return; }
-      alert('Solicitação enviada! Aguarde aprovação do capitão do time.');
+      alert(boxSettings.auto_approve_members ? 'Bem-vindo ao time!' : 'Solicitação enviada! Aguarde aprovação do capitão do time.');
       setTick((v) => v + 1);
     } finally {
       setJoining(null);
@@ -346,8 +425,34 @@ export default function Clans() {
     setTick((v) => v + 1);
   };
 
+  const handleSaveAdminSettings = async () => {
+    if (!isAdmin) return;
+    setSavingSettings(true);
+    try {
+      const { error } = await supabase
+        .from('box_settings')
+        .update({
+          clans_enabled: boxSettings.clans_enabled,
+          max_clan_members: boxSettings.max_clan_members,
+          competition_mode: boxSettings.competition_mode,
+          allow_multiple_clans_per_user: boxSettings.allow_multiple_clans_per_user,
+          auto_approve_members: boxSettings.auto_approve_members,
+          clan_creation_requires_approval: boxSettings.clan_creation_requires_approval,
+        })
+        .eq('id', boxSettings.id);
+      
+      if (error) {
+        alert('Erro ao salvar configurações: ' + error.message);
+      } else {
+        alert('Configurações salvas com sucesso!');
+        setShowAdminPanel(false);
+      }
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   const isCaptain = myMembership?.role === 'captain' && myMembership?.status === 'approved';
-  const historicClansExist = false; // futuro: buscar times inativos se necessário
   const isApprovedMember = myMembership?.status === 'approved' && !!myClan;
 
   if (loading) {
@@ -358,7 +463,7 @@ export default function Clans() {
     );
   }
 
-  if (!clansEnabled) {
+  if (!boxSettings.clans_enabled) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 p-6 text-center">
         <Swords className="w-16 h-16 text-outline-variant" />
@@ -372,154 +477,308 @@ export default function Clans() {
 
   return (
     <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background">
-      {/* Header */}
+      {/* Header com botão admin */}
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-3xl font-headline font-black text-on-surface uppercase italic tracking-tighter">TIMES</h1>
-          <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest mt-1">Forme seu time. Domine o box.</p>
-        </div>
-        {!myClan && (
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-primary text-background px-4 py-2 rounded-xl font-headline font-black text-xs uppercase italic flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" /> Criar Time
-          </button>
-        )}
-      </div>
-
-      {/* ── Banner de Temporada ── */}
-      {(clans.length > 0 || (currentSeason && clans.length === 0 && historicClansExist)) && (() => {
-        const seasonData = clans[0] || currentSeason;
-        if (!seasonData?.season_name) return null;
-        const endDate = seasonData.end_date ? new Date(seasonData.end_date + 'T12:00:00') : null;
-        const daysLeft = endDate ? Math.ceil((endDate.getTime() - Date.now()) / 86400000) : null;
-        const ended = daysLeft !== null && daysLeft <= 0;
-        return (
-          <div className={`rounded-2xl border p-4 flex items-center justify-between ${ended ? 'bg-surface-container-highest border-outline-variant/20' : 'bg-primary/10 border-primary/20'}`}>
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{ended ? '🏁' : '🏆'}</span>
-              <div>
-                <p className={`text-[10px] font-black uppercase tracking-widest ${ended ? 'text-on-surface-variant' : 'text-primary'}`}>
-                  {ended ? 'Temporada Encerrada' : 'Temporada em Andamento'}
-                </p>
-                <p className="text-on-surface font-headline font-black italic text-sm">{seasonData.season_name}</p>
-              </div>
-            </div>
-            {daysLeft !== null && !ended && (
-              <div className="flex items-center gap-1 text-primary font-black text-xs">
-                <Clock className="w-3.5 h-3.5" />
-                {daysLeft === 0 ? 'Último dia!' : `${daysLeft}d`}
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* Tela de temporada encerrada — sem times ativos */}
-      {clans.length === 0 && currentSeason && (
-        <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-8 flex flex-col items-center gap-3 text-center">
-          <History className="w-12 h-12 text-on-surface-variant opacity-40" />
-          <p className="font-headline font-black text-on-surface uppercase italic text-base">Aguardando nova temporada</p>
-          <p className="text-on-surface-variant text-xs max-w-xs">
-            A temporada atual foi encerrada. Fique de olho — em breve o admin vai abrir inscrições para a próxima!
+          <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest mt-1">
+            {boxSettings.competition_mode === 'challenge' ? '⚔️ Modo Desafio' : '📅 Modo Temporada'}
           </p>
         </div>
-      )}
-
-      {/* Território do Dia */}
-      {territory && (
-        <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5">
-          <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-2">Território do Dia</p>
-          <div className="flex items-center gap-3">
-            <span className="text-4xl">{territory.icon}</span>
-            <div>
-              <h3 className="font-headline font-black text-on-surface uppercase italic">{territory.name}</h3>
-              <p className="text-on-surface-variant text-xs">{territory.focus}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Convites */}
-      {invitations.length > 0 && (
-        <div className="flex flex-col gap-4">
-          <p className="text-[10px] text-primary font-black uppercase tracking-widest pl-2">Meus Convites</p>
-          {invitations.map((invite) => (
-            <div key={invite.id} className="bg-surface-container-low rounded-[2rem] border-2 p-5" style={{ borderColor: invite.clans.color }}>
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="font-headline font-black text-on-surface text-lg uppercase italic">
-                    {invite.clans.banner && <span className="mr-1">{invite.clans.banner}</span>}
-                    {invite.clans.name}
-                  </h3>
-                  <p className="text-on-surface-variant text-xs italic tracking-tight opacity-70">Você foi convidado para este time!</p>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => handleAcceptInvite(invite.id)} className="p-3 bg-primary text-black rounded-2xl transition-all active:scale-95">
-                    <Check className="w-5 h-5" />
-                  </button>
-                  <button onClick={() => handleRejectInvite(invite.id)} className="p-3 bg-surface-container-highest text-error rounded-2xl transition-all active:scale-95">
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Meu Time — membro aprovado */}
-      {myClan && myMembership?.status === 'approved' && (
-        <div className="bg-surface-container-low rounded-[2rem] border-2 p-5" style={{ borderColor: myClan.color }}>
-          <div className="flex justify-between items-start">
-            <div onClick={() => { setShowClanDetailModal(myClan); fetchClanMembers(myClan.id); }} className="cursor-pointer">
-              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Meu Time</p>
-              <h3 className="font-headline font-black text-on-surface text-xl uppercase italic flex items-center gap-2">
-                {isCaptain && <Crown className="w-5 h-5" style={{ color: myClan.color }} />}
-                {myClan.banner && <span>{myClan.banner}</span>}
-                {myClan.name}
-              </h3>
-              {myClan.motto && <p className="text-on-surface-variant text-xs mt-1 italic">"{myClan.motto}"</p>}
-            </div>
-            <button onClick={handleLeaveClan} className="flex items-center gap-1 text-error text-xs font-black uppercase hover:underline">
-              <LogOut className="w-3 h-3" /> Sair
+        <div className="flex gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => setShowAdminPanel(true)}
+              className="bg-secondary text-background px-4 py-2 rounded-xl font-headline font-black text-xs uppercase italic flex items-center gap-2 hover:opacity-80 transition"
+            >
+              <Settings className="w-4 h-4" /> Admin
             </button>
+          )}
+          {!myClan && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="bg-primary text-background px-4 py-2 rounded-xl font-headline font-black text-xs uppercase italic flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" /> Criar Time
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Admin Panel Modal ── */}
+      <AnimatePresence>
+        {showAdminPanel && isAdmin && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4"
+            onClick={() => setShowAdminPanel(false)}
+          >
+            <motion.div
+              initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
+              className="bg-surface-container-low rounded-[2rem] p-6 w-full max-w-md max-h-[80vh] overflow-y-auto no-scrollbar"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="font-headline font-black text-on-surface text-xl uppercase italic flex items-center gap-2">
+                  <Settings className="w-5 h-5" /> Painel Admin
+                </h2>
+                <button onClick={() => setShowAdminPanel(false)}><X className="w-5 h-5 text-on-surface-variant" /></button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Ativar/Desativar Times */}
+                <div className="bg-surface-container-highest rounded-2xl p-4 border border-outline-variant/10">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="font-headline font-black text-on-surface text-sm uppercase italic">Sistema de Times</p>
+                      <p className="text-on-surface-variant text-xs mt-1">Ativar ou desativar o sistema</p>
+                    </div>
+                    <button
+                      onClick={() => setBoxSettings({ ...boxSettings, clans_enabled: !boxSettings.clans_enabled })}
+                      className="transition"
+                    >
+                      {boxSettings.clans_enabled ? (
+                        <ToggleRight className="w-6 h-6 text-primary" />
+                      ) : (
+                        <ToggleLeft className="w-6 h-6 text-on-surface-variant" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Limite de Membros */}
+                <div className="bg-surface-container-highest rounded-2xl p-4 border border-outline-variant/10">
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-3 block">
+                    Limite de Alunos por Time
+                  </label>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={boxSettings.max_clan_members}
+                      onChange={(e) => setBoxSettings({ ...boxSettings, max_clan_members: parseInt(e.target.value) || 10 })}
+                      className="flex-1 bg-surface-container border-none rounded-xl p-3 font-headline font-bold text-on-surface outline-none"
+                    />
+                    <span className="text-on-surface-variant font-black text-sm">alunos</span>
+                  </div>
+                  <p className="text-on-surface-variant text-xs mt-2">Máximo de membros permitidos por time</p>
+                </div>
+
+                {/* Modo de Disputa */}
+                <div className="bg-surface-container-highest rounded-2xl p-4 border border-outline-variant/10">
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-3 block">
+                    Modo de Disputa
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setBoxSettings({ ...boxSettings, competition_mode: 'season' })}
+                      className={`flex-1 py-3 rounded-xl font-headline font-black text-xs uppercase italic transition ${
+                        boxSettings.competition_mode === 'season'
+                          ? 'bg-primary text-background'
+                          : 'bg-surface-container border border-outline-variant/20 text-on-surface-variant'
+                      }`}
+                    >
+                      📅 Temporada
+                    </button>
+                    <button
+                      onClick={() => setBoxSettings({ ...boxSettings, competition_mode: 'challenge' })}
+                      className={`flex-1 py-3 rounded-xl font-headline font-black text-xs uppercase italic transition ${
+                        boxSettings.competition_mode === 'challenge'
+                          ? 'bg-primary text-background'
+                          : 'bg-surface-container border border-outline-variant/20 text-on-surface-variant'
+                      }`}
+                    >
+                      ⚔️ Desafio
+                    </button>
+                  </div>
+                  <p className="text-on-surface-variant text-xs mt-2">
+                    {boxSettings.competition_mode === 'season' 
+                      ? 'Competição durante uma temporada definida'
+                      : 'Competição por desafios pontuais'}
+                  </p>
+                </div>
+
+                {/* Aprovação Automática */}
+                <div className="bg-surface-container-highest rounded-2xl p-4 border border-outline-variant/10">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="font-headline font-black text-on-surface text-sm uppercase italic">Aprovação Automática</p>
+                      <p className="text-on-surface-variant text-xs mt-1">Aprovar membros automaticamente</p>
+                    </div>
+                    <button
+                      onClick={() => setBoxSettings({ ...boxSettings, auto_approve_members: !boxSettings.auto_approve_members })}
+                      className="transition"
+                    >
+                      {boxSettings.auto_approve_members ? (
+                        <ToggleRight className="w-6 h-6 text-primary" />
+                      ) : (
+                        <ToggleLeft className="w-6 h-6 text-on-surface-variant" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Múltiplos Times */}
+                <div className="bg-surface-container-highest rounded-2xl p-4 border border-outline-variant/10">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="font-headline font-black text-on-surface text-sm uppercase italic">Múltiplos Times</p>
+                      <p className="text-on-surface-variant text-xs mt-1">Permitir usuário em vários times</p>
+                    </div>
+                    <button
+                      onClick={() => setBoxSettings({ ...boxSettings, allow_multiple_clans_per_user: !boxSettings.allow_multiple_clans_per_user })}
+                      className="transition"
+                    >
+                      {boxSettings.allow_multiple_clans_per_user ? (
+                        <ToggleRight className="w-6 h-6 text-primary" />
+                      ) : (
+                        <ToggleLeft className="w-6 h-6 text-on-surface-variant" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Aprovação de Criação */}
+                <div className="bg-surface-container-highest rounded-2xl p-4 border border-outline-variant/10">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="font-headline font-black text-on-surface text-sm uppercase italic">Aprovar Criação</p>
+                      <p className="text-on-surface-variant text-xs mt-1">Novos times requerem aprovação</p>
+                    </div>
+                    <button
+                      onClick={() => setBoxSettings({ ...boxSettings, clan_creation_requires_approval: !boxSettings.clan_creation_requires_approval })}
+                      className="transition"
+                    >
+                      {boxSettings.clan_creation_requires_approval ? (
+                        <ToggleRight className="w-6 h-6 text-primary" />
+                      ) : (
+                        <ToggleLeft className="w-6 h-6 text-on-surface-variant" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Botão Salvar */}
+                <button
+                  onClick={handleSaveAdminSettings}
+                  disabled={savingSettings}
+                  className="w-full py-4 rounded-2xl font-headline font-black text-background uppercase italic bg-primary disabled:opacity-50 transition mt-4"
+                >
+                  {savingSettings ? 'Salvando...' : '✓ Salvar Configurações'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Seu Time */}
+      {myClan && (
+        <div className="bg-surface-container-low rounded-[2rem] border-2 p-5" style={{ borderColor: myClan.color }}>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-1 flex items-center gap-2">
+                <Crown className="w-3 h-3" /> Seu Time
+              </p>
+              <h2 className="font-headline font-black text-on-surface text-xl uppercase italic flex items-center gap-2">
+                {myClan.banner && <span className="text-2xl">{myClan.banner}</span>}
+                {myClan.name}
+              </h2>
+              {myClan.motto && <p className="text-on-surface-variant text-xs italic mt-1">"{myClan.motto}"</p>}
+            </div>
+            {isCaptain && (
+              <button onClick={handleLeaveClan} className="text-error text-xs font-black uppercase hover:underline flex items-center gap-1">
+                <LogOut className="w-3 h-3" /> Sair
+              </button>
+            )}
           </div>
 
-          {/* Botão de energia — DominationEnergyButton */}
-          {user && isApprovedMember && (
-            <div className="mt-4 pt-4 border-t border-outline-variant/10">
-              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-2">Contribuir com Energia</p>
-              <DominationEnergyButton
-                userId={user.id}
-                clanId={myClan.id}
-                activityId={`territory:${today}`}
-                activityType="event"
-                energy={25}
-                participationValid={true}
-                onSuccess={() => setTick((v) => v + 1)}
-              />
-            </div>
-          )}
-
-          {/* Solicitações pendentes (captain only) */}
-          {isCaptain && pendingRequests.length > 0 && (
-            <div className="mt-6 pt-6 border-t border-outline-variant/10">
-              <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-3 flex items-center gap-2">
-                Solicitações Pendentes ({pendingRequests.length})
+          {/* Estatísticas do Time */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-surface-container-highest rounded-xl p-3 border border-outline-variant/10">
+              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Energia</p>
+              <p className="font-headline font-black text-primary text-lg italic flex items-center gap-1">
+                <Zap className="w-4 h-4" /> {leaderboard.find((l) => l.clan.id === myClan.id)?.energy || 0}
               </p>
-              <div className="flex flex-col gap-2">
-                {pendingRequests.map((req) => (
-                  <div key={req.id} className="flex justify-between items-center bg-surface-container-highest p-3 rounded-xl border border-outline-variant/10">
-                    <span className="text-xs font-bold text-on-surface uppercase">{req.profiles.name}</span>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleApproveMember(req.id)} className="p-1.5 bg-primary/20 text-primary rounded-lg"><Check className="w-4 h-4" /></button>
-                      <button onClick={() => handleRejectMember(req.id)} className="p-1.5 bg-error/20 text-error rounded-lg"><X className="w-4 h-4" /></button>
-                    </div>
+            </div>
+            <div className="bg-surface-container-highest rounded-xl p-3 border border-outline-variant/10">
+              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Membros</p>
+              <p className="font-headline font-black text-on-surface text-lg italic">
+                {leaderboard.find((l) => l.clan.id === myClan.id)?.memberCount || 0}/{boxSettings.max_clan_members}
+              </p>
+            </div>
+          </div>
+
+          {/* Ações do Capitão */}
+          {isCaptain && (
+            <div className="space-y-3 pt-4 border-t border-outline-variant/10">
+              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Gerenciar Time</p>
+              
+              {/* Buscar e Convidar Atletas */}
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={athleteSearch}
+                  onChange={(e) => {
+                    setAthleteSearch(e.target.value);
+                    searchAthletes(e.target.value);
+                  }}
+                  placeholder="Buscar atleta para convidar..."
+                  className="w-full bg-surface-container-highest border-none rounded-xl p-3 text-xs font-bold text-on-surface outline-none"
+                />
+                {loadingSearch && <p className="text-xs text-on-surface-variant">Buscando...</p>}
+                {foundAthletes.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    {foundAthletes.map((athlete) => (
+                      <div key={athlete.id} className="flex justify-between items-center bg-surface-container-highest p-3 rounded-xl border border-outline-variant/10">
+                        <span className="text-xs font-bold text-on-surface uppercase">{athlete.name}</span>
+                        <button onClick={() => sendInvite(athlete.id)} className="p-1.5 bg-primary/20 text-primary rounded-lg"><Plus className="w-4 h-4" /></button>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
+
+              {/* Membros Aprovados */}
+              {clanMembers.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-outline-variant/10">
+                  <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-2">Membros ({clanMembers.length})</p>
+                  <div className="flex flex-col gap-2">
+                    {clanMembers.map((member) => (
+                      <div key={member.id} className="flex justify-between items-center bg-surface-container-highest p-3 rounded-xl border border-outline-variant/10">
+                        <div className="flex-1">
+                          <span className="text-xs font-bold text-on-surface uppercase">{member.name}</span>
+                          <p className="text-[10px] text-on-surface-variant">{member.role === 'captain' ? 'Capitão' : 'Membro'}</p>
+                        </div>
+                        {member.role !== 'captain' && (
+                          <button onClick={() => handleRemoveApprovedMember(member.membershipId)} className="p-1.5 bg-error/20 text-error rounded-lg"><X className="w-4 h-4" /></button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Solicitações pendentes (captain only) */}
+              {pendingRequests.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-outline-variant/10">
+                  <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-3 flex items-center gap-2">
+                    Solicitações Pendentes ({pendingRequests.length})
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {pendingRequests.map((req) => (
+                      <div key={req.id} className="flex justify-between items-center bg-surface-container-highest p-3 rounded-xl border border-outline-variant/10">
+                        <span className="text-xs font-bold text-on-surface uppercase">{req.profiles.name}</span>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleApproveMember(req.id)} className="p-1.5 bg-primary/20 text-primary rounded-lg"><Check className="w-4 h-4" /></button>
+                          <button onClick={() => handleRejectMember(req.id)} className="p-1.5 bg-error/20 text-error rounded-lg"><X className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -572,9 +831,9 @@ export default function Clans() {
                   </div>
                   <div className="text-right">
                     <div className="flex items-center gap-1 text-primary font-black text-sm"><Zap className="w-3 h-3" /> {item.energy}</div>
-                    <div className={`flex items-center gap-1 text-[10px] font-bold ${item.memberCount >= maxClanMembers ? 'text-secondary' : 'text-on-surface-variant'}`}>
-                      <Users className="w-3 h-3" /> {item.memberCount}/{maxClanMembers}
-                      {item.memberCount >= maxClanMembers && <span className="uppercase tracking-widest"> · CHEIO</span>}
+                    <div className={`flex items-center gap-1 text-[10px] font-bold ${item.memberCount >= boxSettings.max_clan_members ? 'text-secondary' : 'text-on-surface-variant'}`}>
+                      <Users className="w-3 h-3" /> {item.memberCount}/{boxSettings.max_clan_members}
+                      {item.memberCount >= boxSettings.max_clan_members && <span className="uppercase tracking-widest"> · CHEIO</span>}
                     </div>
                   </div>
                 </div>
@@ -586,11 +845,11 @@ export default function Clans() {
                 {!myClan && !alreadyRequested && (
                   <button
                     onClick={() => handleJoinClan(item.clan.id)}
-                    disabled={joining === item.clan.id || item.memberCount >= maxClanMembers}
-                    className={`w-full py-2 rounded-xl font-headline font-black text-xs uppercase italic border transition-all flex items-center justify-center gap-2 ${item.memberCount >= maxClanMembers ? 'border-outline-variant/10 text-on-surface-variant opacity-40 cursor-not-allowed' : 'border-outline-variant/20 text-on-surface-variant hover:border-primary hover:text-primary'}`}
+                    disabled={joining === item.clan.id || item.memberCount >= boxSettings.max_clan_members}
+                    className={`w-full py-2 rounded-xl font-headline font-black text-xs uppercase italic border transition-all flex items-center justify-center gap-2 ${item.memberCount >= boxSettings.max_clan_members ? 'border-outline-variant/10 text-on-surface-variant opacity-40 cursor-not-allowed' : 'border-outline-variant/20 text-on-surface-variant hover:border-primary hover:text-primary'}`}
                   >
                     <LogIn className="w-3 h-3" />
-                    {joining === item.clan.id ? 'Solicitando...' : item.memberCount >= maxClanMembers ? 'Time Cheio' : 'Entrar no Time'}
+                    {joining === item.clan.id ? 'Solicitando...' : item.memberCount >= boxSettings.max_clan_members ? 'Time Cheio' : 'Entrar no Time'}
                   </button>
                 )}
                 {alreadyRequested && !isMine && (
@@ -658,22 +917,44 @@ export default function Clans() {
               </div>
 
               <div className="flex flex-col gap-4">
-                {/* Emblema */}
+                {/* Emblema - Sugestões */}
                 <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Emblema do Time</label>
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Emblema do Time (Sugestões)</label>
                   <div className="flex gap-2 flex-wrap">
-                    {BANNER_OPTIONS.map((b) => (
+                    {SUGGESTED_BANNERS.map((b) => (
                       <button
                         key={b}
-                        onClick={() => setNewClanBanner(b)}
+                        onClick={() => {
+                          setNewClanBanner(b);
+                          setCustomBannerInput('');
+                        }}
                         className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all border-2 ${
-                          newClanBanner === b ? 'border-primary bg-primary/10 scale-110' : 'border-outline-variant/20 bg-surface-container-highest'
+                          newClanBanner === b && !customBannerInput ? 'border-primary bg-primary/10 scale-110' : 'border-outline-variant/20 bg-surface-container-highest'
                         }`}
                       >
                         {b}
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Emblema Customizado */}
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Ou Digite um Emoji Customizado</label>
+                  <input
+                    type="text"
+                    value={customBannerInput}
+                    onChange={(e) => {
+                      setCustomBannerInput(e.target.value);
+                      if (e.target.value.trim()) {
+                        setNewClanBanner(e.target.value);
+                      }
+                    }}
+                    placeholder="Ex: 🎯 🚀 💎 👑"
+                    maxLength={5}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface outline-none text-center text-2xl"
+                  />
+                  <p className="text-on-surface-variant text-xs">Cole qualquer emoji que desejar!</p>
                 </div>
 
                 <div className="space-y-2">
@@ -714,7 +995,7 @@ export default function Clans() {
                   className="w-full py-4 rounded-2xl font-headline font-black text-background uppercase italic disabled:opacity-50 mt-2"
                   style={{ backgroundColor: newClanColor }}
                 >
-                  {creating ? 'Criando...' : `${newClanBanner} Criar Time`}
+                  {creating ? 'Criando...' : `${customBannerInput || newClanBanner} Criar Time`}
                 </button>
               </div>
             </motion.div>
@@ -760,86 +1041,25 @@ export default function Clans() {
                   <div className="bg-surface-container-highest p-4 rounded-2xl border border-outline-variant/10">
                     <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Membros</p>
                     <p className="font-headline font-black text-2xl text-on-surface italic flex items-center gap-2">
-                      <Users className="w-5 h-5" /> {leaderboard.find((l) => l.clan.id === showClanDetailModal.id)?.memberCount || 0}
+                      <Users className="w-5 h-5" /> {clanMembers.length}
                     </p>
                   </div>
                 </div>
 
                 <div>
-                  <h3 className="text-xs font-black text-on-surface-variant uppercase tracking-widest mb-3 px-1">Membros do Time</h3>
+                  <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-3">Membros do Time</p>
                   <div className="flex flex-col gap-2">
-                    {clanMembers.length > 0 ? (
-                      clanMembers.sort((a, b) => b.xp - a.xp).map((m, idx) => (
-                        <div key={idx} className="flex justify-between items-center bg-surface-container-highest/50 p-3 rounded-xl border border-outline-variant/10">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-xs">
-                              {m.name[0]}
-                            </div>
-                            <div>
-                              <p className="text-xs font-bold text-on-surface uppercase flex items-center gap-1">
-                                {m.name}
-                                {m.role === 'captain' && <Crown className="w-3 h-3 text-secondary" />}
-                              </p>
-                              <p className="text-[10px] text-on-surface-variant font-medium">{m.xp} XP acumulado</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {idx === 0 && <Trophy className="w-4 h-4 text-secondary opacity-50" />}
-                            {/* Capitão pode remover membros aprovados (exceto a si mesmo) */}
-                            {isCaptain && myClan?.id === showClanDetailModal.id && m.id !== user?.id && (
-                              <button
-                                onClick={() => handleRemoveApprovedMember(m.membershipId)}
-                                className="p-1 bg-error/10 text-error rounded-lg hover:bg-error/20 transition-colors"
-                                title="Remover membro"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
+                    {clanMembers.map((member) => (
+                      <div key={member.id} className="flex justify-between items-center bg-surface-container-highest p-3 rounded-xl border border-outline-variant/10">
+                        <div>
+                          <p className="text-xs font-bold text-on-surface uppercase">{member.name}</p>
+                          <p className="text-[10px] text-on-surface-variant">{member.role === 'captain' ? '👑 Capitão' : 'Membro'}</p>
                         </div>
-                      ))
-                    ) : (
-                      <p className="text-center py-4 text-xs text-on-surface-variant">Carregando membros...</p>
-                    )}
+                        <p className="text-xs font-black text-primary">{member.xp} XP</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
-
-                {/* Convidar atletas (captain only) */}
-                {isCaptain && myClan?.id === showClanDetailModal.id && (
-                  <div className="pt-6 border-t border-outline-variant/10">
-                    <h3 className="text-xs font-black text-primary uppercase tracking-widest mb-3 px-1">Convidar Atletas</h3>
-                    <div className="space-y-3">
-                      <div className="relative">
-                        <input
-                          type="text" value={athleteSearch}
-                          onChange={(e) => { setAthleteSearch(e.target.value); searchAthletes(e.target.value); }}
-                          placeholder="Buscar atleta por nome..."
-                          className="w-full bg-surface-container-highest border border-outline-variant/30 rounded-xl px-4 py-3 text-sm text-on-surface focus:border-primary outline-none transition-all"
-                        />
-                        {loadingSearch && (
-                          <div className="absolute right-4 top-3.5">
-                            <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                          </div>
-                        )}
-                      </div>
-                      {foundAthletes.length > 0 && (
-                        <div className="bg-surface-container-highest/30 rounded-xl border border-outline-variant/10 overflow-hidden">
-                          {foundAthletes.map((athlete) => (
-                            <div key={athlete.id} className="flex justify-between items-center p-3 border-b border-outline-variant/5 last:border-0 hover:bg-surface-container-highest transition-colors">
-                              <span className="text-xs font-bold text-on-surface uppercase">{athlete.name}</span>
-                              <button
-                                onClick={() => sendInvite(athlete.id)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/20 text-primary rounded-lg text-[10px] font-black uppercase transition-all hover:bg-primary hover:text-black"
-                              >
-                                <Users className="w-3.5 h-3.5" /> Convidar
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             </motion.div>
           </motion.div>
