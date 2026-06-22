@@ -105,12 +105,16 @@ export default function Clans() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const { data: settings } = await supabase
+      const { data: settings, error: settingsError } = await supabase
         .from('box_settings')
-        .select('clans_enabled, max_clan_members, current_season')
+        .select('*')
+        .eq('is_active', true)
         .maybeSingle();
-      setClansEnabled(settings?.clans_enabled || false);
-      setMaxClanMembers(settings?.max_clan_members || 10);
+      if (settingsError) {
+        console.error('Erro ao ler box_settings em Clans:', settingsError);
+      }
+      setClansEnabled((settings as any)?.clans_enabled || false);
+      setMaxClanMembers((settings as any)?.max_clan_members || 10);
       setCurrentSeason((settings as any)?.current_season || null);
 
       const { data: clansData } = await supabase
@@ -843,4 +847,4 @@ export default function Clans() {
       </AnimatePresence>
     </div>
   );
-                                                            }
+}
