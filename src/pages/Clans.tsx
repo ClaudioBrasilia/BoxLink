@@ -118,6 +118,9 @@ export default function Clans() {
   const [tick, setTick] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [showSeasonModal, setShowSeasonModal] = useState(false);
+  const [savingSeason, setSavingSeason] = useState(false);
+  const [newSeason, setNewSeason] = useState({ name: '', start_date: '', end_date: '' });
 
   const colors = ['#CAFD00', '#FF4444', '#4444FF', '#FF8800', '#AA44FF', '#00CCFF', '#FF44AA'];
   const today = new Date().toISOString().split('T')[0];
@@ -452,7 +455,62 @@ export default function Clans() {
     }
   };
 
-  const isCaptain = myMembership?.role === 'captain' && myMembership?.status === 'approved';
+  // ── Admin: excluir time permanentemente ──
+  const handleAdminDeleteClan = async (clanId: string, clanName: string) => {
+    if (!isAdmin) return;
+    if (!confirm(`Excluir o time "${clanName}" permanentemente? Esta ação não pode ser desfeita.`)) return;
+    const { error } = await supabase.from('clans').delete().eq('id', clanId);
+    if (error) {
+      alert('Erro ao excluir time: ' + error.message);
+    } else {
+      alert('Time excluído.');
+      setTick((v) => v + 1);
+    }
+  };
+
+  // ── Admin: encerrar temporada atual (arquiva times ativos) ──
+  const handleEndSeason = async () => {
+    if (!isAdmin) return;
+    const activeCount = clans.length;
+    if (activeCount === 0) { alert('Nenhum time ativo para encerrar.'); return; }
+    if (!confirm(`Encerrar temporada atual? Os ${activeCount} time(s) ativo(s) serão arquivados e o histórico preservado.`)) return;
+    const { error } = await supabase.from('clans').update({ is_active: false, end_date: today }).eq('is_active', true);
+    if (error) {
+      alert('Erro ao encerrar temporada: ' + error.message);
+    } else {
+      alert('Temporada encerrada! Times arquivados com sucesso.');
+      setTick((v) => v + 1);
+    }
+  };
+
+  // ── Admin: criar/abrir nova temporada ──
+  const handleCreateSeason = async () => {
+    if (!isAdmin) return;
+    if (!newSeason.name.trim() || !newSeason.start_date || !newSeason.end_date) {
+      alert('Preencha nome, data de início e data de fim.');
+      return;
+    }
+    if (clans.length > 0) {
+      alert('Encerre a temporada atual antes de iniciar uma nova.');
+      return;
+    }
+    setSavingSeason(true);
+    try {
+      const { error } = await supabase.from('box_settings')
+        .update({ current_season: newSeason })
+        .eq('id', boxSettings.id);
+      if (error) {
+        alert('Erro ao criar temporada: ' + error.message);
+      } else {
+        alert(`Temporada "${newSeason.name}" aberta! Os atletas já podem criar times.`);
+        setNewSeason({ name: '', start_date: '', end_date: '' });
+        setShowSeasonModal(false);
+        setTick((v) => v + 1);
+      }
+    } finally {
+      setSavingSeason(false);
+    }
+  };
   const isApprovedMember = myMembership?.status === 'approved' && !!myClan;
 
   if (loading) {
@@ -659,6 +717,82 @@ export default function Clans() {
                   </div>
                 </div>
 
+                {/* ── Controle de Temporada e Times ── */}
+                <div className="bg-surface-container-highest rounded-2xl p-4 border border-outline-variant/10">
+                  <p className="font-headline font-black text-on-surface text-sm uppercase italic mb-1">Controle de Temporada</p>
+                  <p className="text-on-surface-variant text-xs mb-3">Abrir, encerrar e gerenciar os times da temporada</p>
+
+                  {boxSettings.current_season?.name && clans.length > 0 ? (
+                    <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 mb-3">
+                      <p className="text-[10px] text-primary font-black uppercase tracking-widest">Temporada em andamento</p>
+                      <p className="text-on-surface font-headline font-black italic text-sm">{boxSettings.current_season.name}</p>
+                    </div>
+                  ) : (
+                    <div className="bg-surface-container border border-outline-variant/10 rounded-xl p-3 mb-3">
+                      <p className="text-on-surface-variant text-xs font-bold">
+                        {boxSettings.current_season?.name
+                          ? `Temporada "${boxSettings.current_season.name}" aberta — aguardando os atletas criarem times.`
+                          : 'Nenhuma temporada aberta no momento.'}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setShowAdminPanel(false); setShowSeasonModal(true); }}
+                      disabled={clans.length > 0}
+                      className="flex-1 py-3 rounded-xl font-headline font-black text-xs uppercase italic bg-primary text-background disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" /> Nova Temporada
+                    </button>
+                    <button
+                      onClick={handleEndSeason}
+                      disabled={clans.length === 0}
+                      className="flex-1 py-3 rounded-xl font-headline font-black text-xs uppercase italic bg-error/20 text-error disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <Swords className="w-4 h-4" /> Encerrar
+                    </button>
+                  </div>
+                  {clans.length > 0 && (
+                    <p className="text-on-surface-variant text-[10px] mt-2 italic">
+                      Encerre a temporada atual antes de abrir uma nova.
+                    </p>
+                  )}
+                </div>
+
+                {/* ── Times Ativos (excluir) ── */}
+                <div className="bg-surface-container-highest rounded-2xl p-4 border border-outline-variant/10">
+                  <p className="font-headline font-black text-on-surface text-sm uppercase italic mb-1">Times Ativos</p>
+                  <p className="text-on-surface-variant text-xs mb-3">Excluir times permanentemente</p>
+                  {clans.length === 0 ? (
+                    <p className="text-on-surface-variant text-xs italic py-2">Nenhum time ativo.</p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {clans.map((clan) => {
+                        const memberCount = memberships.filter((m) => m.clan_id === clan.id && m.status === 'approved').length;
+                        return (
+                          <div key={clan.id} className="flex items-center justify-between bg-surface-container rounded-xl p-3 border border-outline-variant/10">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {clan.banner && <span className="text-lg flex-shrink-0">{clan.banner}</span>}
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-on-surface uppercase truncate">{clan.name}</p>
+                                <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">👥 {memberCount} membro(s)</p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleAdminDeleteClan(clan.id, clan.name)}
+                              className="p-2 bg-error/10 text-error rounded-xl hover:bg-error/20 transition-colors flex-shrink-0"
+                              title="Excluir time"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {/* Botão Salvar */}
                 <button
                   onClick={handleSaveAdminSettings}
@@ -666,6 +800,68 @@ export default function Clans() {
                   className="w-full py-4 rounded-2xl font-headline font-black text-background uppercase italic bg-primary disabled:opacity-50 transition mt-4"
                 >
                   {savingSettings ? 'Salvando...' : '✓ Salvar Configurações'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Modal Nova Temporada ── */}
+      <AnimatePresence>
+        {showSeasonModal && isAdmin && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4"
+            onClick={() => setShowSeasonModal(false)}
+          >
+            <motion.div
+              initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
+              className="bg-surface-container-low rounded-[2rem] p-6 w-full max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="font-headline font-black text-on-surface text-xl uppercase italic">Nova Temporada</h2>
+                <button onClick={() => setShowSeasonModal(false)}><X className="w-5 h-5 text-on-surface-variant" /></button>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Nome da Temporada</label>
+                  <input
+                    type="text" value={newSeason.name}
+                    onChange={(e) => setNewSeason({ ...newSeason, name: e.target.value })}
+                    placeholder="Ex: Temporada Julho 2025"
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface outline-none"
+                    maxLength={40}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Início</label>
+                    <input
+                      type="date" value={newSeason.start_date}
+                      onChange={(e) => setNewSeason({ ...newSeason, start_date: e.target.value })}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-bold text-on-surface outline-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Fim</label>
+                    <input
+                      type="date" value={newSeason.end_date}
+                      onChange={(e) => setNewSeason({ ...newSeason, end_date: e.target.value })}
+                      className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-bold text-on-surface outline-none"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleCreateSeason}
+                  disabled={savingSeason || !newSeason.name.trim() || !newSeason.start_date || !newSeason.end_date}
+                  className="w-full py-4 rounded-2xl font-headline font-black text-background uppercase italic bg-primary disabled:opacity-50 mt-2"
+                >
+                  {savingSeason ? 'Salvando...' : '🏁 Iniciar Temporada'}
                 </button>
               </div>
             </motion.div>
