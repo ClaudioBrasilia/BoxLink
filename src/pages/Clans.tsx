@@ -673,6 +673,55 @@ export default function Clans() {
         )}
       </AnimatePresence>
 
+      {/* ── Banner de Temporada Ativa ── */}
+      {boxSettings.competition_mode === 'season' && boxSettings.current_season?.name && (() => {
+        const season = boxSettings.current_season;
+        const endDate = season.end_date ? new Date(season.end_date + 'T12:00:00') : null;
+        const startDate = season.start_date ? new Date(season.start_date + 'T12:00:00') : null;
+        const daysLeft = endDate ? Math.ceil((endDate.getTime() - Date.now()) / 86400000) : null;
+        const ended = daysLeft !== null && daysLeft < 0;
+        const noClansYet = clans.length === 0;
+        return (
+          <div className={`rounded-[2rem] border p-5 ${ended ? 'bg-surface-container-highest border-outline-variant/20' : 'bg-primary/10 border-primary/30'}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">{ended ? '🏁' : '🏆'}</span>
+                <div>
+                  <p className={`text-[10px] font-black uppercase tracking-widest ${ended ? 'text-on-surface-variant' : 'text-primary'}`}>
+                    {ended ? 'Temporada Encerrada' : 'Temporada Aberta'}
+                  </p>
+                  <p className="text-on-surface font-headline font-black italic text-base">{season.name}</p>
+                  {startDate && endDate && (
+                    <p className="text-on-surface-variant text-[10px] font-bold mt-0.5">
+                      {startDate.toLocaleDateString('pt-BR')} → {endDate.toLocaleDateString('pt-BR')}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {daysLeft !== null && !ended && (
+                <div className="flex flex-col items-center gap-0.5 text-primary font-black">
+                  <Clock className="w-4 h-4" />
+                  <span className="text-sm">{daysLeft === 0 ? 'Último dia!' : `${daysLeft}d`}</span>
+                </div>
+              )}
+            </div>
+            {!ended && noClansYet && !myClan && (
+              <div className="mt-4 pt-4 border-t border-primary/20 flex items-center justify-between gap-3">
+                <p className="text-on-surface-variant text-xs font-bold">
+                  Nenhum time ainda. Seja o primeiro a montar o seu!
+                </p>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="bg-primary text-background px-4 py-2 rounded-xl font-headline font-black text-xs uppercase italic flex items-center gap-2 flex-shrink-0"
+                >
+                  <Plus className="w-4 h-4" /> Criar Time
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Seu Time */}
       {myClan && (
         <div className="bg-surface-container-low rounded-[2rem] border-2 p-5" style={{ borderColor: myClan.color }}>
