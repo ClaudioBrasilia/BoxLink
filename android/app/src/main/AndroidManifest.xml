@@ -36,6 +36,10 @@
         </provider>
     </application>
 
+    <!-- Localização (GPS / Check-in) — sem maxSdkVersion para funcionar em todos Android -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <!-- BLE: Android 12+ (API 31+) -->
     <uses-permission
         android:name="android.permission.BLUETOOTH_SCAN"
@@ -51,12 +55,6 @@
     <uses-permission
         android:name="android.permission.BLUETOOTH_ADMIN"
         android:maxSdkVersion="30" />
-    <uses-permission
-        android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="30" />
-    <uses-permission
-        android:name="android.permission.ACCESS_COARSE_LOCATION"
-        android:maxSdkVersion="30" />
 
     <!-- Rede -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -64,4 +62,5 @@
 
     <!-- Exige BLE para o app aparecer na Play Store apenas em devices compatíveis -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+
 </manifest>
