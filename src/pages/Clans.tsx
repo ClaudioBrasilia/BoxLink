@@ -83,6 +83,7 @@ const SUGGESTED_BANNERS = ['🛡️', '⚔️', '🔥', '💪', '🦅', '🐺', 
 export default function Clans() {
   const { user } = useAuth();
   const [clans, setClans] = useState<Clan[]>([]);
+  const [historicClans, setHistoricClans] = useState<Clan[]>([]);
   const [memberships, setMemberships] = useState<ClanMembership[]>([]);
   const [dominationEvents, setDominationEvents] = useState<DominationEvent[]>([]);
   const [territory, setTerritory] = useState<Territory | null>(null);
@@ -172,6 +173,13 @@ export default function Clans() {
         .eq('is_active', true)
         .order('created_at');
       setClans(clansData || []);
+
+      const { data: historicData } = await supabase
+        .from('clans')
+        .select('*')
+        .eq('is_active', false)
+        .order('end_date', { ascending: false });
+      setHistoricClans(historicData || []);
 
       const { data: membershipsData } = await supabase.from('clan_memberships').select('*');
       setMemberships(membershipsData || []);
@@ -792,6 +800,57 @@ export default function Clans() {
                     </div>
                   )}
                 </div>
+
+                {/* ── Histórico de Temporadas ── */}
+                {historicClans.length > 0 && (
+                  <div className="bg-surface-container-highest rounded-2xl p-4 border border-outline-variant/10">
+                    <p className="font-headline font-black text-on-surface text-sm uppercase italic mb-1">📜 Histórico de Temporadas</p>
+                    <p className="text-on-surface-variant text-xs mb-3">Times de temporadas já encerradas</p>
+                    <div className="flex flex-col gap-3">
+                      {(() => {
+                        const grouped: Record<string, Clan[]> = {};
+                        historicClans.forEach((clan) => {
+                          const key = clan.season_name || 'Sem temporada';
+                          if (!grouped[key]) grouped[key] = [];
+                          grouped[key].push(clan);
+                        });
+                        return Object.entries(grouped).map(([seasonName, seasonClans]) => (
+                          <div key={seasonName} className="border border-outline-variant/10 rounded-xl overflow-hidden">
+                            <div className="bg-surface-container px-3 py-2 flex justify-between items-center">
+                              <div className="min-w-0">
+                                <p className="font-headline font-black text-on-surface uppercase italic text-xs truncate">{seasonName}</p>
+                                <p className="text-on-surface-variant text-[10px] mt-0.5">
+                                  {seasonClans[0]?.start_date && new Date(seasonClans[0].start_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                  {seasonClans[0]?.end_date && ` → ${new Date(seasonClans[0].end_date + 'T12:00:00').toLocaleDateString('pt-BR')}`}
+                                </p>
+                              </div>
+                              <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant bg-surface-container-low px-2 py-1 rounded-full flex-shrink-0 ml-2">
+                                {seasonClans.length} time(s)
+                              </span>
+                            </div>
+                            <div className="divide-y divide-outline-variant/5">
+                              {seasonClans.map((clan, i) => {
+                                const memberCount = memberships.filter((m) => m.clan_id === clan.id && m.status === 'approved').length;
+                                return (
+                                  <div key={clan.id} className="flex items-center gap-2 p-2.5 bg-surface-container-low/50">
+                                    <span className="font-headline font-black text-on-surface-variant text-xs italic w-4">#{i + 1}</span>
+                                    <div className="w-2 h-6 rounded-full flex-shrink-0" style={{ backgroundColor: clan.color }} />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-bold text-on-surface text-xs uppercase italic truncate">
+                                        {clan.banner && <span className="mr-1">{clan.banner}</span>}{clan.name}
+                                      </p>
+                                      <p className="text-on-surface-variant text-[10px]">👥 {memberCount} membro(s)</p>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                )}
 
                 {/* Botão Salvar */}
                 <button
