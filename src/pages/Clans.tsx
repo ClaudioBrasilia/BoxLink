@@ -491,6 +491,19 @@ export default function Clans() {
     }
   };
 
+  // ── Admin: excluir uma temporada inteira do histórico (times arquivados) ──
+  const handleDeleteSeasonHistory = async (seasonName: string, clanIds: string[]) => {
+    if (!isAdmin) return;
+    if (!confirm(`Excluir permanentemente a temporada "${seasonName}" do histórico? Os ${clanIds.length} time(s) arquivado(s) serão apagados. Esta ação não pode ser desfeita.`)) return;
+    const { error } = await supabase.from('clans').delete().in('id', clanIds);
+    if (error) {
+      alert('Erro ao excluir temporada do histórico: ' + error.message);
+    } else {
+      alert('Temporada removida do histórico.');
+      setTick((v) => v + 1);
+    }
+  };
+
   // ── Admin: criar/abrir nova temporada ──
   const handleCreateSeason = async () => {
     if (!isAdmin) return;
@@ -519,6 +532,7 @@ export default function Clans() {
       setSavingSeason(false);
     }
   };
+  const isCaptain = myMembership?.role === 'captain' && myMembership?.status === 'approved';
   const isApprovedMember = myMembership?.status === 'approved' && !!myClan;
 
   if (loading) {
@@ -824,9 +838,18 @@ export default function Clans() {
                                   {seasonClans[0]?.end_date && ` → ${new Date(seasonClans[0].end_date + 'T12:00:00').toLocaleDateString('pt-BR')}`}
                                 </p>
                               </div>
-                              <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant bg-surface-container-low px-2 py-1 rounded-full flex-shrink-0 ml-2">
-                                {seasonClans.length} time(s)
-                              </span>
+                              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant bg-surface-container-low px-2 py-1 rounded-full">
+                                  {seasonClans.length} time(s)
+                                </span>
+                                <button
+                                  onClick={() => handleDeleteSeasonHistory(seasonName, seasonClans.map((c) => c.id))}
+                                  className="p-1.5 bg-error/10 text-error rounded-lg hover:bg-error/20 transition-colors"
+                                  title="Excluir temporada do histórico"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
                             <div className="divide-y divide-outline-variant/5">
                               {seasonClans.map((clan, i) => {
