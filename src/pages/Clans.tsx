@@ -137,10 +137,10 @@ export default function Clans() {
       if (user) {
         const { data: adminData } = await supabase
           .from('profiles')
-          .select('is_admin')
+          .select('role')
           .eq('id', user.id)
           .maybeSingle();
-        setIsAdmin(adminData?.is_admin || false);
+        setIsAdmin(adminData?.role === 'admin');
       }
 
       const { data: settings, error: settingsError } = await supabase
