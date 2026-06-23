@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { Trophy, Zap, Calendar, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { cn, compareBy } from '../lib/utils';
@@ -53,7 +54,6 @@ export default function Leaderboard() {
         { data: rewardHistory },
         { data: checkinsMonth },
         { data: clansData },
-        { data: eventsData },
         { data: membershipsData },
         { data: todayWod },
       ] = await Promise.all([
@@ -62,8 +62,7 @@ export default function Leaderboard() {
         supabase.from('reward_history').select('user_id, xp').gte('created_at', firstDayOfMonth + 'T00:00:00'),
         supabase.from('checkins').select('user_id, date').gte('date', firstDayOfMonth),
         supabase.from('clans').select('*').eq('is_active', true),
-        supabase.from('domination_events').select('clan_id, energy'),
-        supabase.from('clan_memberships').select('clan_id').eq('status', 'approved'),
+        supabase.from('clan_memberships').select('clan_id, user_id').eq('status', 'approved'),
         supabase.from('wods').select('*').eq('date', todayStr).maybeSingle(),
       ]);
 
@@ -142,11 +141,21 @@ export default function Leaderboard() {
 
       // ── Clãs ──────────────────────────────────────────────────────────────
       if (clansData) {
-        setClanRankings(clansData.map(clan => ({
-          ...clan,
-          energy: (eventsData || []).filter(e => e.clan_id === clan.id).reduce((s, e) => s + e.energy, 0),
-          memberCount: (membershipsData || []).filter(m => m.clan_id === clan.id).length,
-        })).sort(compareBy<any>(
+        // XP do mês por atleta
+        const xpByUser: Record<string, number> = {};
+        (rewardHistory || []).forEach((r: any) => {
+          if (!r.user_id) return;
+          xpByUser[r.user_id] = (xpByUser[r.user_id] || 0) + (r.xp || 0);
+        });
+        setClanRankings(clansData.map(clan => {
+          const clanMembers = (membershipsData || []).filter(m => m.clan_id === clan.id);
+          const energy = clanMembers.reduce((s, m: any) => s + (xpByUser[m.user_id] || 0), 0);
+          return {
+            ...clan,
+            energy,
+            memberCount: clanMembers.length,
+          };
+        }).sort(compareBy<any>(
           (a, b) => (b.energy || 0) - (a.energy || 0),
           (a, b) => (b.memberCount || 0) - (a.memberCount || 0),
           (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime(),
@@ -273,7 +282,7 @@ export default function Leaderboard() {
     if (activeTab === 'xp_total') return `${u.xp} XP`;
     if (activeTab === 'xp_mes')   return `${u.monthXp || 0} XP`;
     if (activeTab === 'freq')     return `${u.monthCheckinCount || 0} check-ins`;
-    if (activeTab === 'clans')    return `${u.energy || 0} ⚡`;
+    if (activeTab === 'clans')    return `${u.energy || 0} XP`;
     if (activeTab === 'wod')      return u.result || '';
     return '';
   };
@@ -331,7 +340,7 @@ export default function Leaderboard() {
         {activeTab === 'xp_mes'   && `XP ganho em ${monthName} — reinicia todo mês`}
         {activeTab === 'freq'     && `Check-ins de ${monthName} — só quem treinou`}
         {activeTab === 'xp_total' && 'XP acumulado desde o início'}
-        {activeTab === 'clans'    && 'Energia acumulada pelos times'}
+        {activeTab === 'clans'    && 'XP dos times no mês (soma dos membros)'}
         {activeTab === 'wod'      && `Resultados do WOD — ${wodInfo?.name || 'sem WOD cadastrado'}`}
       </p>
 
