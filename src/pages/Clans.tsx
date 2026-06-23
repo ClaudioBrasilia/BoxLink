@@ -3,7 +3,6 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, Sparkles, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DominationEnergyButton } from '../components/DominationEnergyButton';
 
 interface Clan {
   id: string;
@@ -35,16 +34,11 @@ interface Territory {
   rotation_order: number;
 }
 
-interface DominationEvent {
-  clan_id: string;
-  energy: number;
-}
-
 interface BoxSettings {
   id: string;
   clans_enabled: boolean;
   max_clan_members: number;
-  current_season?: { name: string; start_date: string; end_date: string };
+  current_season?: { name: string; start_date: string; end_date: string } | null;
   competition_mode: 'challenge' | 'season';
   allow_multiple_clans_per_user: boolean;
   auto_approve_members: boolean;
@@ -85,7 +79,7 @@ export default function Clans() {
   const [clans, setClans] = useState<Clan[]>([]);
   const [historicClans, setHistoricClans] = useState<Clan[]>([]);
   const [memberships, setMemberships] = useState<ClanMembership[]>([]);
-  const [dominationEvents, setDominationEvents] = useState<DominationEvent[]>([]);
+  const [memberXp, setMemberXp] = useState<Record<string, number>>({});
   const [territory, setTerritory] = useState<Territory | null>(null);
   const [myClan, setMyClan] = useState<Clan | null>(null);
   const [myMembership, setMyMembership] = useState<ClanMembership | null>(null);
@@ -184,12 +178,29 @@ export default function Clans() {
       const { data: membershipsData } = await supabase.from('clan_memberships').select('*');
       setMemberships(membershipsData || []);
 
-      const { data: eventsData } = await supabase
-        .from('domination_events')
-        .select('clan_id, energy')
-        .gte('created_at', today + 'T00:00:00')
-        .lte('created_at', today + 'T23:59:59');
-      setDominationEvents(eventsData || []);
+      // ── Pontuação do time = soma do XP dos membros no período da temporada ──
+      // Janela: início/fim da temporada atual; se não houver, usa o mês corrente.
+      const season = settings.current_season;
+      const seasonStart = season?.start_date
+        ? season.start_date + 'T00:00:00'
+        : new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+      const seasonEnd = season?.end_date
+        ? season.end_date + 'T23:59:59'
+        : null;
+
+      let xpQuery = supabase
+        .from('reward_history')
+        .select('user_id, xp')
+        .gte('created_at', seasonStart);
+      if (seasonEnd) xpQuery = xpQuery.lte('created_at', seasonEnd);
+      const { data: xpData } = await xpQuery;
+
+      const xpMap: Record<string, number> = {};
+      (xpData || []).forEach((r: any) => {
+        if (!r.user_id) return;
+        xpMap[r.user_id] = (xpMap[r.user_id] || 0) + (r.xp || 0);
+      });
+      setMemberXp(xpMap);
 
       const { data: territoriesData } = await supabase
         .from('territories')
@@ -331,10 +342,17 @@ export default function Clans() {
   const leaderboard = useMemo(() => {
     return clans.map((clan) => {
       const members = memberships.filter((m) => m.clan_id === clan.id && m.status === 'approved');
-      const energy = dominationEvents.filter((e) => e.clan_id === clan.id).reduce((sum, e) => sum + e.energy, 0);
-      return { clan, memberCount: members.length, energy };
+      const energy = members.reduce((sum, m) => sum + (memberXp[m.user_id] || 0), 0);
+      // MVP: membro com maior XP no período
+      let mvpUserId: string | null = null;
+      let mvpXp = -1;
+      members.forEach((m) => {
+        const xp = memberXp[m.user_id] || 0;
+        if (xp > mvpXp) { mvpXp = xp; mvpUserId = m.user_id; }
+      });
+      return { clan, memberCount: members.length, energy, mvpUserId, mvpXp: Math.max(mvpXp, 0) };
     }).sort((a, b) => b.energy - a.energy);
-  }, [clans, memberships, dominationEvents]);
+  }, [clans, memberships, memberXp]);
 
   const maxEnergy = Math.max(...leaderboard.map((i) => i.energy), 1);
 
@@ -480,15 +498,24 @@ export default function Clans() {
   const handleEndSeason = async () => {
     if (!isAdmin) return;
     const activeCount = clans.length;
-    if (activeCount === 0) { alert('Nenhum time ativo para encerrar.'); return; }
+    if (activeCount === 0 && !boxSettings.current_season?.name) { alert('Nenhuma temporada ativa para encerrar.'); return; }
     if (!confirm(`Encerrar temporada atual? Os ${activeCount} time(s) ativo(s) serão arquivados e o histórico preservado.`)) return;
-    const { error } = await supabase.from('clans').update({ is_active: false, end_date: today }).eq('is_active', true);
-    if (error) {
-      alert('Erro ao encerrar temporada: ' + error.message);
-    } else {
-      alert('Temporada encerrada! Times arquivados com sucesso.');
-      setTick((v) => v + 1);
+    const { error: clansError } = await supabase.from('clans').update({ is_active: false, end_date: today }).eq('is_active', true);
+    if (clansError) {
+      alert('Erro ao encerrar temporada: ' + clansError.message);
+      return;
     }
+    // Limpa a temporada atual para o banner sumir
+    const { error: settingsError } = await supabase.from('box_settings')
+      .update({ current_season: null })
+      .eq('id', boxSettings.id);
+    if (settingsError) {
+      alert('Times arquivados, mas houve erro ao limpar a temporada: ' + settingsError.message);
+    } else {
+      setBoxSettings((prev) => ({ ...prev, current_season: undefined }));
+      alert('Temporada encerrada! Times arquivados com sucesso.');
+    }
+    setTick((v) => v + 1);
   };
 
   // ── Admin: excluir uma temporada inteira do histórico (times arquivados) ──
@@ -498,10 +525,15 @@ export default function Clans() {
     const { error } = await supabase.from('clans').delete().in('id', clanIds);
     if (error) {
       alert('Erro ao excluir temporada do histórico: ' + error.message);
-    } else {
-      alert('Temporada removida do histórico.');
-      setTick((v) => v + 1);
+      return;
     }
+    // Se a temporada excluída ainda constar como atual, limpa para o banner sumir
+    if (boxSettings.current_season?.name === seasonName) {
+      await supabase.from('box_settings').update({ current_season: null }).eq('id', boxSettings.id);
+      setBoxSettings((prev) => ({ ...prev, current_season: undefined }));
+    }
+    alert('Temporada removida do histórico.');
+    setTick((v) => v + 1);
   };
 
   // ── Admin: criar/abrir nova temporada ──
@@ -1024,7 +1056,7 @@ export default function Clans() {
           {/* Estatísticas do Time */}
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div className="bg-surface-container-highest rounded-xl p-3 border border-outline-variant/10">
-              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Energia</p>
+              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">XP da Temporada</p>
               <p className="font-headline font-black text-primary text-lg italic flex items-center gap-1">
                 <Zap className="w-4 h-4" /> {leaderboard.find((l) => l.clan.id === myClan.id)?.energy || 0}
               </p>
@@ -1128,7 +1160,7 @@ export default function Clans() {
       {/* Ranking de Times */}
       <div>
         <h2 className="text-xs font-black text-on-surface-variant uppercase tracking-widest mb-3 flex items-center gap-2">
-          <Trophy className="w-4 h-4 text-primary" /> Ranking de Hoje
+          <Trophy className="w-4 h-4 text-primary" /> Ranking da Temporada
         </h2>
         <div className="flex flex-col gap-3">
           {leaderboard.map((item, idx) => {
@@ -1360,7 +1392,7 @@ export default function Clans() {
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-surface-container-highest p-4 rounded-2xl border border-outline-variant/10">
-                    <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Energia Total</p>
+                    <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">XP Total da Temporada</p>
                     <p className="font-headline font-black text-2xl text-primary italic flex items-center gap-2">
                       <Zap className="w-5 h-5" /> {leaderboard.find((l) => l.clan.id === showClanDetailModal.id)?.energy || 0}
                     </p>
@@ -1374,17 +1406,29 @@ export default function Clans() {
                 </div>
 
                 <div>
-                  <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-3">Membros do Time</p>
+                  <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-3">Membros do Time · Contribuição na Temporada</p>
                   <div className="flex flex-col gap-2">
-                    {clanMembers.map((member) => (
-                      <div key={member.id} className="flex justify-between items-center bg-surface-container-highest p-3 rounded-xl border border-outline-variant/10">
-                        <div>
-                          <p className="text-xs font-bold text-on-surface uppercase">{member.name}</p>
-                          <p className="text-[10px] text-on-surface-variant">{member.role === 'captain' ? '👑 Capitão' : 'Membro'}</p>
-                        </div>
-                        <p className="text-xs font-black text-primary">{member.xp} XP</p>
-                      </div>
-                    ))}
+                    {[...clanMembers]
+                      .sort((a, b) => (memberXp[b.id] || 0) - (memberXp[a.id] || 0))
+                      .map((member, idx) => {
+                        const seasonXp = memberXp[member.id] || 0;
+                        const isMvp = idx === 0 && seasonXp > 0;
+                        return (
+                          <div key={member.id} className={`flex justify-between items-center p-3 rounded-xl border ${isMvp ? 'bg-primary/10 border-primary/30' : 'bg-surface-container-highest border-outline-variant/10'}`}>
+                            <div className="flex items-center gap-2">
+                              {isMvp && <span title="MVP da temporada">⭐</span>}
+                              <div>
+                                <p className="text-xs font-bold text-on-surface uppercase">{member.name}</p>
+                                <p className="text-[10px] text-on-surface-variant">
+                                  {member.role === 'captain' ? '👑 Capitão' : 'Membro'}
+                                  {isMvp && <span className="text-primary font-black"> · MVP</span>}
+                                </p>
+                              </div>
+                            </div>
+                            <p className={`text-xs font-black ${isMvp ? 'text-primary' : 'text-on-surface-variant'}`}>{seasonXp} XP</p>
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
               </div>
