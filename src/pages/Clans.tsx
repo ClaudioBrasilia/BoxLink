@@ -485,9 +485,11 @@ export default function Clans() {
   const handleAdminDeleteClan = async (clanId: string, clanName: string) => {
     if (!isAdmin) return;
     if (!confirm(`Excluir o time "${clanName}" permanentemente? Esta ação não pode ser desfeita.`)) return;
-    const { error } = await supabase.from('clans').delete().eq('id', clanId);
+    const { data: deleted, error } = await supabase.from('clans').delete().eq('id', clanId).select('id');
     if (error) {
       alert('Erro ao excluir time: ' + error.message);
+    } else if (!deleted || deleted.length === 0) {
+      alert('Nada foi excluído. Verifique se as permissões de administrador foram aplicadas no banco (RLS).');
     } else {
       alert('Time excluído.');
       setTick((v) => v + 1);
@@ -522,9 +524,13 @@ export default function Clans() {
   const handleDeleteSeasonHistory = async (seasonName: string, clanIds: string[]) => {
     if (!isAdmin) return;
     if (!confirm(`Excluir permanentemente a temporada "${seasonName}" do histórico? Os ${clanIds.length} time(s) arquivado(s) serão apagados. Esta ação não pode ser desfeita.`)) return;
-    const { error } = await supabase.from('clans').delete().in('id', clanIds);
+    const { data: deleted, error } = await supabase.from('clans').delete().in('id', clanIds).select('id');
     if (error) {
       alert('Erro ao excluir temporada do histórico: ' + error.message);
+      return;
+    }
+    if (!deleted || deleted.length === 0) {
+      alert('Nada foi excluído. Verifique se as permissões de administrador foram aplicadas no banco (RLS).');
       return;
     }
     // Se a temporada excluída ainda constar como atual, limpa para o banner sumir
