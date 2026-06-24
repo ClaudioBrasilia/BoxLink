@@ -139,7 +139,6 @@ export default function TV() {
 
       const startOfMonth = format(new Date(), 'yyyy-MM-01');
 
-      // ── Ranking de XP do mês: soma da reward_history no mês atual ──
       const { data: monthlyXpRaw } = await supabase
         .from('reward_history')
         .select('user_id, xp')
@@ -279,6 +278,21 @@ export default function TV() {
 
   const isStale = lastUpdated && (Date.now() - lastUpdated.getTime()) > 60000;
 
+  // ── Normaliza avisos: aceita string pura, objeto, ou string JSON serializada ──
+  const normalizedAnnouncements = (announcements || [])
+    .map((a: any) => {
+      if (typeof a === 'string') {
+        try {
+          const parsed = JSON.parse(a);
+          return parsed; // era string JSON
+        } catch {
+          return { title: a, content: '', active: true }; // string pura
+        }
+      }
+      return a; // já é objeto
+    })
+    .filter((a: any) => a && a.active !== false && a.title);
+
   const getWodFontSize = (text: string) => {
     const len = (text || '').length;
     const lines = (text || '').split('\n').filter(Boolean).length;
@@ -308,9 +322,8 @@ export default function TV() {
   return (
     <div className="min-h-screen bg-black text-white font-sans overflow-hidden flex flex-col p-6 gap-6 relative select-none">
 
-      {/* ── HEADER: Logo + Nome | Relógio | Publicidade + Fullscreen ── */}
+      {/* ── HEADER ── */}
       <header className="flex justify-between items-center bg-[#111] rounded-[2rem] p-6 border border-white/5 shadow-2xl">
-        {/* Esquerda: Logo + Nome */}
         <div className="flex items-center gap-6">
           <div className="relative">
             <img src={settings.logo || "https://picsum.photos/seed/box/200"} alt="Logo" className="w-16 h-16 rounded-2xl border-2 border-primary shadow-[0_0_20px_rgba(202,253,0,0.3)]" />
@@ -322,7 +335,6 @@ export default function TV() {
           </div>
         </div>
 
-        {/* Centro: Relógio */}
         <div className="flex flex-col items-center">
           <div className="flex items-baseline gap-1 tabular-nums leading-none"
             style={{ textShadow: '0 0 30px rgba(202,253,0,0.25)' }}>
@@ -334,10 +346,8 @@ export default function TV() {
               {formatInTimeZone(now, TIMEZONE, 'ss')}
             </span>
           </div>
-
         </div>
 
-        {/* Direita: Banner de Patrocinadores + Fullscreen */}
         <div className="flex items-center gap-4">
           {isStale && (
             <div className="flex flex-col items-center gap-1">
@@ -345,9 +355,7 @@ export default function TV() {
               <button onClick={fetchData} className="text-yellow-400/70 text-[8px] font-black uppercase tracking-wider hover:text-yellow-400 transition-colors">RECONECTAR</button>
             </div>
           )}
-          {/* ── Banner de Patrocinadores ── */}
           <TVSponsorBanner sponsors={sponsors} className="h-20" />
-
           <button onClick={toggleFullscreen} className="p-4 bg-white/5 rounded-2xl border border-white/10 hover:bg-primary hover:text-black transition-all group">
             <Maximize className="w-6 h-6 group-hover:scale-110 transition-transform" />
           </button>
@@ -357,7 +365,6 @@ export default function TV() {
       <div className="flex-1 grid grid-cols-12 gap-6 overflow-hidden">
         <div className="col-span-8 flex flex-col gap-6">
 
-          {/* ── TABS WOD: só aparecem quando há WOD ── */}
           {wod && (
             <div className="flex items-center justify-between bg-[#111] rounded-3xl p-3 border border-white/5">
               <div className="flex gap-3">
@@ -389,7 +396,6 @@ export default function TV() {
           )}
 
           <div className="flex-1 relative">
-            {/* Placeholder quando não há WOD — coluna direita continua visível */}
             {!wod && (
               <div className="absolute inset-0 bg-[#111] rounded-[3rem] border border-white/5 flex flex-col items-center justify-center gap-4">
                 <Activity className="w-20 h-20 text-primary/20" />
@@ -488,7 +494,6 @@ export default function TV() {
         {/* Coluna direita */}
         <div className="col-span-4 flex flex-col gap-6 overflow-y-auto no-scrollbar">
 
-          {/* TOP 3 */}
           <section className="bg-[#111] rounded-[2.5rem] p-5 border border-white/5 flex flex-col gap-3" style={{flex: '2 1 0'}}>
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
@@ -566,10 +571,8 @@ export default function TV() {
             </div>
           </section>
 
-          {/* FC ao vivo */}
           <TVHeartRatePanel />
 
-          {/* Atletas na aula */}
           <section className="bg-[#111] rounded-[2.5rem] border border-white/5 relative overflow-hidden flex flex-col" style={{flex: '1 1 0'}}>
             <div className="flex justify-between items-center px-5 pt-4 pb-2">
               <div className="flex items-center gap-2">
@@ -691,22 +694,16 @@ export default function TV() {
                     <div className="w-2 h-2 rounded-full bg-white/20"></div>
                   </>
                 )}
-                {tickerItems.announcements && announcements?.filter((a: any) =>
-                  typeof a === 'string' ? !!a : a.active !== false && a.title
-                ).map((a: any, idx: number) => {
-                  const title = typeof a === 'string' ? a : a.title;
-                  const content = typeof a === 'string' ? '' : a.content;
-                  return (
-                    <React.Fragment key={typeof a === 'string' ? `ann-${idx}` : a.id}>
-                      <div className="flex items-center gap-4">
-                        <span className="text-yellow-400 text-[10px] font-black uppercase tracking-widest italic">📢 AVISO:</span>
-                        <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{title}</span>
-                        {content && <span className="text-white/50 text-base font-black italic tracking-tight">{content}</span>}
-                      </div>
-                      <div className="w-2 h-2 rounded-full bg-white/20"></div>
-                    </React.Fragment>
-                  );
-                })}
+                {tickerItems.announcements && normalizedAnnouncements.map((a: any, idx: number) => (
+                  <React.Fragment key={a.id || `ann-${idx}`}>
+                    <div className="flex items-center gap-4">
+                      <span className="text-yellow-400 text-[10px] font-black uppercase tracking-widest italic">📢 AVISO:</span>
+                      <span className="text-xl font-headline font-black text-white uppercase italic tracking-tight">{a.title}</span>
+                      {a.content && <span className="text-white/50 text-base font-black italic tracking-tight">{a.content}</span>}
+                    </div>
+                    <div className="w-2 h-2 rounded-full bg-white/20"></div>
+                  </React.Fragment>
+                ))}
                 {tickerItems.challenges && challenges && challenges.length > 0 && challenges.map((c: any) => (
                   <React.Fragment key={c.id}>
                     <div className="flex items-center gap-4">
