@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, Sparkles, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle } from 'lucide-react';
+import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Clan {
@@ -47,30 +47,6 @@ interface BoxSettings {
 }
 
 // Team rewards — economia de time
-const teamRewards = [
-  {
-    id: 'reward_surprise',
-    title: 'Brinde Surpresa',
-    description: 'Item exclusivo para o time que dominar o território. Revelado no final do mês!',
-    type: 'real',
-    icon: '🎁',
-  },
-  {
-    id: 'reward_badges',
-    title: 'Badges de Honra',
-    description: 'Medalha digital para guerreiros de consistência e presença.',
-    type: 'digital',
-    icon: '🏅',
-  },
-  {
-    id: 'reward_xp',
-    title: 'Bônus de XP — Sábados',
-    description: 'Multiplicador de XP para quem treinar no sábado, o dia mais desafiador!',
-    type: 'power',
-    icon: '⚡',
-  },
-];
-
 // Sugestões de emblemas (o usuário pode digitar qualquer um)
 const SUGGESTED_BANNERS = ['🛡️', '⚔️', '🔥', '💪', '🦅', '🐺', '🏆', '⚡', '🌪️', '🗡️', '🎯', '🚀', '💎', '👑', '🔱', '⚓', '🌟', '🔥'];
 
@@ -496,26 +472,29 @@ export default function Clans() {
     }
   };
 
-  // ── Admin: encerrar temporada atual (arquiva times ativos) ──
-  const handleEndSeason = async () => {
+  // ── Admin: descartar/excluir a temporada atual completamente (sem deixar histórico) ──
+  const handleDiscardSeason = async () => {
     if (!isAdmin) return;
-    const activeCount = clans.length;
-    if (activeCount === 0 && !boxSettings.current_season?.name) { alert('Nenhuma temporada ativa para encerrar.'); return; }
-    if (!confirm(`Encerrar temporada atual? Os ${activeCount} time(s) ativo(s) serão arquivados e o histórico preservado.`)) return;
-    const { error: clansError } = await supabase.from('clans').update({ is_active: false, end_date: today }).eq('is_active', true);
-    if (clansError) {
-      alert('Erro ao encerrar temporada: ' + clansError.message);
-      return;
+    if (!boxSettings.current_season?.name && clans.length === 0) { alert('Nenhuma temporada para descartar.'); return; }
+    const seasonName = boxSettings.current_season?.name || 'atual';
+    if (!confirm(`Excluir a temporada "${seasonName}" permanentemente? Os times ativos dela também serão apagados e nada irá para o histórico. Esta ação não pode ser desfeita.`)) return;
+    // Apaga os times ativos da temporada (não arquiva)
+    if (clans.length > 0) {
+      const { error: delError } = await supabase.from('clans').delete().eq('is_active', true).select('id');
+      if (delError) {
+        alert('Erro ao excluir os times da temporada: ' + delError.message);
+        return;
+      }
     }
-    // Limpa a temporada atual para o banner sumir
+    // Limpa a temporada atual
     const { error: settingsError } = await supabase.from('box_settings')
       .update({ current_season: null })
       .eq('id', boxSettings.id);
     if (settingsError) {
-      alert('Times arquivados, mas houve erro ao limpar a temporada: ' + settingsError.message);
+      alert('Houve erro ao limpar a temporada: ' + settingsError.message);
     } else {
       setBoxSettings((prev) => ({ ...prev, current_season: undefined }));
-      alert('Temporada encerrada! Times arquivados com sucesso.');
+      alert('Temporada excluída.');
     }
     setTick((v) => v + 1);
   };
@@ -800,22 +779,22 @@ export default function Clans() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => { setShowAdminPanel(false); setShowSeasonModal(true); }}
-                      disabled={clans.length > 0}
+                      disabled={clans.length > 0 || !!boxSettings.current_season?.name}
                       className="flex-1 py-3 rounded-xl font-headline font-black text-xs uppercase italic bg-primary text-background disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       <Plus className="w-4 h-4" /> Nova Temporada
                     </button>
                     <button
-                      onClick={handleEndSeason}
-                      disabled={clans.length === 0}
+                      onClick={handleDiscardSeason}
+                      disabled={clans.length === 0 && !boxSettings.current_season?.name}
                       className="flex-1 py-3 rounded-xl font-headline font-black text-xs uppercase italic bg-error/20 text-error disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
-                      <Swords className="w-4 h-4" /> Encerrar
+                      <X className="w-4 h-4" /> Excluir Temporada
                     </button>
                   </div>
-                  {clans.length > 0 && (
+                  {(clans.length > 0 || boxSettings.current_season?.name) && (
                     <p className="text-on-surface-variant text-[10px] mt-2 italic">
-                      Encerre a temporada atual antes de abrir uma nova.
+                      Exclua a temporada atual antes de abrir uma nova. A data final já encerra a contagem automaticamente.
                     </p>
                   )}
                 </div>
@@ -1231,35 +1210,6 @@ export default function Clans() {
               <p className="text-xs mt-1">Seja o primeiro a criar um time!</p>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Economia de Time */}
-      <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="w-5 h-5 text-primary" />
-          <div>
-            <h2 className="font-headline font-black text-on-surface uppercase italic text-sm">Economia de Time</h2>
-            <p className="text-on-surface-variant text-[10px] mt-0.5">Benefícios por presença e domínio de território.</p>
-          </div>
-        </div>
-        <div className="flex flex-col gap-3">
-          {teamRewards.map((reward) => (
-            <div key={reward.id} className="bg-surface-container-highest/50 rounded-2xl border border-outline-variant/10 p-4 flex items-start gap-3">
-              <span className="text-2xl">{reward.icon}</span>
-              <div className="flex-1">
-                <p className="font-headline font-black text-on-surface text-xs uppercase italic">{reward.title}</p>
-                <p className="text-on-surface-variant text-[10px] mt-0.5">{reward.description}</p>
-                <span className={`inline-block mt-2 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
-                  reward.type === 'real' ? 'bg-primary/20 text-primary'
-                  : reward.type === 'digital' ? 'bg-secondary/20 text-secondary'
-                  : 'bg-outline-variant/20 text-on-surface-variant'
-                }`}>
-                  {reward.type}
-                </span>
-              </div>
-            </div>
-          ))}
         </div>
       </div>
 
