@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle } from 'lucide-react';
+import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle, Shield, Upload } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Clan {
@@ -47,8 +47,7 @@ interface BoxSettings {
 }
 
 // Team rewards — economia de time
-// Sugestões de emblemas (o usuário pode digitar qualquer um)
-const SUGGESTED_BANNERS = ['🛡️', '⚔️', '🔥', '💪', '🦅', '🐺', '🏆', '⚡', '🌪️', '🗡️', '🎯', '🚀', '💎', '👑', '🔱', '⚓', '🌟', '🔥'];
+// Sugestões de emblemas removidas — agora o time usa imagem (upload)
 
 export default function Clans() {
   const { user } = useAuth();
@@ -82,8 +81,8 @@ export default function Clans() {
   const [newClanName, setNewClanName] = useState('');
   const [newClanMotto, setNewClanMotto] = useState('');
   const [newClanColor, setNewClanColor] = useState('#CAFD00');
-  const [newClanBanner, setNewClanBanner] = useState('🛡️');
-  const [customBannerInput, setCustomBannerInput] = useState('');
+  const [newClanBanner, setNewClanBanner] = useState<File | null>(null);
+  const [newClanBannerPreview, setNewClanBannerPreview] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -95,6 +94,26 @@ export default function Clans() {
 
   const colors = ['#CAFD00', '#FF4444', '#4444FF', '#FF8800', '#AA44FF', '#00CCFF', '#FF44AA'];
   const today = new Date().toISOString().split('T')[0];
+
+  // Renderiza o emblema do time: imagem se for URL, escudo padrão caso contrário (cobre times antigos com emoji)
+  const renderBanner = (banner: string | undefined | null, sizeClass = 'w-8 h-8') => {
+    const isUrl = !!banner && (banner.startsWith('http://') || banner.startsWith('https://'));
+    if (isUrl) {
+      return (
+        <img
+          src={banner!}
+          alt=""
+          className={`${sizeClass} rounded-lg object-cover flex-shrink-0`}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+        />
+      );
+    }
+    return (
+      <div className={`${sizeClass} rounded-lg bg-surface-container-highest flex items-center justify-center flex-shrink-0`}>
+        <Shield className="w-1/2 h-1/2 text-on-surface-variant" />
+      </div>
+    );
+  };
 
   useEffect(() => {
     fetchAll();
@@ -334,19 +353,33 @@ export default function Clans() {
 
   const handleCreateClan = async () => {
     if (!newClanName.trim() || !user) return;
-    
-    // Usar emblema customizado se fornecido, senão usar o selecionado
-    const bannerToUse = customBannerInput.trim() || newClanBanner;
-    
+
     setCreating(true);
     try {
+      // 1) Faz upload do emblema (se houver arquivo selecionado)
+      let bannerUrl: string | null = null;
+      if (newClanBanner) {
+        const ext = (newClanBanner.name.split('.').pop() || 'png').toLowerCase();
+        const path = `${user.id}/${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from('clan-banners')
+          .upload(path, newClanBanner, { upsert: true, contentType: newClanBanner.type });
+        if (uploadError) {
+          alert('Erro ao enviar a imagem do emblema: ' + uploadError.message);
+          return;
+        }
+        const { data: { publicUrl } } = supabase.storage.from('clan-banners').getPublicUrl(path);
+        bannerUrl = publicUrl;
+      }
+
+      // 2) Cria o time
       const { data: clan, error } = await supabase
         .from('clans')
         .insert({
           name: newClanName.trim(),
           motto: newClanMotto.trim(),
           color: newClanColor,
-          banner: bannerToUse,
+          banner: bannerUrl,
           created_by: user.id,
           is_active: true,
           requires_approval: boxSettings.clan_creation_requires_approval,
@@ -380,8 +413,8 @@ export default function Clans() {
       setShowCreateModal(false);
       setNewClanName('');
       setNewClanMotto('');
-      setNewClanBanner('🛡️');
-      setCustomBannerInput('');
+      setNewClanBanner(null);
+      setNewClanBannerPreview(null);
       setTick((v) => v + 1);
       alert('Time criado com sucesso!');
     } catch (err: any) {
@@ -589,14 +622,6 @@ export default function Clans() {
               className="bg-secondary text-background px-4 py-2 rounded-xl font-headline font-black text-xs uppercase italic flex items-center gap-2 hover:opacity-80 transition"
             >
               <Settings className="w-4 h-4" /> Admin
-            </button>
-          )}
-          {!myClan && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="bg-primary text-background px-4 py-2 rounded-xl font-headline font-black text-xs uppercase italic flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" /> Criar Time
             </button>
           )}
         </div>
@@ -812,7 +837,7 @@ export default function Clans() {
                         return (
                           <div key={clan.id} className="flex items-center justify-between bg-surface-container rounded-xl p-3 border border-outline-variant/10">
                             <div className="flex items-center gap-2 min-w-0">
-                              {clan.banner && <span className="text-lg flex-shrink-0">{clan.banner}</span>}
+                              {renderBanner(clan.banner, 'w-7 h-7')}
                               <div className="min-w-0">
                                 <p className="text-xs font-bold text-on-surface uppercase truncate">{clan.name}</p>
                                 <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">👥 {memberCount} membro(s)</p>
@@ -877,7 +902,8 @@ export default function Clans() {
                                     <div className="w-2 h-6 rounded-full flex-shrink-0" style={{ backgroundColor: clan.color }} />
                                     <div className="flex-1 min-w-0">
                                       <p className="font-bold text-on-surface text-xs uppercase italic truncate">
-                                        {clan.banner && <span className="mr-1">{clan.banner}</span>}{clan.name}
+                                        {renderBanner(clan.banner, 'w-5 h-5')}
+                                        <span>{clan.name}</span>
                                       </p>
                                       <p className="text-on-surface-variant text-[10px]">👥 {memberCount} membro(s)</p>
                                     </div>
@@ -1026,7 +1052,7 @@ export default function Clans() {
                 <Crown className="w-3 h-3" /> Seu Time
               </p>
               <h2 className="font-headline font-black text-on-surface text-xl uppercase italic flex items-center gap-2">
-                {myClan.banner && <span className="text-2xl">{myClan.banner}</span>}
+                {renderBanner(myClan.banner, 'w-12 h-12')}
                 {myClan.name}
               </h2>
               {myClan.motto && <p className="text-on-surface-variant text-xs italic mt-1">"{myClan.motto}"</p>}
@@ -1133,7 +1159,8 @@ export default function Clans() {
         <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5">
           <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Solicitação Enviada</p>
           <h3 className="font-headline font-black text-on-surface uppercase italic">
-            {myClan.banner && <span className="mr-1">{myClan.banner}</span>}{myClan.name}
+            {renderBanner(myClan.banner, 'w-6 h-6')}
+            <span>{myClan.name}</span>
           </h3>
           <p className="text-on-surface-variant text-xs mt-1">Aguardando aprovação do capitão do time.</p>
           <button onClick={handleLeaveClan} className="mt-3 text-error text-xs font-black uppercase hover:underline flex items-center gap-1">
@@ -1167,7 +1194,7 @@ export default function Clans() {
                     <div>
                       <h3 className="font-headline font-black text-on-surface uppercase italic flex items-center gap-2">
                         <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: item.clan.color }} />
-                        {item.clan.banner && <span className="text-base">{item.clan.banner}</span>}
+                        {renderBanner(item.clan.banner, 'w-7 h-7')}
                         {item.clan.name}
                       </h3>
                       {item.clan.motto && <p className="text-on-surface-variant text-[10px] italic">"{item.clan.motto}"</p>}
@@ -1232,44 +1259,41 @@ export default function Clans() {
               </div>
 
               <div className="flex flex-col gap-4">
-                {/* Emblema - Sugestões */}
+                {/* Emblema - Upload de Imagem */}
                 <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Emblema do Time (Sugestões)</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {SUGGESTED_BANNERS.map((b) => (
-                      <button
-                        key={b}
-                        onClick={() => {
-                          setNewClanBanner(b);
-                          setCustomBannerInput('');
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Emblema do Time (imagem)</label>
+                  <div className="flex items-center gap-3">
+                    {/* Preview */}
+                    <div className="w-20 h-20 rounded-2xl bg-surface-container-highest border-2 border-outline-variant/20 flex items-center justify-center overflow-hidden flex-shrink-0">
+                      {newClanBannerPreview ? (
+                        <img src={newClanBannerPreview} alt="Preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <Shield className="w-10 h-10 text-on-surface-variant" />
+                      )}
+                    </div>
+                    {/* Botão de selecionar */}
+                    <label className="flex-1 cursor-pointer bg-surface-container-highest border border-outline-variant/30 rounded-2xl p-4 flex items-center justify-center gap-2 hover:bg-surface-container transition-colors">
+                      <Upload className="w-4 h-4 text-primary" />
+                      <span className="text-xs font-black text-on-surface uppercase italic">
+                        {newClanBanner ? 'Trocar imagem' : 'Escolher imagem'}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) { alert('Imagem muito grande. Máx. 2 MB.'); return; }
+                          setNewClanBanner(file);
+                          const reader = new FileReader();
+                          reader.onload = (ev) => setNewClanBannerPreview(ev.target?.result as string);
+                          reader.readAsDataURL(file);
                         }}
-                        className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all border-2 ${
-                          newClanBanner === b && !customBannerInput ? 'border-primary bg-primary/10 scale-110' : 'border-outline-variant/20 bg-surface-container-highest'
-                        }`}
-                      >
-                        {b}
-                      </button>
-                    ))}
+                      />
+                    </label>
                   </div>
-                </div>
-
-                {/* Emblema Customizado */}
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Ou Digite um Emoji Customizado</label>
-                  <input
-                    type="text"
-                    value={customBannerInput}
-                    onChange={(e) => {
-                      setCustomBannerInput(e.target.value);
-                      if (e.target.value.trim()) {
-                        setNewClanBanner(e.target.value);
-                      }
-                    }}
-                    placeholder="Ex: 🎯 🚀 💎 👑"
-                    maxLength={5}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface outline-none text-center text-2xl"
-                  />
-                  <p className="text-on-surface-variant text-xs">Cole qualquer emoji que desejar!</p>
+                  <p className="text-on-surface-variant text-xs">Opcional. PNG ou JPG, até 2 MB. Se vazio, o time usa um escudo padrão.</p>
                 </div>
 
                 <div className="space-y-2">
@@ -1310,7 +1334,7 @@ export default function Clans() {
                   className="w-full py-4 rounded-2xl font-headline font-black text-background uppercase italic disabled:opacity-50 mt-2"
                   style={{ backgroundColor: newClanColor }}
                 >
-                  {creating ? 'Criando...' : `${customBannerInput || newClanBanner} Criar Time`}
+                  {creating ? 'Criando...' : 'Criar Time'}
                 </button>
               </div>
             </motion.div>
@@ -1335,9 +1359,9 @@ export default function Clans() {
                 <div className="flex items-center gap-3">
                   <div className="w-3 h-10 rounded-full" style={{ backgroundColor: showClanDetailModal.color }} />
                   <div>
-                    <h2 className="font-headline font-black text-on-surface text-xl uppercase italic">
-                      {showClanDetailModal.banner && <span className="mr-1">{showClanDetailModal.banner}</span>}
-                      {showClanDetailModal.name}
+                    <h2 className="font-headline font-black text-on-surface text-xl uppercase italic flex items-center gap-2">
+                      {renderBanner(showClanDetailModal.banner, 'w-6 h-6')}
+                      <span>{showClanDetailModal.name}</span>
                     </h2>
                     {showClanDetailModal.motto && <p className="text-on-surface-variant text-xs italic">"{showClanDetailModal.motto}"</p>}
                   </div>
