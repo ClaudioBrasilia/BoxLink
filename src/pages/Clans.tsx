@@ -209,41 +209,48 @@ export default function Clans() {
       }
 
       if (user) {
-        const { data: myMembershipData } = await supabase
+        // Busca TODAS as linhas de membership do user (pode haver várias: aprovada + convites pendentes)
+        const { data: allMyMemberships } = await supabase
           .from('clan_memberships')
           .select('*')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        setMyMembership(myMembershipData);
+          .eq('user_id', user.id);
 
-        if (myMembershipData) {
-          const myClanData = (clansData || []).find((c) => c.id === myMembershipData.clan_id) || null;
+        // Prioriza a "principal": aprovada > pendente > convidada (para mostrar no card "Seu Time")
+        const approvedOrPending = (allMyMemberships || []).find(
+          (m: any) => m.status === 'approved' || m.status === 'pending'
+        );
+        const primaryMembership = approvedOrPending || (allMyMemberships || [])[0] || null;
+        setMyMembership(primaryMembership);
+
+        if (primaryMembership) {
+          const myClanData = (clansData || []).find((c) => c.id === primaryMembership.clan_id) || null;
           setMyClan(myClanData);
-
-          if (myMembershipData.status === 'approved' && myMembershipData.role === 'captain') {
-            const { data: pending } = await supabase
-              .from('clan_memberships')
-              .select('*, profiles(name)')
-              .eq('clan_id', myMembershipData.clan_id)
-              .eq('status', 'pending');
-            setPendingRequests((pending as any) || []);
-          } else {
-            setPendingRequests([]);
-          }
-
-          if (myMembershipData.status === 'invited') {
-            const { data: inviteData } = await supabase
-              .from('clan_memberships')
-              .select('*, clans(*)')
-              .eq('id', myMembershipData.id)
-              .single();
-            setInvitations(inviteData ? [inviteData as any] : []);
-          } else {
-            setInvitations([]);
-          }
         } else {
           setMyClan(null);
+        }
+
+        // Solicitações pendentes (só para capitães aprovados)
+        if (primaryMembership?.status === 'approved' && primaryMembership.role === 'captain') {
+          const { data: pending } = await supabase
+            .from('clan_memberships')
+            .select('*, profiles(name)')
+            .eq('clan_id', primaryMembership.clan_id)
+            .eq('status', 'pending');
+          setPendingRequests((pending as any) || []);
+        } else {
           setPendingRequests([]);
+        }
+
+        // Convites recebidos: TODOS os 'invited' do user (pode ter convites de vários times)
+        const invitedRows = (allMyMemberships || []).filter((m: any) => m.status === 'invited');
+        if (invitedRows.length > 0) {
+          const inviteIds = invitedRows.map((m: any) => m.id);
+          const { data: inviteData } = await supabase
+            .from('clan_memberships')
+            .select('*, clans(*)')
+            .in('id', inviteIds);
+          setInvitations((inviteData as any) || []);
+        } else {
           setInvitations([]);
         }
       }
@@ -1042,6 +1049,42 @@ export default function Clans() {
           </div>
         );
       })()}
+
+      {/* ── Convites Recebidos ── */}
+      {invitations.length > 0 && (
+        <div className="flex flex-col gap-3">
+          {invitations.map((invite) => (
+            <div key={invite.id} className="bg-primary/10 border-2 border-primary/40 rounded-[2rem] p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-2xl">✉️</span>
+                <p className="text-[10px] text-primary font-black uppercase tracking-widest">Convite Recebido</p>
+              </div>
+              <div className="flex items-center gap-3 mb-4">
+                {renderBanner(invite.clans?.banner, 'w-12 h-12')}
+                <div className="flex-1 min-w-0">
+                  <p className="font-headline font-black text-on-surface text-lg uppercase italic truncate">{invite.clans?.name}</p>
+                  {invite.clans?.motto && <p className="text-on-surface-variant text-xs italic truncate">"{invite.clans.motto}"</p>}
+                  <p className="text-on-surface-variant text-[10px] mt-1">Você foi convidado para entrar neste time.</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleAcceptInvite(invite.id)}
+                  className="flex-1 py-3 rounded-xl font-headline font-black text-xs uppercase italic bg-primary text-background flex items-center justify-center gap-2"
+                >
+                  <Check className="w-4 h-4" /> Aceitar
+                </button>
+                <button
+                  onClick={() => handleRejectInvite(invite.id)}
+                  className="flex-1 py-3 rounded-xl font-headline font-black text-xs uppercase italic bg-surface-container-highest text-on-surface-variant border border-outline-variant/20 flex items-center justify-center gap-2"
+                >
+                  <X className="w-4 h-4" /> Recusar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Seu Time */}
       {myClan && (
