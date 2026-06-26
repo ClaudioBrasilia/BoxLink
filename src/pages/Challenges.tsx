@@ -206,13 +206,23 @@ export default function Challenges() {
       await fetchData();
 
       if (newTotal >= targetValue && !isRewardClaimed(challenge.id)) {
-        await grantReward(challenge);
+        // Se exige foto, abre o modal de foto ANTES de liberar a recompensa
+        if (challenge.require_photo) {
+          setProgressModal(null);
+          setProgressValue('');
+          setPhotoModal({ challenge });
+          showToast('📸 Foto obrigatória para concluir o desafio!', 'info');
+        } else {
+          await grantReward(challenge);
+          setProgressModal(null);
+          setProgressValue('');
+        }
       } else {
-        showToast(`✓ Progresso registrado! ${newTotal}/${targetValue} ${challenge.unit}`, 'success');
+        const remaining = targetValue - newTotal;
+        showToast(`✓ +${quantity} ${challenge.unit} registrados! Faltam ${remaining} para concluir.`, 'success');
+        setProgressModal(null);
+        setProgressValue('');
       }
-
-      setProgressModal(null);
-      setProgressValue('');
     } catch (e: any) {
       console.error(e);
       showToast('Erro ao registrar progresso: ' + (e.message || 'Erro desconhecido'), 'error');
@@ -274,7 +284,13 @@ export default function Challenges() {
     }
     const challenge = photoModal.challenge;
     setPhotoModal(null); setPhotoFile(null); setPhotoPreview(null);
-    await submitDayOk(challenge, photoUrl);
+
+    // Desafio acumulativo: foto é exigida só na conclusão — concede recompensa direto
+    if (challenge.type === 'accumulative') {
+      await grantReward(challenge);
+    } else {
+      await submitDayOk(challenge, photoUrl);
+    }
   };
 
   return (
