@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { Trophy, Zap, Calendar, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { cn, compareBy } from '../lib/utils';
@@ -17,12 +16,25 @@ interface RankedUser extends UserType {
   photo_url?: string | null;
 }
 
+interface WodRankEntry {
+  id: string;
+  name: string;
+  result: string;
+  type: string;       // 'RX' | 'Scaled'
+  gender: string;     // 'M' | 'F'
+  level: number;
+  scoreNum: number;   // número puro para ordenação
+}
+
+type WodFilter = 'todos' | 'RX' | 'Scaled';
+type GenderFilter = 'todos' | 'M' | 'F';
+
 export default function Leaderboard() {
   const [xpAllTime, setXpAllTime]       = useState<RankedUser[]>([]);
   const [xpMonthly, setXpMonthly]       = useState<RankedUser[]>([]);
   const [freqRank, setFreqRank]         = useState<RankedUser[]>([]);
   const [clanRankings, setClanRankings] = useState<any[]>([]);
-  const [wodRanking, setWodRanking]     = useState<any[]>([]);
+  const [wodRanking, setWodRanking]     = useState<WodRankEntry[]>([]);
   const [wodInfo, setWodInfo]           = useState<any>(null);
   const [activeTab, setActiveTab]       = useState<'xp_mes' | 'freq' | 'xp_total' | 'clans' | 'wod'>('xp_mes');
   const [isExpanded, setIsExpanded]     = useState(false);
@@ -32,7 +44,11 @@ export default function Leaderboard() {
   const [inactivitySettings, setInactivitySettings] = useState<InactivitySettings | null>(null);
   const [boxName, setBoxName] = useState<string>('CrossCity Hub');
   const [boxLogo, setBoxLogo] = useState<string>('');
-  const [checkinsByUser, setCheckinsByUser]          = useState<Record<string, { date: string }[]>>({});
+  const [checkinsByUser, setCheckinsByUser] = useState<Record<string, { date: string }[]>>({});
+
+  // Filtros do ranking WOD
+  const [wodFilter, setWodFilter]       = useState<WodFilter>('todos');
+  const [genderFilter, setGenderFilter] = useState<GenderFilter>('todos');
 
   const now       = new Date();
   const monthName = now.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
@@ -43,13 +59,12 @@ export default function Leaderboard() {
     setError(null);
 
     try {
-      const now             = new Date(); // Recalculado a cada chamada — corrige bug do ranking WOD não atualizar
+      const now             = new Date();
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
       const todayStr        = formatInTimeZone(now, 'America/Sao_Paulo', 'yyyy-MM-dd');
 
-      // ── Todas as queries base em paralelo ─────────────────────────────────
       const [
-        { data: allUsers,       error: usersError },
+        { data: allUsers, error: usersError },
         { data: boxSettings },
         { data: rewardHistory },
         { data: checkinsMonth },
@@ -68,7 +83,6 @@ export default function Leaderboard() {
 
       if (usersError) throw usersError;
 
-      // ── Configurações de inatividade ──────────────────────────────────────
       if (boxSettings?.name) setBoxName(boxSettings.name);
       if (boxSettings?.logo) setBoxLogo(boxSettings.logo);
 
@@ -76,7 +90,6 @@ export default function Leaderboard() {
         { enabled: false, mode: 'consecutive', startDays: 5, maxDays: 14 };
       setInactivitySettings(inactSettings);
 
-      // ── Checkins para inatividade (query separada pois depende de inactSettings) ──
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - (inactSettings.maxDays || 30));
       const { data: allCheckins } = await supabase
@@ -90,7 +103,6 @@ export default function Leaderboard() {
       });
       setCheckinsByUser(checkinsMap);
 
-      // ── Helpers ───────────────────────────────────────────────────────────
       const mapUser = (u: any, extra = {}): RankedUser => ({
         id: u.id, email: u.email, name: u.name ?? 'Atleta',
         role: u.role, status: u.status, xp: u.xp || 0,
@@ -110,14 +122,12 @@ export default function Leaderboard() {
       const byNameAsc   = (a: RankedUser, b: RankedUser) =>
         (a.name || '').localeCompare(b.name || '', 'pt-BR');
 
-      // ── XP all time ───────────────────────────────────────────────────────
       setXpAllTime([...(allUsers || [])]
         .map(u => mapUser(u))
         .filter(u => (u.xp || 0) > 0)
         .sort(compareBy<RankedUser>((a, b) => (b.xp || 0) - (a.xp || 0), byLevelDesc, byAgeAsc, byNameAsc))
         .slice(0, 50));
 
-      // ── XP mensal ─────────────────────────────────────────────────────────
       const monthXpByUser: Record<string, number> = {};
       (rewardHistory || []).forEach((r: any) => {
         if (r.xp > 0) monthXpByUser[r.user_id] = (monthXpByUser[r.user_id] || 0) + r.xp;
@@ -128,7 +138,6 @@ export default function Leaderboard() {
         .sort(compareBy<RankedUser>((a, b) => (b.monthXp || 0) - (a.monthXp || 0), byXpDesc, byLevelDesc, byAgeAsc, byNameAsc))
         .slice(0, 50));
 
-      // ── Frequência ────────────────────────────────────────────────────────
       const checkinCounts: Record<string, number> = {};
       (checkinsMonth || []).forEach((c: any) => {
         checkinCounts[c.user_id] = (checkinCounts[c.user_id] || 0) + 1;
@@ -139,9 +148,7 @@ export default function Leaderboard() {
         .sort(compareBy<RankedUser>((a, b) => (b.monthCheckinCount || 0) - (a.monthCheckinCount || 0), byXpDesc, byLevelDesc, byAgeAsc, byNameAsc))
         .slice(0, 50));
 
-      // ── Clãs ──────────────────────────────────────────────────────────────
       if (clansData) {
-        // XP do mês por atleta
         const xpByUser: Record<string, number> = {};
         (rewardHistory || []).forEach((r: any) => {
           if (!r.user_id) return;
@@ -150,11 +157,7 @@ export default function Leaderboard() {
         setClanRankings(clansData.map(clan => {
           const clanMembers = (membershipsData || []).filter(m => m.clan_id === clan.id);
           const energy = clanMembers.reduce((s, m: any) => s + (xpByUser[m.user_id] || 0), 0);
-          return {
-            ...clan,
-            energy,
-            memberCount: clanMembers.length,
-          };
+          return { ...clan, energy, memberCount: clanMembers.length };
         }).sort(compareBy<any>(
           (a, b) => (b.energy || 0) - (a.energy || 0),
           (a, b) => (b.memberCount || 0) - (a.memberCount || 0),
@@ -171,9 +174,19 @@ export default function Leaderboard() {
       }
       setWodInfo(activeWod);
 
-      const parseResult = (r: string, timeBased: boolean): number => {
+      // Parsers de resultado
+      const parseResult = (r: string, timeBased: boolean, repsPerRound?: number): number => {
         if (!r) return timeBased ? 999999 : 0;
         const str = r.trim();
+        // Formato AMRAP: "3+15"
+        const amrapMatch = str.match(/^(\d+)\+(\d+)$/);
+        if (amrapMatch) {
+          const rounds = parseInt(amrapMatch[1], 10);
+          const reps   = parseInt(amrapMatch[2], 10);
+          const rpr    = repsPerRound || 100;
+          return rounds * rpr + reps;
+        }
+        // Formato tempo: "12:34" ou "1:02:34"
         if (/^\d+:\d+/.test(str)) {
           const p = str.split(':').map(Number);
           return p.length === 2 ? p[0] * 60 + p[1] : p[0] * 3600 + p[1] * 60 + p[2];
@@ -181,52 +194,59 @@ export default function Leaderboard() {
         return parseFloat(str.replace(/[^0-9.]/g, '')) || (timeBased ? 999999 : 0);
       };
 
-      // ── Helper: enriquece wod_results com dados de perfil manualmente ────
-      // wod_results.user_id → auth.users(id), mas profiles.id → auth.users(id)
-      // O join automático via PostgREST não funciona porque a FK não aponta
-      // diretamente para public.profiles. Fazemos o join manual aqui.
+      // Enriquece wod_results com perfil (join manual — FK aponta para auth.users)
       const enrichWodResults = async (rawResults: any[]): Promise<any[]> => {
         if (!rawResults.length) return [];
         const userIds = [...new Set(rawResults.map((r: any) => r.user_id))];
         const { data: profilesData } = await supabase
-          .from('profiles').select('id, name, level').in('id', userIds);
+          .from('profiles').select('id, name, level, gender, avatar_equipped').in('id', userIds);
         const profileMap: Record<string, any> = {};
         (profilesData || []).forEach((p: any) => { profileMap[p.id] = p; });
-        return rawResults.map((r: any) => ({
-          ...r,
-          profiles: profileMap[r.user_id] ?? null,
-        }));
+        return rawResults.map((r: any) => ({ ...r, profiles: profileMap[r.user_id] ?? null }));
       };
 
-      const processWodResults = (wodResults: any[], wodType: string) => {
-        const isTimeBased = ['FOR TIME', 'TIME', 'TEMPO'].some(t => (wodType || '').toUpperCase().includes(t));
+      const processWodResults = (wodResults: any[], wod: any): WodRankEntry[] => {
+        const wodType    = (wod?.type || '').toUpperCase();
+        const isTimeBased = ['FOR TIME', 'TIME', 'TEMPO'].some(t => wodType.includes(t));
+        const repsPerRound = wod?.reps_per_round as number | undefined;
+
+        // Melhor resultado por atleta
         const bestByUser: Record<string, any> = {};
         wodResults.forEach((r: any) => {
           const uid = r.user_id;
-          const val = parseResult(r.result, isTimeBased);
+          const val = parseResult(r.result, isTimeBased, repsPerRound);
           const prev = bestByUser[uid];
-          if (!prev) { bestByUser[uid] = r; return; }
-          const prevVal = parseResult(prev.result, isTimeBased);
-          if (isTimeBased ? val < prevVal : val > prevVal) bestByUser[uid] = r;
+          if (!prev) { bestByUser[uid] = { ...r, scoreNum: val }; return; }
+          const prevVal = prev.scoreNum;
+          if (isTimeBased ? val < prevVal : val > prevVal) bestByUser[uid] = { ...r, scoreNum: val };
         });
+
         return Object.values(bestByUser)
-          .sort((a: any, b: any) => isTimeBased
-            ? parseResult(a.result, isTimeBased) - parseResult(b.result, isTimeBased)
-            : parseResult(b.result, isTimeBased) - parseResult(a.result, isTimeBased))
-          .map((r: any) => ({ id: r.id, name: r.profiles?.name || 'Atleta', result: r.result, type: r.type, level: r.profiles?.level || 1 }));
+          .sort((a: any, b: any) => isTimeBased ? a.scoreNum - b.scoreNum : b.scoreNum - a.scoreNum)
+          .map((r: any) => {
+            const profile = r.profiles;
+            const gender = profile?.gender ||
+              (profile?.avatar_equipped?.base_outfit === 'base_feminina' ? 'F' : 'M');
+            return {
+              id: r.id,
+              name: profile?.name || 'Atleta',
+              result: r.result,
+              type: r.type || 'RX',
+              gender,
+              level: profile?.level || 1,
+              scoreNum: r.scoreNum,
+            };
+          });
       };
 
       if (activeWod) {
-        // Busca wod_results por wod_id — sem join automático (FK aponta para auth.users, não profiles)
         const { data: rawWodResults } = await supabase
           .from('wod_results').select('*').eq('wod_id', activeWod.id);
 
         if (rawWodResults && rawWodResults.length > 0) {
           const wodResults = await enrichWodResults(rawWodResults);
-          setWodRanking(processWodResults(wodResults, activeWod.type));
+          setWodRanking(processWodResults(wodResults, activeWod));
         } else {
-          // Fallback: busca resultados com created_at de HOJE (timezone SP)
-          // Cobre casos em que wod_id pode ter sido salvo nulo ou de dia anterior
           const todayStart = todayStr + 'T00:00:00-03:00';
           const todayEnd   = todayStr + 'T23:59:59-03:00';
           const { data: rawTodayResults } = await supabase
@@ -234,7 +254,7 @@ export default function Leaderboard() {
             .gte('created_at', todayStart).lte('created_at', todayEnd);
           if (rawTodayResults?.length) {
             const todayResults = await enrichWodResults(rawTodayResults);
-            setWodRanking(processWodResults(todayResults, activeWod.type));
+            setWodRanking(processWodResults(todayResults, activeWod));
           } else {
             setWodRanking([]);
           }
@@ -253,7 +273,6 @@ export default function Leaderboard() {
 
   useEffect(() => {
     fetchAll();
-    // Realtime só para mudanças relevantes — sem polling
     const channel = supabase.channel('leaderboard_rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wod_results' }, () => fetchAll(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchAll(true))
@@ -269,10 +288,18 @@ export default function Leaderboard() {
   const isClans = activeTab === 'clans';
   const isWod   = activeTab === 'wod';
 
+  // Aplica filtros no ranking WOD
+  const filteredWodRanking = wodRanking.filter(e => {
+    const catOk = wodFilter === 'todos' || e.type === wodFilter;
+    const genOk = genderFilter === 'todos' || e.gender === genderFilter;
+    return catOk && genOk;
+  });
+
+  // Ranking exibido (non-wod usa arrays originais)
   const currentRank = activeTab === 'xp_total' ? xpAllTime
     : activeTab === 'xp_mes'  ? xpMonthly
     : activeTab === 'freq'    ? freqRank
-    : activeTab === 'wod'     ? wodRanking
+    : activeTab === 'wod'     ? filteredWodRanking
     : clanRankings;
 
   const top3   = currentRank.slice(0, 3);
@@ -286,6 +313,18 @@ export default function Leaderboard() {
     if (activeTab === 'wod')      return u.result || '';
     return '';
   };
+
+  // Badge de categoria + gênero para o WOD
+  const WodBadge = ({ entry }: { entry: WodRankEntry }) => (
+    <span className={cn(
+      'text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full',
+      entry.type === 'RX'
+        ? 'bg-primary/20 text-primary'
+        : 'bg-secondary/20 text-secondary'
+    )}>
+      {entry.type} {entry.gender === 'F' ? '♀' : '♂'}
+    </span>
+  );
 
   if (error) return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center text-error font-headline font-black text-xl italic p-4 text-center">
@@ -344,8 +383,9 @@ export default function Leaderboard() {
         {activeTab === 'wod'      && `Resultados do WOD — ${wodInfo?.name || 'sem WOD cadastrado'}`}
       </p>
 
+      {/* Painel WOD: info + filtros */}
       {isWod && (
-        <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-4 flex flex-col gap-1">
+        <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-4 flex flex-col gap-3">
           {wodInfo ? (
             <>
               <div className="flex justify-between items-start">
@@ -361,6 +401,35 @@ export default function Leaderboard() {
                   className="text-[9px] font-black uppercase tracking-widest text-primary border border-primary/30 px-3 py-1.5 rounded-xl hover:bg-primary/10 transition-all disabled:opacity-40">
                   {refreshing ? '...' : '↻ Atualizar'}
                 </button>
+              </div>
+
+              {/* Filtros pill */}
+              <div className="flex gap-2 flex-wrap">
+                {(['todos', 'RX', 'Scaled'] as WodFilter[]).map(f => (
+                  <button key={f} onClick={() => setWodFilter(f)}
+                    className={cn(
+                      'px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all',
+                      wodFilter === f
+                        ? f === 'RX' ? 'bg-primary text-background'
+                          : f === 'Scaled' ? 'bg-secondary text-background'
+                          : 'bg-on-surface text-background'
+                        : 'bg-surface-container-highest text-on-surface-variant hover:text-on-surface'
+                    )}>
+                    {f === 'todos' ? 'Todos' : f}
+                  </button>
+                ))}
+                <div className="w-px bg-outline-variant/20 mx-1" />
+                {(['todos', 'M', 'F'] as GenderFilter[]).map(g => (
+                  <button key={g} onClick={() => setGenderFilter(g)}
+                    className={cn(
+                      'px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all',
+                      genderFilter === g
+                        ? 'bg-on-surface text-background'
+                        : 'bg-surface-container-highest text-on-surface-variant hover:text-on-surface'
+                    )}>
+                    {g === 'todos' ? 'Todos' : g === 'M' ? '♂ Masc' : '♀ Fem'}
+                  </button>
+                ))}
               </div>
             </>
           ) : (
@@ -386,6 +455,7 @@ export default function Leaderboard() {
                     {isClans ? top3[1].name : top3[1].name.split(' ')[0]}
                   </p>
                   <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[1])}</p>
+                  {isWod && <WodBadge entry={top3[1] as WodRankEntry} />}
                 </div>
                 <div className="w-16 h-20 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex items-center justify-center">
                   <span className="text-[10px] font-black text-on-surface-variant italic">
@@ -411,6 +481,7 @@ export default function Leaderboard() {
                     {isClans ? top3[0].name : top3[0].name.split(' ')[0]}
                   </p>
                   <p className="text-xs text-on-surface font-bold">{getScore(top3[0])}</p>
+                  {isWod && <WodBadge entry={top3[0] as WodRankEntry} />}
                 </div>
                 <div className="w-24 h-32 bg-primary/10 rounded-t-3xl border-x border-t border-primary/20 flex items-center justify-center">
                   <span className="text-xs font-black text-primary italic">
@@ -436,6 +507,7 @@ export default function Leaderboard() {
                     {isClans ? top3[2].name : top3[2].name.split(' ')[0]}
                   </p>
                   <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[2])}</p>
+                  {isWod && <WodBadge entry={top3[2] as WodRankEntry} />}
                 </div>
                 <div className="w-16 h-16 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex items-center justify-center">
                   <span className="text-[10px] font-black text-on-surface-variant italic">
@@ -448,7 +520,7 @@ export default function Leaderboard() {
         </div>
       )}
 
-      {isWod && wodRanking.length === 0 && wodInfo && (
+      {isWod && filteredWodRanking.length === 0 && wodInfo && (
         <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-4 italic">
           Nenhum resultado registrado ainda
         </p>
@@ -482,7 +554,7 @@ export default function Leaderboard() {
                         {isClans
                           ? <><Users className="w-3 h-3" /> {(u as any).memberCount} membros</>
                           : isWod
-                          ? <span className="text-[10px] font-bold uppercase">{u.type} • Nível {u.level}</span>
+                          ? <WodBadge entry={u as WodRankEntry} />
                           : <><Zap className="w-3 h-3 text-primary" /> Nível {u.level}</>}
                       </p>
                     </div>
@@ -494,14 +566,9 @@ export default function Leaderboard() {
                 </motion.div>
               );
             })}
-            {others.length === 0 && (
-              <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-4 italic">
-                {currentRank.length <= 3 ? `Apenas ${currentRank.length} no ranking` : 'Nenhum resultado'}
-              </p>
-            )}
           </div>
         </section>
       )}
     </div>
   );
-                                    }
+}
