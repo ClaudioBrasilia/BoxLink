@@ -78,6 +78,61 @@ function TimeInput({ value, onChange, disabled }: { value: string; onChange: (va
   );
 }
 
+// Input especial para AMRAP: rounds + reps
+function AmrapInput({ value, onChange, disabled, repsPerRound }: {
+  value: string; onChange: (val: string) => void; disabled?: boolean; repsPerRound?: number;
+}) {
+  const parseAmrap = (v: string) => {
+    const match = v.match(/^(\d+)\+(\d+)$/);
+    return { rounds: match?.[1] ?? '', reps: match?.[2] ?? '' };
+  };
+  const parsed = parseAmrap(value);
+  const [rounds, setRounds] = useState(parsed.rounds);
+  const [reps, setReps] = useState(parsed.reps);
+  const repsRef = useRef<HTMLInputElement>(null);
+
+  const commit = (r: string, p: string) => {
+    if (r || p) onChange(`${r || '0'}+${p || '0'}`);
+  };
+  const handleRounds = (raw: string) => {
+    const clean = raw.replace(/\D/g, '').slice(0, 3);
+    setRounds(clean); commit(clean, reps);
+    if (clean.length >= 2) repsRef.current?.focus();
+  };
+  const handleReps = (raw: string) => {
+    const clean = raw.replace(/\D/g, '').slice(0, 3);
+    const maxReps = repsPerRound ? repsPerRound - 1 : 999;
+    const num = parseInt(clean, 10);
+    const clamped = isNaN(num) ? clean : String(Math.min(num, maxReps));
+    setReps(clamped); commit(rounds, clamped);
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-3 bg-surface-container-highest rounded-2xl p-4">
+        <div className="flex-1 flex flex-col items-center gap-1">
+          <label className="text-[8px] text-on-surface-variant font-black uppercase tracking-widest">ROUNDS</label>
+          <input type="number" inputMode="numeric" min={0} value={rounds}
+            onChange={(e) => handleRounds(e.target.value)} placeholder="0" disabled={disabled}
+            className="w-full bg-transparent text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none" />
+        </div>
+        <span className="text-3xl font-black text-primary">+</span>
+        <div className="flex-1 flex flex-col items-center gap-1">
+          <label className="text-[8px] text-on-surface-variant font-black uppercase tracking-widest">REPS</label>
+          <input ref={repsRef} type="number" inputMode="numeric" min={0} value={reps}
+            onChange={(e) => handleReps(e.target.value)} placeholder="0" disabled={disabled}
+            className="w-full bg-transparent text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none" />
+        </div>
+      </div>
+      {repsPerRound && (
+        <p className="text-center text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
+          {repsPerRound} reps por round completo
+        </p>
+      )}
+    </div>
+  );
+}
+
 function parseLines(text: string): string[] {
   return text.split('\n').map((l) => l.trim()).filter(Boolean);
 }
@@ -115,11 +170,17 @@ function WodSection({ icon, label, labelColor, text }: {
   );
 }
 
+const CATEGORY_OPTIONS = [
+  { value: 'RX',     label: 'RX',     color: 'bg-primary text-background',           border: 'border-primary' },
+  { value: 'Scaled', label: 'SCALED', color: 'bg-secondary text-background',         border: 'border-secondary' },
+];
+
 export default function Wod() {
   const { user } = useAuth();
   const [wod, setWod] = useState<WodType | null>(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [result, setResult] = useState('');
+  const [category, setCategory] = useState<'RX' | 'Scaled'>('RX');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -154,7 +215,12 @@ export default function Wod() {
     if (wodData) {
       const { data: resultData } = await supabase.from('wod_results').select('*')
         .eq('wod_id', wodData.id).eq('user_id', user.id).maybeSingle();
-      if (resultData) { setSubmitted(true); setExistingResultId(resultData.id); setResult(resultData.result ?? ''); }
+      if (resultData) {
+        setSubmitted(true);
+        setExistingResultId(resultData.id);
+        setResult(resultData.result ?? '');
+        setCategory((resultData.type as 'RX' | 'Scaled') || 'RX');
+      }
     }
     setLoading(false);
   };
@@ -164,14 +230,13 @@ export default function Wod() {
     setSubmitting(true);
     try {
       if (existingResultId) {
-        await supabase.from('wod_results').update({ result }).eq('id', existingResultId);
+        await supabase.from('wod_results').update({ result, type: category }).eq('id', existingResultId);
         addToast('Resultado atualizado!', 'success');
       } else {
         const { data } = await supabase.from('wod_results')
-          .insert({ wod_id: wod.id, user_id: user.id, result }).select().single();
+          .insert({ wod_id: wod.id, user_id: user.id, result, type: category }).select().single();
         setExistingResultId(data?.id ?? null);
 
-        // 🎯 CORREÇÃO: Busca recompensas da fonte unificada (box_settings.rewards)
         const rewards = await getRewardSettings();
         const wodXp    = rewards.wod_xp    ?? 10;
         const wodCoins = rewards.wod_coins  ?? 5;
@@ -195,6 +260,10 @@ export default function Wod() {
   };
 
   const isToday = isSameDay(selectedDate, new Date());
+  const wodType = (wod?.type ?? '').toUpperCase();
+  const isTimeBased = wodType === 'FOR TIME' || wodType === 'TIME' || wodType === 'FORTIME';
+  const isAmrap = wodType === 'AMRAP';
+  const repsPerRound = (wod as any)?.reps_per_round as number | undefined;
 
   return (
     <div className="flex flex-col gap-5 pb-24">
@@ -238,7 +307,6 @@ export default function Wod() {
         )}
       </div>
 
-      {/* NOVO: Scanner Bluetooth e Display de FC */}
       {isToday && (
         <>
         </>
@@ -263,35 +331,65 @@ export default function Wod() {
           )}
           {wod.rx && <WodSection icon={<Timer className="w-3.5 h-3.5" />} label="RX" labelColor="text-primary" text={wod.rx} />}
           {wod.scaled && <WodSection icon={<Activity className="w-3.5 h-3.5" />} label="Scaled" labelColor="text-secondary" text={wod.scaled} />}
-          {wod.beginner && <WodSection icon={<Activity className="w-3.5 h-3.5" />} label="Beginner" labelColor="text-on-surface-variant" text={wod.beginner} />}
 
           <div className="mt-2">
             {submitted && !editing ? (
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2 text-primary">
                   <CheckCircle2 className="w-5 h-5" />
-                  <span className="font-black text-sm">Resultado registrado: {result}</span>
+                  <span className="font-black text-sm">
+                    {category} — {result}
+                  </span>
                 </div>
                 <button onClick={() => setEditing(true)} className="flex items-center gap-2 text-xs text-on-surface-variant underline">
                   <Edit2 className="w-3.5 h-3.5" /> Editar resultado
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col gap-3">
-                {(() => {
-                  const t = (wod.type ?? '').toLowerCase();
-                  const isTime = t === 'time' || t === 'fortime' || t === 'for time';
-                  const isWeight = t === 'weight' || t === 'max' || t === 'maxweight' || t === '1rm';
-                  const placeholder = isWeight ? 'Peso (kg)' : 'Total de reps';
-                  if (isTime) return <TimeInput value={result} onChange={setResult} disabled={submitting} />;
-                  return (
+              <div className="flex flex-col gap-4">
+                {/* Seleção de categoria */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Categoria</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {CATEGORY_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setCategory(opt.value as 'RX' | 'Scaled')}
+                        disabled={submitting}
+                        className={cn(
+                          'py-3 rounded-2xl font-headline font-black text-sm uppercase tracking-widest transition-all border-2',
+                          category === opt.value
+                            ? `${opt.color} ${opt.border}`
+                            : 'bg-surface-container-highest text-on-surface-variant border-transparent hover:border-outline-variant/30'
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Input de resultado */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Resultado</label>
+                  {isTimeBased ? (
+                    <TimeInput value={result} onChange={setResult} disabled={submitting} />
+                  ) : isAmrap ? (
+                    <AmrapInput
+                      value={result}
+                      onChange={setResult}
+                      disabled={submitting}
+                      repsPerRound={repsPerRound}
+                    />
+                  ) : (
                     <input type="number" inputMode="numeric" value={result}
                       onChange={(e) => setResult(e.target.value)}
-                      placeholder={placeholder} disabled={submitting}
+                      placeholder="Total de reps" disabled={submitting}
                       className="w-full bg-surface-container-highest rounded-2xl p-4 text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none"
                     />
-                  );
-                })()}
+                  )}
+                </div>
+
                 <button onClick={handleSubmit} disabled={submitting || !result.trim()}
                   className="w-full py-4 rounded-2xl bg-primary text-background font-black text-base disabled:opacity-40 transition-opacity">
                   {submitting ? 'Salvando…' : editing ? 'Atualizar' : 'Registrar resultado'}
