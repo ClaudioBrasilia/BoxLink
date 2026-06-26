@@ -20,7 +20,7 @@ export default function Coach() {
   const [selectedResultsDate, setSelectedResultsDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [editingWod, setEditingWod] = useState<Partial<Wod> | null>(null);
   const toast = useToast();
-  const [newWod, setNewWod] = useState<Partial<Wod>>({
+  const [newWod, setNewWod] = useState<Partial<Wod> & { reps_per_round?: number }>({
     date: formatInTimeZone(new Date(), TIMEZONE, 'yyyy-MM-dd'),
     name: '',
     type: 'AMRAP',
@@ -28,29 +28,26 @@ export default function Coach() {
     skill: '',
     rx: '',
     scaled: '',
-    beginner: '',
+    reps_per_round: undefined,
   });
 
   const fetchData = async () => {
     const today = formatInTimeZone(new Date(), TIMEZONE, "yyyy-MM-dd");
 
-    // Fetch WODs
     const { data: wodsData } = await supabase.from('wods').select('*').order('date', { ascending: false });
     setWods(wodsData || []);
 
-    // Fetch Athletes (Check-ins for today)
     const { data: athletesData } = await supabase
       .from('checkins')
       .select('*, profiles(*)')
       .eq('date', today);
     setAthletes(athletesData || []);
 
-    // Fetch Results for today's WODs
     const { data: todayWods } = await supabase.from('wods').select('id').eq('date', today);
     if (todayWods && todayWods.length > 0) {
       const { data: resultsData } = await supabase
         .from('wod_results')
-        .select('*, profiles(name), wods(*)')
+        .select('*, profiles(name, gender, avatar_equipped), wods(*)')
         .in('wod_id', todayWods.map(w => w.id))
         .order('created_at', { ascending: false });
       setResults(resultsData || []);
@@ -74,6 +71,8 @@ export default function Coach() {
     };
   }, []);
 
+  const isAmrap = (type: string) => (type || '').toUpperCase() === 'AMRAP';
+
   const handleSaveWod = async () => {
     const missing = [];
     if (!newWod.date) missing.push('Data');
@@ -83,7 +82,7 @@ export default function Coach() {
       toast.error('Preencha os campos obrigatórios: ' + missing.join(', '));
       return;
     }
-    
+
     const { data, error } = await supabase
       .from('wods')
       .insert({
@@ -94,11 +93,11 @@ export default function Coach() {
         skill: newWod.skill,
         rx: newWod.rx,
         scaled: newWod.scaled,
-        beginner: newWod.beginner
+        reps_per_round: isAmrap(newWod.type || '') ? (newWod.reps_per_round || null) : null,
       })
       .select()
       .single();
-    
+
     if (!error && data) {
       setWods([data, ...wods]);
       toast.success('WOD postado com sucesso!');
@@ -110,41 +109,65 @@ export default function Coach() {
         skill: '',
         rx: '',
         scaled: '',
-        beginner: '',
+        reps_per_round: undefined,
       });
     } else {
-      console.error('Error saving WOD:', error);
       toast.error('Erro ao postar WOD: ' + (error?.message || 'Erro desconhecido'));
     }
   };
 
-  // Helper to parse time string "MM:SS" to seconds
+  // Converte resultado AMRAP "rounds+reps" para número para comparação
+  const parseAmrapScore = (result: string, repsPerRound?: number): number => {
+    if (!result) return 0;
+    const amrapMatch = result.match(/^(\d+)\+(\d+)$/);
+    if (amrapMatch) {
+      const rounds = parseInt(amrapMatch[1], 10);
+      const reps = parseInt(amrapMatch[2], 10);
+      const rpr = repsPerRound || 100;
+      return rounds * rpr + reps;
+    }
+    return parseFloat(result.replace(/[^0-9.]/g, '')) || 0;
+  };
+
   const timeToSeconds = (timeStr: string) => {
     const [min, sec] = timeStr.split(':').map(Number);
     return (min * 60) + (sec || 0);
   };
 
-  // Improved Ranking Logic
   const getRankedResults = () => {
-    const filteredResults = results.filter(r => 
-      format(new Date(r.created_at), 'yyyy-MM-dd') === selectedResultsDate
-    );
+    const filteredResults = results.filter(r => {
+      const d = formatInTimeZone(new Date(r.created_at), TIMEZONE, 'yyyy-MM-dd');
+      return d === selectedResultsDate;
+    });
 
-    const categories = ['RX', 'Scaled', 'Beginner'];
+    const categories = ['RX', 'Scaled'];
+    const genders = ['M', 'F'];
     const ranked: Record<string, any[]> = {};
 
     categories.forEach(cat => {
-      const catResults = filteredResults.filter(r => r.type === cat);
-      
-      ranked[cat] = catResults.sort((a, b) => {
-        const isForTime = a.wods?.type === 'FOR TIME';
-        
-        if (isForTime) {
-          return timeToSeconds(a.result) - timeToSeconds(b.result);
-        } else {
-          // AMRAP/Reps: Higher is better
+      genders.forEach(g => {
+        const gLabel = g === 'M' ? '♂' : '♀';
+        const key = `${cat} ${gLabel}`;
+        const catResults = filteredResults.filter(r => {
+          const rCat = r.type === 'RX' ? 'RX' : 'Scaled';
+          const equipped = r.profiles?.avatar_equipped;
+          const profileGender = r.profiles?.gender ||
+            (equipped?.base_outfit === 'base_feminina' ? 'F' : 'M');
+          return rCat === cat && profileGender === g;
+        });
+
+        ranked[key] = catResults.sort((a, b) => {
+          const wod = a.wods;
+          const wodType = (wod?.type || '').toUpperCase();
+          const rpr = wod?.reps_per_round;
+          if (wodType === 'FOR TIME' || wodType === 'TIME') {
+            return timeToSeconds(a.result) - timeToSeconds(b.result);
+          }
+          if (wodType === 'AMRAP') {
+            return parseAmrapScore(b.result, rpr) - parseAmrapScore(a.result, rpr);
+          }
           return parseFloat(b.result) - parseFloat(a.result);
-        }
+        });
       });
     });
 
@@ -152,6 +175,7 @@ export default function Coach() {
   };
 
   const rankedData = getRankedResults();
+
   const handleUpdateWod = async () => {
     if (!editingWod?.id || !editingWod.name) return;
     const { error } = await supabase
@@ -163,7 +187,7 @@ export default function Coach() {
         skill: editingWod.skill ?? '',
         rx: editingWod.rx ?? '',
         scaled: editingWod.scaled ?? '',
-        beginner: editingWod.beginner ?? '',
+        reps_per_round: isAmrap(editingWod.type || '') ? ((editingWod as any).reps_per_round || null) : null,
       })
       .eq('id', editingWod.id);
     if (!error) {
@@ -177,6 +201,13 @@ export default function Coach() {
 
   const historyWod = wods.find(w => w.date === selectedHistoryDate);
 
+  const categoryColor: Record<string, string> = {
+    'RX ♂': 'bg-primary/10 border-primary/30 text-primary',
+    'RX ♀': 'bg-primary/20 border-primary/40 text-primary',
+    'Scaled ♂': 'bg-secondary/10 border-secondary/30 text-secondary',
+    'Scaled ♀': 'bg-secondary/20 border-secondary/40 text-secondary',
+  };
+
   return (
     <div className="flex flex-col gap-6 p-4 pt-8 min-h-screen bg-background">
       <header className="flex justify-between items-center">
@@ -186,7 +217,6 @@ export default function Coach() {
         </h1>
       </header>
 
-      {/* Tabs */}
       <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10 overflow-x-auto no-scrollbar">
         {(['aula', 'history', 'results'] as const).map((tab) => (
           <button
@@ -211,7 +241,6 @@ export default function Coach() {
             exit={{ opacity: 0, y: 20 }}
             className="flex flex-col gap-8"
           >
-            {/* Post WOD Section */}
             <div className="bg-surface-container-low p-6 rounded-[2.5rem] border border-outline-variant/10 space-y-6">
               <div className="flex items-center gap-2 mb-2">
                 <Plus className="w-5 h-5 text-primary" />
@@ -240,6 +269,22 @@ export default function Coach() {
                 <input type="text" value={newWod.name} onChange={e => setNewWod({...newWod, name: e.target.value})} placeholder="ex: MURPH" className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
               </div>
 
+              {/* Campo reps_per_round — só aparece para AMRAP */}
+              {isAmrap(newWod.type || '') && (
+                <div className="space-y-2">
+                  <label className="text-[10px] text-primary font-bold uppercase tracking-widest">Reps por round completo</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={newWod.reps_per_round ?? ''}
+                    onChange={e => setNewWod({...newWod, reps_per_round: e.target.value ? parseInt(e.target.value) : undefined})}
+                    placeholder="ex: 30"
+                    className="w-full bg-primary/5 border border-primary/20 rounded-2xl p-4 font-headline font-bold text-on-surface"
+                  />
+                  <p className="text-[10px] text-on-surface-variant">Usado para calcular o ranking (rounds × reps + reps extras)</p>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">WARM UP</label>
                 <textarea rows={3} value={newWod.warmup} onChange={e => setNewWod({...newWod, warmup: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" />
@@ -259,10 +304,6 @@ export default function Coach() {
                   <label className="text-[10px] text-secondary font-bold uppercase tracking-widest">SCALED</label>
                   <textarea rows={2} value={newWod.scaled} onChange={e => setNewWod({...newWod, scaled: e.target.value})} className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">BEGINNER</label>
-                  <textarea rows={2} value={newWod.beginner} onChange={e => setNewWod({...newWod, beginner: e.target.value})} className="w-full bg-surface-container-highest border border-outline-variant/10 rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" />
-                </div>
               </div>
 
               <button onClick={handleSaveWod} className="w-full bg-primary text-background py-5 rounded-2xl font-headline font-black text-lg uppercase italic shadow-lg flex items-center justify-center gap-3 hover:scale-[0.98] transition-all">
@@ -270,7 +311,6 @@ export default function Coach() {
               </button>
             </div>
 
-            {/* Today's Athletes Section */}
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-primary" />
@@ -320,10 +360,10 @@ export default function Coach() {
                 <Calendar className="w-5 h-5 text-primary" />
                 <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">CALENDÁRIO DE TREINOS</h3>
               </div>
-              
-              <input 
-                type="date" 
-                value={selectedHistoryDate} 
+
+              <input
+                type="date"
+                value={selectedHistoryDate}
                 onChange={e => setSelectedHistoryDate(e.target.value)}
                 className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface mb-6"
               />
@@ -343,7 +383,6 @@ export default function Coach() {
                           skill: historyWod.skill || '',
                           rx: historyWod.rx || '',
                           scaled: historyWod.scaled || '',
-                          beginner: historyWod.beginner || '',
                         })}
                         className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary hover:text-background transition-all flex items-center gap-1">
                         <Edit2 className="w-4 h-4" />
@@ -396,10 +435,10 @@ export default function Coach() {
                 <Trophy className="w-5 h-5 text-primary" />
                 <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">RANKING POR DATA</h3>
               </div>
-              
-              <input 
-                type="date" 
-                value={selectedResultsDate} 
+
+              <input
+                type="date"
+                value={selectedResultsDate}
                 onChange={e => setSelectedResultsDate(e.target.value)}
                 className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface mb-2"
               />
@@ -413,44 +452,49 @@ export default function Coach() {
             </div>
 
             {Object.entries(rankedData).map(([category, catResults]) => (
-              <div key={category} className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-1 h-6 rounded-full",
-                    category === 'RX' ? "bg-primary" : category === 'Scaled' ? "bg-secondary" : "bg-on-surface-variant"
-                  )} />
-                  <h4 className="font-headline font-black text-on-surface uppercase italic tracking-tight">{category}</h4>
-                </div>
+              catResults.length === 0 ? null : (
+                <div key={category} className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      'px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border',
+                      categoryColor[category] || 'bg-surface-container text-on-surface-variant border-outline-variant/20'
+                    )}>
+                      {category}
+                    </div>
+                  </div>
 
-                <div className="space-y-3">
-                  {catResults.length > 0 ? catResults.map((res, index) => (
-                    <div key={res.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex items-center justify-between group hover:border-primary/30 transition-all">
-                      <div className="flex items-center gap-4">
-                        <div className={cn(
-                          "w-10 h-10 rounded-full flex items-center justify-center font-headline font-black text-lg",
-                          index === 0 ? "bg-primary text-background" : "bg-surface-container-highest text-on-surface"
-                        )}>
-                          {index + 1}
+                  <div className="space-y-3">
+                    {catResults.map((res, index) => (
+                      <div key={res.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex items-center justify-between group hover:border-primary/30 transition-all">
+                        <div className="flex items-center gap-4">
+                          <div className={cn(
+                            "w-10 h-10 rounded-full flex items-center justify-center font-headline font-black text-lg",
+                            index === 0 ? "bg-primary text-background" : "bg-surface-container-highest text-on-surface"
+                          )}>
+                            {index + 1}
+                          </div>
+                          <div>
+                            <p className="text-on-surface font-bold uppercase text-sm italic">{res.profiles?.name}</p>
+                            <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{res.wods?.name || 'WOD'}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-on-surface font-bold uppercase text-sm italic">{res.profiles?.name}</p>
-                          <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{res.wods?.name || 'WOD'}</p>
+                        <div className="text-right">
+                          <div className="bg-surface-container-highest px-4 py-2 rounded-2xl border border-outline-variant/10">
+                            <span className="text-primary font-headline font-black text-lg italic">{res.result}</span>
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="bg-surface-container-highest px-4 py-2 rounded-2xl border border-outline-variant/10">
-                          <span className="text-primary font-headline font-black text-lg italic">{res.result}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )) : (
-                    <div className="bg-surface-container-low/50 p-6 rounded-3xl border border-dashed border-outline-variant/20 text-center">
-                      <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest opacity-40 italic">Sem resultados nesta categoria</p>
-                    </div>
-                  )}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )
             ))}
+
+            {Object.values(rankedData).flat().length === 0 && (
+              <div className="bg-surface-container-low/50 p-8 rounded-3xl border border-dashed border-outline-variant/20 text-center">
+                <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest opacity-40 italic">Sem resultados nesta data</p>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -489,7 +533,22 @@ export default function Coach() {
                     </select>
                   </div>
                 </div>
-                {[{key:'warmup',label:'Aquecimento'},{key:'skill',label:'Skill'},{key:'rx',label:'RX'},{key:'scaled',label:'Scaled'},{key:'beginner',label:'Iniciante'}].map(({key,label}) => (
+
+                {isAmrap(editingWod.type || '') && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-primary font-bold uppercase tracking-widest">Reps por round completo</label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={(editingWod as any).reps_per_round ?? ''}
+                      onChange={e => setEditingWod({...editingWod, reps_per_round: e.target.value ? parseInt(e.target.value) : undefined} as any)}
+                      placeholder="ex: 30"
+                      className="w-full bg-primary/5 border border-primary/20 rounded-2xl p-3 font-headline font-bold text-on-surface text-sm"
+                    />
+                  </div>
+                )}
+
+                {[{key:'warmup',label:'Aquecimento'},{key:'skill',label:'Skill'},{key:'rx',label:'RX'},{key:'scaled',label:'Scaled'}].map(({key,label}) => (
                   <div key={key} className="space-y-1">
                     <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">{label}</label>
                     <textarea value={(editingWod as any)[key] || ''} onChange={e => setEditingWod({...editingWod, [key]: e.target.value})}
@@ -498,10 +557,12 @@ export default function Coach() {
                 ))}
                 <div className="flex gap-3 pt-2">
                   <button onClick={() => setEditingWod(null)}
-                    className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-black text-xs uppercase italic">CANCELAR</button>
+                    className="flex-1 py-3 rounded-2xl border border-outline-variant/20 text-on-surface-variant font-headline font-black text-sm uppercase">
+                    Cancelar
+                  </button>
                   <button onClick={handleUpdateWod}
-                    className="flex-1 bg-primary text-background py-3 rounded-2xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2">
-                    <Save className="w-4 h-4" /> SALVAR
+                    className="flex-1 py-3 rounded-2xl bg-primary text-background font-headline font-black text-sm uppercase flex items-center justify-center gap-2">
+                    <Save className="w-4 h-4" /> Salvar
                   </button>
                 </div>
               </div>
@@ -511,4 +572,4 @@ export default function Coach() {
       </AnimatePresence>
     </div>
   );
-    }
+}
