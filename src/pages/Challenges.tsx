@@ -149,7 +149,8 @@ export default function Challenges() {
       const requiredDays = challenge.required_days || 1;
 
       if (daysNow >= requiredDays && !isRewardClaimed(challenge.id)) {
-        await grantReward(challenge);
+        // FIX: passa photoUrl para grantReward publicar no feed
+        await grantReward(challenge, photoUrl);
       } else {
         const remaining = requiredDays - daysNow;
         showToast(
@@ -213,7 +214,8 @@ export default function Challenges() {
           setPhotoModal({ challenge });
           showToast('📸 Foto obrigatória para concluir o desafio!', 'info');
         } else {
-          await grantReward(challenge);
+          // FIX: sem foto, passa null
+          await grantReward(challenge, null);
           setProgressModal(null);
           setProgressValue('');
         }
@@ -231,7 +233,8 @@ export default function Challenges() {
     }
   };
 
-  const grantReward = async (challenge: Challenge) => {
+  // FIX: recebe photoUrl para publicar no feed
+  const grantReward = async (challenge: Challenge, photoUrl: string | null = null) => {
     if (!user) return;
     const rewardResult = await addReward(
       user.id, 'challenge',
@@ -255,6 +258,17 @@ export default function Challenges() {
         { challenge_id: challenge.id }
       );
       showToast(`🏆 Desafio concluído! +${challenge.xp} XP e +${challenge.coins} BC!`, 'success');
+
+      // FIX: publica no feed com a foto do desafio
+      await supabase.from('feed_posts').insert({
+        user_id:      user.id,
+        type:         'challenge',
+        challenge_id: challenge.id,
+        photo_url:    photoUrl,
+        caption:      null,
+        xp_earned:    challenge.xp,
+        coins_earned: challenge.coins,
+      });
     }
   };
 
@@ -285,9 +299,9 @@ export default function Challenges() {
     const challenge = photoModal.challenge;
     setPhotoModal(null); setPhotoFile(null); setPhotoPreview(null);
 
-    // Desafio acumulativo: foto é exigida só na conclusão — concede recompensa direto
+    // FIX: passa photoUrl para grantReward em ambos os casos
     if (challenge.type === 'accumulative') {
-      await grantReward(challenge);
+      await grantReward(challenge, photoUrl);
     } else {
       await submitDayOk(challenge, photoUrl);
     }
