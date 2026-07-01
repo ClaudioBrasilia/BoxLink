@@ -123,7 +123,13 @@ export default function Challenges() {
       showToast('Você já marcou o OK de hoje para este desafio!', 'info');
       return;
     }
-    if (challenge.require_photo) {
+    // FIX: só pede foto no dia que efetivamente conclui o desafio,
+    // não em dias intermediários de desafios multi-dias.
+    const daysNow      = getDaysCompleted(challenge.id) + 1;
+    const requiredDays = challenge.required_days || 1;
+    const isFinalDay   = daysNow >= requiredDays;
+
+    if (challenge.require_photo && isFinalDay) {
       setPhotoModal({ challenge });
       return;
     }
