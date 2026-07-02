@@ -427,8 +427,7 @@ export default function TV() {
                   className="absolute inset-0 bg-[#111] rounded-[3rem] p-12 border border-white/5 flex flex-col">
                   <div className="flex justify-between items-start mb-8 shrink-0">
                     <div>
-                      <h3 className="text-primary text-sm font-black uppercase tracking-[0.4em] italic mb-2">PHASE 01</h3>
-                      <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter">WARM-UP</h2>
+                      <h3 className="text-primary text-sm font-black uppercase tracking-[0.4em] italic">PHASE 01</h3>
                     </div>
                     <div className="w-20 h-20 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
                       <Activity className="w-10 h-10 text-primary animate-pulse" />
@@ -453,8 +452,7 @@ export default function TV() {
                   className="absolute inset-0 bg-[#111] rounded-[3rem] p-12 border border-white/5 flex flex-col">
                   <div className="flex justify-between items-start mb-8 shrink-0">
                     <div>
-                      <h3 className="text-secondary text-sm font-black uppercase tracking-[0.4em] italic mb-2">PHASE 02</h3>
-                      <h2 className="text-6xl font-headline font-black text-white uppercase italic tracking-tighter">SKILL / TECHNIQUE</h2>
+                      <h3 className="text-secondary text-sm font-black uppercase tracking-[0.4em] italic">PHASE 02</h3>
                     </div>
                     <div className="w-20 h-20 rounded-3xl bg-secondary/10 border border-secondary/20 flex items-center justify-center shrink-0">
                       <Zap className="w-10 h-10 text-secondary" />
