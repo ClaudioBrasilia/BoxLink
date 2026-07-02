@@ -127,7 +127,7 @@ export default function TV() {
         supabase.from('avatar_economy_settings').select('*').eq('is_active', true).maybeSingle(),
         supabase.from('wods').select('*').eq('date', today).maybeSingle(),
         supabase.from('challenges').select('*').eq('active', true).or(`end_date.is.null,end_date.gte.${today}`),
-        supabase.from('duels').select('*, challenger:profiles!challenger_id(name), opponent:profiles!opponent_id(name)').eq('status', 'accepted'),
+        supabase.from('duels').select('*').in('status', ['active', 'accepted']),
         supabase.from('schedule').select('*').order('time', { ascending: true })
       ]);
 
@@ -189,11 +189,28 @@ export default function TV() {
         }
       };
 
+      // Mapear nomes dos atletas para os duelos (suporta formato antigo e novo)
+      const mappedDuels = (duels || []).map((d: any) => {
+        const challenger = profileMap[d.challenger_id];
+        
+        // Suporte para múltiplos oponentes (novo formato) ou único (antigo)
+        const opponentIds = d.opponent_ids || (d.opponent_id ? [d.opponent_id] : []);
+        const opponentNames = opponentIds
+          .map((id: string) => profileMap[id]?.name?.split(' ')[0] || 'Atleta')
+          .join(' & ');
+
+        return {
+          ...d,
+          challengerName: challenger?.name || 'Atleta',
+          opponentName: opponentNames || 'Oponente'
+        };
+      });
+
       setData({
         settings: settings || { name: "CrossCity Hub", logo: "" },
         tvConfig, rewards: economy, wod: activeWod || null, checkins: checkins || [],
         challenges: challenges || [],
-        duels: (duels || []).map((d: any) => ({ ...d, challengerName: d.challenger?.name || 'Atleta', opponentName: d.opponent?.name || 'Atleta' })),
+        duels: mappedDuels,
         rankings: rankings || [], stats, frequencyRanking,
         announcements: settings?.announcements || [],
       });
