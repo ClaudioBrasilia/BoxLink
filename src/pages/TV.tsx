@@ -189,10 +189,10 @@ export default function TV() {
         }
       };
 
-      // Mapear nomes dos atletas para os duelos (suporta formato antigo e novo)
+      // Mapear nomes dos atletas para os duelos (suporta formato antigo e novo, com múltiplos oponentes)
       const mappedDuels = (duels || []).map((d: any) => {
         const challenger = profileMap[d.challenger_id];
-        
+
         // Suporte para múltiplos oponentes (novo formato) ou único (antigo)
         const opponentIds = d.opponent_ids || (d.opponent_id ? [d.opponent_id] : []);
         const opponentNames = opponentIds
@@ -313,22 +313,20 @@ export default function TV() {
   const getWodFontSize = (text: string) => {
     const len = (text || '').length;
     const lines = (text || '').split('\n').filter(Boolean).length;
-    if (len > 500 || lines > 12) return '1.1rem';
-    if (len > 400 || lines > 10) return '1.4rem';
-    if (len > 300 || lines > 8)  return '1.8rem';
-    if (len > 200 || lines > 6)  return '2.2rem';
-    if (len > 100 || lines > 4)  return '2.8rem';
-    return '3.5rem';
+    if (len > 400 || lines > 10) return '1.3rem';
+    if (len > 300 || lines > 7)  return '1.6rem';
+    if (len > 200 || lines > 5)  return '2rem';
+    if (len > 100 || lines > 3)  return '2.6rem';
+    return '3.2rem';
   };
 
   const getListFontSize = (text: string) => {
     const lines = (text || '').split('\n').filter(Boolean).length;
-    if (lines > 12) return '1.2rem';
-    if (lines > 10) return '1.5rem';
-    if (lines > 8)  return '1.9rem';
-    if (lines > 6)  return '2.4rem';
-    if (lines > 4)  return '3rem';
-    return '3.8rem';
+    if (lines > 10) return '1rem';
+    if (lines > 7)  return '1.3rem';
+    if (lines > 5)  return '1.7rem';
+    if (lines > 3)  return '2.2rem';
+    return '2.6rem';
   };
 
   const getListGap = (text: string) => {
@@ -437,16 +435,10 @@ export default function TV() {
                     </div>
                   </div>
                   <div className={`flex-1 flex flex-col justify-center ${getListGap(wod?.warmup)} min-h-0 overflow-hidden`}>
-                    {(wod?.warmup || '')
-                      .split('\n')
-                      .filter(line => {
-                        const clean = line.trim().toUpperCase();
-                        return clean && clean !== 'WARM-UP' && clean !== 'WARMUP' && clean !== 'AQUECIMENTO';
-                      })
-                      .map((line: string, i: number) => (
+                    {(wod?.warmup || '').split('\n').filter(Boolean).map((line: string, i: number) => (
                       <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
                         className="flex items-center gap-6 shrink-0">
-                        <div className="w-4 h-4 rounded-full bg-primary shadow-[0_0_20px_#cafd00] shrink-0"></div>
+                        <div className="w-3 h-3 rounded-full bg-primary shadow-[0_0_20px_#cafd00] shrink-0"></div>
                         <p className="font-headline font-black text-white uppercase italic tracking-tight leading-tight"
                           style={{ fontSize: getListFontSize(wod?.warmup) }}>{line}</p>
                       </motion.div>
@@ -469,16 +461,10 @@ export default function TV() {
                     </div>
                   </div>
                   <div className={`flex-1 flex flex-col justify-center ${getListGap(wod?.skill)} min-h-0 overflow-hidden`}>
-                    {(wod?.skill || '')
-                      .split('\n')
-                      .filter(line => {
-                        const clean = line.trim().toUpperCase();
-                        return clean && !clean.includes('SKILL') && !clean.includes('TÉCNICA') && !clean.includes('TECHNIQUE');
-                      })
-                      .map((line: string, i: number) => (
+                    {(wod?.skill || '').split('\n').filter(Boolean).map((line: string, i: number) => (
                       <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
                         className="flex items-center gap-6 shrink-0">
-                        <div className="w-4 h-4 rounded-full bg-secondary shadow-[0_0_20px_#ff7439] shrink-0"></div>
+                        <div className="w-3 h-3 rounded-full bg-secondary shadow-[0_0_20px_#ff7439] shrink-0"></div>
                         <p className="font-headline font-black text-white uppercase italic tracking-tight leading-tight"
                           style={{ fontSize: getListFontSize(wod?.skill) }}>{line}</p>
                       </motion.div>
@@ -500,15 +486,11 @@ export default function TV() {
                       {wod.type}
                     </div>
                   </div>
-                    <div className="flex-1 flex flex-col min-h-0 bg-white/5 border border-white/10 rounded-[2rem] p-8 overflow-hidden">
+                  <div className="flex-1 flex flex-col min-h-0 bg-white/5 border border-white/10 rounded-[2rem] p-6 overflow-hidden">
+                    <span className="text-primary text-sm font-black uppercase tracking-widest mb-3 shrink-0">RX</span>
                     <div className="flex-1 overflow-y-auto no-scrollbar">
-                      <p className="text-white font-headline font-black italic leading-tight whitespace-pre-wrap"
-                        style={{ fontSize: getWodFontSize(wod.rx) }}>
-                        {wod.rx?.split('\n').filter(l => {
-                          const c = l.trim().toUpperCase();
-                          return c && c !== 'RX' && c !== 'WOD' && c !== 'TREINO';
-                        }).join('\n')}
-                      </p>
+                      <p className="text-white font-headline font-black italic leading-relaxed whitespace-pre-wrap"
+                        style={{ fontSize: getWodFontSize(wod.rx) }}>{wod.rx}</p>
                     </div>
                   </div>
                   {wod.scaled && (
