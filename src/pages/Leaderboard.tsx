@@ -87,11 +87,11 @@ export default function Leaderboard() {
       if (boxSettings?.logo) setBoxLogo(boxSettings.logo);
 
       const inactSettings: InactivitySettings = boxSettings?.inactivity ||
-        { enabled: false, mode: 'consecutive', startDays: 5, maxDays: 14 };
+        { enabled: false, minWorkoutsPerWeek: 3, excludeSunday: true };
       setInactivitySettings(inactSettings);
 
       const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - (inactSettings.maxDays || 30));
+      cutoff.setDate(cutoff.getDate() - 8); // janela móvel de 7 dias + margem de timezone
       const { data: allCheckins } = await supabase
         .from('checkins').select('user_id, date')
         .gte('date', cutoff.toISOString().split('T')[0]);
