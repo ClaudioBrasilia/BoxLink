@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Flame, Star, Edit2, CheckCircle2, X } from 'lucide-react';
+import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Flame, Star, Edit2, CheckCircle2, X, Lock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { Wod as WodType } from '../types';
@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
 import { addReward, getRewardSettings } from '../utils/rewards';
+import { calcInactivity, InactivitySettings, InactivityState } from '../utils/inactivity';
 import HeartRateDisplay from '../components/HeartRateDisplay';
 
 const TIMEZONE = 'America/Sao_Paulo';
@@ -188,6 +189,8 @@ export default function Wod() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [editing, setEditing] = useState(false);
   const [weekDays, setWeekDays] = useState<Date[]>([]);
+  const [inactivity, setInactivity] = useState<InactivityState | null>(null);
+  const [inactivityLoading, setInactivityLoading] = useState(true);
 
   const addToast = (message: string, type: ToastType = 'info') => {
     const id = Date.now();
@@ -201,6 +204,21 @@ export default function Wod() {
   }, []);
 
   useEffect(() => { fetchWod(); }, [selectedDate, user]);
+
+  // Bloqueio do WOD por inatividade: só vale pra quem é 'athlete' (admin/coach nunca são bloqueados)
+  useEffect(() => {
+    if (!user) return;
+    if (user.role !== 'athlete') { setInactivityLoading(false); return; }
+
+    setInactivityLoading(true);
+    supabase.from('box_settings').select('inactivity').maybeSingle().then(({ data }) => {
+      const settings: InactivitySettings = data?.inactivity || { enabled: false, minWorkoutsPerWeek: 3, excludeSunday: true };
+      setInactivity(calcInactivity(user.checkins || [], settings));
+      setInactivityLoading(false);
+    });
+  }, [user]);
+
+  const wodBlocked = !inactivityLoading && user?.role === 'athlete' && !!inactivity && inactivity.missingWorkouts > 0;
 
   const fetchWod = async () => {
     if (!user) return;
@@ -264,6 +282,32 @@ export default function Wod() {
   const isTimeBased = wodType === 'FOR TIME' || wodType === 'TIME' || wodType === 'FORTIME';
   const isAmrap = wodType === 'AMRAP';
   const repsPerRound = (wod as any)?.reps_per_round as number | undefined;
+
+  if (inactivityLoading) {
+    return (
+      <div className="flex justify-center py-24">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (wodBlocked && inactivity) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-20 px-6 text-center">
+        <div className="w-16 h-16 rounded-full bg-surface-container-highest flex items-center justify-center">
+          <Lock className="w-7 h-7 text-on-surface-variant" />
+        </div>
+        <h1 className="text-lg font-black text-on-surface uppercase">Treino bloqueado</h1>
+        <p className="text-sm text-on-surface-variant leading-relaxed max-w-xs">
+          Você precisa de pelo menos {inactivity.requiredWorkouts} check-ins nos últimos 7 dias para ver o treino.
+          Você tem {inactivity.checkinsInWindow} de {inactivity.requiredWorkouts}.
+        </p>
+        <p className="text-xs text-on-surface-variant/70 max-w-xs">
+          Faça o check-in na academia para desbloquear o treino do dia.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-5 pb-24">
