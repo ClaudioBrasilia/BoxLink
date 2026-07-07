@@ -212,6 +212,7 @@ export default function Admin() {
       enabled: false,
       minWorkoutsPerWeek: 3,
       excludeSunday: true,
+      showOnTV: false,
     },
     isActive: true,
     announcements: [] as any[],
@@ -363,7 +364,7 @@ export default function Admin() {
         announcements: (settingsData.announcements || prev.announcements || []) as any[],
         timezone: settingsData.timezone || prev.timezone,
         max_clan_members: settingsData.max_clan_members || 10,
-        inactivity: settingsData.inactivity || prev.inactivity || { enabled: false, minWorkoutsPerWeek: 3, excludeSunday: true },
+        inactivity: settingsData.inactivity || prev.inactivity || { enabled: false, minWorkoutsPerWeek: 3, excludeSunday: true, showOnTV: false },
       }));
       if (settingsData.visitor_permissions) {
         setVisitorPermissions(settingsData.visitor_permissions);
@@ -597,7 +598,7 @@ export default function Admin() {
         clans_enabled: (settings as any).clans_enabled || false,
         avatar_enabled: (settings as any).avatar_enabled || false,
         max_clan_members: settings.max_clan_members || 10,
-        inactivity: (settings as any).inactivity || { enabled: false, minWorkoutsPerWeek: 3, excludeSunday: true },
+        inactivity: (settings as any).inactivity || { enabled: false, minWorkoutsPerWeek: 3, excludeSunday: true, showOnTV: false },
         updated_at: new Date().toISOString()
       })
       .eq('is_active', true)
@@ -1240,6 +1241,20 @@ export default function Admin() {
                             Assim que a meta for atingida de novo, o avatar volta ao normal automaticamente.
                           </p>
 
+                          {/* Mostrar na TV */}
+                          <div className="flex items-center justify-between p-4 bg-surface-container-highest/30 rounded-2xl border border-outline-variant/10">
+                            <div>
+                              <span className="text-sm font-bold text-on-surface block">Mostrar inativos na TV</span>
+                              <span className="text-[10px] text-on-surface-variant">Avatares desbotados/💤 aparecem em Atletas na Aula</span>
+                            </div>
+                            <button
+                              onClick={() => setSettings(s => ({ ...s, inactivity: { ...(s as any).inactivity, showOnTV: !(s as any).inactivity?.showOnTV } }))}
+                              className={`w-12 h-6 rounded-full transition-all relative shrink-0 ml-3 ${(settings as any).inactivity?.showOnTV ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
+                            >
+                              <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${(settings as any).inactivity?.showOnTV ? 'right-0.5' : 'left-0.5'}`} />
+                            </button>
+                          </div>
+
                           {/* Preview */}
                           <div className="p-4 bg-surface-container-highest/20 rounded-2xl border border-outline-variant/10 space-y-2">
                             <div className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Exemplo de progressão</div>
@@ -1550,26 +1565,4 @@ export default function Admin() {
                         return (
                           <div key={key} className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
                             <div>
-                              <p className="text-xs font-black text-on-surface uppercase italic">{label}</p>
-                              <p className="text-[10px] text-on-surface-variant mt-0.5">{desc}</p>
-                            </div>
-                            <button
-                              onClick={() => setSettings(s => ({
-                                ...s,
-                                tvConfig: {
-                                  ...((s as any).tvConfig || {}),
-                                  tickerItems: {
-                                    ...(((s as any).tvConfig?.tickerItems) || { duels: true, checkins: true, topPlayer: true, wod: true, announcements: true, challenges: true }),
-                                    [key]: !isOn
-                                  }
-                                }
-                              }))}
-                              className={`w-12 h-6 rounded-full transition-all relative ${isOn ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
-                            >
-                              <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${isOn ? 'right-0.5' : 'left-0.5'}`} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </motion.div>
-                 
+                              <p className="text-xs font-black text-on-surface uppercase italic">{label}<
