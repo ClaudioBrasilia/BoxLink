@@ -15,6 +15,7 @@ export interface InactivitySettings {
   enabled: boolean;
   minWorkoutsPerWeek: number; // padrão 3
   excludeSunday: boolean;     // padrão true — domingo não conta
+  showOnTV?: boolean;         // padrão false — mostrar avatares com fade/💤 na TV
 }
 
 export interface InactivityState {
