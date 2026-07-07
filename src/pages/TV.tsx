@@ -7,6 +7,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
 import AvatarPreview from '../components/AvatarPreview';
+import { calcInactivity, InactivitySettings } from '../utils/inactivity';
 import AthletePhoto from '../components/AthletePhoto';
 import { TVSponsorBanner, useSponsors } from '../components/SponsorBanner';
 
@@ -137,6 +138,28 @@ export default function TV() {
       const { data: profilesRaw } = await supabase.from('profiles').select('id, name, avatar_equipped, xp, level, role, photo_url');
       const profileMap = Object.fromEntries((profilesRaw || []).map((p: any) => [p.id, p]));
 
+      const inactivitySettings: InactivitySettings = settings?.inactivity ||
+        { enabled: false, minWorkoutsPerWeek: 3, excludeSunday: true, showOnTV: false };
+      const showInactiveOnTV = !!inactivitySettings.enabled && !!inactivitySettings.showOnTV;
+
+      const inactivityByUser: Record<string, { fadePercent: number; showSleeping: boolean }> = {};
+      if (showInactiveOnTV) {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 8); // janela móvel de 7 dias + margem de timezone
+        const { data: recentCheckins } = await supabase
+          .from('checkins').select('user_id, date')
+          .gte('date', cutoff.toISOString().split('T')[0]);
+        const checkinsByUser: Record<string, { date: string }[]> = {};
+        (recentCheckins || []).forEach((c: any) => {
+          if (!checkinsByUser[c.user_id]) checkinsByUser[c.user_id] = [];
+          checkinsByUser[c.user_id].push({ date: c.date });
+        });
+        Object.keys(profileMap).forEach((id) => {
+          const state = calcInactivity(checkinsByUser[id] || [], inactivitySettings);
+          inactivityByUser[id] = { fadePercent: state.fadePercent, showSleeping: state.showSleeping };
+        });
+      }
+
       const startOfMonth = format(new Date(), 'yyyy-MM-01');
 
       const { data: monthlyXpRaw } = await supabase
@@ -160,7 +183,11 @@ export default function TV() {
         .map(([userId, count]) => ({ ...(profileMap[userId] || { name: 'Atleta' }), count }))
         .sort((a, b) => b.count - a.count).slice(0, 5);
 
-      const allCheckins = (checkinsRaw || []).map((c: any) => ({ ...c, profiles: profileMap[c.user_id] || null }));
+      const allCheckins = (checkinsRaw || []).map((c: any) => ({
+        ...c,
+        profiles: profileMap[c.user_id] || null,
+        inactivity: inactivityByUser[c.user_id] || null,
+      }));
       const checkins = currentClass ? allCheckins.filter((c: any) => c.class_time === currentClass.time) : allCheckins;
       const stats = {
         checkins: checkins.length,
@@ -621,6 +648,7 @@ export default function TV() {
                         <div className="relative shrink-0">
                           <div className="absolute inset-0 rounded-full bg-primary/20 blur-xl scale-150" />
                           <AvatarPreview equipped={profile?.avatar_equipped} size="md"
+                            fadePercent={c?.inactivity?.fadePercent} showSleeping={c?.inactivity?.showSleeping}
                             className="relative border-4 border-primary shadow-[0_0_20px_rgba(202,253,0,0.4)]" />
                           <div className="absolute -bottom-1 -right-1 bg-primary text-black text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase italic shadow">✓</div>
                         </div>
@@ -650,6 +678,7 @@ export default function TV() {
                     return (
                       <div key={c.id} className={`shrink-0 flex flex-col items-center gap-0.5 transition-all ${isActive ? 'opacity-100' : 'opacity-35'}`}>
                         <AvatarPreview equipped={profile?.avatar_equipped} size="sm"
+                          fadePercent={c?.inactivity?.fadePercent} showSleeping={c?.inactivity?.showSleeping}
                           className={`border-2 transition-all ${isActive ? 'border-primary shadow-[0_0_8px_rgba(202,253,0,0.4)]' : 'border-white/10'}`} />
                         <span className="text-[7px] font-black text-white/60 uppercase truncate max-w-[36px] text-center">
                           {profile?.name?.split(' ')[0] || '?'}
