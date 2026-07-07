@@ -1,0 +1,146 @@
+/**
+ * src/lib/fitting/geometry.ts
+ * Matemática pura de encaixe (sem DOM/Canvas) — testável isoladamente.
+ */
+
+import { Box, boxWidth, boxHeight } from './pieceSpecs';
+
+export type { Box };
+
+/** Escala/translação a aplicar sobre a imagem de origem inteira. */
+export interface FitTransform {
+  scaleX: number;
+  scaleY: number;
+  translateX: number;
+  translateY: number;
+}
+
+export type FitMode = 'stretch' | 'contain';
+
+/**
+ * Calcula a transformação (escala + translação) que leva `contentBox`
+ * (bounding box do conteúdo opaco detectado na imagem de origem) a coincidir
+ * exatamente com `targetBox` (a CAIXA EXATA definida na especificação).
+ *
+ * A transformação resultante deve ser aplicada à imagem de origem INTEIRA
+ * (não apenas ao recorte do contentBox), preservando proporcionalmente
+ * tudo o que está fora dele — incluindo aberturas vazadas (alpha=0).
+ *
+ * mode 'stretch' (padrão): preenche a targetBox exatamente, permitindo
+ *   escalas X/Y diferentes — corresponde ao requisito "a peça DEVE ocupar
+ *   exatamente esta caixa".
+ * mode 'contain': preserva a proporção do conteúdo detectado, centralizando
+ *   dentro da targetBox (letterbox) — útil quando a peça não deve distorcer.
+ */
+export function computeFitTransform(
+  contentBox: Box,
+  targetBox: Box,
+  mode: FitMode = 'stretch'
+): FitTransform {
+  const contentW = boxWidth(contentBox);
+  const contentH = boxHeight(contentBox);
+  const targetW = boxWidth(targetBox);
+  const targetH = boxHeight(targetBox);
+
+  if (contentW <= 0 || contentH <= 0) {
+    throw new Error('[fitting] contentBox inválido: largura/altura devem ser positivas');
+  }
+  if (targetW <= 0 || targetH <= 0) {
+    throw new Error('[fitting] targetBox inválido: largura/altura devem ser positivas');
+  }
+
+  let scaleX = targetW / contentW;
+  let scaleY = targetH / contentH;
+
+  let extraOffsetX = 0;
+  let extraOffsetY = 0;
+
+  if (mode === 'contain') {
+    const scale = Math.min(scaleX, scaleY);
+    scaleX = scale;
+    scaleY = scale;
+    extraOffsetX = (targetW - contentW * scale) / 2;
+    extraOffsetY = (targetH - contentH * scale) / 2;
+  }
+
+  const translateX = targetBox.x1 - contentBox.x1 * scaleX + extraOffsetX;
+  const translateY = targetBox.y1 - contentBox.y1 * scaleY + extraOffsetY;
+
+  return { scaleX, scaleY, translateX, translateY };
+}
+
+/** Aplica um FitTransform a um ponto/caixa arbitrário (útil para testes/QA). */
+export function applyTransformToBox(box: Box, t: FitTransform): Box {
+  return {
+    x1: box.x1 * t.scaleX + t.translateX,
+    y1: box.y1 * t.scaleY + t.translateY,
+    x2: box.x2 * t.scaleX + t.translateX,
+    y2: box.y2 * t.scaleY + t.translateY,
+  };
+}
+
+export interface FitValidation {
+  withinTolerance: boolean;
+  deltaX1: number;
+  deltaY1: number;
+  deltaX2: number;
+  deltaY2: number;
+  maxDelta: number;
+}
+
+/**
+ * Compara duas caixas (ex.: contentBox detectado vs. targetBox esperado)
+ * e informa se a diferença está dentro de uma tolerância em pixels.
+ * Útil para validar peças já pré-posicionadas (geradas por IA) sem
+ * precisar reescalar/mover — apenas para alertar o admin em caso de desvio.
+ */
+export function validateFit(box: Box, targetBox: Box, tolerancePx = 12): FitValidation {
+  const deltaX1 = box.x1 - targetBox.x1;
+  const deltaY1 = box.y1 - targetBox.y1;
+  const deltaX2 = box.x2 - targetBox.x2;
+  const deltaY2 = box.y2 - targetBox.y2;
+  const maxDelta = Math.max(Math.abs(deltaX1), Math.abs(deltaY1), Math.abs(deltaX2), Math.abs(deltaY2));
+  return {
+    withinTolerance: maxDelta <= tolerancePx,
+    deltaX1,
+    deltaY1,
+    deltaX2,
+    deltaY2,
+    maxDelta,
+  };
+}
+
+/**
+ * Varre um buffer RGBA (ex.: ImageData.data) e retorna a bounding box dos
+ * pixels com alpha acima de `alphaThreshold`. Retorna null se a imagem for
+ * inteiramente transparente. Função pura — recebe qualquer array RGBA
+ * (Uint8ClampedArray no browser, array plano em testes).
+ */
+export function detectContentBBox(
+  rgba: ArrayLike<number>,
+  width: number,
+  height: number,
+  alphaThreshold = 10
+): Box | null {
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y++) {
+    const rowOffset = y * width * 4;
+    for (let x = 0; x < width; x++) {
+      const alpha = rgba[rowOffset + x * 4 + 3];
+      if (alpha > alphaThreshold) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) return null;
+
+  return { x1: minX, y1: minY, x2: maxX + 1, y2: maxY + 1 };
+}

@@ -1,0 +1,149 @@
+import { describe, it, expect } from 'vitest';
+import { computeFitTransform, applyTransformToBox, validateFit, detectContentBBox } from './geometry';
+import { PIECE_SPECS, getPieceSpec, listPieceSpecs, boxWidth, boxHeight } from './pieceSpecs';
+
+describe('computeFitTransform', () => {
+  it('maps a content box exactly onto the target box in stretch mode', () => {
+    const contentBox = { x1: 100, y1: 200, x2: 300, y2: 500 };
+    const targetBox = { x1: 280, y1: 320, x2: 740, y2: 720 };
+
+    const t = computeFitTransform(contentBox, targetBox, 'stretch');
+    const mapped = applyTransformToBox(contentBox, t);
+
+    expect(mapped.x1).toBeCloseTo(targetBox.x1, 6);
+    expect(mapped.y1).toBeCloseTo(targetBox.y1, 6);
+    expect(mapped.x2).toBeCloseTo(targetBox.x2, 6);
+    expect(mapped.y2).toBeCloseTo(targetBox.y2, 6);
+  });
+
+  it('is a no-op-ish identity when content box already equals target box', () => {
+    const box = { x1: 280, y1: 320, x2: 740, y2: 720 };
+    const t = computeFitTransform(box, box, 'stretch');
+
+    expect(t.scaleX).toBeCloseTo(1, 6);
+    expect(t.scaleY).toBeCloseTo(1, 6);
+    expect(t.translateX).toBeCloseTo(0, 6);
+    expect(t.translateY).toBeCloseTo(0, 6);
+  });
+
+  it('contain mode preserves aspect ratio and centers within the target box', () => {
+    const contentBox = { x1: 0, y1: 0, x2: 100, y2: 100 }; // square
+    const targetBox = { x1: 0, y1: 0, x2: 200, y2: 400 }; // tall rectangle
+
+    const t = computeFitTransform(contentBox, targetBox, 'contain');
+    expect(t.scaleX).toBeCloseTo(t.scaleY, 6); // uniform scale
+    const mapped = applyTransformToBox(contentBox, t);
+    const mappedW = mapped.x2 - mapped.x1;
+    const mappedH = mapped.y2 - mapped.y1;
+
+    // scaled content must still be a square (aspect preserved) and fit inside target
+    expect(mappedW).toBeCloseTo(mappedH, 6);
+    expect(mappedW).toBeLessThanOrEqual(boxWidth(targetBox) + 1e-6);
+    expect(mappedH).toBeLessThanOrEqual(boxHeight(targetBox) + 1e-6);
+
+    // horizontally centered inside target box
+    const leftGap = mapped.x1 - targetBox.x1;
+    const rightGap = targetBox.x2 - mapped.x2;
+    expect(leftGap).toBeCloseTo(rightGap, 6);
+  });
+
+  it('throws on degenerate (zero-area) boxes', () => {
+    const zero = { x1: 10, y1: 10, x2: 10, y2: 10 };
+    const target = { x1: 0, y1: 0, x2: 100, y2: 100 };
+    expect(() => computeFitTransform(zero, target)).toThrow();
+    expect(() => computeFitTransform(target, zero)).toThrow();
+  });
+});
+
+describe('validateFit', () => {
+  const targetBox = { x1: 280, y1: 320, x2: 740, y2: 720 };
+
+  it('reports within tolerance for a near-identical box', () => {
+    const result = validateFit({ x1: 282, y1: 318, x2: 738, y2: 722 }, targetBox, 12);
+    expect(result.withinTolerance).toBe(true);
+  });
+
+  it('reports out of tolerance for a significantly shifted box', () => {
+    const result = validateFit({ x1: 350, y1: 400, x2: 800, y2: 850 }, targetBox, 12);
+    expect(result.withinTolerance).toBe(false);
+    expect(result.maxDelta).toBeGreaterThan(12);
+  });
+});
+
+describe('detectContentBBox', () => {
+  // Build a 4x4 RGBA buffer where only pixel (1,1)..(2,2) is opaque.
+  function buildBuffer(width: number, height: number, opaquePixels: Array<[number, number]>) {
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (const [x, y] of opaquePixels) {
+      const i = (y * width + x) * 4;
+      data[i] = 255;
+      data[i + 1] = 0;
+      data[i + 2] = 0;
+      data[i + 3] = 255;
+    }
+    return data;
+  }
+
+  it('detects the exact bounding box of opaque pixels', () => {
+    const width = 4;
+    const height = 4;
+    const data = buildBuffer(width, height, [
+      [1, 1],
+      [2, 1],
+      [1, 2],
+      [2, 2],
+    ]);
+
+    const box = detectContentBBox(data, width, height);
+    expect(box).toEqual({ x1: 1, y1: 1, x2: 3, y2: 3 });
+  });
+
+  it('returns null for a fully transparent image', () => {
+    const width = 4;
+    const height = 4;
+    const data = new Uint8ClampedArray(width * height * 4);
+    const box = detectContentBBox(data, width, height);
+    expect(box).toBeNull();
+  });
+
+  it('respects the alpha threshold', () => {
+    const width = 2;
+    const height = 2;
+    const data = new Uint8ClampedArray(width * height * 4);
+    data[3] = 5; // near-transparent pixel at (0,0)
+    expect(detectContentBBox(data, width, height, 10)).toBeNull();
+    expect(detectContentBBox(data, width, height, 2)).toEqual({ x1: 0, y1: 0, x2: 1, y2: 1 });
+  });
+});
+
+describe('pieceSpecs', () => {
+  it('has exactly 20 pieces (10 male + 10 female)', () => {
+    expect(Object.keys(PIECE_SPECS)).toHaveLength(20);
+  });
+
+  it('exposes every M-01..M-10 and F-01..F-10 id', () => {
+    for (let i = 1; i <= 10; i++) {
+      const idx = String(i).padStart(2, '0');
+      expect(PIECE_SPECS[`M-${idx}`]).toBeDefined();
+      expect(PIECE_SPECS[`F-${idx}`]).toBeDefined();
+    }
+  });
+
+  it('every spec has a valid (non-degenerate) box matching its avatarBase', () => {
+    for (const spec of Object.values(PIECE_SPECS)) {
+      expect(boxWidth(spec.box)).toBeGreaterThan(0);
+      expect(boxHeight(spec.box)).toBeGreaterThan(0);
+      expect(spec.id.startsWith('M-') && spec.avatarBase === 'masculina' || spec.id.startsWith('F-') && spec.avatarBase === 'feminina').toBe(true);
+    }
+  });
+
+  it('getPieceSpec throws for an unknown id', () => {
+    expect(() => getPieceSpec('X-99')).toThrow();
+  });
+
+  it('listPieceSpecs filters by avatarBase', () => {
+    expect(listPieceSpecs('masculina')).toHaveLength(10);
+    expect(listPieceSpecs('feminina')).toHaveLength(10);
+    expect(listPieceSpecs()).toHaveLength(20);
+  });
+});
