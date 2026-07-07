@@ -1565,4 +1565,618 @@ export default function Admin() {
                         return (
                           <div key={key} className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
                             <div>
-                              <p className="text-xs font-black text-on-surface uppercase italic">{label}<
+                              <p className="text-xs font-black text-on-surface uppercase italic">{label}</p>
+                              <p className="text-[10px] text-on-surface-variant mt-0.5">{desc}</p>
+                            </div>
+                            <button
+                              onClick={() => setSettings(s => ({
+                                ...s,
+                                tvConfig: {
+                                  ...((s as any).tvConfig || {}),
+                                  tickerItems: {
+                                    ...(((s as any).tvConfig?.tickerItems) || { duels: true, checkins: true, topPlayer: true, wod: true, announcements: true, challenges: true }),
+                                    [key]: !isOn
+                                  }
+                                }
+                              }))}
+                              className={`w-12 h-6 rounded-full transition-all relative ${isOn ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}
+                            >
+                              <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${isOn ? 'right-0.5' : 'left-0.5'}`} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* ── Módulo Economia ── */}
+              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
+                <div><p className="text-xs font-black text-on-surface uppercase italic">Módulo Economia</p><p className="text-[10px] text-on-surface-variant mt-0.5">Ativa/desativa sistema de moedas e XP</p></div>
+                <button onClick={() => setSettings({...settings, modules: {...settings.modules, economy: !settings.modules.economy}})} className={`w-12 h-6 rounded-full transition-all relative ${settings.modules.economy ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}>
+                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${settings.modules.economy ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+
+              {/* ── Módulo Loja ── */}
+              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
+                <div><p className="text-xs font-black text-on-surface uppercase italic">Módulo Loja</p><p className="text-[10px] text-on-surface-variant mt-0.5">Ativa/desativa loja de avatares para atletas</p></div>
+                <button onClick={() => setSettings({...settings, modules: {...settings.modules, store: !settings.modules.store}})} className={`w-12 h-6 rounded-full transition-all relative ${settings.modules.store ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}>
+                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${settings.modules.store ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
+                <div><p className="text-xs font-black text-on-surface uppercase italic">Sistema de Times</p><p className="text-[10px] text-on-surface-variant mt-0.5">Ativa disputa por territórios entre times</p></div>
+                <button onClick={() => setSettings({...settings, clans_enabled: !(settings as any).clans_enabled} as any)} className={`w-12 h-6 rounded-full transition-all relative ${(settings as any)?.clans_enabled ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}>
+                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${(settings as any)?.clans_enabled ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between p-4 bg-surface-container-highest rounded-2xl">
+                <div><p className="text-xs font-black text-on-surface uppercase italic">Sistema de Avatar</p><p className="text-[10px] text-on-surface-variant mt-0.5">Permite atletas customizar seu personagem na loja</p></div>
+                <button onClick={() => setSettings({...settings, avatar_enabled: !(settings as any).avatar_enabled} as any)} className={`w-12 h-6 rounded-full transition-all relative ${(settings as any)?.avatar_enabled ? 'bg-primary' : 'bg-surface-container-highest border border-outline-variant/30'}`}>
+                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-all absolute top-0.5 ${(settings as any)?.avatar_enabled ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+              <button onClick={handleSaveSettings} className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-lg uppercase italic shadow-lg hover:scale-[0.98] active:scale-95 transition-all flex items-center justify-center gap-2">
+                <Save className="w-5 h-5" /> SALVAR AJUSTES
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── GRADE ── */}
+        {activeTab === 'schedule' && (
+          <motion.div key="schedule" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="flex flex-col gap-6">
+            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-4">
+              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">ADICIONAR HORÁRIO</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Início</label><input type="time" value={newSchedule.time} onChange={e => setNewSchedule({...newSchedule, time: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+                <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Fim</label><input type="time" value={newSchedule.endTime} onChange={e => setNewSchedule({...newSchedule, endTime: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Coach</label>
+                  <select value={newSchedule.coach} onChange={e => setNewSchedule({...newSchedule, coach: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                    <option value="">Selecionar Coach</option>
+                    {users.filter(u => u.role === 'coach' || u.role === 'admin').map(coach => (<option key={coach.id} value={coach.name}>{coach.name} ({coach.role === 'admin' ? 'Head' : 'Coach'})</option>))}
+                  </select>
+                </div>
+                <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Capacidade</label><input type="number" value={newSchedule.capacity} onChange={e => setNewSchedule({...newSchedule, capacity: parseInt(e.target.value) || 0})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+              </div>
+              <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Janela de Check-in (min antes)</label><input type="number" value={newSchedule.checkinWindowMinutes} onChange={e => setNewSchedule({...newSchedule, checkinWindowMinutes: parseInt(e.target.value) || 0})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+              <div className="space-y-2">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dias da Semana</label>
+                <div className="flex gap-2 flex-wrap">
+                  {['D','S','T','Q','Q','S','S'].map((day, idx) => (
+                    <button key={idx} onClick={() => { const days = newSchedule.days || []; setNewSchedule({...newSchedule, days: days.includes(idx) ? days.filter(d => d !== idx) : [...days, idx]}); }}
+                      className={cn("w-10 h-10 rounded-xl font-headline font-bold text-xs transition-all border", newSchedule.days?.includes(idx) ? "bg-primary text-background border-primary" : "bg-surface-container-highest text-on-surface-variant border-outline-variant/10")}>
+                      {day}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button onClick={handleAddSchedule} className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> ADICIONAR HORÁRIO</button>
+            </div>
+            <div className="space-y-3">
+              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">GRADE ATUAL</h3>
+              {schedule.map((s) => (
+                <div key={s.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex justify-between items-center group hover:border-primary/30 transition-all">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-primary/10 rounded-2xl"><Clock className="w-6 h-6 text-primary" /></div>
+                    <div>
+                      <div className="flex items-center gap-2"><p className="text-on-surface font-bold uppercase text-sm italic">{s.time} - {s.endTime}</p>{!s.isActive && <span className="bg-error-container text-on-error-container text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">INATIVO</span>}</div>
+                      <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Coach: {s.coach} • Cap: {s.capacity}</p>
+                      <div className="flex gap-1 mt-1">{['D','S','T','Q','Q','S','S'].map((day, idx) => (<span key={idx} className={cn("text-[8px] font-black w-4 h-4 flex items-center justify-center rounded-sm", s.days?.includes(idx) ? "bg-primary/20 text-primary" : "bg-surface-container-highest text-on-surface-variant opacity-30")}>{day}</span>))}</div>
+                    </div>
+                  </div>
+                  <button onClick={() => s.id && handleDeleteSchedule(s.id)} className="p-2 text-on-surface-variant hover:text-error transition-colors flex-shrink-0"><Trash2 className="w-5 h-5" /></button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── DESAFIOS ── */}
+        {activeTab === 'challenges' && (
+          <motion.div key="challenges" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="flex flex-col gap-6">
+            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-4">
+              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">CRIAR NOVO DESAFIO</h3>
+              <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Título</label><input type="text" value={newChallenge.title} onChange={e => setNewChallenge({...newChallenge, title: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+              <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Descrição</label><textarea value={newChallenge.description} onChange={e => setNewChallenge({...newChallenge, description: e.target.value})} rows={3} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP</label><input type="number" value={newChallenge.xp} onChange={e => setNewChallenge({...newChallenge, xp: parseInt(e.target.value)})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+                <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Coins</label><input type="number" value={newChallenge.coins} onChange={e => setNewChallenge({...newChallenge, coins: parseInt(e.target.value)})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+              </div>
+
+              {/* ── Tipo do Desafio ── */}
+              <div className="space-y-2">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo de Desafio</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button type="button" onClick={() => setNewChallenge({...newChallenge, type: 'daily_checkin'})}
+                    className={`p-4 rounded-2xl border-2 text-left transition-all ${(newChallenge as any).type === 'daily_checkin' ? 'bg-primary/10 border-primary' : 'bg-surface-container-highest border-outline-variant/10'}`}>
+                    <p className={`text-xs font-black uppercase italic ${(newChallenge as any).type === 'daily_checkin' ? 'text-primary' : 'text-on-surface'}`}>📅 Por Dias</p>
+                    <p className="text-[9px] text-on-surface-variant mt-1">Aluno marca OK a cada dia que treina</p>
+                  </button>
+                  <button type="button" onClick={() => setNewChallenge({...newChallenge, type: 'accumulative'} as any)}
+                    className={`p-4 rounded-2xl border-2 text-left transition-all ${(newChallenge as any).type === 'accumulative' ? 'bg-secondary/10 border-secondary' : 'bg-surface-container-highest border-outline-variant/10'}`}>
+                    <p className={`text-xs font-black uppercase italic ${(newChallenge as any).type === 'accumulative' ? 'text-secondary' : 'text-on-surface'}`}>🔢 Acumulativo</p>
+                    <p className="text-[9px] text-on-surface-variant mt-1">Aluno soma repetições/metros por dia até bater a meta</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* ── Campos condicionais por tipo ── */}
+              {(newChallenge as any).type === 'accumulative' ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Meta total</label>
+                    <input type="number" min={1} value={(newChallenge as any).target_value} onChange={e => setNewChallenge({...newChallenge, target_value: parseInt(e.target.value) || 1} as any)} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" placeholder="Ex: 5000" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Unidade</label>
+                    <input type="text" value={(newChallenge as any).unit} onChange={e => setNewChallenge({...newChallenge, unit: e.target.value} as any)} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" placeholder="reps, metros, km..." />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dificuldade</label>
+                    <select value={newChallenge.difficulty} onChange={e => setNewChallenge({...newChallenge, difficulty: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                      <option value="easy">Fácil</option>
+                      <option value="medium">Médio</option>
+                      <option value="hard">Difícil</option>
+                      <option value="special">Especial</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dias necessários</label>
+                    <input type="number" min={1} value={newChallenge.required_days} onChange={e => setNewChallenge({...newChallenge, required_days: parseInt(e.target.value) || 1})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Inicial</label>
+                  <input type="date" style={{ colorScheme: 'dark' }} value={newChallenge.startDate} onChange={e => setNewChallenge({...newChallenge, startDate: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Final</label>
+                  <input type="date" style={{ colorScheme: 'dark' }} value={newChallenge.endDate} onChange={e => setNewChallenge({...newChallenge, endDate: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                </div>
+              </div>
+              <button
+                onClick={() => setNewChallenge({...newChallenge, require_photo: !newChallenge.require_photo})}
+                className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl border-2 transition-all font-headline font-bold text-sm uppercase italic ${newChallenge.require_photo ? 'bg-secondary/20 border-secondary text-secondary' : 'bg-surface-container-highest border-outline-variant/20 text-on-surface-variant'}`}
+              >
+                <span className="flex items-center gap-2"><Camera className="w-5 h-5" /> Exigir foto para completar</span>
+                {newChallenge.require_photo ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
+              </button>
+              <button onClick={handleAddChallenge} className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> CRIAR DESAFIO</button>
+            </div>
+            <div className="space-y-3">
+              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">DESAFIOS ATIVOS</h3>
+              {challenges.map((c) => (
+                <div key={c.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 space-y-3 group relative">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1"><h4 className="text-on-surface font-bold uppercase text-sm italic">{c.title}</h4><p className="text-on-surface-variant text-[10px] mt-1">{c.description}</p></div>
+                    <div className="flex gap-2 ml-2">
+                      <button onClick={() => handleEditChallenge(c)} className="p-2 bg-primary/20 text-primary rounded-xl transition-all hover:bg-primary/30"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={() => handleDeleteChallenge(c.id)} className="p-2 bg-error-container text-on-error-container rounded-xl transition-all hover:bg-error/30"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-outline-variant/10">
+                    <div className="flex gap-3"><span className="text-[10px] font-black text-primary uppercase tracking-widest">{c.xp} XP</span><span className="text-[10px] font-black text-secondary uppercase tracking-widest">{c.coins} COINS</span></div>
+                    <span className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">{c.start_date ? format(new Date(c.start_date), 'dd/MM') : '—'} - {c.end_date ? format(new Date(c.end_date), 'dd/MM') : '—'}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── LOJA ── */}
+        {activeTab === 'store' && (
+          <motion.div key="store" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="flex flex-col gap-6">
+            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-4">
+              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-primary" /> {editingItem ? 'EDITAR ITEM' : 'ADICIONAR ITEM NA LOJA'}
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">ID do Item</label>
+                  <input type="text" value={editingItem ? editingItem.id : newItem.id} onChange={e => editingItem ? setEditingItem({...editingItem, id: e.target.value}) : setNewItem({...newItem, id: e.target.value})}
+                    disabled={!!editingItem} placeholder="ex: cap_red" className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface disabled:opacity-50" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome</label>
+                  <input type="text" value={editingItem ? editingItem.name : newItem.name} onChange={e => editingItem ? setEditingItem({...editingItem, name: e.target.value}) : setNewItem({...newItem, name: e.target.value})}
+                    placeholder="ex: Boné Vermelho" className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Slot</label>
+                  <select value={editingItem ? editingItem.slot : newItem.slot} onChange={e => editingItem ? setEditingItem({...editingItem, slot: e.target.value as any}) : setNewItem({...newItem, slot: e.target.value as any})}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                    <option value="top">Camiseta (top)</option>
+                    <option value="bottom">Calça/Short (bottom)</option>
+                    <option value="shoes">Tênis (shoes)</option>
+                    <option value="accessory">Acessório</option>
+                    <option value="head_accessory">Cabeça</option>
+                    <option value="wrist_accessory">Pulso</option>
+                    <option value="special">Especial</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Preço (Coins)</label>
+                  <input type="number" value={editingItem ? editingItem.price : newItem.price} onChange={e => editingItem ? setEditingItem({...editingItem, price: parseInt(e.target.value)}) : setNewItem({...newItem, price: parseInt(e.target.value)})}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Imagem do Item</label>
+                <div className="flex gap-3 items-center">
+                  {(editingItem?.image || newItem.image) && (
+                    <img src={editingItem?.image || newItem.image} alt="preview" className="w-14 h-14 rounded-2xl object-contain bg-surface-container-highest flex-shrink-0" />
+                  )}
+                  <label className={cn(
+                    'flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl border text-[9px] font-bold uppercase tracking-widest cursor-pointer transition-all',
+                    uploading === 'item' ? 'bg-surface-container-highest text-on-surface-variant border-outline-variant/10' : 'bg-surface-container-highest text-on-surface-variant border-outline-variant/10 hover:border-primary/40 hover:text-primary'
+                  )}>
+                    {uploading === 'item' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                    {uploading === 'item' ? 'Enviando...' : 'Selecionar imagem'}
+                    <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={uploading === 'item'} onChange={handleItemImageUpload} />
+                  </label>
+                </div>
+                <p className="text-[8px] text-on-surface-variant opacity-50 uppercase tracking-widest">
+                  Preencha o ID antes de fazer upload · Imagem padronizada 512×768 automaticamente
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                {editingItem ? (
+                  <>
+                    <button onClick={handleUpdateItem} className="flex-1 bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"><Save className="w-5 h-5" /> SALVAR ALTERAÇÕES</button>
+                    <button onClick={() => setEditingItem(null)} className="flex-1 bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"><X className="w-5 h-5" /> CANCELAR</button>
+                  </>
+                ) : (
+                  <button onClick={handleAddItem} className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"><Plus className="w-5 h-5" /> ADICIONAR ITEM</button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {items.map((item) => (
+                <div key={item.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-3 group relative">
+                  <div className="absolute top-2 right-2 flex gap-1 z-10">
+                    <button
+                      onClick={() => setCalibratingItem(calibratingItem?.id === item.id ? null : item)}
+                      title="Calibrar camada"
+                      className={cn(
+                        'p-2 rounded-xl transition-all',
+                        calibratingItem?.id === item.id
+                          ? 'bg-primary text-on-primary'
+                          : item.layer_adjustment
+                            ? 'bg-primary/20 text-primary hover:bg-primary hover:text-on-primary'
+                            : 'bg-surface-container-highest text-on-surface-variant hover:bg-primary/20 hover:text-primary'
+                      )}
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => { setEditingItem(item); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="p-2 bg-primary/20 text-primary rounded-xl hover:bg-primary hover:text-background transition-all"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => handleDeleteItem(item.id)} className="p-2 bg-error-container text-on-error-container rounded-xl hover:bg-error hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                  <div className="aspect-square rounded-2xl bg-surface-container-highest flex items-center justify-center overflow-hidden">
+                    {item.image ? <img src={item.image} alt={item.name} className="w-full h-full object-contain p-2" /> : <ShoppingBag className="w-8 h-8 text-on-surface-variant/30" />}
+                  </div>
+                  <div>
+                    <p className="text-on-surface font-bold uppercase text-sm italic truncate">{item.name}</p>
+                    <div className="flex justify-between items-center mt-1">
+                      <span className="text-[10px] font-black text-secondary uppercase tracking-widest">{item.price} COINS</span>
+                      <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest opacity-50">{item.slot}</span>
+                    </div>
+                    {item.layer_adjustment && <span className="text-[7px] text-primary font-bold uppercase tracking-widest">• calibrado</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── OPERAÇÃO ── */}
+        {activeTab === 'operation' && (
+          <motion.div key="operation" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="flex flex-col gap-6">
+            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-6">
+              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2"><Activity className="w-5 h-5 text-primary" /> GERENCIAR WODS</h3>
+              <div className="space-y-4">
+                {wods.slice(0, 5).map((wod) => (
+                  <div key={wod.id} className="p-4 bg-surface-container-highest/30 rounded-2xl border border-outline-variant/10 flex justify-between items-center">
+                    <div><p className="text-on-surface font-bold uppercase text-sm italic">{wod.name}</p><p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{format(new Date(wod.date), 'dd/MM/yyyy')} • {wod.type}</p></div>
+                    <button onClick={() => setEditingWod(wod)} className="p-2 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-background transition-all"><Edit2 className="w-4 h-4" /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="bg-error-container/10 p-6 rounded-[2rem] border border-error/20 space-y-4">
+              <h3 className="font-headline font-bold text-lg text-error uppercase italic flex items-center gap-2"><Shield className="w-5 h-5" /> NOVA TEMPORADA</h3>
+              <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest leading-relaxed">Zera check-ins, duelos, recompensas, resultados de WOD, membros de clans e reseta XP/Coins/Level de todos os atletas.</p>
+              <button onClick={handleSystemReset} className="w-full bg-error text-on-error py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2 hover:bg-error/90 transition-colors"><Trash2 className="w-5 h-5" /> INICIAR NOVA TEMPORADA</button>
+            </div>
+          </motion.div>
+        )}
+
+
+        {activeTab === 'ranking' && (
+          <motion.div key="ranking" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="flex flex-col gap-6">
+            <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-6">
+              <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2"><Trophy className="w-5 h-5 text-primary" /> RANKING DE FREQUÊNCIA</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Mês</label>
+                  <select value={selectedMonth} onChange={(e) => setSelectedMonth(parseInt(e.target.value))} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                    {['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'].map((month, idx) => (<option key={idx} value={idx}>{month}</option>))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Ano</label>
+                  <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                    {[2024, 2025, 2026].map(year => (<option key={year} value={year}>{year}</option>))}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {historicalFrequencyRanking.map((u, idx) => (
+                  <div key={u.id} className="bg-surface-container-highest/30 p-4 rounded-2xl border border-outline-variant/10 flex justify-between items-center">
+                    <div className="flex items-center gap-4">
+                      <span className={cn("w-6 text-center font-headline font-black italic", idx < 3 ? "text-primary text-lg" : "text-on-surface-variant text-sm")}>{idx + 1}º</span>
+                      <div><p className="text-on-surface font-bold uppercase text-xs">{u.name}</p><p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest">{u.role === 'admin' ? 'ADMIN' : u.role === 'coach' ? 'COACH' : 'ALUNO'}</p></div>
+                    </div>
+                    <div className="text-right"><p className="text-primary font-headline font-black text-lg italic">{u.periodCount}</p><p className="text-on-surface-variant text-[8px] font-black uppercase tracking-widest">CHECK-INS</p></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── CHECK-INS ── */}
+        {activeTab === 'checkins' && (() => {
+          const dateStr = checkinsDate;
+          const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
+          const activeSlots = schedule.filter(s => s.isActive && s.days?.includes(dayOfWeek));
+          const dayCheckins = users.flatMap(u => u.checkins.filter(c => c.date === dateStr).map(c => ({ ...c, user: u })));
+          const totalExpected = activeSlots.reduce((acc, s) => acc + s.capacity, 0);
+          const totalPresent = dayCheckins.length;
+          const totalAbsent = Math.max(0, totalExpected - totalPresent);
+
+          return (
+            <motion.div key="checkins" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="flex flex-col gap-6">
+              <div className="bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/10 space-y-4">
+                <div className="flex justify-between items-center flex-wrap gap-3">
+                  <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2"><History className="w-5 h-5 text-primary" /> CHECK-INS DO DIA</h3>
+                  <input type="date" style={{ colorScheme: 'dark' }} value={checkinsDate} onChange={e => setCheckinsDate(e.target.value)} className="bg-surface-container-highest border-none rounded-2xl px-4 py-3 font-headline font-bold text-on-surface text-sm" />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-surface-container-highest rounded-2xl p-4 text-center"><p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Check-ins</p><p className="text-2xl font-headline font-black text-primary italic">{totalPresent}</p></div>
+                  <div className="bg-surface-container-highest rounded-2xl p-4 text-center"><p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Esperados</p><p className="text-2xl font-headline font-black text-on-surface italic">{totalExpected}</p></div>
+                  <div className="bg-surface-container-highest rounded-2xl p-4 text-center"><p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-1">Ausências</p><p className="text-2xl font-headline font-black text-error italic">{totalAbsent}</p></div>
+                </div>
+              </div>
+              {activeSlots.map(slot => {
+                const slotCheckins = dayCheckins.filter(c => c.classTime === slot.time || (!c.classTime && (() => { if (!c.timestamp) return false; const t = new Date(c.timestamp); const [sh,sm] = slot.time.split(':').map(Number); const [eh,em] = slot.endTime.split(':').map(Number); const start = sh*60+sm-(slot.checkinWindowMinutes||60); const end = eh*60+em; const cur = t.getHours()*60+t.getMinutes(); return cur>=start&&cur<=end; })()));
+                const pct = slot.capacity > 0 ? Math.round((slotCheckins.length / slot.capacity) * 100) : 0;
+                const isOpen = !!checkinsExpanded[slot.id || slot.time];
+                return (
+                  <div key={slot.id || slot.time} className="bg-surface-container-low rounded-3xl border border-outline-variant/10 overflow-hidden">
+                    <button onClick={() => setCheckinsExpanded(prev => ({ ...prev, [slot.id || slot.time]: !prev[slot.id || slot.time] }))} className="w-full flex justify-between items-center p-4">
+                      <div className="flex items-center gap-4">
+                        <div className="p-3 bg-primary/10 rounded-2xl"><Clock className="w-5 h-5 text-primary" /></div>
+                        <div className="text-left"><p className="text-on-surface font-bold uppercase text-sm italic">{slot.time} – {slot.endTime}</p><p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">Coach: {slot.coach}</p></div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={cn("text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-widest", pct >= 80 ? "bg-primary/20 text-primary" : pct >= 50 ? "bg-secondary/20 text-secondary" : "bg-error-container text-on-error-container")}>{pct}%</span>
+                        <ChevronDown className={cn("w-4 h-4 text-on-surface-variant transition-transform", isOpen && "rotate-180")} />
+                      </div>
+                    </button>
+                    <AnimatePresence>
+                      {isOpen && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-outline-variant/10">
+                          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {slotCheckins.map((c, idx) => (
+                              <div key={idx} className="flex items-center gap-3 bg-surface-container-highest/40 px-3 py-2.5 rounded-2xl">
+                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-headline font-black text-sm flex-shrink-0">{(c.user.name || 'S')[0]}</div>
+                                <div className="flex-1 min-w-0"><p className="text-on-surface font-bold uppercase text-xs truncate">{c.user.name}</p>{c.timestamp && <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest">{format(new Date(c.timestamp), 'HH:mm')}</p>}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+
+              {(() => {
+                const matchedKeys = new Set(
+                  activeSlots.flatMap(slot =>
+                    dayCheckins.filter(c =>
+                      c.classTime === slot.time ||
+                      (!c.classTime && (() => {
+                        if (!c.timestamp) return false;
+                        const t = new Date(c.timestamp);
+                        const [sh, sm] = slot.time.split(':').map(Number);
+                        const [eh, em] = slot.endTime.split(':').map(Number);
+                        const start = sh * 60 + sm - (slot.checkinWindowMinutes || 60);
+                        const end = eh * 60 + em;
+                        const cur = t.getHours() * 60 + t.getMinutes();
+                        return cur >= start && cur <= end;
+                      })())
+                    ).map(c => c.user.id + (c.timestamp || ''))
+                  )
+                );
+                const unmatched = dayCheckins.filter(c => !matchedKeys.has(c.user.id + (c.timestamp || '')));
+                if (unmatched.length === 0) return null;
+                return (
+                  <div className="bg-surface-container-low rounded-3xl border border-outline-variant/10 overflow-hidden">
+                    <div className="p-4 border-b border-outline-variant/10">
+                      <p className="text-on-surface font-bold uppercase text-sm italic">SEM AULA VINCULADA</p>
+                      <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">{unmatched.length} check-in(s)</p>
+                    </div>
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {unmatched.map((c, idx) => (
+                        <div key={idx} className="flex items-center gap-3 bg-surface-container-highest/40 px-3 py-2.5 rounded-2xl">
+                          <div className="w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center text-secondary font-headline font-black text-sm flex-shrink-0">{(c.user.name || 'S')[0]}</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-on-surface font-bold uppercase text-xs truncate">{c.user.name}</p>
+                            {c.timestamp && <p className="text-on-surface-variant text-[8px] font-bold uppercase tracking-widest">{format(new Date(c.timestamp), 'HH:mm')}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </motion.div>
+          );
+        })()}
+
+      </AnimatePresence>
+
+      {/* ── Modal editar WOD ── */}
+      <AnimatePresence>
+        {editingWod && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="w-full max-w-lg bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center">
+                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">EDITAR WOD</h3>
+                <button onClick={() => setEditingWod(null)} className="p-2 text-on-surface-variant hover:text-on-surface transition-colors"><X className="w-6 h-6" /></button>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Nome do WOD</label><input type="text" value={editingWod.name} onChange={e => setEditingWod({...editingWod, name: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo</label><input type="text" value={editingWod.type} onChange={e => setEditingWod({...editingWod, type: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+                  <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data</label><input type="date" style={{ colorScheme: 'dark' }} value={editingWod.date} onChange={e => setEditingWod({...editingWod, date: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+                </div>
+                <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">RX</label><textarea value={editingWod.rx} onChange={e => setEditingWod({...editingWod, rx: e.target.value})} rows={3} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" /></div>
+                <button onClick={handleUpdateWod} className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg flex items-center justify-center gap-2"><Save className="w-5 h-5" /> SALVAR WOD</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Modal editar Desafio ── */}
+      <AnimatePresence>
+        {isEditingChallenge && editingChallenge && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="w-full max-w-lg bg-surface-container-low rounded-[2.5rem] border border-outline-variant/10 p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center">
+                <h3 className="font-headline font-bold text-xl text-on-surface uppercase italic">EDITAR DESAFIO</h3>
+                <button onClick={() => { setEditingChallenge(null); setIsEditingChallenge(false); }} className="p-2 text-on-surface-variant hover:text-on-surface transition-colors"><X className="w-6 h-6" /></button>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Título</label><input type="text" value={editingChallenge.title} onChange={e => setEditingChallenge({...editingChallenge, title: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+                <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Descrição</label><textarea value={editingChallenge.description} onChange={e => setEditingChallenge({...editingChallenge, description: e.target.value})} rows={3} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface resize-none" /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Inicial</label>
+                    <input type="date" style={{ colorScheme: 'dark' }} value={editingChallenge.startDate} onChange={e => setEditingChallenge({...editingChallenge, startDate: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Data Final</label>
+                    <input type="date" style={{ colorScheme: 'dark' }} value={editingChallenge.endDate} onChange={e => setEditingChallenge({...editingChallenge, endDate: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">XP</label><input type="number" value={editingChallenge.xp} onChange={e => setEditingChallenge({...editingChallenge, xp: parseInt(e.target.value)})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+                  <div className="space-y-2"><label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Coins</label><input type="number" value={editingChallenge.coins} onChange={e => setEditingChallenge({...editingChallenge, coins: parseInt(e.target.value)})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" /></div>
+                </div>
+
+                {/* ── Tipo no modal de edição ── */}
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo de Desafio</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button type="button" onClick={() => setEditingChallenge({...editingChallenge, type: 'daily_checkin'})}
+                      className={`p-3 rounded-2xl border-2 text-left transition-all ${(editingChallenge.type || 'daily_checkin') === 'daily_checkin' ? 'bg-primary/10 border-primary' : 'bg-surface-container-highest border-outline-variant/10'}`}>
+                      <p className={`text-xs font-black uppercase italic ${(editingChallenge.type || 'daily_checkin') === 'daily_checkin' ? 'text-primary' : 'text-on-surface'}`}>📅 Por Dias</p>
+                    </button>
+                    <button type="button" onClick={() => setEditingChallenge({...editingChallenge, type: 'accumulative'})}
+                      className={`p-3 rounded-2xl border-2 text-left transition-all ${editingChallenge.type === 'accumulative' ? 'bg-secondary/10 border-secondary' : 'bg-surface-container-highest border-outline-variant/10'}`}>
+                      <p className={`text-xs font-black uppercase italic ${editingChallenge.type === 'accumulative' ? 'text-secondary' : 'text-on-surface'}`}>🔢 Acumulativo</p>
+                    </button>
+                  </div>
+                </div>
+
+                {editingChallenge.type === 'accumulative' ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Meta total</label>
+                      <input type="number" min={1} value={editingChallenge.target_value || 100} onChange={e => setEditingChallenge({...editingChallenge, target_value: parseInt(e.target.value) || 1})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Unidade</label>
+                      <input type="text" value={editingChallenge.unit || ''} onChange={e => setEditingChallenge({...editingChallenge, unit: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" placeholder="reps, metros, km..." />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dificuldade</label>
+                      <select value={editingChallenge.difficulty} onChange={e => setEditingChallenge({...editingChallenge, difficulty: e.target.value})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                        <option value="easy">Fácil</option>
+                        <option value="medium">Médio</option>
+                        <option value="hard">Difícil</option>
+                        <option value="special">Especial</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Status</label>
+                      <select value={editingChallenge.active ? 'true' : 'false'} onChange={e => setEditingChallenge({...editingChallenge, active: e.target.value === 'true'})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                        <option value="true">Ativo</option>
+                        <option value="false">Inativo</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Dias necessários</label>
+                  <input type="number" min={1} value={editingChallenge.required_days || 1} onChange={e => setEditingChallenge({...editingChallenge, required_days: parseInt(e.target.value) || 1})} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                </div>
+                <button
+                  onClick={() => setEditingChallenge({...editingChallenge, require_photo: !editingChallenge.require_photo})}
+                  className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl border-2 transition-all font-headline font-bold text-sm uppercase italic ${editingChallenge.require_photo ? 'bg-secondary/20 border-secondary text-secondary' : 'bg-surface-container-highest border-outline-variant/20 text-on-surface-variant'}`}
+                >
+                  <span className="flex items-center gap-2"><Camera className="w-5 h-5" /> Exigir foto para completar</span>
+                  {editingChallenge.require_photo ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
+                </button>
+                <div className="flex gap-3 pt-4">
+                  <button onClick={() => { setEditingChallenge(null); setIsEditingChallenge(false); }} className="flex-1 bg-surface-container-highest text-on-surface py-3 rounded-2xl font-headline font-bold uppercase italic">CANCELAR</button>
+                  <button onClick={handleUpdateChallenge} className="flex-1 bg-primary text-background py-3 rounded-2xl font-headline font-bold uppercase italic flex items-center justify-center gap-2"><Save className="w-5 h-5" /> SALVAR</button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Painel calibrador (bottom sheet) ── */}
+      <AnimatePresence>
+        {calibratingItem && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+              onClick={() => setCalibratingItem(null)} />
+            <CalibratorPanel
+              item={calibratingItem}
+              onSave={handleSaveLayerAdjustment}
+              onClose={() => setCalibratingItem(null)}
+            />
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+    }
