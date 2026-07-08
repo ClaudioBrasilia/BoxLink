@@ -33,6 +33,13 @@ export default function Profile() {
   const [inactivityFade, setInactivityFade] = useState(0);
   const [inactivitySleep, setInactivitySleep] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  // Biometria (peso/altura/nascimento/sexo) — usada no resumo de treino de FC
+  const [bioWeight, setBioWeight] = useState('');
+  const [bioHeight, setBioHeight] = useState('');
+  const [bioBirth, setBioBirth] = useState('');
+  const [bioSex, setBioSex] = useState<'' | 'male' | 'female'>('');
+  const [bioSaving, setBioSaving] = useState(false);
+  const [bioSaved, setBioSaved] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -138,6 +145,43 @@ export default function Profile() {
     const { error } = await supabase.from('profiles').update({ name: editName.trim() }).eq('id', user.id);
     if (!error) { updateUser({ ...user, name: editName.trim() }); setIsEditingProfile(false); }
     else alert('Erro ao salvar: ' + error.message);
+  };
+
+  // Carrega a biometria salva
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from('profiles')
+      .select('weight_kg, height_cm, birth_date, sex')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) return;
+        setBioWeight(data.weight_kg != null ? String(data.weight_kg) : '');
+        setBioHeight(data.height_cm != null ? String(data.height_cm) : '');
+        setBioBirth(data.birth_date ?? '');
+        setBioSex((data.sex as 'male' | 'female') ?? '');
+      }, () => {});
+  }, [user?.id]);
+
+  const handleSaveBio = async () => {
+    if (!user) return;
+    setBioSaving(true);
+    setBioSaved(false);
+    const payload = {
+      weight_kg: bioWeight ? Number(bioWeight) : null,
+      height_cm: bioHeight ? Number(bioHeight) : null,
+      birth_date: bioBirth || null,
+      sex: bioSex || null,
+    };
+    const { error } = await supabase.from('profiles').update(payload).eq('id', user.id);
+    setBioSaving(false);
+    if (!error) {
+      setBioSaved(true);
+      setTimeout(() => setBioSaved(false), 2500);
+    } else {
+      alert('Erro ao salvar biometria: ' + error.message);
+    }
   };
 
 
@@ -366,6 +410,53 @@ export default function Profile() {
             <span className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">{stat.label}</span>
           </div>
         ))}
+      </section>
+
+      {/* Biometria — habilita calorias e % da FC máxima no monitor cardíaco */}
+      <section className="bg-surface-container-low p-5 rounded-3xl border border-outline-variant/10 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
+            <Activity className="w-5 h-5 text-primary" /> BIOMETRIA
+          </h3>
+          {bioSaved && <span className="text-primary text-[10px] font-black uppercase tracking-widest">SALVO ✓</span>}
+        </div>
+        <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest opacity-70 leading-relaxed">
+          Preencha para ver calorias e % da FC máxima no resumo dos treinos.
+        </p>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">Peso (kg)</span>
+            <input type="number" inputMode="decimal" value={bioWeight} onChange={(e) => setBioWeight(e.target.value)}
+              placeholder="Ex: 78" min="20" max="300"
+              className="bg-surface-container-highest border border-outline-variant/20 focus:border-primary/50 rounded-xl px-3 py-2 text-on-surface font-bold outline-none" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">Altura (cm)</span>
+            <input type="number" inputMode="decimal" value={bioHeight} onChange={(e) => setBioHeight(e.target.value)}
+              placeholder="Ex: 176" min="80" max="250"
+              className="bg-surface-container-highest border border-outline-variant/20 focus:border-primary/50 rounded-xl px-3 py-2 text-on-surface font-bold outline-none" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">Nascimento</span>
+            <input type="date" value={bioBirth} onChange={(e) => setBioBirth(e.target.value)}
+              className="bg-surface-container-highest border border-outline-variant/20 focus:border-primary/50 rounded-xl px-3 py-2 text-on-surface font-bold outline-none" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">Sexo</span>
+            <select value={bioSex} onChange={(e) => setBioSex(e.target.value as '' | 'male' | 'female')}
+              className="bg-surface-container-highest border border-outline-variant/20 focus:border-primary/50 rounded-xl px-3 py-2 text-on-surface font-bold outline-none">
+              <option value="">—</option>
+              <option value="male">Masculino</option>
+              <option value="female">Feminino</option>
+            </select>
+          </label>
+        </div>
+
+        <button onClick={handleSaveBio} disabled={bioSaving}
+          className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-primary text-background text-xs font-black uppercase tracking-widest hover:scale-[1.01] transition-all disabled:opacity-60">
+          <Save className="w-4 h-4" /> {bioSaving ? 'Salvando...' : 'Salvar Biometria'}
+        </button>
       </section>
 
       {/* Benchmarks / PRs */}

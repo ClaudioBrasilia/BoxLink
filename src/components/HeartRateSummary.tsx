@@ -9,15 +9,22 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from 'recharts';
 import { motion } from 'framer-motion';
-import { Activity, TrendingUp, TrendingDown, Timer, Flame, RotateCcw } from 'lucide-react';
+import { Activity, TrendingUp, TrendingDown, Timer, Flame, RotateCcw, Percent, Gauge, UserPlus } from 'lucide-react';
 import type { HrSample } from '../hooks/useHeartRateSession';
+import {
+  ageFromBirthDate, estimateCalories, maxHrPercent, hasCalorieData, type Biometrics,
+} from '../lib/heartRate';
 import { cn } from '../lib/utils';
 
 interface Props {
   samples: HrSample[];
   deviceName?: string | null;
+  bio?: Biometrics;
   onClose: () => void;
 }
+
+// Peso de cada zona para o índice de esforço (carga do treino).
+const ZONE_WEIGHTS = [1, 2, 3, 4, 5];
 
 // Zonas alinhadas a getHeartRateZone() — com hex para o gráfico e classe p/ barra.
 const ZONES = [
@@ -68,7 +75,7 @@ function ChartTooltip({ active, payload }: any) {
   );
 }
 
-export default function HeartRateSummary({ samples, deviceName, onClose }: Props) {
+export default function HeartRateSummary({ samples, deviceName, bio = {}, onClose }: Props) {
   const stats = useMemo(() => {
     const bpms = samples.map((s) => s.bpm);
     const avg = Math.round(bpms.reduce((a, b) => a + b, 0) / bpms.length);
@@ -83,8 +90,21 @@ export default function HeartRateSummary({ samples, deviceName, onClose }: Props
     const totalZoneSec = zoneSecs.reduce((a, b) => a + b, 0) || 1;
     const dominant = zoneSecs.indexOf(Math.max(...zoneSecs));
 
-    return { avg, max, min, durationSec, zoneSecs, totalZoneSec, dominant };
-  }, [samples]);
+    // Índice de esforço (carga): minutos em cada zona × peso da zona.
+    const effort = Math.round(
+      zoneSecs.reduce((acc, sec, i) => acc + (sec / 60) * ZONE_WEIGHTS[i], 0)
+    );
+
+    // Métricas dependentes da biometria
+    const age = ageFromBirthDate(bio.birthDate);
+    const calories = hasCalorieData(bio) ? estimateCalories(avg, durationSec / 60, bio) : null;
+    const avgPctMax = maxHrPercent(avg, age);
+
+    return { avg, max, min, durationSec, zoneSecs, totalZoneSec, dominant, effort, calories, avgPctMax };
+  }, [samples, bio]);
+
+  const showCalories = stats.calories != null;
+  const showPct = stats.avgPctMax != null;
 
   const yDomain: [number, number] = [Math.max(30, stats.min - 8), stats.max + 8];
 
@@ -150,6 +170,27 @@ export default function HeartRateSummary({ samples, deviceName, onClose }: Props
         <StatTile icon={<TrendingUp className="w-3 h-3" />}   label="FC Máxima" value={stats.max} unit="bpm" color="text-red-400" />
         <StatTile icon={<TrendingDown className="w-3 h-3" />} label="FC Mínima" value={stats.min} unit="bpm" color="text-blue-400" />
       </div>
+
+      {/* Métricas avançadas */}
+      <div className="grid grid-cols-3 gap-2">
+        <StatTile icon={<Gauge className="w-3 h-3" />} label="Esforço" value={stats.effort} color="text-primary" />
+        {showCalories
+          ? <StatTile icon={<Flame className="w-3 h-3" />} label="Calorias" value={stats.calories!} unit="kcal" color="text-orange-400" />
+          : <StatTile icon={<Flame className="w-3 h-3" />} label="Calorias" value="—" color="text-white/30" />}
+        {showPct
+          ? <StatTile icon={<Percent className="w-3 h-3" />} label="Da FC Máx" value={stats.avgPctMax!} unit="%" color="text-yellow-400" />
+          : <StatTile icon={<Percent className="w-3 h-3" />} label="Da FC Máx" value="—" color="text-white/30" />}
+      </div>
+
+      {/* CTA: completar perfil para liberar calorias / %FCmáx */}
+      {(!showCalories || !showPct) && (
+        <div className="flex items-start gap-2 bg-primary/5 border border-primary/20 rounded-xl p-3">
+          <UserPlus className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+          <p className="text-white/60 text-[10px] font-black uppercase leading-relaxed">
+            Complete seu perfil (peso, nascimento e sexo) para ver calorias e % da FC máxima.
+          </p>
+        </div>
+      )}
 
       {/* Distribuição por zona */}
       <div className="flex flex-col gap-2">

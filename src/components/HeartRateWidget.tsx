@@ -15,6 +15,7 @@ import { Capacitor } from '@capacitor/core';
 import { useBluetooth } from '../hooks/useBluetooth';
 import { useNativeHealth } from '../hooks/useNativeHealth';
 import { useHeartRateSession } from '../hooks/useHeartRateSession';
+import { useUserBiometrics } from '../hooks/useUserBiometrics';
 import HeartRateSummary from './HeartRateSummary';
 import { getHeartRateZone, intensityPct } from '../lib/heartRate';
 import { cn } from '../lib/utils';
@@ -152,6 +153,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
   const isConnected = status === 'connected';
 
   const { samples, reset } = useHeartRateSession(heartRate, isConnected);
+  const bio = useUserBiometrics(userId);
 
   useEffect(() => {
     if (isScanning) setHasScanned(true);
@@ -175,7 +177,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
 
   // Resumo de treino ao encerrar
   if (finished && samples.length >= MIN_SUMMARY_SAMPLES) {
-    return <HeartRateSummary samples={samples} deviceName={connectedDevice?.name} onClose={closeSummary} />;
+    return <HeartRateSummary samples={samples} deviceName={connectedDevice?.name} bio={bio} onClose={closeSummary} />;
   }
 
   if (isConnected) {
@@ -290,6 +292,7 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
 
   const [finished, setFinished] = useState(false);
   const { samples, reset } = useHeartRateSession(bpm, isActive);
+  const bio = useUserBiometrics(userId);
 
   const wasActive = useRef(false);
   useEffect(() => {
@@ -305,7 +308,7 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
   };
 
   if (finished && samples.length >= MIN_SUMMARY_SAMPLES) {
-    return <HeartRateSummary samples={samples} deviceName={appName} onClose={closeSummary} />;
+    return <HeartRateSummary samples={samples} deviceName={appName} bio={bio} onClose={closeSummary} />;
   }
 
   return (

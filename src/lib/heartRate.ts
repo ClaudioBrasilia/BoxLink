@@ -228,3 +228,68 @@ export function getHeartRateZone(bpm: number): HeartRateZone {
 export function intensityPct(bpm: number): number {
   return Math.min(100, Math.max(0, ((bpm - 50) / 150) * 100));
 }
+
+// ============================================================================
+// Biometria e métricas derivadas (calorias, %FCmáx)
+// ============================================================================
+export type Sex = 'male' | 'female';
+
+export interface Biometrics {
+  weightKg?: number | null;
+  heightCm?: number | null;
+  birthDate?: string | null; // ISO (YYYY-MM-DD)
+  sex?: Sex | null;
+}
+
+/** Idade em anos a partir da data de nascimento (ISO). null se ausente/ inválida. */
+export function ageFromBirthDate(birthDate?: string | null): number | null {
+  if (!birthDate) return null;
+  const d = new Date(birthDate);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age >= 5 && age <= 120 ? age : null;
+}
+
+/** FC máxima teórica (fórmula clássica 220 − idade). */
+export function theoreticalMaxHr(age: number | null): number | null {
+  if (age == null) return null;
+  return 220 - age;
+}
+
+/** % da FC máxima teórica para um dado BPM. */
+export function maxHrPercent(bpm: number, age: number | null): number | null {
+  const max = theoreticalMaxHr(age);
+  if (!max) return null;
+  return Math.round((bpm / max) * 100);
+}
+
+/**
+ * Estimativa de calorias (kcal) — fórmula de Keytel et al. (2005), baseada em
+ * FC média, peso, idade e sexo. Retorna null se faltar algum dado essencial.
+ */
+export function estimateCalories(
+  avgHr: number,
+  durationMin: number,
+  bio: Biometrics
+): number | null {
+  const age = ageFromBirthDate(bio.birthDate);
+  const weight = bio.weightKg;
+  const sex = bio.sex;
+  if (!weight || !age || !sex || durationMin <= 0) return null;
+
+  const perMin =
+    sex === 'male'
+      ? (-55.0969 + 0.6309 * avgHr + 0.1988 * weight + 0.2017 * age) / 4.184
+      : (-20.4022 + 0.4472 * avgHr - 0.1263 * weight + 0.074 * age) / 4.184;
+
+  const total = perMin * durationMin;
+  return total > 0 ? Math.round(total) : null;
+}
+
+/** Verdadeiro quando há dados suficientes para calorias (+ %FCmáx). */
+export function hasCalorieData(bio: Biometrics): boolean {
+  return !!(bio.weightKg && bio.sex && ageFromBirthDate(bio.birthDate) != null);
+}

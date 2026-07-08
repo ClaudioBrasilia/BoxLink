@@ -22,6 +22,10 @@ create table public.profiles (
   }',
   avatar_inventory text[] default array['default_base'],
   paid_bonuses text[] default array[]::text[],
+  weight_kg numeric,
+  height_cm numeric,
+  birth_date date,
+  sex text check (sex is null or sex in ('male', 'female')),
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
