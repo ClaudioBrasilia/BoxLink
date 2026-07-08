@@ -5,7 +5,7 @@
 //   2. Sincronizar com App de Saúde (Apple Health / Health Connect) — fallback.
 // Detecta o ambiente (nativo x web) e deixa o usuário escolher o modo.
 // ============================================================================
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Heart, Bluetooth, BluetoothOff, Loader2, AlertCircle, X, Watch,
   ChevronDown, ChevronUp, Zap, RefreshCw, Settings, ArrowLeft, Activity,
@@ -14,8 +14,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
 import { useBluetooth } from '../hooks/useBluetooth';
 import { useNativeHealth } from '../hooks/useNativeHealth';
+import { useHeartRateSession } from '../hooks/useHeartRateSession';
+import HeartRateSummary from './HeartRateSummary';
 import { getHeartRateZone, intensityPct } from '../lib/heartRate';
 import { cn } from '../lib/utils';
+
+const MIN_SUMMARY_SAMPLES = 2;
 
 interface Props { userId: string | undefined; className?: string; }
 
@@ -141,16 +145,38 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
   const { status, error, devices, connectedDevice, heartRate, scan, stopScan, connect, disconnect, isSupported, isIOSWeb } =
     useBluetooth(userId);
   const [hasScanned, setHasScanned] = useState(false);
+  const [finished, setFinished] = useState(false);
 
   const isScanning = status === 'scanning';
   const isConnecting = status === 'connecting';
   const isConnected = status === 'connected';
 
+  const { samples, reset } = useHeartRateSession(heartRate, isConnected);
+
   useEffect(() => {
     if (isScanning) setHasScanned(true);
   }, [isScanning]);
 
+  // Mostra o resumo quando a sessão conectada termina (clique OU queda do sinal).
+  const wasConnected = useRef(false);
+  useEffect(() => {
+    if (wasConnected.current && !isConnected && samples.length >= MIN_SUMMARY_SAMPLES) {
+      setFinished(true);
+    }
+    wasConnected.current = isConnected;
+  }, [isConnected, samples.length]);
+
   const emptyAfterScan = hasScanned && !isScanning && !isConnected && devices.length === 0;
+
+  const closeSummary = () => {
+    setFinished(false);
+    reset();
+  };
+
+  // Resumo de treino ao encerrar
+  if (finished && samples.length >= MIN_SUMMARY_SAMPLES) {
+    return <HeartRateSummary samples={samples} deviceName={connectedDevice?.name} onClose={closeSummary} />;
+  }
 
   if (isConnected) {
     return (
@@ -159,7 +185,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
         {error && <ErrorBox message={error} />}
         <button onClick={disconnect}
           className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-black uppercase tracking-widest hover:bg-red-500/20 transition-all">
-          <X className="w-4 h-4" /> Desconectar
+          <X className="w-4 h-4" /> Encerrar e ver resumo
         </button>
       </div>
     );
@@ -262,6 +288,26 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
   const isActive = status === 'active';
   const isRequesting = status === 'requesting';
 
+  const [finished, setFinished] = useState(false);
+  const { samples, reset } = useHeartRateSession(bpm, isActive);
+
+  const wasActive = useRef(false);
+  useEffect(() => {
+    if (wasActive.current && !isActive && samples.length >= MIN_SUMMARY_SAMPLES) {
+      setFinished(true);
+    }
+    wasActive.current = isActive;
+  }, [isActive, samples.length]);
+
+  const closeSummary = () => {
+    setFinished(false);
+    reset();
+  };
+
+  if (finished && samples.length >= MIN_SUMMARY_SAMPLES) {
+    return <HeartRateSummary samples={samples} deviceName={appName} onClose={closeSummary} />;
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {isActive ? (
@@ -289,7 +335,7 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
       {isActive ? (
         <button onClick={stopReading}
           className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-black uppercase tracking-widest hover:bg-red-500/20 transition-all">
-          <X className="w-4 h-4" /> Parar Leitura
+          <X className="w-4 h-4" /> Encerrar e ver resumo
         </button>
       ) : !isRequesting && (
         <button onClick={startReading} disabled={!isAvailablePlatform}
