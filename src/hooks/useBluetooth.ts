@@ -80,9 +80,12 @@ function detectIOSWeb(): boolean {
 export function useBluetooth(userId?: string): UseBluetoothReturn {
   const isNative = Capacitor.isNativePlatform();
   const isIOSWeb = detectIOSWeb();
-  const isSupported =
-    isNative ||
-    (typeof navigator !== 'undefined' && 'bluetooth' in navigator && !isIOSWeb);
+  // O Safari/Chrome/Edge do iPhone NÃO expõem navigator.bluetooth (Apple bloqueia
+  // no WebKit). Porém navegadores como o Bluefy implementam Web Bluetooth via
+  // CoreBluetooth — nesse caso navigator.bluetooth existe mesmo no iOS e devemos
+  // permitir. Por isso a base do suporte é a presença REAL de navigator.bluetooth.
+  const hasWebBluetooth = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+  const isSupported = isNative || hasWebBluetooth;
 
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
@@ -161,9 +164,11 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     }
 
     try {
-      if (isIOSWeb) {
+      // Só bloqueia iOS-web quando NÃO há Web Bluetooth (Safari/Chrome/Edge do iPhone).
+      // Com Bluefy (navigator.bluetooth presente), seguimos normalmente.
+      if (isIOSWeb && !hasWebBluetooth) {
         throw new Error(
-          'iOS Safari não suporta Bluetooth Web. Instale o aplicativo nativo para conectar dispositivos.'
+          'Este navegador do iPhone não suporta Bluetooth Web. Abra o BoxLink pelo navegador "Bluefy" (grátis na App Store) ou instale o app nativo.'
         );
       }
 
@@ -520,7 +525,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   // Auto-reconexão Web (Chrome 122+)
   // --------------------------------------------------------------------------
   useEffect(() => {
-    if (isNative || isIOSWeb || typeof navigator === 'undefined' || !('bluetooth' in navigator)) return;
+    if (isNative || !hasWebBluetooth) return;
     const bt: any = navigator.bluetooth;
     if (typeof bt.getDevices !== 'function') return;
 
@@ -539,7 +544,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         }
       })
       .catch(() => {});
-  }, [isNative, isIOSWeb]);
+  }, [isNative, hasWebBluetooth]);
 
   return {
     isSupported,
