@@ -20,7 +20,7 @@
         "./*"
       ]
     },
-    "types": ["vite/client"],
+    "types": ["vite/client", "web-bluetooth"],
     "allowImportingTsExtensions": true,
     "noEmit": true
   }

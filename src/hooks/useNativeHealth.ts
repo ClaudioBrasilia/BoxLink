@@ -1,11 +1,54 @@
 // src/hooks/useNativeHealth.ts
-// Lê FC via HealthKit (iOS) ou Health Connect (Android)
-// Usa o plugin @capgo/capacitor-health que já está no package.json do projeto
-
-import { useState, useCallback, useRef } from 'react';
+// ============================================================================
+// Ponte de Frequência Cardíaca via App de Saúde (fallback à conexão direta):
+//   • iOS     → Apple HealthKit
+//   • Android → Health Connect
+// Usa @capgo/capacitor-health (IMPORT DINÂMICO → não afeta o build web).
+// ----------------------------------------------------------------------------
+// Robustez:
+//   • Fluxo de autorização à prova de "undefined" (valida AuthorizationStatus).
+//   • No Android, exige 'heartRate' em readAuthorized; se negado, oferece abrir
+//     as configurações do Health Connect. No iOS o HealthKit oculta o status de
+//     leitura por privacidade — então seguimos e validamos pela chegada de dados.
+//   • Polling curto (padrão 5s) para acompanhar treinos intensos.
+// ============================================================================
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Health } from '@capgo/capacitor-health';
 import { supabase } from '../lib/supabase';
+import { isPlausibleBpm } from '../lib/heartRate';
+
+// Tipos mínimos do plugin (evita acoplar o build a ele)
+type HealthDataType = 'heartRate';
+interface AvailabilityResult { available: boolean; platform?: string; reason?: string }
+interface AuthorizationStatus {
+  readAuthorized: HealthDataType[];
+  readDenied: HealthDataType[];
+  writeAuthorized: HealthDataType[];
+  writeDenied: HealthDataType[];
+}
+interface HealthSample { value: number; unit?: string; startDate: string; endDate: string }
+interface HealthLike {
+  isAvailable(): Promise<AvailabilityResult>;
+  requestAuthorization(o: { read: HealthDataType[]; write: HealthDataType[] }): Promise<AuthorizationStatus>;
+  checkAuthorization?(o: { read: HealthDataType[]; write: HealthDataType[] }): Promise<AuthorizationStatus>;
+  readSamples(o: {
+    dataType: HealthDataType;
+    startDate: string;
+    endDate: string;
+    limit?: number;
+    ascending?: boolean;
+  }): Promise<{ samples: HealthSample[] }>;
+  openHealthConnectSettings?(): Promise<void>;
+}
+
+// ─── Carregador dinâmico do plugin ───────────────────────────────────────────
+let _healthPromise: Promise<HealthLike> | null = null;
+async function getHealth(): Promise<HealthLike> {
+  if (!_healthPromise) {
+    _healthPromise = import('@capgo/capacitor-health').then((m) => m.Health as unknown as HealthLike);
+  }
+  return _healthPromise;
+}
 
 export type NativeHealthStatus = 'idle' | 'requesting' | 'active' | 'error';
 
@@ -13,31 +56,50 @@ interface UseNativeHealthReturn {
   bpm: number | null;
   status: NativeHealthStatus;
   errorMessage: string | null;
+  isAvailablePlatform: boolean;
   startReading: () => Promise<void>;
   stopReading: () => void;
+  openSettings: () => Promise<void>;
 }
 
-export function useNativeHealth(userId: string | undefined): UseNativeHealthReturn {
-  const [bpm, setBpm]            = useState<number | null>(null);
-  const [status, setStatus]      = useState<NativeHealthStatus>('idle');
-  const [errorMessage, setError] = useState<string | null>(null);
-  const intervalRef              = useRef<ReturnType<typeof setInterval> | null>(null);
-  const platform                 = Capacitor.getPlatform(); // 'ios' | 'android'
+const POLL_INTERVAL_MS = 5000;        // leitura a cada 5s
+const LOOKBACK_MS = 10 * 60 * 1000;   // janela de 10 min (relógios sincronizam com atraso)
 
-  const syncToSupabase = useCallback(async (currentBpm: number) => {
-    if (!userId) return;
-    try {
-      await supabase.from('heart_rate_live').upsert(
-        {
-          user_id: userId,
-          bpm: currentBpm,
-          device_name: platform === 'ios' ? 'Apple Health' : 'Health Connect',
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id' }
-      );
-    } catch (err) { console.error('[NativeHealth] Sync error:', err); }
-  }, [userId, platform]);
+export function useNativeHealth(userId: string | undefined): UseNativeHealthReturn {
+  const [bpm, setBpm] = useState<number | null>(null);
+  const [status, setStatus] = useState<NativeHealthStatus>('idle');
+  const [errorMessage, setError] = useState<string | null>(null);
+
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const platform = Capacitor.getPlatform(); // 'ios' | 'android' | 'web'
+  const isAvailablePlatform = platform === 'ios' || platform === 'android';
+
+  // Limpa o polling ao desmontar
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  const syncToSupabase = useCallback(
+    async (currentBpm: number) => {
+      if (!userId) return;
+      try {
+        await supabase.from('heart_rate_live').upsert(
+          {
+            user_id: userId,
+            bpm: currentBpm,
+            device_name: platform === 'ios' ? 'Apple Health' : 'Health Connect',
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        );
+      } catch (err) {
+        console.error('[NativeHealth] Sync error:', err);
+      }
+    },
+    [userId, platform]
+  );
 
   const stopReading = useCallback(() => {
     if (intervalRef.current) {
@@ -47,55 +109,98 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
     setBpm(null);
     setStatus('idle');
     if (userId) {
-      supabase.from('heart_rate_live').delete().eq('user_id', userId).then(() => {});
+      supabase.from('heart_rate_live').delete().eq('user_id', userId).then(() => {}, () => {});
     }
   }, [userId]);
+
+  const openSettings = useCallback(async () => {
+    if (platform !== 'android') return;
+    try {
+      const Health = await getHealth();
+      await Health.openHealthConnectSettings?.();
+    } catch (e) {
+      console.warn('[NativeHealth] openSettings falhou', e);
+    }
+  }, [platform]);
 
   const startReading = useCallback(async () => {
     setStatus('requesting');
     setError(null);
 
+    if (!isAvailablePlatform) {
+      setError('A leitura por app de saúde só está disponível no aplicativo instalado (Android/iOS).');
+      setStatus('error');
+      return;
+    }
+
     try {
-      // 1. Verificar se o SDK de saúde está disponível no dispositivo
-      const { available, reason } = await Health.isAvailable();
-      if (!available) {
+      const Health = await getHealth();
+
+      // 1. Disponibilidade do SDK de saúde
+      const availability = await Health.isAvailable().catch(() => null);
+      if (!availability?.available) {
         setError(
           platform === 'ios'
             ? 'Apple Health não está disponível neste dispositivo.'
-            : `Health Connect não disponível: ${reason ?? 'instale o app Health Connect'}`
+            : `Health Connect indisponível${availability?.reason ? `: ${availability.reason}` : ''}. Instale/atualize o app Health Connect.`
         );
         setStatus('error');
         return;
       }
 
-      // 2. Solicitar permissão de leitura de frequência cardíaca
-      await Health.requestAuthorization({
-        read: ['heartRate'],
-        write: [],
-      });
+      // 2. Autorização — valida o retorno para não estourar "undefined"
+      const authOpts = { read: ['heartRate'] as HealthDataType[], write: [] as HealthDataType[] };
+      let authStatus: AuthorizationStatus | null = null;
+      try {
+        authStatus = await Health.requestAuthorization(authOpts);
+      } catch (authErr: any) {
+        console.warn('[NativeHealth] requestAuthorization erro', authErr);
+        // Alguns aparelhos exigem checkAuthorization após o prompt
+        if (Health.checkAuthorization) {
+          authStatus = await Health.checkAuthorization(authOpts).catch(() => null);
+        }
+      }
+
+      // No Android conseguimos confirmar a permissão de leitura; no iOS o HealthKit
+      // oculta o status por privacidade, então não bloqueamos por ele.
+      if (platform === 'android') {
+        const authorized = Array.isArray(authStatus?.readAuthorized)
+          ? authStatus!.readAuthorized.includes('heartRate')
+          : false;
+        if (!authorized) {
+          setError(
+            'Permissão de Frequência Cardíaca negada no Health Connect. Toque em "Abrir configurações" e habilite o acesso do BoxLink.'
+          );
+          setStatus('error');
+          return;
+        }
+      }
 
       setStatus('active');
 
-      // 3. Polling a cada 5 segundos — HealthKit/Health Connect não tem streaming nativo
-      // O relógio sincroniza dados periodicamente, então polling é a abordagem correta
+      // 3. Polling curto — HealthKit/Health Connect não têm streaming nativo
       const poll = async () => {
         try {
-          const endDate   = new Date().toISOString();
-          const startDate = new Date(Date.now() - 2 * 60 * 1000).toISOString(); // últimos 2 min
+          const endDate = new Date().toISOString();
+          const startDate = new Date(Date.now() - LOOKBACK_MS).toISOString();
 
           const { samples } = await Health.readSamples({
             dataType: 'heartRate',
             startDate,
             endDate,
             limit: 1,
+            ascending: false, // mais recente primeiro
           });
 
           if (samples && samples.length > 0) {
-            // O valor vem em BPM (unidade padrão do plugin para heartRate)
-            const latestBpm = Math.round(samples[0].value ?? 0);
-            if (latestBpm > 30 && latestBpm < 250) {
-              setBpm(latestBpm);
-              syncToSupabase(latestBpm);
+            // Garante a amostra mais recente por endDate
+            const latest = samples.reduce((a, b) =>
+              new Date(b.endDate).getTime() > new Date(a.endDate).getTime() ? b : a
+            );
+            const value = Math.round(latest.value ?? 0);
+            if (isPlausibleBpm(value)) {
+              setBpm(value);
+              syncToSupabase(value);
             }
           }
         } catch (err) {
@@ -103,26 +208,23 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
         }
       };
 
-      // Leitura imediata + polling
       await poll();
-      intervalRef.current = setInterval(poll, 5000);
-
+      intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
     } catch (err: any) {
       console.error('[NativeHealth] Erro:', err);
-
-      // Tratamento específico para permissão negada
-      if (err?.message?.toLowerCase().includes('denied') || err?.message?.toLowerCase().includes('not authorized')) {
+      const msg = (err?.message || '').toLowerCase();
+      if (msg.includes('denied') || msg.includes('not authorized') || msg.includes('authoriz')) {
         setError(
           platform === 'ios'
-            ? 'Permissão negada. Vá em Ajustes → Saúde → BoxLink e autorize a leitura.'
-            : 'Permissão negada. Verifique as permissões do Health Connect.'
+            ? 'Permissão negada. Vá em Ajustes → Saúde → Acesso a Dados → BoxLink e autorize a Frequência Cardíaca.'
+            : 'Permissão negada. Abra as configurações do Health Connect e habilite o acesso do BoxLink.'
         );
       } else {
         setError(err?.message ?? 'Erro ao acessar dados de saúde.');
       }
       setStatus('error');
     }
-  }, [platform, syncToSupabase]);
+  }, [platform, isAvailablePlatform, syncToSupabase]);
 
-  return { bpm, status, errorMessage, startReading, stopReading };
+  return { bpm, status, errorMessage, isAvailablePlatform, startReading, stopReading, openSettings };
 }
