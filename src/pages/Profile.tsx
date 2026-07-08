@@ -49,16 +49,6 @@ export default function Profile() {
         const { data: profileData } = await supabase.from('profiles').select('photo_url').eq('id', user.id).maybeSingle();
         if (profileData?.photo_url) setPhotoUrl(profileData.photo_url);
 
-        // Fetch inactivity settings and calculate fade
-        const { data: boxSettings } = await supabase.from('box_settings').select('inactivity').maybeSingle();
-        if (boxSettings?.inactivity) {
-          const inactSettings: InactivitySettings = boxSettings.inactivity;
-          const checkinsList = (user.checkins || []).map((c: any) => ({ date: c.date }));
-          const { fadePercent, showSleeping } = calcInactivity(checkinsList, inactSettings);
-          setInactivityFade(fadePercent);
-          setInactivitySleep(showSleeping);
-        }
-
         // Fetch Duels stats
         const { data: duelsData } = await supabase
           .from('duels')
@@ -99,6 +89,20 @@ export default function Profile() {
       fetchData();
     }
   }, [user?.id]);
+
+  // Recalcula o fade de inatividade sempre que os check-ins do usuário mudam
+  // (ex: logo depois de um check-in feito no Dashboard, sem precisar recarregar a página)
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase.from('box_settings').select('inactivity').maybeSingle().then(({ data: boxSettings }) => {
+      if (!boxSettings?.inactivity) return;
+      const inactSettings: InactivitySettings = boxSettings.inactivity;
+      const checkinsList = (user.checkins || []).map((c: any) => ({ date: c.date }));
+      const { fadePercent, showSleeping } = calcInactivity(checkinsList, inactSettings);
+      setInactivityFade(fadePercent);
+      setInactivitySleep(showSleeping);
+    });
+  }, [user?.id, user?.checkins]);
 
   const handleLogout = () => {
     logout();
