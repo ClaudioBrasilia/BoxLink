@@ -138,7 +138,7 @@ function ModeSelector({ onPick, platform }: { onPick: (m: Mode) => void; platfor
 
 // ─── Modo: Conexão Direta (Bluetooth LE) ─────────────────────────────────────
 function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallback: () => void; canFallback: boolean }) {
-  const { status, error, devices, connectedDevice, heartRate, scan, stopScan, connect, disconnect, isSupported } =
+  const { status, error, devices, connectedDevice, heartRate, scan, stopScan, connect, disconnect, isSupported, isIOSWeb } =
     useBluetooth(userId);
   const [hasScanned, setHasScanned] = useState(false);
 
@@ -212,7 +212,11 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
           className="rounded-2xl bg-white/5 border border-white/10 p-5 flex flex-col items-center gap-2">
           <BluetoothOff className="w-8 h-8 text-white/20" />
           <p className="text-white/40 text-xs font-black uppercase tracking-wider text-center">
-            {isSupported ? 'Conecte seu relógio ou cinto cardíaco' : 'Use o app instalado, Chrome ou Edge para conectar'}
+            {isSupported
+              ? 'Conecte seu relógio ou cinto cardíaco'
+              : isIOSWeb
+                ? 'iPhone: abra o BoxLink pelo navegador Bluefy (App Store) para conectar via Bluetooth'
+                : 'Use o app instalado, Chrome ou Edge para conectar'}
           </p>
         </motion.div>
       )}

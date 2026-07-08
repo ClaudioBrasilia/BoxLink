@@ -1,145 +1,139 @@
 # 💓 Frequência Cardíaca em Tempo Real — BoxLink
 
-Integração completa para exibir a FC dos alunos na TV do box, via Bluetooth (Web Bluetooth API) + Supabase Realtime.
+Sistema unificado de monitoramento de FC dos alunos, exibido no app e na TV do box.
+Suporta **dois caminhos de conexão** com fallback automático:
+
+1. **Conexão Direta (Bluetooth LE)** — baixa latência, relógio/cinta conectam direto ao app.
+2. **Sincronizar com App de Saúde** — ponte via **Apple Health** (iOS) ou **Health Connect** (Android), útil para relógios que não transmitem FC por Bluetooth (Samsung, Garmin, Fitbit, etc.).
 
 ---
 
 ## Arquitetura
 
 ```
-Relógio do aluno (Bluetooth GATT)
-         ↓  Web Bluetooth API (Chrome/Edge)
-   App do aluno (Dashboard)
-         ↓  Supabase upsert a cada 3s
-   Tabela: heart_rate_live
-         ↓  Supabase Realtime
-   TV do Box (TV.tsx)
-         → Exibe BPM + zona de FC de todos os atletas conectados
+                 ┌─ Bluetooth LE (relógio/cinta) ─┐
+Aluno no app ────┤                                 ├─→ heart_rate_live (Supabase)
+                 └─ Apple Health / Health Connect ─┘         ↓ Realtime
+                                                        TV do Box (TV.tsx)
+                                                → BPM + zona de todos os atletas
 ```
 
----
-
-## Arquivos criados — onde colocar cada um
-
-| Arquivo entregue               | Destino no projeto                          |
-|-------------------------------|---------------------------------------------|
-| `heart_rate_migration.sql`    | Rodar no SQL Editor do Supabase             |
-| `useHeartRate.ts`             | `src/hooks/useHeartRate.ts`                 |
-| `HeartRateWidget.tsx`         | `src/components/HeartRateWidget.tsx`        |
-| `TVHeartRatePanel.tsx`        | `src/components/TVHeartRatePanel.tsx`       |
+- **Web (Chrome/Edge/Android):** conexão direta via **Web Bluetooth API**.
+- **iPhone (Safari):** Web Bluetooth **não é suportado pela Apple** → usar **Bluefy** ou o **app nativo** (ver abaixo).
+- **App nativo (Android/iOS):** conexão direta via BLE **ou** leitura pelo app de saúde.
+- Sincroniza o BPM no Supabase a cada **5 segundos**; a TV reflete em tempo real.
 
 ---
 
-## Passo a passo
+## Arquivos do sistema
 
-### 1. Banco de dados (Supabase)
+| Arquivo                              | Papel                                                        |
+|--------------------------------------|-------------------------------------------------------------|
+| `src/lib/heartRate.ts`               | Catálogo central de UUIDs (padrão + proprietários), parsers e zonas |
+| `src/hooks/useBluetooth.ts`          | Conexão direta BLE (nativo + Web Bluetooth), import dinâmico |
+| `src/hooks/useNativeHealth.ts`       | Ponte Apple Health / Health Connect (import dinâmico)        |
+| `src/components/HeartRateWidget.tsx` | Widget unificado com seleção de modo + fallback             |
+| `src/pages/Dashboard.tsx`            | Usa `<HeartRateWidget userId={user?.id} />`                 |
+| `src/pages/TV.tsx`                   | Lê `heart_rate_live` e exibe o painel ao vivo               |
 
-No painel do Supabase → **SQL Editor**, cole e execute o conteúdo de `heart_rate_migration.sql`.
-
-Isso cria:
-- Tabela `heart_rate_live` (1 registro por atleta, updated via upsert)
-- RLS: atleta só escreve o próprio; TV lê tudo
-- Realtime habilitado na tabela
-
----
-
-### 2. Hook Bluetooth
-
-Copie `useHeartRate.ts` para `src/hooks/useHeartRate.ts`.
-
-Este hook usa a **Web Bluetooth API** padrão do navegador para conectar a qualquer relógio/sensor com perfil **Heart Rate GATT** (Garmin, Polar, Wahoo, Mi Band, etc.).
-
-> ⚠️ Web Bluetooth funciona apenas em **Chrome** e **Edge** em desktop e Android. Não funciona em Firefox nem iOS Safari.
+> Os plugins nativos (`@capacitor-community/bluetooth-le`, `@capgo/capacitor-health`)
+> são carregados por **import dinâmico** — não quebram o build web (Vercel/Netlify).
 
 ---
 
-### 3. Widget no Dashboard do aluno
+## Banco de dados (Supabase)
 
-Copie `HeartRateWidget.tsx` para `src/components/HeartRateWidget.tsx`.
+Tabela `heart_rate_live` (1 registro por atleta, atualizada via upsert):
 
-Depois, em **`src/pages/Dashboard.tsx`**, adicione:
+| Coluna        | Tipo        | Observação                          |
+|---------------|-------------|-------------------------------------|
+| `user_id`     | uuid (PK)   | `onConflict: 'user_id'`             |
+| `bpm`         | int         | Batimentos por minuto               |
+| `device_name` | text        | Ex.: "Polar H10", "Health Connect"  |
+| `updated_at`  | timestamptz | Usado para descartar leituras velhas|
 
-**No topo** (imports):
-```tsx
-import HeartRateWidget from '../components/HeartRateWidget';
-```
-
-**No JSX** (após o bloco de check-in, por exemplo):
-```tsx
-{/* Conectar Relógio */}
-<HeartRateWidget userId={user?.id} />
-```
+- **RLS:** o atleta escreve apenas o próprio registro; a TV lê todos.
+- **Realtime:** habilitado na tabela.
+- Registros com `updated_at` acima de ~10 min são ignorados pela TV.
 
 ---
 
-### 4. Painel na TV
+## Como o aluno conecta
 
-Copie `TVHeartRatePanel.tsx` para `src/components/TVHeartRatePanel.tsx`.
+### Android / Desktop (Chrome ou Edge)
+1. Abre o app → card **"Frequência Cardíaca"**.
+2. Toca **"Conexão Direta"** → **"Buscar Dispositivos"**.
+3. Escolhe o relógio/cinta na lista → BPM aparece em tempo real.
 
-Depois, em **`src/pages/TV.tsx`**:
+### 📱 iPhone (sem app nativo)
+O Safari e o Chrome do iPhone **não suportam Bluetooth Web** (limitação da Apple no WebKit).
+Duas formas de conectar:
 
-**No topo** (imports):
-```tsx
-import TVHeartRatePanel from '../components/TVHeartRatePanel';
-```
+- **Bluefy (recomendado, grátis):** instale o navegador **"Bluefy – Web BLE Browser"** na App Store,
+  abra a URL do BoxLink por ele e conecte a cinta/relógio direto. O BoxLink já detecta o Bluefy e libera a conexão.
+- **App nativo:** instala o app do BoxLink → usa BLE direto **ou** lê do **Apple Health**
+  (funciona com qualquer Apple Watch / relógio que grave FC na Saúde).
 
-**No JSX**, dentro da `<div className="col-span-4 ...">`, entre o bloco de ranking e o bloco de atletas:
-```tsx
-{/* Fechamento do painel TOP 3 */}
-</section>
-
-{/* ✅ NOVO: Painel de FC ao vivo */}
-<TVHeartRatePanel />
-
-{/* Painel de Atletas na Aula (já existente) */}
-<section className="bg-[#111] rounded-[2.5rem] ...">
-```
-
-O painel **some automaticamente** quando nenhum atleta tem relógio conectado.
+### App nativo (Android/iOS)
+1. Card **"Frequência Cardíaca"** → escolha o modo:
+   - **Conexão Direta** — busca e conecta a cinta/relógio por Bluetooth.
+   - **Sincronizar com App de Saúde** — autoriza a leitura de FC e lê a cada 5s.
+2. Se a busca direta não achar nada, o app oferece o botão de fallback para o App de Saúde.
 
 ---
 
-## Como funciona para o aluno
+## Suporte a dispositivos
 
-1. Aluno abre o app no celular ou notebook (Chrome/Edge)
-2. No Dashboard, aparece o card **"Frequência Cardíaca"**
-3. Aluno clica **"Conectar Relógio"**
-4. Navegador abre o seletor Bluetooth → aluno escolhe o relógio
-5. BPM aparece em tempo real no app do aluno
-6. A cada 3 segundos, o BPM é salvo no Supabase
-7. A TV exibe automaticamente o painel com todos os atletas conectados
-
----
-
-## Compatibilidade de relógios
-
-| Relógio/Marca       | Compatível? | Observações                              |
-|--------------------|-------------|------------------------------------------|
-| Garmin (HRM, etc.) | ✅ Sim       | Suporta GATT Heart Rate nativamente      |
-| Polar H10, H9      | ✅ Sim       | Excelente suporte                        |
-| Wahoo TICKR        | ✅ Sim       | Funciona muito bem                       |
-| Mi Band / Amazfit  | ✅ Sim       | Maioria dos modelos modernos             |
-| Apple Watch        | ⚠️ Parcial  | Precisa app companion (ex: HeartBridge)  |
-| Fitbit             | ⚠️ Parcial  | Depende do modelo                        |
-| iOS (todos)        | ❌ Não       | iOS bloqueia Web Bluetooth               |
+| Dispositivo            | Direta (BLE) | App de Saúde | Observações                                       |
+|------------------------|:------------:|:------------:|---------------------------------------------------|
+| Polar H10 / H9         | ✅           | ✅           | Excelente suporte via GATT                         |
+| Wahoo TICKR            | ✅           | ✅           | Umedecer o cinto                                   |
+| Garmin (HRM / relógio) | ✅¹          | ✅           | ¹Ativar "Transmitir FC" no relógio                 |
+| Mi Band / Amazfit      | ✅²          | ✅           | ²Não deixar conectado ao Zepp/Mi Fitness ao mesmo tempo |
+| Huawei / Xiaomi (watch)| ✅³          | ✅           | ³UUID proprietário `0x3802` já suportado           |
+| Samsung Galaxy Watch   | ⚠️          | ✅           | Melhor via Health Connect                          |
+| Apple Watch            | ⚠️          | ✅           | Via Apple Health (app nativo) ou broadcaster no Bluefy |
+| Fitbit                 | ⚠️          | ✅           | Via Health Connect (Android)                       |
+| iPhone (Safari)        | ❌           | —            | Usar Bluefy ou app nativo                          |
 
 ---
 
-## Zonas de FC exibidas
+## Zonas de FC
 
-| Zona        | BPM      | Cor      |
-|-------------|----------|----------|
-| Repouso     | < 100    | 🔵 Azul  |
-| Aquecimento | 100–119  | 🟢 Verde |
-| Aeróbico    | 120–139  | 🟡 Amarelo |
-| Anaeróbico  | 140–159  | 🟠 Laranja |
+| Zona        | BPM      | Cor         |
+|-------------|----------|-------------|
+| Repouso     | < 100    | 🔵 Azul     |
+| Aquecimento | 100–119  | 🟢 Verde    |
+| Aeróbico    | 120–139  | 🟡 Amarelo  |
+| Anaeróbico  | 140–159  | 🟠 Laranja  |
 | Máximo ⚡   | ≥ 160    | 🔴 Vermelho |
 
 ---
 
-## Limpeza automática
+## Configuração nativa (Capacitor)
 
-Registros não atualizados há mais de 10 minutos são automaticamente ignorados pelo painel da TV. Para limpeza periódica no banco, você pode agendar no Supabase (pg_cron):
+Já incluída no projeto:
+
+- **Android** (`android/app/src/main/AndroidManifest.xml`): permissões de Bluetooth,
+  `android.permission.health.READ_HEART_RATE`, `BODY_SENSORS`, `<queries>` do Health Connect
+  e os `intent-filter` de justificativa de permissões.
+- **iOS** (`ios/App/App/Info.plist`): `NSBluetoothAlwaysUsageDescription`,
+  `NSHealthShareUsageDescription` e afins.
+
+Após alterar código nativo/web:
+
+```bash
+npm run build
+npx cap sync android   # ou: npx cap sync ios
+```
+
+No Android, confirme em **Health Connect → Permissões de apps** que o BoxLink tem acesso à Frequência Cardíaca.
+
+---
+
+## Limpeza automática (opcional)
+
+Para remover leituras antigas no banco, agende no Supabase (pg_cron):
 
 ```sql
 SELECT cron.schedule('cleanup-hr', '*/10 * * * *', 'SELECT public.cleanup_stale_heart_rates()');
