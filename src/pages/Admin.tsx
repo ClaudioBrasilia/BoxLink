@@ -16,6 +16,7 @@ import { uploadImage } from '../utils/image';
 import { createNotification } from '../hooks/useNotifications';
 import { uploadAvatarItem } from '../utils/avatarUpload';
 import type { AvatarSlotKey } from '../lib/avatarLayers';
+import { listPieceSpecs } from '../lib/fitting';
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
@@ -147,7 +148,8 @@ export default function Admin() {
     name: '',
     slot: 'top',
     price: 100,
-    image: ''
+    image: '',
+    piece_spec_id: null
   });
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
@@ -415,11 +417,12 @@ export default function Admin() {
     const file = e.target.files?.[0];
     const id = editingItem?.id || newItem.id;
     const slot = (editingItem?.slot || newItem.slot) as AvatarSlotKey;
+    const pieceSpecId = editingItem ? editingItem.piece_spec_id : newItem.piece_spec_id;
     if (!file) return;
     if (!id) { toast.error('Preencha o ID do item antes de fazer upload.'); return; }
     setUploading('item');
     try {
-      const result = await uploadAvatarItem(file, id, slot);
+      const result = await uploadAvatarItem(file, id, slot, pieceSpecId);
       if (editingItem) setEditingItem({ ...editingItem, image: result.url });
       else setNewItem({ ...newItem, image: result.url });
       if (result.autoFitted) {
@@ -559,11 +562,12 @@ export default function Admin() {
   const handleAddItem = async () => {
     if (!newItem.id || !newItem.name || !newItem.price) return;
     const { data, error } = await supabase.from('items').insert({
-      id: newItem.id, name: newItem.name, slot: newItem.slot, price: newItem.price, image: newItem.image
+      id: newItem.id, name: newItem.name, slot: newItem.slot, price: newItem.price, image: newItem.image,
+      piece_spec_id: newItem.piece_spec_id || null
     }).select();
     if (!error && data) {
       setItems([data[0], ...items]);
-      setNewItem({ id: '', name: '', slot: 'top', price: 100, image: '' });
+      setNewItem({ id: '', name: '', slot: 'top', price: 100, image: '', piece_spec_id: null });
       toast.success('Item adicionado!');
     } else toast.error('Erro ao adicionar item: ' + (error?.message || 'Erro desconhecido'));
   };
@@ -578,7 +582,8 @@ export default function Admin() {
   const handleUpdateItem = async () => {
     if (!editingItem) return;
     const { error } = await supabase.from('items').update({
-      name: editingItem.name, slot: editingItem.slot, price: editingItem.price, image: editingItem.image
+      name: editingItem.name, slot: editingItem.slot, price: editingItem.price, image: editingItem.image,
+      piece_spec_id: editingItem.piece_spec_id || null
     }).eq('id', editingItem.id);
     if (!error) {
       setItems(items.map(i => i.id === editingItem.id ? editingItem : i));
@@ -1675,6 +1680,33 @@ export default function Admin() {
                   <input type="number" value={editingItem ? editingItem.price : newItem.price} onChange={e => editingItem ? setEditingItem({...editingItem, price: parseInt(e.target.value)}) : setNewItem({...newItem, price: parseInt(e.target.value)})}
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo de Peça (encaixe automático)</label>
+                <select
+                  value={(editingItem ? editingItem.piece_spec_id : newItem.piece_spec_id) || ''}
+                  onChange={e => {
+                    const value = e.target.value || null;
+                    editingItem ? setEditingItem({ ...editingItem, piece_spec_id: value }) : setNewItem({ ...newItem, piece_spec_id: value });
+                  }}
+                  className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer"
+                >
+                  <option value="">— Nenhum (centralizar manualmente) —</option>
+                  <optgroup label="Masculino">
+                    {listPieceSpecs('masculina').map(spec => (
+                      <option key={spec.id} value={spec.id}>{spec.id} · {spec.name}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Feminino">
+                    {listPieceSpecs('feminina').map(spec => (
+                      <option key={spec.id} value={spec.id}>{spec.id} · {spec.name}</option>
+                    ))}
+                  </optgroup>
+                </select>
+                <p className="text-[8px] text-on-surface-variant opacity-50 uppercase tracking-widest">
+                  O ID e o nome do item ficam livres · isso aqui só diz qual caixa de encaixe usar ao enviar a imagem
+                </p>
               </div>
 
               <div className="space-y-2">

@@ -20,6 +20,8 @@ export interface Item {
   image: string;
   layer_adjustment?: Record<string, any> | null;
   gender_target?: 'male' | 'female' | 'both';
+  /** Chave de src/lib/fitting/pieceSpecs.ts (ex.: "M-01", "F-05") usada para o encaixe automático no upload. */
+  piece_spec_id?: string | null;
 }
 
 export interface PersonalRecord {

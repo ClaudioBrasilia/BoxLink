@@ -18,31 +18,35 @@ export interface UploadAvatarItemResult {
 /**
  * Faz upload de uma imagem de roupa/acessório para o bucket do avatar.
  *
- * Quando `itemId` corresponde a uma peça conhecida de PROMPTS_AVATAR.md
- * (ex.: "M-01", "F-05"), a imagem passa pelo sistema de encaixe
+ * `pieceSpecId` é independente do `itemId`/nome do item na loja — é a
+ * chave da especificação de encaixe em `src/lib/fitting/pieceSpecs.ts`
+ * (ex.: "M-01", "F-05"), escolhida pelo admin num menu "Tipo de peça".
+ * Quando informado, a imagem passa pelo sistema de encaixe
  * (`src/lib/fitting`): a posição real do conteúdo é detectada e a peça é
  * reposicionada/escalada para ocupar exatamente a CAIXA EXATA da
  * especificação antes de ser salva — sem necessidade de calibração manual.
  *
- * Para itens sem especificação cadastrada (peças customizadas fora do
- * catálogo M-XX/F-XX), mantém o comportamento anterior: centraliza a
- * imagem mantendo a proporção original.
+ * Quando `pieceSpecId` não é informado (item sem tipo de peça definido),
+ * mantém o comportamento anterior: centraliza a imagem mantendo a
+ * proporção original.
  *
  * Em ambos os casos o resultado final é padronizado para 512×768,
  * fundo transparente, e salvo como `{itemId}.png` — exatamente o que o
- * AvatarPreview busca.
+ * AvatarPreview busca. O `itemId` pode ser qualquer texto livre.
  *
- * @param file   Arquivo selecionado pelo admin
- * @param itemId ID do item (deve estar preenchido antes do upload)
- * @param slot   Slot da roupa (top, bottom, shoes, etc.)
+ * @param file        Arquivo selecionado pelo admin
+ * @param itemId      ID do item na loja (texto livre, deve estar preenchido antes do upload)
+ * @param slot        Slot da roupa (top, bottom, shoes, etc.)
+ * @param pieceSpecId Tipo de peça para encaixe automático (ex.: "M-01"); omitido/null = sem encaixe automático
  */
 export async function uploadAvatarItem(
   file: File,
   itemId: string,
-  slot: AvatarSlotKey
+  slot: AvatarSlotKey,
+  pieceSpecId?: string | null
 ): Promise<UploadAvatarItemResult> {
   const TARGET = { w: 512, h: 768 };
-  const spec = PIECE_SPECS[itemId];
+  const spec = pieceSpecId ? PIECE_SPECS[pieceSpecId] : undefined;
 
   const dataUrl: string = await new Promise((resolve, reject) => {
     const reader = new FileReader();
