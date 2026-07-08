@@ -218,7 +218,13 @@ export default function Wod() {
     });
   }, [user]);
 
-  const wodBlocked = !inactivityLoading && user?.role === 'athlete' && !!inactivity && inactivity.missingWorkouts > 0;
+  // Se o aluno já fez check-in hoje, o WOD nunca fica bloqueado — senão ele
+  // nunca conseguiria ver/registrar o treino do dia em que está voltando a treinar.
+  const todayStrSP = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const checkedInToday = (user?.checkins || []).some((c) => c.date === todayStrSP);
+
+  const wodBlocked = !inactivityLoading && user?.role === 'athlete' && !!inactivity
+    && inactivity.missingWorkouts > 0 && !checkedInToday;
 
   const fetchWod = async () => {
     if (!user) return;
