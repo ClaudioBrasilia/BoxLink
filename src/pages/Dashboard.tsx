@@ -10,7 +10,7 @@ import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
 import { addReward, checkAndPayWeeklyBonus, getRewardSettings } from '../utils/rewards';
 import { useInactivity } from '../hooks/useInactivity';
-import HeartRateUnified from '../components/HeartRateUnified';
+import HeartRateWidget from '../components/HeartRateWidget';
 import { AppSponsorBanner, useSponsors } from '../components/SponsorBanner';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
@@ -410,7 +410,7 @@ export default function Dashboard() {
         )}
       </section>
 
-      <HeartRateUnified userId={user?.id} />
+      <HeartRateWidget userId={user?.id} />
 
       <section onClick={() => navigate('/wod')}
         className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5 flex items-center justify-between cursor-pointer hover:border-primary/40 transition-all group">
