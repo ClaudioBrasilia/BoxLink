@@ -460,7 +460,7 @@ export default function TV() {
                       <Activity className="w-10 h-10 text-primary animate-pulse" />
                     </div>
                   </div>
-                  <div className={`flex-1 flex flex-col justify-center ${getListGap(wod?.warmup)} min-h-0 overflow-hidden`}>
+                  <div className={`flex-1 flex flex-col justify-start ${getListGap(wod?.warmup)} min-h-0 overflow-hidden`}>
                     {(wod?.warmup || '').split('\n').filter(Boolean).map((line: string, i: number) => (
                       <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
                         className="flex items-center gap-6 shrink-0">
@@ -485,7 +485,7 @@ export default function TV() {
                       <Zap className="w-10 h-10 text-secondary" />
                     </div>
                   </div>
-                  <div className={`flex-1 flex flex-col justify-center ${getListGap(wod?.skill)} min-h-0 overflow-hidden`}>
+                  <div className={`flex-1 flex flex-col justify-start ${getListGap(wod?.skill)} min-h-0 overflow-hidden`}>
                     {(wod?.skill || '').split('\n').filter(Boolean).map((line: string, i: number) => (
                       <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
                         className="flex items-center gap-6 shrink-0">

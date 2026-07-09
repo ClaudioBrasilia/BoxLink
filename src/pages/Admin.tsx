@@ -1346,6 +1346,9 @@ export default function Admin() {
                           {/* URL do logo + Upload */}
                           <div className="space-y-1">
                             <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Logo do Patrocinador</label>
+                            <p className="text-[9px] text-on-surface-variant/60 font-bold leading-snug">
+                              📐 Tamanho ideal: <span className="text-primary">800 × 240 px</span> · PNG com fundo transparente (deitada). A imagem se ajusta sozinha à TV e ao celular.
+                            </p>
                             <div className="flex gap-2">
                               <input
                                 type="text"
