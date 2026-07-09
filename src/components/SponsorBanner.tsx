@@ -58,7 +58,7 @@ export function TVSponsorBanner({ sponsors, className = '' }: TVSponsorBannerPro
             <img
               src={sponsor.logo_url}
               alt={sponsor.name}
-              className="max-h-16 max-w-[320px] object-contain"
+              className="max-h-16 w-auto max-w-full object-contain"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
               }}
@@ -143,7 +143,7 @@ export function AppSponsorBanner({ sponsors, className = '' }: AppSponsorBannerP
             <img
               src={sponsor.logo_url}
               alt={sponsor.name}
-              className="h-14 max-w-[200px] w-full object-contain"
+              className="h-14 w-auto max-w-[240px] object-contain shrink-0"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
           ) : (

@@ -11,16 +11,22 @@ export const COMPRESS_PROFILES = {
 
 type CompressProfile = keyof typeof COMPRESS_PROFILES;
 
+// Formatos de imagem que suportam transparência (fundo transparente)
+const TRANSPARENT_FORMATS = /image\/(png|webp|gif|svg\+xml|avif)/i;
+
 /**
  * Comprime uma imagem via Canvas antes do upload.
- * Mantém proporção, converte para JPEG, respeita maxWidth/maxHeight.
+ * Mantém proporção e respeita maxWidth/maxHeight.
+ * - format 'jpeg': converte para JPEG (menor, sem transparência).
+ * - format 'png':  mantém o fundo transparente (ideal para logos).
  * Retorna o Blob comprimido + tamanho original e final para log.
  */
 export const compressImage = (
   file: File,
   maxWidth  = 1200,
   maxHeight = 1200,
-  quality   = 0.82
+  quality   = 0.82,
+  format: 'jpeg' | 'png' = 'jpeg'
 ): Promise<Blob> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -43,8 +49,11 @@ export const compressImage = (
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (!ctx) return reject(new Error('Canvas não suportado'));
+        // Canvas nasce transparente — desenhar por cima preserva o fundo
+        // transparente quando exportamos em PNG.
         ctx.drawImage(img, 0, 0, width, height);
 
+        const mime = format === 'png' ? 'image/png' : 'image/jpeg';
         canvas.toBlob(
           (blob) => {
             if (!blob) return reject(new Error('Falha ao comprimir imagem'));
@@ -52,7 +61,7 @@ export const compressImage = (
             console.log(`[compressImage] ${file.name}: ${(file.size/1024).toFixed(0)}KB → ${(blob.size/1024).toFixed(0)}KB (−${saved}%)`);
             resolve(blob);
           },
-          'image/jpeg',
+          mime,
           quality
         );
       };
@@ -76,11 +85,24 @@ export const uploadImage = async (
   profile: CompressProfile = 'logo'
 ): Promise<string> => {
   const { maxWidth, maxHeight, quality } = COMPRESS_PROFILES[profile];
-  const blob = await compressImage(file, maxWidth, maxHeight, quality);
+
+  // Se a imagem original tem transparência (logo em PNG/WebP/SVG…),
+  // mantemos como PNG para não criar um retângulo com fundo sólido em
+  // volta da logo. Assim qualquer logo se adapta às áreas da TV/celular
+  // sem precisar ser recortada na "medida certa".
+  const keepTransparency = TRANSPARENT_FORMATS.test(file.type);
+  const format: 'jpeg' | 'png' = keepTransparency ? 'png' : 'jpeg';
+  const contentType = keepTransparency ? 'image/png' : 'image/jpeg';
+
+  const blob = await compressImage(file, maxWidth, maxHeight, quality, format);
+
+  // Ajusta a extensão do arquivo ao formato realmente gerado.
+  const ext = keepTransparency ? 'png' : 'jpg';
+  const finalPath = path.replace(/\.[^./]+$/, '') + `.${ext}`;
 
   const { data, error } = await supabase.storage
     .from(bucket)
-    .upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+    .upload(finalPath, blob, { upsert: true, contentType });
 
   if (error) throw error;
 
