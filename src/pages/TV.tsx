@@ -452,10 +452,7 @@ export default function TV() {
                 <motion.section key="warmup"
                   initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
                   className="absolute inset-0 bg-[#111] rounded-[3rem] p-12 border border-white/5 flex flex-col">
-                  <div className="flex justify-between items-start mb-8 shrink-0">
-                    <div>
-                      <h3 className="text-primary text-sm font-black uppercase tracking-[0.4em] italic">PHASE 01</h3>
-                    </div>
+                  <div className="flex justify-end items-start mb-8 shrink-0">
                     <div className="w-20 h-20 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
                       <Activity className="w-10 h-10 text-primary animate-pulse" />
                     </div>
@@ -477,10 +474,7 @@ export default function TV() {
                 <motion.section key="skill"
                   initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
                   className="absolute inset-0 bg-[#111] rounded-[3rem] p-12 border border-white/5 flex flex-col">
-                  <div className="flex justify-between items-start mb-8 shrink-0">
-                    <div>
-                      <h3 className="text-secondary text-sm font-black uppercase tracking-[0.4em] italic">PHASE 02</h3>
-                    </div>
+                  <div className="flex justify-end items-start mb-8 shrink-0">
                     <div className="w-20 h-20 rounded-3xl bg-secondary/10 border border-secondary/20 flex items-center justify-center shrink-0">
                       <Zap className="w-10 h-10 text-secondary" />
                     </div>
@@ -504,7 +498,6 @@ export default function TV() {
                   className="absolute inset-0 bg-[#111] rounded-[3rem] p-8 border border-white/5 flex flex-col gap-4">
                   <div className="flex items-center justify-between shrink-0">
                     <div>
-                      <h3 className="text-primary text-sm font-black uppercase tracking-[0.4em] italic mb-1">PHASE 03</h3>
                       <h2 className="text-4xl font-headline font-black text-white uppercase italic tracking-tighter leading-none">{wod.name}</h2>
                     </div>
                     <div className="bg-primary text-black px-6 py-2 rounded-2xl font-headline font-black text-xl italic uppercase tracking-tight shrink-0">
