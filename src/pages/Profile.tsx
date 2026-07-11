@@ -36,7 +36,10 @@ export default function Profile() {
   // Biometria (peso/altura/nascimento/sexo) — usada no resumo de treino de FC
   const [bioWeight, setBioWeight] = useState('');
   const [bioHeight, setBioHeight] = useState('');
-  const [bioBirth, setBioBirth] = useState('');
+  // Data de nascimento em partes (dia/mês/ano) — evita rolar calendário
+  const [bioDay, setBioDay] = useState('');
+  const [bioMonth, setBioMonth] = useState('');
+  const [bioYear, setBioYear] = useState('');
   const [bioSex, setBioSex] = useState<'' | 'male' | 'female'>('');
   const [bioSaving, setBioSaving] = useState(false);
   const [bioSaved, setBioSaved] = useState(false);
@@ -159,7 +162,13 @@ export default function Profile() {
         if (!data) return;
         setBioWeight(data.weight_kg != null ? String(data.weight_kg) : '');
         setBioHeight(data.height_cm != null ? String(data.height_cm) : '');
-        setBioBirth(data.birth_date ?? '');
+        // Divide birth_date (YYYY-MM-DD) nos seletores
+        if (typeof data.birth_date === 'string' && data.birth_date.includes('-')) {
+          const [y, m, d] = data.birth_date.split('-');
+          setBioYear(y || '');
+          setBioMonth(m ? String(Number(m)) : '');
+          setBioDay(d ? String(Number(d)) : '');
+        }
         setBioSex((data.sex as 'male' | 'female') ?? '');
       }, () => {});
   }, [user?.id]);
@@ -168,10 +177,15 @@ export default function Profile() {
     if (!user) return;
     setBioSaving(true);
     setBioSaved(false);
+    // Compõe a data de nascimento só quando dia/mês/ano estão preenchidos
+    const birth_date =
+      bioDay && bioMonth && bioYear
+        ? `${bioYear}-${String(Number(bioMonth)).padStart(2, '0')}-${String(Number(bioDay)).padStart(2, '0')}`
+        : null;
     const payload = {
       weight_kg: bioWeight ? Number(bioWeight) : null,
       height_cm: bioHeight ? Number(bioHeight) : null,
-      birth_date: bioBirth || null,
+      birth_date,
       sex: bioSex || null,
     };
     const { error } = await supabase.from('profiles').update(payload).eq('id', user.id);
@@ -438,11 +452,6 @@ export default function Profile() {
               className="bg-surface-container-highest border border-outline-variant/20 focus:border-primary/50 rounded-xl px-3 py-2 text-on-surface font-bold outline-none" />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">Nascimento</span>
-            <input type="date" value={bioBirth} onChange={(e) => setBioBirth(e.target.value)}
-              className="bg-surface-container-highest border border-outline-variant/20 focus:border-primary/50 rounded-xl px-3 py-2 text-on-surface font-bold outline-none" />
-          </label>
-          <label className="flex flex-col gap-1">
             <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">Sexo</span>
             <select value={bioSex} onChange={(e) => setBioSex(e.target.value as '' | 'male' | 'female')}
               className="bg-surface-container-highest border border-outline-variant/20 focus:border-primary/50 rounded-xl px-3 py-2 text-on-surface font-bold outline-none">
@@ -451,6 +460,32 @@ export default function Profile() {
               <option value="female">Feminino</option>
             </select>
           </label>
+          <div className="col-span-2 flex flex-col gap-1">
+            <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">Nascimento</span>
+            <div className="grid grid-cols-3 gap-2">
+              <select value={bioDay} onChange={(e) => setBioDay(e.target.value)} aria-label="Dia"
+                className="bg-surface-container-highest border border-outline-variant/20 focus:border-primary/50 rounded-xl px-3 py-2 text-on-surface font-bold outline-none">
+                <option value="">Dia</option>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+              <select value={bioMonth} onChange={(e) => setBioMonth(e.target.value)} aria-label="Mês"
+                className="bg-surface-container-highest border border-outline-variant/20 focus:border-primary/50 rounded-xl px-3 py-2 text-on-surface font-bold outline-none">
+                <option value="">Mês</option>
+                {['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'].map((nome, i) => (
+                  <option key={nome} value={i + 1}>{nome}</option>
+                ))}
+              </select>
+              <select value={bioYear} onChange={(e) => setBioYear(e.target.value)} aria-label="Ano"
+                className="bg-surface-container-highest border border-outline-variant/20 focus:border-primary/50 rounded-xl px-3 py-2 text-on-surface font-bold outline-none">
+                <option value="">Ano</option>
+                {Array.from({ length: 85 }, (_, i) => new Date().getFullYear() - 10 - i).map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
         <button onClick={handleSaveBio} disabled={bioSaving}
