@@ -316,15 +316,7 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
   return (
     <div className="flex flex-col gap-4">
       {isActive ? (
-        <div className="flex flex-col gap-2">
-          <BpmDisplay bpm={bpm} deviceName={appName} waitingLabel={`Lendo do ${appName}... aguardando sincronização`} />
-          <div className="flex items-start gap-2 bg-white/5 border border-white/10 rounded-xl p-2.5">
-            <Watch className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-            <p className="text-white/50 text-[9px] font-black uppercase leading-relaxed tracking-wider">
-              Mantenha um treino ativo no relógio para a FC atualizar em tempo real. Atualiza a cada 5s.
-            </p>
-          </div>
-        </div>
+        <BpmDisplay bpm={bpm} deviceName={appName} waitingLabel={`Lendo do ${appName}... aguardando sincronização`} />
       ) : isRequesting ? (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           className="rounded-2xl bg-yellow-400/5 border border-yellow-400/20 p-6 flex flex-col items-center gap-2">
