@@ -154,7 +154,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
   const isConnecting = status === 'connecting';
   const isConnected = status === 'connected';
 
-  const { samples, reset } = useHeartRateSession(heartRate, isConnected);
+  const { samples, reset, startedAt } = useHeartRateSession(heartRate, isConnected);
   const bio = useUserBiometrics(userId);
 
   useEffect(() => {
@@ -179,7 +179,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
 
   // Resumo de treino ao encerrar
   if (finished && samples.length >= MIN_SUMMARY_SAMPLES) {
-    return <HeartRateSummary samples={samples} deviceName={connectedDevice?.name} bio={bio} onClose={closeSummary} />;
+    return <HeartRateSummary samples={samples} deviceName={connectedDevice?.name} bio={bio} startedAt={startedAt} onClose={closeSummary} />;
   }
 
   if (isConnected) {
@@ -293,7 +293,7 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
   const isRequesting = status === 'requesting';
 
   const [finished, setFinished] = useState(false);
-  const { samples, reset } = useHeartRateSession(bpm, isActive);
+  const { samples, reset, startedAt } = useHeartRateSession(bpm, isActive);
   const bio = useUserBiometrics(userId);
 
   const wasActive = useRef(false);
@@ -310,7 +310,7 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
   };
 
   if (finished && samples.length >= MIN_SUMMARY_SAMPLES) {
-    return <HeartRateSummary samples={samples} deviceName={appName} bio={bio} onClose={closeSummary} />;
+    return <HeartRateSummary samples={samples} deviceName={appName} bio={bio} startedAt={startedAt} enableDeviceMetrics onClose={closeSummary} />;
   }
 
   return (

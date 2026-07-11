@@ -17,12 +17,14 @@ const SAMPLE_INTERVAL_MS = 2000;
 
 export function useHeartRateSession(bpm: number | null, active: boolean) {
   const [samples, setSamples] = useState<HrSample[]>([]);
+  const [startedAt, setStartedAt] = useState<number | null>(null); // ms (epoch) do início
   const bpmRef = useRef<number | null>(bpm);
   bpmRef.current = bpm;
 
   useEffect(() => {
     if (!active) return;
     const start = Date.now();
+    setStartedAt(start);
     setSamples([]); // nova sessão
 
     const id = setInterval(() => {
@@ -35,6 +37,10 @@ export function useHeartRateSession(bpm: number | null, active: boolean) {
     return () => clearInterval(id);
   }, [active]);
 
-  const reset = useCallback(() => setSamples([]), []);
-  return { samples, reset };
+  const reset = useCallback(() => {
+    setSamples([]);
+    setStartedAt(null);
+  }, []);
+
+  return { samples, reset, startedAt };
 }

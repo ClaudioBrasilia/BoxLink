@@ -4,22 +4,27 @@
 // Gráfico moderno de BPM × tempo (área com gradiente) + estatísticas e
 // distribuição por zona de esforço. Engaja o aluno ao fechar a sessão.
 // ============================================================================
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from 'recharts';
 import { motion } from 'framer-motion';
-import { Activity, TrendingUp, TrendingDown, Timer, Flame, RotateCcw, Percent, Gauge, UserPlus } from 'lucide-react';
+import { Activity, TrendingUp, TrendingDown, Timer, Flame, RotateCcw, Percent, Gauge, UserPlus, Footprints } from 'lucide-react';
 import type { HrSample } from '../hooks/useHeartRateSession';
 import {
   ageFromBirthDate, estimateCalories, maxHrPercent, hasCalorieData, type Biometrics,
 } from '../lib/heartRate';
+import { readWorkoutMetrics, type WorkoutDeviceMetrics } from '../lib/healthMetrics';
 import { cn } from '../lib/utils';
 
 interface Props {
   samples: HrSample[];
   deviceName?: string | null;
   bio?: Biometrics;
+  /** Epoch (ms) do início da sessão — necessário para ler métricas do relógio. */
+  startedAt?: number | null;
+  /** Habilita leitura de calorias/passos reais do app de saúde (só modo Saúde). */
+  enableDeviceMetrics?: boolean;
   onClose: () => void;
 }
 
@@ -47,8 +52,8 @@ function fmtTime(totalSec: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function StatTile({ icon, label, value, unit, color }: {
-  icon: React.ReactNode; label: string; value: string | number; unit?: string; color: string;
+function StatTile({ icon, label, value, unit, color, sub }: {
+  icon: React.ReactNode; label: string; value: string | number; unit?: string; color: string; sub?: string;
 }) {
   return (
     <div className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-1">
@@ -60,6 +65,7 @@ function StatTile({ icon, label, value, unit, color }: {
         <span className="text-2xl font-black italic tabular-nums text-white leading-none">{value}</span>
         {unit && <span className="text-[9px] font-black uppercase text-white/40 pb-0.5">{unit}</span>}
       </div>
+      {sub && <span className="text-[7px] font-black uppercase tracking-widest text-white/30">{sub}</span>}
     </div>
   );
 }
@@ -75,7 +81,7 @@ function ChartTooltip({ active, payload }: any) {
   );
 }
 
-export default function HeartRateSummary({ samples, deviceName, bio = {}, onClose }: Props) {
+export default function HeartRateSummary({ samples, deviceName, bio = {}, startedAt, enableDeviceMetrics, onClose }: Props) {
   const stats = useMemo(() => {
     const bpms = samples.map((s) => s.bpm);
     const avg = Math.round(bpms.reduce((a, b) => a + b, 0) / bpms.length);
@@ -95,16 +101,31 @@ export default function HeartRateSummary({ samples, deviceName, bio = {}, onClos
       zoneSecs.reduce((acc, sec, i) => acc + (sec / 60) * ZONE_WEIGHTS[i], 0)
     );
 
-    // Métricas dependentes da biometria
+    // Métricas dependentes da biometria (estimativa)
     const age = ageFromBirthDate(bio.birthDate);
-    const calories = hasCalorieData(bio) ? estimateCalories(avg, durationSec / 60, bio) : null;
+    const estCalories = hasCalorieData(bio) ? estimateCalories(avg, durationSec / 60, bio) : null;
     const avgPctMax = maxHrPercent(avg, age);
 
-    return { avg, max, min, durationSec, zoneSecs, totalZoneSec, dominant, effort, calories, avgPctMax };
+    return { avg, max, min, durationSec, zoneSecs, totalZoneSec, dominant, effort, estCalories, avgPctMax };
   }, [samples, bio]);
 
-  const showCalories = stats.calories != null;
+  // Métricas REAIS do relógio (calorias/passos) via Health Connect / Apple Health
+  const [device, setDevice] = useState<WorkoutDeviceMetrics>({});
+  useEffect(() => {
+    if (!enableDeviceMetrics || !startedAt) return;
+    let cancelled = false;
+    readWorkoutMetrics(startedAt, Date.now()).then((m) => {
+      if (!cancelled) setDevice(m);
+    });
+    return () => { cancelled = true; };
+  }, [enableDeviceMetrics, startedAt]);
+
+  // Calorias: prioriza o valor real do relógio; cai para a estimativa.
+  const calories = device.calories ?? stats.estCalories;
+  const caloriesFromDevice = device.calories != null;
+  const showCalories = calories != null;
   const showPct = stats.avgPctMax != null;
+  const showSteps = device.steps != null;
 
   const yDomain: [number, number] = [Math.max(30, stats.min - 8), stats.max + 8];
 
@@ -175,12 +196,20 @@ export default function HeartRateSummary({ samples, deviceName, bio = {}, onClos
       <div className="grid grid-cols-3 gap-2">
         <StatTile icon={<Gauge className="w-3 h-3" />} label="Esforço" value={stats.effort} color="text-primary" />
         {showCalories
-          ? <StatTile icon={<Flame className="w-3 h-3" />} label="Calorias" value={stats.calories!} unit="kcal" color="text-orange-400" />
+          ? <StatTile icon={<Flame className="w-3 h-3" />} label="Calorias" value={calories!} unit="kcal" color="text-orange-400"
+              sub={caloriesFromDevice ? 'do relógio' : 'estimativa'} />
           : <StatTile icon={<Flame className="w-3 h-3" />} label="Calorias" value="—" color="text-white/30" />}
         {showPct
           ? <StatTile icon={<Percent className="w-3 h-3" />} label="Da FC Máx" value={stats.avgPctMax!} unit="%" color="text-yellow-400" />
           : <StatTile icon={<Percent className="w-3 h-3" />} label="Da FC Máx" value="—" color="text-white/30" />}
       </div>
+
+      {/* Passos reais do relógio (quando disponíveis) */}
+      {showSteps && (
+        <div className="grid grid-cols-1">
+          <StatTile icon={<Footprints className="w-3 h-3" />} label="Passos" value={device.steps!.toLocaleString('pt-BR')} color="text-blue-400" sub="do relógio" />
+        </div>
+      )}
 
       {/* CTA: completar perfil para liberar calorias / %FCmáx */}
       {(!showCalories || !showPct) && (

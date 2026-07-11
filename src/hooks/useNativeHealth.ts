@@ -18,7 +18,7 @@ import { supabase } from '../lib/supabase';
 import { isPlausibleBpm } from '../lib/heartRate';
 
 // Tipos mínimos do plugin (evita acoplar o build a ele)
-type HealthDataType = 'heartRate';
+type HealthDataType = 'heartRate' | 'calories' | 'steps';
 interface AvailabilityResult { available: boolean; platform?: string; reason?: string }
 interface AuthorizationStatus {
   readAuthorized: HealthDataType[];
@@ -148,8 +148,12 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
         return;
       }
 
-      // 2. Autorização — valida o retorno para não estourar "undefined"
-      const authOpts = { read: ['heartRate'] as HealthDataType[], write: [] as HealthDataType[] };
+      // 2. Autorização — FC é obrigatória; calorias/passos são opcionais
+      //    (para enriquecer o resumo com dados reais do relógio, sem bloquear).
+      const authOpts = {
+        read: ['heartRate', 'calories', 'steps'] as HealthDataType[],
+        write: [] as HealthDataType[],
+      };
       let authStatus: AuthorizationStatus | null = null;
       try {
         authStatus = await Health.requestAuthorization(authOpts);
