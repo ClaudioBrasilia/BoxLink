@@ -80,6 +80,11 @@
     <!-- Health Connect: leitura de Frequência Cardíaca -->
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
 
+    <!-- Health Connect: passos e calorias do relógio (enriquecem o resumo) -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
+
     <!-- Sensores corporais (relógios/pulseiras que expõem FC ao sistema) -->
     <uses-permission android:name="android.permission.BODY_SENSORS" />
 
