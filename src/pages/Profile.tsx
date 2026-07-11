@@ -457,6 +457,11 @@ export default function Profile() {
           className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-primary text-background text-xs font-black uppercase tracking-widest hover:scale-[1.01] transition-all disabled:opacity-60">
           <Save className="w-4 h-4" /> {bioSaving ? 'Salvando...' : 'Salvar Biometria'}
         </button>
+
+        <a href="/privacy.html" target="_blank" rel="noopener noreferrer"
+          className="flex items-center justify-center gap-1 text-on-surface-variant/60 text-[10px] font-black uppercase tracking-widest hover:text-primary transition-colors pt-1">
+          Política de Privacidade <ChevronRight className="w-3 h-3" />
+        </a>
       </section>
 
       {/* Benchmarks / PRs */}

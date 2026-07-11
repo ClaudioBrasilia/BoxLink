@@ -4,4 +4,7 @@
     <string name="title_activity_main">CrossCity Hub</string>
     <string name="package_name">com.crosscity.hub</string>
     <string name="custom_url_scheme">com.crosscity.hub</string>
+    <!-- URL da política de privacidade exibida pelo Health Connect.
+         ⚠️ SUBSTITUA pelo domínio real onde o app web está hospedado. -->
+    <string name="health_connect_privacy_policy_url">https://SEU-DOMINIO/privacy.html</string>
 </resources>
