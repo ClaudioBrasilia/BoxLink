@@ -131,6 +131,25 @@ No Android, confirme em **Health Connect → Permissões de apps** que o BoxLink
 
 ---
 
+## Política de Privacidade (obrigatória para a Play Store)
+
+O Google **exige** uma política de privacidade para apps que leem dados de saúde (Health Connect).
+O projeto já inclui a página em `public/privacy.html` (servida em `/privacy.html` no web e no app).
+
+Passos para publicar:
+
+1. **Hospede o app web** (Vercel/Netlify) — a política ficará em `https://SEU-DOMINIO/privacy.html`.
+2. **Ajuste o link do Health Connect:** em `android/app/src/main/res/values/strings.xml`, troque
+   o valor de `health_connect_privacy_policy_url` pelo seu domínio real.
+3. **Revise o conteúdo** de `public/privacy.html` (contato, nome do box, etc.).
+4. **Google Play Console:** informe a mesma URL em *Política de privacidade* e preencha o
+   formulário de *Segurança de dados* declarando que os dados de saúde são usados só para
+   bem-estar/fitness e não são vendidos nem usados para anúncios.
+
+O app já expõe o link "Política de Privacidade" no Perfil.
+
+---
+
 ## Limpeza automática (opcional)
 
 Para remover leituras antigas no banco, agende no Supabase (pg_cron):
