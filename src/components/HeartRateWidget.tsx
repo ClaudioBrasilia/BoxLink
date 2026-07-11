@@ -332,6 +332,9 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
               ? 'Lê direto do Apple Health — funciona com qualquer relógio'
               : 'Lê do Health Connect — Samsung, Garmin, Fitbit, Amazfit e outros'}
           </p>
+          <p className="text-primary/70 text-[9px] font-black uppercase tracking-wider text-center leading-relaxed mt-1">
+            Antes de iniciar, ligue um treino no relógio ({platform === 'ios' ? 'app Treino' : 'Samsung Health / app do relógio'}) para gravar a FC em tempo real.
+          </p>
         </motion.div>
       )}
 
