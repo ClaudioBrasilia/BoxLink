@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, MapPin, Calendar, Megaphone, Plus, Settings, 
   ChevronRight, ChevronDown, Activity, Check, X, Shield, UserPlus, 
   ImageIcon, ShoppingBag, Tv, Trophy, History, Search, Filter,
-  Clock, ToggleLeft, ToggleRight, Trash2, Edit2, Save, Camera, Upload, Loader2, SlidersHorizontal
+  Clock, ToggleLeft, ToggleRight, Trash2, Edit2, Save, Camera, Upload, Loader2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User, BoxSettings, Schedule, Item, Duel, Wod, VisitorPermissions } from '../types';
@@ -16,140 +16,7 @@ import { uploadImage } from '../utils/image';
 import { createNotification } from '../hooks/useNotifications';
 import { uploadAvatarItem } from '../utils/avatarUpload';
 import type { AvatarSlotKey } from '../lib/avatarLayers';
-import { LayerAdjustment, SLOT_DEFAULTS, resolveAdjustment, adjustmentToCSS } from '../lib/avatarLayers';
-
-// ─── Calibrador inline ────────────────────────────────────────────────────────
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const AVATAR_BUCKET = 'avatar-assets';
-function getAvatarUrl(filename: string) {
-  // Se já for uma URL completa (vinda do Supabase após upload), usa direto
-  if (filename.startsWith('http://') || filename.startsWith('https://')) {
-    return filename;
-  }
-  const cleanFilename = /\.(png|jpg|jpeg|webp|gif)$/i.test(filename) ? filename : `${filename}.png`;
-  return `${SUPABASE_URL}/storage/v1/object/public/${AVATAR_BUCKET}/${encodeURIComponent(cleanFilename)}`;
-}
-
-function SliderRow({ label, value, min, max, step, onChange, fmt }: {
-  label: string; value: number; min: number; max: number; step: number;
-  onChange: (v: number) => void; fmt?: (v: number) => string;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex justify-between">
-        <span className="text-[8px] font-bold uppercase tracking-widest text-on-surface-variant">{label}</span>
-        <span className="text-[8px] font-black text-primary font-mono">{fmt ? fmt(value) : value.toFixed(1)}</span>
-      </div>
-      <input type="range" min={min} max={max} step={step} value={value}
-        onChange={e => onChange(parseFloat(e.target.value))}
-        className="w-full h-1 rounded-full accent-primary cursor-pointer" />
-    </div>
-  );
-}
-
-interface CalibratorPanelProps {
-  item: Item;
-  onSave: (itemId: string, adj: Partial<LayerAdjustment>) => Promise<void>;
-  onClose: () => void;
-}
-
-function CalibratorPanel({ item, onSave, onClose }: CalibratorPanelProps) {
-  const slot = item.slot as AvatarSlotKey;
-  const [adj, setAdj] = useState<LayerAdjustment>(resolveAdjustment(slot, item.layer_adjustment as any));
-  const [saving, setSaving] = useState(false);
-
-  const set = <K extends keyof LayerAdjustment>(k: K, v: LayerAdjustment[K]) =>
-    setAdj(prev => ({ ...prev, [k]: v }));
-
-  const getDiff = (): Partial<LayerAdjustment> => {
-    const def = SLOT_DEFAULTS[slot];
-    const diff: Partial<LayerAdjustment> = {};
-    for (const k of Object.keys(adj) as (keyof LayerAdjustment)[]) {
-      if (adj[k] !== (def as any)[k]) (diff as any)[k] = adj[k];
-    }
-    return diff;
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try { await onSave(item.id, getDiff()); } finally { setSaving(false); }
-  };
-
-  const baseStyle: React.CSSProperties = {
-    position: 'absolute', inset: 0, width: '100%', height: '100%',
-    objectFit: 'cover', objectPosition: 'top center', zIndex: 0,
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}
-      className="fixed inset-x-0 bottom-0 z-50 bg-surface-container-low border-t border-outline-variant/20 rounded-t-3xl p-5 flex flex-col gap-4 shadow-2xl"
-      style={{ maxHeight: '80vh', overflowY: 'auto' }}
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-[7px] font-bold uppercase tracking-widest text-on-surface-variant opacity-50">🎯 Calibrando camada</p>
-          <h4 className="text-sm font-headline font-black text-on-surface uppercase italic">{item.name}</h4>
-        </div>
-        <button onClick={onClose} className="p-2 rounded-xl bg-surface-container-highest text-on-surface-variant hover:text-on-surface transition-all">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Preview masc + fem lado a lado */}
-      <div className="flex gap-3">
-        {(['base masculina', 'base feminina'] as const).map(base => (
-          <div key={base} className="flex-1 flex flex-col items-center gap-1">
-            <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-surface-container-highest border border-outline-variant/10">
-              <img src={getAvatarUrl(base)} alt="base" style={baseStyle} onError={e => { e.currentTarget.style.display = 'none'; }} />
-              <img src={getAvatarUrl(item.image || item.id)} alt={item.name} style={adjustmentToCSS(adj)} onError={e => { e.currentTarget.style.opacity = '0.15'; }} />
-            </div>
-            <span className="text-[7px] font-bold uppercase tracking-widest text-on-surface-variant opacity-40">
-              {base === 'base masculina' ? '♂' : '♀'}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <div className="grid grid-cols-2 gap-3">
-          <SliderRow label="Escala X" value={adj.scaleX} min={0.5} max={2} step={0.01} onChange={v => set('scaleX', v)} fmt={v => `${(v*100).toFixed(0)}%`} />
-          <SliderRow label="Escala Y" value={adj.scaleY} min={0.5} max={2} step={0.01} onChange={v => set('scaleY', v)} fmt={v => `${(v*100).toFixed(0)}%`} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <SliderRow label="Offset X" value={adj.offsetX} min={-50} max={50} step={0.5} onChange={v => set('offsetX', v)} fmt={v => `${v}%`} />
-          <SliderRow label="Offset Y" value={adj.offsetY} min={-50} max={50} step={0.5} onChange={v => set('offsetY', v)} fmt={v => `${v}%`} />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[8px] font-bold uppercase tracking-widest text-on-surface-variant">Ancoragem</span>
-          <div className="grid grid-cols-3 gap-1.5">
-            {['top center', 'center center', 'bottom center'].map(pos => (
-              <button key={pos} onClick={() => set('objectPosition', pos)}
-                className={cn('py-1.5 rounded-xl text-[7px] font-bold uppercase tracking-widest border transition-all',
-                  adj.objectPosition === pos ? 'bg-primary text-on-primary border-primary' : 'bg-surface-container-highest text-on-surface-variant border-outline-variant/10')}>
-                {pos === 'top center' ? 'Topo' : pos === 'center center' ? 'Centro' : 'Base'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex gap-2">
-        <button onClick={() => setAdj(resolveAdjustment(slot, null))}
-          className="px-4 py-2.5 rounded-xl bg-surface-container-highest text-on-surface-variant text-[8px] font-bold uppercase tracking-widest border border-outline-variant/10 transition-all">
-          Resetar
-        </button>
-        <button onClick={handleSave} disabled={saving}
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-on-primary text-[9px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 disabled:opacity-50 transition-all">
-          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-          {saving ? 'Salvando...' : 'Salvar Ajuste'}
-        </button>
-      </div>
-    </motion.div>
-  );
-}
+import { listPieceSpecs } from '../lib/fitting';
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
@@ -248,9 +115,6 @@ export default function Admin() {
   const [checkinsDate, setCheckinsDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [checkinsExpanded, setCheckinsExpanded] = useState<Record<string, boolean>>({});
 
-  // ── Calibrador ──
-  const [calibratingItem, setCalibratingItem] = useState<Item | null>(null);
-
   const [newChallenge, setNewChallenge] = useState({
     title: '',
     description: '',
@@ -284,7 +148,8 @@ export default function Admin() {
     name: '',
     slot: 'top',
     price: 100,
-    image: ''
+    image: '',
+    piece_spec_id: null
   });
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
@@ -552,14 +417,23 @@ export default function Admin() {
     const file = e.target.files?.[0];
     const id = editingItem?.id || newItem.id;
     const slot = (editingItem?.slot || newItem.slot) as AvatarSlotKey;
+    const pieceSpecId = editingItem ? editingItem.piece_spec_id : newItem.piece_spec_id;
     if (!file) return;
     if (!id) { toast.error('Preencha o ID do item antes de fazer upload.'); return; }
     setUploading('item');
     try {
-      const url = await uploadAvatarItem(file, id, slot);
-      if (editingItem) setEditingItem({ ...editingItem, image: url });
-      else setNewItem({ ...newItem, image: url });
-      toast.success('Imagem enviada!');
+      const result = await uploadAvatarItem(file, id, slot, pieceSpecId);
+      if (editingItem) setEditingItem({ ...editingItem, image: result.url });
+      else setNewItem({ ...newItem, image: result.url });
+      if (result.autoFitted) {
+        toast.success(
+          result.wasAlreadyWellPositioned
+            ? 'Imagem enviada! Encaixe automático conferiu: já estava na posição exata.'
+            : 'Imagem enviada! Encaixe automático corrigiu a posição para a caixa exata da peça.'
+        );
+      } else {
+        toast.success('Imagem enviada!');
+      }
     } catch (err: any) {
       toast.error('Erro no upload: ' + err.message);
     } finally {
@@ -688,11 +562,12 @@ export default function Admin() {
   const handleAddItem = async () => {
     if (!newItem.id || !newItem.name || !newItem.price) return;
     const { data, error } = await supabase.from('items').insert({
-      id: newItem.id, name: newItem.name, slot: newItem.slot, price: newItem.price, image: newItem.image
+      id: newItem.id, name: newItem.name, slot: newItem.slot, price: newItem.price, image: newItem.image,
+      piece_spec_id: newItem.piece_spec_id || null
     }).select();
     if (!error && data) {
       setItems([data[0], ...items]);
-      setNewItem({ id: '', name: '', slot: 'top', price: 100, image: '' });
+      setNewItem({ id: '', name: '', slot: 'top', price: 100, image: '', piece_spec_id: null });
       toast.success('Item adicionado!');
     } else toast.error('Erro ao adicionar item: ' + (error?.message || 'Erro desconhecido'));
   };
@@ -707,23 +582,14 @@ export default function Admin() {
   const handleUpdateItem = async () => {
     if (!editingItem) return;
     const { error } = await supabase.from('items').update({
-      name: editingItem.name, slot: editingItem.slot, price: editingItem.price, image: editingItem.image
+      name: editingItem.name, slot: editingItem.slot, price: editingItem.price, image: editingItem.image,
+      piece_spec_id: editingItem.piece_spec_id || null
     }).eq('id', editingItem.id);
     if (!error) {
       setItems(items.map(i => i.id === editingItem.id ? editingItem : i));
       setEditingItem(null);
       toast.success('Item atualizado com sucesso!');
     } else toast.error('Erro ao atualizar item: ' + error.message);
-  };
-
-  // ── Salva ajuste de camada no banco ──
-  const handleSaveLayerAdjustment = async (itemId: string, adjustment: Partial<LayerAdjustment>) => {
-    const { error } = await supabase.from('items').update({ layer_adjustment: adjustment }).eq('id', itemId);
-    if (error) { toast.error('Erro ao salvar ajuste.'); return; }
-    setItems(prev => prev.map(i => i.id === itemId ? { ...i, layer_adjustment: adjustment as any } : i));
-    if (calibratingItem?.id === itemId) setCalibratingItem(prev => prev ? { ...prev, layer_adjustment: adjustment as any } : null);
-    setCalibratingItem(null);
-    toast.success('Ajuste de camada salvo!');
   };
 
   const handleEditChallenge = (challenge: any) => {
@@ -1820,6 +1686,33 @@ export default function Admin() {
               </div>
 
               <div className="space-y-2">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Tipo de Peça (encaixe automático)</label>
+                <select
+                  value={(editingItem ? editingItem.piece_spec_id : newItem.piece_spec_id) || ''}
+                  onChange={e => {
+                    const value = e.target.value || null;
+                    editingItem ? setEditingItem({ ...editingItem, piece_spec_id: value }) : setNewItem({ ...newItem, piece_spec_id: value });
+                  }}
+                  className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer"
+                >
+                  <option value="">— Nenhum (centralizar manualmente) —</option>
+                  <optgroup label="Masculino">
+                    {listPieceSpecs('masculina').map(spec => (
+                      <option key={spec.id} value={spec.id}>{spec.id} · {spec.name}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Feminino">
+                    {listPieceSpecs('feminina').map(spec => (
+                      <option key={spec.id} value={spec.id}>{spec.id} · {spec.name}</option>
+                    ))}
+                  </optgroup>
+                </select>
+                <p className="text-[8px] text-on-surface-variant opacity-50 uppercase tracking-widest">
+                  O ID e o nome do item ficam livres · isso aqui só diz qual caixa de encaixe usar ao enviar a imagem
+                </p>
+              </div>
+
+              <div className="space-y-2">
                 <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Imagem do Item</label>
                 <div className="flex gap-3 items-center">
                   {(editingItem?.image || newItem.image) && (
@@ -1855,20 +1748,6 @@ export default function Admin() {
               {items.map((item) => (
                 <div key={item.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-3 group relative">
                   <div className="absolute top-2 right-2 flex gap-1 z-10">
-                    <button
-                      onClick={() => setCalibratingItem(calibratingItem?.id === item.id ? null : item)}
-                      title="Calibrar camada"
-                      className={cn(
-                        'p-2 rounded-xl transition-all',
-                        calibratingItem?.id === item.id
-                          ? 'bg-primary text-on-primary'
-                          : item.layer_adjustment
-                            ? 'bg-primary/20 text-primary hover:bg-primary hover:text-on-primary'
-                            : 'bg-surface-container-highest text-on-surface-variant hover:bg-primary/20 hover:text-primary'
-                      )}
-                    >
-                      <SlidersHorizontal className="w-3.5 h-3.5" />
-                    </button>
                     <button onClick={() => { setEditingItem(item); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="p-2 bg-primary/20 text-primary rounded-xl hover:bg-primary hover:text-background transition-all"><Edit2 className="w-4 h-4" /></button>
                     <button onClick={() => handleDeleteItem(item.id)} className="p-2 bg-error-container text-on-error-container rounded-xl hover:bg-error hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
                   </div>
@@ -1881,7 +1760,6 @@ export default function Admin() {
                       <span className="text-[10px] font-black text-secondary uppercase tracking-widest">{item.price} COINS</span>
                       <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest opacity-50">{item.slot}</span>
                     </div>
-                    {item.layer_adjustment && <span className="text-[7px] text-primary font-bold uppercase tracking-widest">• calibrado</span>}
                   </div>
                 </div>
               ))}
@@ -2162,22 +2040,6 @@ export default function Admin() {
               </div>
             </motion.div>
           </div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Painel calibrador (bottom sheet) ── */}
-      <AnimatePresence>
-        {calibratingItem && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
-              onClick={() => setCalibratingItem(null)} />
-            <CalibratorPanel
-              item={calibratingItem}
-              onSave={handleSaveLayerAdjustment}
-              onClose={() => setCalibratingItem(null)}
-            />
-          </>
         )}
       </AnimatePresence>
     </div>
