@@ -26,16 +26,17 @@ export type FitMode = 'stretch' | 'contain';
  * (não apenas ao recorte do contentBox), preservando proporcionalmente
  * tudo o que está fora dele — incluindo aberturas vazadas (alpha=0).
  *
- * mode 'stretch' (padrão): preenche a targetBox exatamente, permitindo
- *   escalas X/Y diferentes — corresponde ao requisito "a peça DEVE ocupar
- *   exatamente esta caixa".
- * mode 'contain': preserva a proporção do conteúdo detectado, centralizando
- *   dentro da targetBox (letterbox) — útil quando a peça não deve distorcer.
+ * mode 'contain' (padrão): preserva a proporção do conteúdo detectado,
+ *   centralizando dentro da targetBox (letterbox) — evita distorcer a arte
+ *   original quando a proporção dela não bate exatamente com a da caixa.
+ * mode 'stretch': preenche a targetBox exatamente, permitindo escalas X/Y
+ *   diferentes — garante ocupação total da caixa, mas pode esticar/espremer
+ *   a peça se a proporção original for diferente da proporção da caixa.
  */
 export function computeFitTransform(
   contentBox: Box,
   targetBox: Box,
-  mode: FitMode = 'stretch'
+  mode: FitMode = 'contain'
 ): FitTransform {
   const contentW = boxWidth(contentBox);
   const contentH = boxHeight(contentBox);

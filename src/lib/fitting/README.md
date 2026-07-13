@@ -93,12 +93,15 @@ if (contentBox) {
 
 ## Modos de encaixe
 
-- `mode: 'stretch'` (padrão) — a peça ocupa exatamente a caixa da
-  especificação, permitindo escalas X/Y diferentes. É o comportamento exigido
-  por PROMPTS_AVATAR.md ("a peça DEVE ocupar exatamente esta caixa").
-- `mode: 'contain'` — preserva a proporção original do conteúdo detectado,
-  centralizando dentro da caixa (letterbox). Útil para peças cuja distorção
-  não é aceitável visualmente.
+- `mode: 'contain'` (padrão) — preserva a proporção original do conteúdo
+  detectado, centralizando dentro da caixa (letterbox). Nunca distorce a
+  arte original; se a proporção da peça não bater exatamente com a da caixa,
+  ela fica levemente mais folgada num dos eixos em vez de esticar/espremer.
+- `mode: 'stretch'` — a peça ocupa exatamente a caixa da especificação,
+  permitindo escalas X/Y diferentes ("a peça DEVE ocupar exatamente esta
+  caixa", por PROMPTS_AVATAR.md). Garante ocupação total da caixa, mas pode
+  distorcer a peça se a proporção original for diferente da proporção da
+  caixa.
 
 ## Adicionando novas peças ou bases
 
