@@ -175,18 +175,18 @@ export default function Progress() {
                     result.type === 'Scaled' ? "bg-secondary-container text-on-secondary-container" :
                     "bg-surface-container-highest text-on-surface-variant"
                   )}>
-                    {result.type[0]}
+                    {result.type?.[0] ?? '?'}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-headline font-bold text-on-surface truncate uppercase italic">{result.wods.name}</h3>
+                    <h3 className="font-headline font-bold text-on-surface truncate uppercase italic">{result.wods?.name ?? 'WOD'}</h3>
                     <div className="flex items-center gap-2 text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
                       <Calendar className="w-3 h-3" />
-                      {format(new Date(result.wods.date), 'dd MMM yyyy', { locale: ptBR })}
+                      {result.wods?.date ? format(new Date(result.wods.date), 'dd MMM yyyy', { locale: ptBR }) : '—'}
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-headline font-black text-primary italic text-lg">{result.result}</div>
-                    <div className="text-[8px] font-black text-on-surface-variant uppercase tracking-tighter">{result.type}</div>
+                    <div className="text-[8px] font-black text-on-surface-variant uppercase tracking-tighter">{result.type ?? '—'}</div>
                   </div>
                 </div>
               ))
