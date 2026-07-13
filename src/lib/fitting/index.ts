@@ -56,8 +56,10 @@ export interface FitClothingPieceParams {
   /** Detalhes de estilo (cor, material, estampa...) — apenas repassados nos metadados de saída */
   estiloVisual?: Record<string, unknown> | string;
   /**
-   * 'stretch' (padrão): faz a peça ocupar exatamente a caixa da especificação.
-   * 'contain': preserva a proporção da peça, centralizando dentro da caixa.
+   * 'contain' (padrão): preserva a proporção da peça, centralizando dentro
+   *   da caixa — nunca distorce a arte original.
+   * 'stretch': faz a peça ocupar exatamente a caixa da especificação,
+   *   podendo esticar/espremer se a proporção original for diferente.
    */
   mode?: FitMode;
 }
@@ -85,7 +87,7 @@ export interface FitClothingPieceResult {
  * definidos em PROMPTS_AVATAR.md para `pecaId`.
  */
 export async function fitClothingPiece(params: FitClothingPieceParams): Promise<FitClothingPieceResult> {
-  const { avatarBase, pecaId, pieceImageUrl, baseImageUrl, estiloVisual, mode = 'stretch' } = params;
+  const { avatarBase, pecaId, pieceImageUrl, baseImageUrl, estiloVisual, mode = 'contain' } = params;
 
   const spec = getPieceSpec(pecaId);
   if (spec.avatarBase !== avatarBase) {
@@ -147,7 +149,7 @@ export interface FitOutfitResult {
 
 /** Encaixa um conjunto completo de peças (um "look") sobre a base do avatar. */
 export async function fitOutfit(params: FitOutfitParams): Promise<FitOutfitResult> {
-  const { avatarBase, baseImageUrl, pieces, mode = 'stretch' } = params;
+  const { avatarBase, baseImageUrl, pieces, mode = 'contain' } = params;
 
   const specs = pieces.map((p) => {
     const spec = getPieceSpec(p.pecaId);

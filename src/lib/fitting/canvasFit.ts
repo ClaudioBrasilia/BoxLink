@@ -63,7 +63,7 @@ export interface FitPieceResult {
 export function fitPieceToCanvas(
   img: HTMLImageElement,
   spec: PieceSpec,
-  mode: FitMode = 'stretch'
+  mode: FitMode = 'contain'
 ): FitPieceResult {
   const warnings: string[] = [];
   const detectedContentBox = detectImageContentBox(img);
@@ -128,7 +128,7 @@ export interface ComposeAvatarResult {
 export async function composeAvatar(
   baseImageUrl: string,
   pieces: AvatarLayerInput[],
-  mode: FitMode = 'stretch'
+  mode: FitMode = 'contain'
 ): Promise<ComposeAvatarResult> {
   const baseImg = await loadImage(baseImageUrl);
 
