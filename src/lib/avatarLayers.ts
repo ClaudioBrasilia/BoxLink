@@ -62,6 +62,8 @@ export interface ResolvedLayer {
   alt: string;
   slot: AvatarSlotKey | 'base';
   adjustment: LayerAdjustment;
+  /** ID do item equipado (ausente na camada base) */
+  itemId?: string;
 }
 
 /**
@@ -114,6 +116,7 @@ export function buildAvatarLayers(
       alt,
       slot: key,
       adjustment: resolveAdjustment(key, override),
+      itemId,
     });
   }
 

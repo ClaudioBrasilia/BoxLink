@@ -12,7 +12,8 @@
 import React, { useState } from 'react';
 import type { AvatarSlot } from '../types';
 import { cn } from '../lib/utils';
-import { buildAvatarLayers, adjustmentToCSS, LayerAdjustment } from '../lib/avatarLayers';
+import { adjustmentToCSS, LayerAdjustment } from '../lib/avatarLayers';
+import { useFittedAvatarLayers } from '../lib/avatarFit';
 
 interface AvatarPreviewProps {
   equipped: AvatarSlot;
@@ -62,20 +63,22 @@ export default function AvatarPreview({
   fadePercent = 0,
   showSleeping = false,
 }: AvatarPreviewProps) {
-  const [failedLayers, setFailedLayers] = useState<Set<number>>(new Set());
+  // Chaveado por URL (não por índice): quando a versão encaixada da camada
+  // chega (data URL), uma falha anterior da URL original não a esconde.
+  const [failedLayers, setFailedLayers] = useState<Set<string>>(new Set());
 
-  const layers = buildAvatarLayers(equipped, getAvatarImageUrl, itemAdjustments);
+  const layers = useFittedAvatarLayers(equipped, getAvatarImageUrl, itemAdjustments);
   const isFemale = equipped.base_outfit === 'base_feminina';
   const fallbackBase = getAvatarImageUrl(isFemale ? 'base feminina' : 'base masculina');
 
-  const handleError = (index: number, e: React.SyntheticEvent<HTMLImageElement>) => {
+  const handleError = (index: number, url: string, e: React.SyntheticEvent<HTMLImageElement>) => {
     if (index === 0) {
       if (e.currentTarget.src !== fallbackBase) {
         e.currentTarget.src = fallbackBase;
         return;
       }
     }
-    setFailedLayers(prev => new Set(prev).add(index));
+    setFailedLayers(prev => new Set(prev).add(url));
   };
 
   // CSS filter: desbote progressivo até cinza total
@@ -99,7 +102,7 @@ export default function AvatarPreview({
       {/* Camadas do avatar com filtro de desbote */}
       <div style={filterStyle} className="absolute inset-0">
         {layers.map((layer, index) => {
-          if (failedLayers.has(index)) return null;
+          if (failedLayers.has(layer.url)) return null;
           const style = adjustmentToCSS(layer.adjustment);
           return (
             <img
@@ -107,7 +110,7 @@ export default function AvatarPreview({
               src={layer.url}
               alt={layer.alt}
               style={style}
-              onError={(e) => handleError(index, e)}
+              onError={(e) => handleError(index, layer.url, e)}
               draggable={false}
             />
           );
