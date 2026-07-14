@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calendar, Megaphone, Plus, Settings, ChevronRight, Activity, Timer, Trophy, Check, X, Shield, UserPlus, Info, Edit2, Save } from 'lucide-react';
+import { LayoutDashboard, Users, Calendar, Megaphone, Plus, Settings, ChevronRight, Activity, Timer, Trophy, Check, X, Shield, UserPlus, Info, Edit2, Save, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Wod, User } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -211,6 +211,20 @@ export default function Coach() {
     }
   };
 
+  const handleDeleteWod = async (wod: Wod) => {
+    const dateBr = (wod.date || '').split('-').reverse().join('/');
+    if (!confirm(`Excluir o WOD "${wod.name}" de ${dateBr}?\n\nOs resultados lançados pelos alunos neste WOD também serão apagados. Esta ação não pode ser desfeita.`)) return;
+    // .select() confirma que a linha foi mesmo apagada — sem isso, um delete
+    // barrado pelo RLS (usuário não-admin) voltaria sem erro e sem efeito.
+    const { data, error } = await supabase.from('wods').delete().eq('id', wod.id).select('id');
+    if (!error && data && data.length > 0) {
+      setWods(wods.filter(w => w.id !== wod.id));
+      toast.success('WOD excluído!');
+    } else {
+      toast.error('Erro ao excluir WOD: ' + (error?.message || 'sem permissão para excluir'));
+    }
+  };
+
   const historyWod = wods.find(w => w.date === selectedHistoryDate);
 
   const categoryColor: Record<string, string> = {
@@ -389,17 +403,24 @@ export default function Coach() {
                         <h4 className="text-xl font-headline font-black text-on-surface uppercase italic">{historyWod.name}</h4>
                         <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mt-1">{historyWod.type}</p>
                       </div>
-                      <button onClick={() => setEditingWod({
-                          ...historyWod,
-                          warmup: historyWod.warmup || '',
-                          skill: historyWod.skill || '',
-                          rx: historyWod.rx || '',
-                          scaled: historyWod.scaled || '',
-                        })}
-                        className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary hover:text-background transition-all flex items-center gap-1">
-                        <Edit2 className="w-4 h-4" />
-                        <span className="text-[9px] font-black uppercase">EDITAR</span>
-                      </button>
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditingWod({
+                            ...historyWod,
+                            warmup: historyWod.warmup || '',
+                            skill: historyWod.skill || '',
+                            rx: historyWod.rx || '',
+                            scaled: historyWod.scaled || '',
+                          })}
+                          className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary hover:text-background transition-all flex items-center gap-1">
+                          <Edit2 className="w-4 h-4" />
+                          <span className="text-[9px] font-black uppercase">EDITAR</span>
+                        </button>
+                        <button onClick={() => handleDeleteWod(historyWod)}
+                          className="bg-error/20 text-error p-2 rounded-xl hover:bg-error hover:text-background transition-all flex items-center gap-1">
+                          <Trash2 className="w-4 h-4" />
+                          <span className="text-[9px] font-black uppercase">EXCLUIR</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
