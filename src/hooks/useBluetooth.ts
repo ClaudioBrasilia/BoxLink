@@ -29,6 +29,7 @@ import {
   WAHOO_SERVICE,
   GENERIC_SERVICES,
   OPTIONAL_SERVICES,
+  NAME_PREFIXES,
   parseHeartRateFallback,
   isLikelyHRDeviceName,
   isLikelyHRService,
@@ -71,6 +72,10 @@ export interface DiscoveredDevice {
   name: string;
   rssi?: number;
   hasHeartRateService: boolean;
+  /** Provável monitor de FC (serviço conhecido OU nome típico) — usado no filtro da lista. */
+  likelyHR: boolean;
+  /** Já pareado no sistema (Android) — aparece na lista antes mesmo do scan. */
+  bonded?: boolean;
   serviceUUIDs?: string[];
 }
 
@@ -97,7 +102,7 @@ interface UseBluetoothReturn {
   connectedDevice: DiscoveredDevice | null;
   lastDevice: LastDevice | null;
   heartRate: number | null;
-  scan: () => Promise<void>;
+  scan: (opts?: { showAll?: boolean }) => Promise<void>;
   stopScan: () => Promise<void>;
   connect: (deviceId: string) => Promise<void>;
   disconnect: () => Promise<void>;
@@ -147,6 +152,18 @@ function friendlyBleError(err: unknown): string {
     return 'O Bluetooth está desligado. Ative o Bluetooth do aparelho e tente novamente.';
   }
   return msg || 'Erro de Bluetooth';
+}
+
+/** Prováveis monitores de FC primeiro; depois nomeados; por fim sinal mais forte. */
+function sortDevices(list: DiscoveredDevice[]): DiscoveredDevice[] {
+  return [...list].sort((a, b) => {
+    if (a.hasHeartRateService !== b.hasHeartRateService) return a.hasHeartRateService ? -1 : 1;
+    if (a.likelyHR !== b.likelyHR) return a.likelyHR ? -1 : 1;
+    const aHasName = a.name && !a.name.startsWith('Desconhecido');
+    const bHasName = b.name && !b.name.startsWith('Desconhecido');
+    if (aHasName !== bHasName) return aHasName ? -1 : 1;
+    return (b.rssi ?? -999) - (a.rssi ?? -999);
+  });
 }
 
 /** Candidato de assinatura descoberto no device (serviço + characteristic). */
@@ -301,120 +318,6 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       }
     }
   }, []);
-
-  // --------------------------------------------------------------------------
-  // SCAN
-  // --------------------------------------------------------------------------
-  const scan = useCallback(async () => {
-    setError(null);
-    setDevices([]);
-    updateStatus('scanning');
-
-    if (scanTimerRef.current) {
-      clearTimeout(scanTimerRef.current);
-      scanTimerRef.current = null;
-    }
-
-    try {
-      // Só bloqueia iOS-web quando NÃO há Web Bluetooth (Safari/Chrome/Edge do iPhone).
-      // Com Bluefy (navigator.bluetooth presente), seguimos normalmente.
-      if (isIOSWeb && !hasWebBluetooth) {
-        throw new Error(
-          'Este navegador do iPhone não suporta Bluetooth Web. Abra o BoxLink pelo navegador "Bluefy" (grátis na App Store) ou instale o app nativo.'
-        );
-      }
-
-      // ---------------- NATIVO ----------------
-      if (isNative) {
-        const Ble = await getBleClient();
-        await ensureNativeReady(Ble);
-
-        const found = new Map<string, DiscoveredDevice>();
-
-        await Ble.requestLEScan(
-          { allowDuplicates: true }, // essencial: agrega advertising packets rotativos
-          (result: ScanResult) => {
-            const id = result.device.deviceId;
-            const name = result.device.name || result.localName || '';
-
-            const existing = found.get(id);
-            const existingUUIDs = new Set(existing?.serviceUUIDs || []);
-            (result.uuids || []).forEach((u) => existingUUIDs.add(u.toLowerCase()));
-
-            const serviceUUIDs = Array.from(existingUUIDs);
-            const hasHR =
-              serviceUUIDs.some((u) => isLikelyHRService(u)) ||
-              existing?.hasHeartRateService ||
-              false;
-
-            if (
-              !existing ||
-              (result.rssi !== undefined &&
-                (existing.rssi === undefined || result.rssi > existing.rssi))
-            ) {
-              found.set(id, {
-                id,
-                name: name || `Desconhecido ${id.slice(-5)}`,
-                rssi: result.rssi ?? existing?.rssi,
-                hasHeartRateService: hasHR,
-                serviceUUIDs,
-              });
-            } else if (serviceUUIDs.length > (existing.serviceUUIDs?.length || 0)) {
-              found.set(id, { ...existing, serviceUUIDs, hasHeartRateService: hasHR });
-            }
-
-            const sorted = Array.from(found.values()).sort((a, b) => {
-              if (a.hasHeartRateService !== b.hasHeartRateService)
-                return a.hasHeartRateService ? -1 : 1;
-              const aLikely = isLikelyHRDeviceName(a.name);
-              const bLikely = isLikelyHRDeviceName(b.name);
-              if (aLikely !== bLikely) return aLikely ? -1 : 1;
-              const aHasName = a.name && !a.name.startsWith('Desconhecido');
-              const bHasName = b.name && !b.name.startsWith('Desconhecido');
-              if (aHasName !== bHasName) return aHasName ? -1 : 1;
-              return (b.rssi ?? -999) - (a.rssi ?? -999);
-            });
-            setDevices(sorted);
-          }
-        );
-
-        scanTimerRef.current = setTimeout(async () => {
-          try {
-            await Ble.stopLEScan();
-          } catch {
-            /* noop */
-          }
-          if (found.size === 0 && locationOffRef.current) {
-            setError(
-              'Nenhum dispositivo encontrado. Em Android 11 ou anterior, o scan Bluetooth exige a Localização (GPS) ligada — ative-a nas configurações rápidas e busque novamente.'
-            );
-          }
-          if (statusRef.current === 'scanning') updateStatus('disconnected');
-        }, SCAN_DURATION_MS);
-        return;
-      }
-
-      // ---------------- WEB ----------------
-      const device = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: OPTIONAL_SERVICES as (string | number)[],
-      });
-
-      webDeviceRef.current = device;
-      setDevices([
-        {
-          id: device.id,
-          name: device.name || `Dispositivo ${device.id.slice(-5)}`,
-          hasHeartRateService: true, // otimista — confirmamos ao conectar
-        },
-      ]);
-      updateStatus('disconnected');
-    } catch (err: any) {
-      console.error('[BLE] scan erro', err);
-      if (err?.name !== 'NotFoundError') setError(friendlyBleError(err));
-      updateStatus(err?.name === 'NotFoundError' ? 'disconnected' : 'error');
-    }
-  }, [isNative, isIOSWeb, hasWebBluetooth, ensureNativeReady, updateStatus]);
 
   const stopScan = useCallback(async () => {
     if (scanTimerRef.current) {
@@ -623,6 +526,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           id: deviceId,
           name: lastDevice?.id === deviceId ? lastDevice.name : `Dispositivo ${deviceId.slice(-5)}`,
           hasHeartRateService: true,
+          likelyHR: true,
         };
       setConnectedDevice(dev);
       rememberDevice({ id: dev.id, name: dev.name });
@@ -776,6 +680,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       id: device.id,
       name: device.name || `Dispositivo ${device.id.slice(-5)}`,
       hasHeartRateService: true,
+      likelyHR: true,
     };
     setConnectedDevice(dev);
     rememberDevice({ id: dev.id, name: dev.name });
@@ -866,6 +771,166 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   );
 
   // --------------------------------------------------------------------------
+  // SCAN
+  //   Nativo → dispositivos pareados no Android aparecem NA HORA + scan LE 15s.
+  //   Web    → chooser do navegador filtrado por FC (showAll exibe tudo) e
+  //            conexão DIRETA ao dispositivo escolhido (sem segundo toque).
+  // --------------------------------------------------------------------------
+  const scan = useCallback(
+    async (opts?: { showAll?: boolean }) => {
+      const showAll = !!opts?.showAll;
+      setError(null);
+      setDevices([]);
+      updateStatus('scanning');
+
+      if (scanTimerRef.current) {
+        clearTimeout(scanTimerRef.current);
+        scanTimerRef.current = null;
+      }
+
+      try {
+        // Só bloqueia iOS-web quando NÃO há Web Bluetooth (Safari/Chrome/Edge do iPhone).
+        // Com Bluefy (navigator.bluetooth presente), seguimos normalmente.
+        if (isIOSWeb && !hasWebBluetooth) {
+          throw new Error(
+            'Este navegador do iPhone não suporta Bluetooth Web. Abra o BoxLink pelo navegador "Bluefy" (grátis na App Store) ou instale o app nativo.'
+          );
+        }
+
+        // ---------------- NATIVO ----------------
+        if (isNative) {
+          const Ble = await getBleClient();
+          await ensureNativeReady(Ble);
+
+          const found = new Map<string, DiscoveredDevice>();
+
+          // Pareados no sistema (Android) — relógios costumam estar pareados;
+          // listá-los de imediato evita esperar o scan de 15s.
+          if (Capacitor.getPlatform() === 'android') {
+            try {
+              const bonded = await Ble.getBondedDevices();
+              for (const b of bonded) {
+                const name = b.name || '';
+                if (!isLikelyHRDeviceName(name)) continue; // ignora fones/carro/etc.
+                found.set(b.deviceId, {
+                  id: b.deviceId,
+                  name,
+                  hasHeartRateService: false,
+                  likelyHR: true,
+                  bonded: true,
+                  serviceUUIDs: [],
+                });
+              }
+              if (found.size > 0) setDevices(sortDevices(Array.from(found.values())));
+            } catch {
+              /* indisponível nesta plataforma */
+            }
+          }
+
+          await Ble.requestLEScan(
+            { allowDuplicates: true }, // essencial: agrega advertising packets rotativos
+            (result: ScanResult) => {
+              const id = result.device.deviceId;
+              const name = result.device.name || result.localName || '';
+
+              const existing = found.get(id);
+              const existingUUIDs = new Set(existing?.serviceUUIDs || []);
+              (result.uuids || []).forEach((u) => existingUUIDs.add(u.toLowerCase()));
+
+              const serviceUUIDs = Array.from(existingUUIDs);
+              const hasHR =
+                serviceUUIDs.some((u) => isLikelyHRService(u)) ||
+                existing?.hasHeartRateService ||
+                false;
+              const displayName = name || existing?.name || `Desconhecido ${id.slice(-5)}`;
+              const likelyHR =
+                hasHR || isLikelyHRDeviceName(displayName) || existing?.likelyHR || false;
+
+              if (
+                !existing ||
+                (result.rssi !== undefined &&
+                  (existing.rssi === undefined || result.rssi > existing.rssi))
+              ) {
+                found.set(id, {
+                  id,
+                  name: displayName,
+                  rssi: result.rssi ?? existing?.rssi,
+                  hasHeartRateService: hasHR,
+                  likelyHR,
+                  bonded: existing?.bonded,
+                  serviceUUIDs,
+                });
+              } else if (serviceUUIDs.length > (existing.serviceUUIDs?.length || 0)) {
+                found.set(id, { ...existing, serviceUUIDs, hasHeartRateService: hasHR, likelyHR });
+              }
+
+              setDevices(sortDevices(Array.from(found.values())));
+            }
+          );
+
+          scanTimerRef.current = setTimeout(async () => {
+            try {
+              await Ble.stopLEScan();
+            } catch {
+              /* noop */
+            }
+            if (found.size === 0 && locationOffRef.current) {
+              setError(
+                'Nenhum dispositivo encontrado. Em Android 11 ou anterior, o scan Bluetooth exige a Localização (GPS) ligada — ative-a nas configurações rápidas e busque novamente.'
+              );
+            }
+            if (statusRef.current === 'scanning') updateStatus('disconnected');
+          }, SCAN_DURATION_MS);
+          return;
+        }
+
+        // ---------------- WEB ----------------
+        // Chooser filtrado por padrão (serviço de FC + nomes conhecidos) — bem
+        // menos poluído numa academia. showAll exibe tudo como fallback.
+        const device = await navigator.bluetooth.requestDevice(
+          showAll
+            ? { acceptAllDevices: true, optionalServices: OPTIONAL_SERVICES as (string | number)[] }
+            : {
+                filters: [
+                  { services: [HEART_RATE_SERVICE] },
+                  ...NAME_PREFIXES.map((p) => ({ namePrefix: p })),
+                ],
+                optionalServices: OPTIONAL_SERVICES as (string | number)[],
+              }
+        );
+
+        webDeviceRef.current = device;
+        setDevices([
+          {
+            id: device.id,
+            name: device.name || `Dispositivo ${device.id.slice(-5)}`,
+            hasHeartRateService: true, // otimista — confirmamos ao conectar
+            likelyHR: true,
+          },
+        ]);
+
+        // O usuário já escolheu no chooser do navegador — conecta direto,
+        // sem exigir um segundo toque na lista.
+        updateStatus('connecting');
+        await connectWeb();
+      } catch (err: any) {
+        console.error('[BLE] scan erro', err);
+        if (err?.name === 'NotFoundError') {
+          // Chooser cancelado ou sem resultados nos filtros.
+          if (!isNative && !showAll) {
+            setError('Não achou seu dispositivo? Toque em "Mostrar todos os dispositivos".');
+          }
+          updateStatus('disconnected');
+        } else {
+          setError(friendlyBleError(err));
+          updateStatus('error');
+        }
+      }
+    },
+    [isNative, isIOSWeb, hasWebBluetooth, ensureNativeReady, connectWeb, updateStatus]
+  );
+
+  // --------------------------------------------------------------------------
   // DISCONNECT (pedido pelo usuário — não dispara auto-reconexão)
   // --------------------------------------------------------------------------
   const disconnect = useCallback(async () => {
@@ -916,6 +981,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
               id: last.id,
               name: last.name || `Dispositivo ${last.id.slice(-5)}`,
               hasHeartRateService: true,
+              likelyHR: true,
             },
           ]);
         }
