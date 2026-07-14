@@ -21,7 +21,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import type { ScanResult } from '@capacitor-community/bluetooth-le';
-import { supabase } from '../lib/supabase';
+import { upsertLiveHeartRate, clearLiveHeartRate } from '../lib/liveHeartRate';
 import {
   HEART_RATE_SERVICE,
   HEART_RATE_MEASUREMENT,
@@ -228,7 +228,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   // --------------------------------------------------------------------------
   const removeFromSupabase = useCallback(() => {
     if (!userId) return;
-    supabase.from('heart_rate_live').delete().eq('user_id', userId).then(() => {}, () => {});
+    clearLiveHeartRate(userId).catch(() => {});
   }, [userId]);
 
   useEffect(() => {
@@ -237,18 +237,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     syncTimerRef.current = setInterval(() => {
       const bpm = lastBpmRef.current;
       if (!bpm) return;
-      supabase
-        .from('heart_rate_live')
-        .upsert(
-          {
-            user_id: userId,
-            bpm,
-            device_name: connectedDevice?.name ?? 'Bluetooth',
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
-        )
-        .then(() => {}, (e) => console.error('[BLE] sync', e));
+      upsertLiveHeartRate(userId, bpm, connectedDevice?.name ?? 'Bluetooth').catch(() => {});
     }, 5000);
     return () => {
       if (syncTimerRef.current) clearInterval(syncTimerRef.current);

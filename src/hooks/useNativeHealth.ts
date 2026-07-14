@@ -14,7 +14,7 @@
 // ============================================================================
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { supabase } from '../lib/supabase';
+import { upsertLiveHeartRate, clearLiveHeartRate } from '../lib/liveHeartRate';
 import { isPlausibleBpm } from '../lib/heartRate';
 
 // Tipos mínimos do plugin (evita acoplar o build a ele)
@@ -84,19 +84,7 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
   const syncToSupabase = useCallback(
     async (currentBpm: number) => {
       if (!userId) return;
-      try {
-        await supabase.from('heart_rate_live').upsert(
-          {
-            user_id: userId,
-            bpm: currentBpm,
-            device_name: platform === 'ios' ? 'Apple Health' : 'Health Connect',
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
-        );
-      } catch (err) {
-        console.error('[NativeHealth] Sync error:', err);
-      }
+      await upsertLiveHeartRate(userId, currentBpm, platform === 'ios' ? 'Apple Health' : 'Health Connect');
     },
     [userId, platform]
   );
@@ -109,7 +97,7 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
     setBpm(null);
     setStatus('idle');
     if (userId) {
-      supabase.from('heart_rate_live').delete().eq('user_id', userId).then(() => {}, () => {});
+      clearLiveHeartRate(userId).catch(() => {});
     }
   }, [userId]);
 
