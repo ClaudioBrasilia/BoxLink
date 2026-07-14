@@ -1,9 +1,22 @@
 # Sistema de Encaixe de Roupas e Acessórios (`src/lib/fitting`)
 
 Módulo que automatiza o encaixe programático de peças de vestuário/acessórios
-sobre as bases de avatar do BoxLink (`base-masculina.png` / `base-feminina.png`),
-usando as especificações de `PROMPTS_AVATAR.md` (caixa exata, âncora anatômica,
+sobre as bases de avatar do BoxLink (`base masculina.png` / `base feminina.png`),
+usando as especificações de `pieceSpecs.ts` (caixa exata, âncora anatômica,
 tamanho relativo e aberturas vazadas) como fonte única de verdade.
+
+## Bases de referência
+
+As imagens oficiais das bases vivem em `public/avatar-bases/` no formato do
+canvas de referência (1024×1536, PNG transparente, corpo em y 60–1530,
+centralizado pela linha dos tornozelos). **Elas devem ser enviadas ao bucket
+`avatar-assets` do Supabase com exatamente estes nomes** (`base masculina.png`
+e `base feminina.png`) — é de lá que o `AvatarPreview` as carrega.
+
+As coordenadas de `pieceSpecs.ts` (zonas anatômicas, larguras e as 20 caixas
+de peça) foram **medidas sobre essas imagens** via varredura da silhueta
+(canal alpha) e das regiões de roupa da própria base. Se as artes das bases
+forem trocadas, as coordenadas precisam ser recalibradas da mesma forma.
 
 Funciona inteiramente no browser (Canvas 2D API) — mesma abordagem já usada em
 `src/utils/avatarUpload.ts` e `src/utils/rankingImage.ts` — sem dependências
