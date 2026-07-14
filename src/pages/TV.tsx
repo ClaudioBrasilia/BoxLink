@@ -5,6 +5,7 @@ import { Wod, Challenge, Duel, User, BoxSettings } from '../types';
 import { format } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { supabase } from '../lib/supabase';
+import { getWodByDate, getLatestWod } from '../lib/wods';
 import { cn } from '../lib/utils';
 import AvatarPreview from '../components/AvatarPreview';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
@@ -121,12 +122,12 @@ export default function TV() {
     try {
       const today = formatInTimeZone(new Date(), TIMEZONE, "yyyy-MM-dd");
       const [
-        { data: settings }, { data: economy }, { data: wod },
+        { data: settings }, { data: economy }, wod,
         { data: challenges }, { data: duels }, { data: scheduleData }
       ] = await Promise.all([
         supabase.from('box_settings').select('*').maybeSingle(),
         supabase.from('avatar_economy_settings').select('*').eq('is_active', true).maybeSingle(),
-        supabase.from('wods').select('*').eq('date', today).maybeSingle(),
+        getWodByDate(today),
         supabase.from('challenges').select('*').eq('active', true).or(`end_date.is.null,end_date.gte.${today}`),
         supabase.from('duels').select('*').in('status', ['active', 'accepted']),
         supabase.from('schedule').select('*').order('time', { ascending: true })
@@ -199,8 +200,7 @@ export default function TV() {
 
       let activeWod = wod;
       if (!activeWod) {
-        const { data: latestWod } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
-        activeWod = latestWod;
+        activeWod = await getLatestWod(today);
       }
 
       const rawTvConfig = settings?.tv_config || settings?.tvConfig || {};
@@ -272,6 +272,7 @@ export default function TV() {
       realtimeChannel = supabase.channel('tv-realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, () => fetchData())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchData())
         .subscribe((status) => {
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             supabase.removeChannel(realtimeChannel);
