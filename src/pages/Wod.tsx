@@ -206,6 +206,16 @@ export default function Wod() {
 
   useEffect(() => { fetchWod(); }, [selectedDate, user]);
 
+  // Atualiza em tempo real quando o coach posta ou edita o WOD (sem precisar sair da aba)
+  useEffect(() => {
+    const channel = supabase
+      .channel('wod_page_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wods' }, () => fetchWod())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wod_results' }, () => fetchWod())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [selectedDate, user]);
+
   // Bloqueio do WOD por inatividade: só vale pra quem é 'athlete' (admin/coach nunca são bloqueados)
   useEffect(() => {
     if (!user) return;
@@ -456,4 +466,4 @@ export default function Wod() {
       </div>
     </div>
   );
-}
+        }
