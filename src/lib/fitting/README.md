@@ -29,11 +29,28 @@ origem inteira é redesenhada com essa transformação, as aberturas vazadas
 - `geometry.ts` — matemática pura e testável: cálculo de transformação de
   encaixe, detecção de bounding box a partir de um buffer RGBA, validação de
   desvio.
+- `slotFallback.ts` — dados puros: resolve qual spec usar na renderização
+  (spec explícita do item, ou fallback genérico por slot para itens antigos
+  sem `piece_spec_id`).
 - `canvasFit.ts` — camada dependente de Canvas/DOM: carregamento de imagem,
   detecção de bounding box de uma `HTMLImageElement`, encaixe de uma peça em
   um canvas 1024×1536, composição de várias peças sobre a base.
 - `index.ts` — API pública (`fitClothingPiece`, `fitOutfit`) e re-exports.
-- `geometry.test.ts` — testes unitários (`npm test`) da matemática pura.
+- `geometry.test.ts` / `slotFallback.test.ts` — testes unitários (`npm test`)
+  dos módulos puros.
+
+## Onde o encaixe é aplicado
+
+1. **No upload (Admin)** — `src/utils/avatarUpload.ts`: quando o admin define
+   o "Tipo de peça" (`piece_spec_id`) do item, a imagem é reencaixada na caixa
+   exata antes de ser salva no bucket (512×768).
+2. **Na renderização (todos os avatares)** — `src/lib/avatarFit.ts`
+   (`useFittedAvatarLayers`, usado pelo `AvatarPreview`): cada camada exibida
+   passa pelo mesmo encaixe em tempo de exibição, com cache por URL. Isso
+   corrige também os assets antigos do bucket (enviados antes do sistema de
+   encaixe ou sem tipo de peça definido) sem precisar reenviar nada. Itens sem
+   `piece_spec_id` usam o fallback por slot de `slotFallback.ts`; slots
+   ambíguos (`accessory`, `special`) mantêm o comportamento anterior.
 
 ## Uso
 

@@ -83,7 +83,19 @@ export function fitPieceToCanvas(
     };
   }
 
-  const validation = validateFit(detectedContentBox, spec.box);
+  // Normaliza a bounding box detectada (pixels da imagem de origem) para as
+  // coordenadas do canvas de referência antes de validar — sem isso, imagens
+  // que não sejam 1024×1536 (ex.: uploads 512×768) nunca seriam consideradas
+  // bem posicionadas mesmo quando estão.
+  const normX = CANVAS.width / (img.naturalWidth || CANVAS.width);
+  const normY = CANVAS.height / (img.naturalHeight || CANVAS.height);
+  const normalizedContentBox = {
+    x1: detectedContentBox.x1 * normX,
+    y1: detectedContentBox.y1 * normY,
+    x2: detectedContentBox.x2 * normX,
+    y2: detectedContentBox.y2 * normY,
+  };
+  const validation = validateFit(normalizedContentBox, spec.box);
   const wasAlreadyWellPositioned = validation.withinTolerance;
 
   const transform = computeFitTransform(detectedContentBox, spec.box, mode);
