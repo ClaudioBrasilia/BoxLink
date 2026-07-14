@@ -6,6 +6,14 @@
 //   • Chrome/Edge desktop e Android → Web Bluetooth API
 // Suporta UUIDs padrão + proprietários (Huawei/Xiaomi/genéricos) via catálogo
 // central em src/lib/heartRate.ts, com service discovery dinâmico.
+//
+// Robustez de conexão:
+//   • Pré-checagens antes do scan (Bluetooth ligado, Localização no Android).
+//   • Retry automático da conexão GATT (falhas transitórias / status 133).
+//   • Timeout que CANCELA a conexão pendente (evita conexão "fantasma").
+//   • Probe: só considera conectado quando uma characteristic entrega FC real.
+//   • Auto-reconexão silenciosa em queda de sinal, sem encerrar a sessão.
+//   • Último dispositivo persistido para reconexão com um toque.
 // ----------------------------------------------------------------------------
 // ⚠️ O plugin nativo é carregado por IMPORT DINÂMICO — nunca é avaliado no
 //    build/execução web puro, evitando quebrar Vercel/Netlify.
@@ -16,6 +24,7 @@ import type { ScanResult } from '@capacitor-community/bluetooth-le';
 import { supabase } from '../lib/supabase';
 import {
   HEART_RATE_SERVICE,
+  HEART_RATE_MEASUREMENT,
   POLAR_PMD_SERVICE,
   WAHOO_SERVICE,
   GENERIC_SERVICES,
@@ -37,6 +46,24 @@ async function getBleClient(): Promise<BleClientType> {
 }
 
 // ============================================================================
+// Constantes de conexão
+// ============================================================================
+const SCAN_DURATION_MS = 15000;
+const GATT_CONNECT_TIMEOUT_MS = 12000;
+// Conexões BLE no Android falham à 1ª tentativa com frequência (status 133);
+// tentar de novo resolve na maioria dos casos.
+const CONNECT_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 800;
+// Probe: tempo máximo aguardando a 1ª leitura de FC em cada characteristic.
+const PROBE_KNOWN_MS = 6000;
+const PROBE_GENERIC_MS = 4000;
+const PROBE_TOTAL_BUDGET_MS = 20000;
+// Auto-reconexão em queda de sinal.
+const RECONNECT_DELAYS_MS = [1000, 2000, 4000];
+
+const LAST_DEVICE_KEY = 'boxlink:lastBleDevice';
+
+// ============================================================================
 // Tipos
 // ============================================================================
 export interface DiscoveredDevice {
@@ -47,7 +74,18 @@ export interface DiscoveredDevice {
   serviceUUIDs?: string[];
 }
 
-export type ConnectionStatus = 'disconnected' | 'scanning' | 'connecting' | 'connected' | 'error';
+export interface LastDevice {
+  id: string;
+  name: string;
+}
+
+export type ConnectionStatus =
+  | 'disconnected'
+  | 'scanning'
+  | 'connecting'
+  | 'reconnecting'
+  | 'connected'
+  | 'error';
 
 interface UseBluetoothReturn {
   isSupported: boolean;
@@ -57,6 +95,7 @@ interface UseBluetoothReturn {
   error: string | null;
   devices: DiscoveredDevice[];
   connectedDevice: DiscoveredDevice | null;
+  lastDevice: LastDevice | null;
   heartRate: number | null;
   scan: () => Promise<void>;
   stopScan: () => Promise<void>;
@@ -72,6 +111,52 @@ function detectIOSWeb(): boolean {
   const ua = navigator.userAgent;
   const isIOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in document);
   return isIOS && !Capacitor.isNativePlatform();
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function loadLastDevice(): LastDevice | null {
+  try {
+    const raw = localStorage.getItem(LAST_DEVICE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.id === 'string' && typeof parsed.name === 'string') return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastDevice(device: LastDevice): void {
+  try {
+    localStorage.setItem(LAST_DEVICE_KEY, JSON.stringify(device));
+  } catch {
+    /* storage indisponível */
+  }
+}
+
+/** Converte erros técnicos do plugin/navegador em mensagens acionáveis. */
+function friendlyBleError(err: unknown): string {
+  const msg = String((err as any)?.message || err || '');
+  if (/permission|denied|not granted|autoriz/i.test(msg)) {
+    return 'Permissão de Bluetooth negada. Vá em Configurações → Apps → BoxLink → Permissões e permita "Dispositivos por perto" (ou Bluetooth).';
+  }
+  if (/bluetooth.*(off|disabled|unavailable)|adapter/i.test(msg)) {
+    return 'O Bluetooth está desligado. Ative o Bluetooth do aparelho e tente novamente.';
+  }
+  return msg || 'Erro de Bluetooth';
+}
+
+/** Candidato de assinatura descoberto no device (serviço + characteristic). */
+interface ProbeCandidate {
+  service: string;
+  characteristic: string;
+  /** UUID conhecido de FC → merece espera maior no probe. */
+  known: boolean;
+  /** 0x2A37 padrão: qualquer notificação já confirma que é o canal de FC. */
+  standard: boolean;
 }
 
 // ============================================================================
@@ -92,15 +177,34 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
   const [connectedDevice, setConnectedDevice] = useState<DiscoveredDevice | null>(null);
   const [heartRate, setHeartRate] = useState<number | null>(null);
+  const [lastDevice, setLastDevice] = useState<LastDevice | null>(loadLastDevice);
 
   const webDeviceRef = useRef<BluetoothDevice | null>(null);
   const webCharRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
   const nativeDeviceIdRef = useRef<string | null>(null);
   const activeSubRef = useRef<{ service: string; characteristic: string } | null>(null);
   const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const connectAbortRef = useRef<AbortController | null>(null);
   const lastBpmRef = useRef<number | null>(null);
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Espelho síncrono do status (callbacks de desconexão chegam fora do React).
+  const statusRef = useRef<ConnectionStatus>('disconnected');
+  const updateStatus = useCallback((s: ConnectionStatus) => {
+    statusRef.current = s;
+    setStatus(s);
+  }, []);
+
+  // true enquanto a desconexão foi pedida pelo usuário (não deve reconectar).
+  const intentionalDisconnectRef = useRef(false);
+  // Geração da sessão de conexão: bump cancela loops de retry/reconexão antigos.
+  const sessionGenRef = useRef(0);
+  // Localização desligada no Android (necessária p/ scan em Android ≤ 11).
+  const locationOffRef = useRef(false);
+
+  const rememberDevice = useCallback((device: LastDevice) => {
+    saveLastDevice(device);
+    setLastDevice(device);
+  }, []);
 
   // --------------------------------------------------------------------------
   // Broadcast do BPM para o Supabase (TV ao vivo). Throttle de 5s.
@@ -140,6 +244,17 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     setHeartRate(bpm);
   }, []);
 
+  const resetToDisconnected = useCallback(() => {
+    updateStatus('disconnected');
+    setConnectedDevice(null);
+    setHeartRate(null);
+    lastBpmRef.current = null;
+    nativeDeviceIdRef.current = null;
+    activeSubRef.current = null;
+    webCharRef.current = null;
+    removeFromSupabase();
+  }, [removeFromSupabase, updateStatus]);
+
   // --------------------------------------------------------------------------
   // Inicialização (nativo)
   // --------------------------------------------------------------------------
@@ -151,12 +266,49 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   }, [isNative]);
 
   // --------------------------------------------------------------------------
+  // Pré-checagens do ambiente nativo (Bluetooth ligado, Localização no Android)
+  // --------------------------------------------------------------------------
+  const ensureNativeReady = useCallback(async (Ble: BleClientType) => {
+    await Ble.initialize({ androidNeverForLocation: true });
+
+    let enabled = true;
+    try {
+      enabled = await Ble.isEnabled();
+    } catch {
+      /* se a checagem falhar, deixa o scan reportar o erro real */
+    }
+    if (!enabled) {
+      try {
+        await Ble.requestEnable(); // Android: diálogo do sistema; iOS: indisponível
+        enabled = await Ble.isEnabled();
+      } catch {
+        /* noop */
+      }
+    }
+    if (!enabled) {
+      throw new Error('O Bluetooth está desligado. Ative o Bluetooth do aparelho e busque novamente.');
+    }
+
+    // Android ≤ 11 exige o serviço de Localização LIGADO para o scan retornar
+    // resultados. Não bloqueia o scan (no 12+ não é necessário), mas guarda o
+    // estado para explicar um scan vazio.
+    locationOffRef.current = false;
+    if (Capacitor.getPlatform() === 'android') {
+      try {
+        locationOffRef.current = !(await Ble.isLocationEnabled());
+      } catch {
+        /* noop */
+      }
+    }
+  }, []);
+
+  // --------------------------------------------------------------------------
   // SCAN
   // --------------------------------------------------------------------------
   const scan = useCallback(async () => {
     setError(null);
     setDevices([]);
-    setStatus('scanning');
+    updateStatus('scanning');
 
     if (scanTimerRef.current) {
       clearTimeout(scanTimerRef.current);
@@ -175,12 +327,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       // ---------------- NATIVO ----------------
       if (isNative) {
         const Ble = await getBleClient();
-        await Ble.initialize({ androidNeverForLocation: true });
-        try {
-          await Ble.requestEnable();
-        } catch {
-          /* requestEnable pode não estar disponível */
-        }
+        await ensureNativeReady(Ble);
 
         const found = new Map<string, DiscoveredDevice>();
 
@@ -237,8 +384,13 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           } catch {
             /* noop */
           }
-          setStatus((s) => (s === 'scanning' ? 'disconnected' : s));
-        }, 15000);
+          if (found.size === 0 && locationOffRef.current) {
+            setError(
+              'Nenhum dispositivo encontrado. Em Android 11 ou anterior, o scan Bluetooth exige a Localização (GPS) ligada — ative-a nas configurações rápidas e busque novamente.'
+            );
+          }
+          if (statusRef.current === 'scanning') updateStatus('disconnected');
+        }, SCAN_DURATION_MS);
         return;
       }
 
@@ -256,14 +408,13 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           hasHeartRateService: true, // otimista — confirmamos ao conectar
         },
       ]);
-      setStatus('disconnected');
+      updateStatus('disconnected');
     } catch (err: any) {
       console.error('[BLE] scan erro', err);
-      const msg = err?.message || 'Erro ao escanear dispositivos';
-      if (err?.name !== 'NotFoundError') setError(msg);
-      setStatus(err?.name === 'NotFoundError' ? 'disconnected' : 'error');
+      if (err?.name !== 'NotFoundError') setError(friendlyBleError(err));
+      updateStatus(err?.name === 'NotFoundError' ? 'disconnected' : 'error');
     }
-  }, [isNative, isIOSWeb]);
+  }, [isNative, isIOSWeb, hasWebBluetooth, ensureNativeReady, updateStatus]);
 
   const stopScan = useCallback(async () => {
     if (scanTimerRef.current) {
@@ -278,190 +429,422 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         /* noop */
       }
     }
-    setStatus((s) => (s === 'scanning' ? 'disconnected' : s));
-  }, [isNative]);
+    if (statusRef.current === 'scanning') updateStatus('disconnected');
+  }, [isNative, updateStatus]);
 
   // --------------------------------------------------------------------------
-  // CONNECT — NATIVO (service discovery dinâmico)
+  // Ordena serviços/characteristics e monta a lista de candidatos ao probe.
   // --------------------------------------------------------------------------
+  const buildCandidates = useCallback(
+    (
+      services: { uuid: string; characteristics: { uuid: string; notifiable: boolean }[] }[]
+    ): ProbeCandidate[] => {
+      const sortedServices = [...services].sort((a, b) => {
+        const aHR = a.uuid.toLowerCase() === HEART_RATE_SERVICE;
+        const bHR = b.uuid.toLowerCase() === HEART_RATE_SERVICE;
+        if (aHR !== bHR) return aHR ? -1 : 1;
+        const aLikely = isLikelyHRService(a.uuid);
+        const bLikely = isLikelyHRService(b.uuid);
+        if (aLikely !== bLikely) return aLikely ? -1 : 1;
+        return 0;
+      });
+
+      const candidates: ProbeCandidate[] = [];
+      for (const service of sortedServices) {
+        const notifiable = service.characteristics.filter((c) => c.notifiable);
+        const prioritized = [...notifiable].sort((a, b) => {
+          const aKnown = isLikelyHRCharacteristic(a.uuid);
+          const bKnown = isLikelyHRCharacteristic(b.uuid);
+          if (aKnown !== bKnown) return aKnown ? -1 : 1;
+          return 0;
+        });
+        for (const char of prioritized) {
+          const uuid = char.uuid.toLowerCase();
+          candidates.push({
+            service: service.uuid,
+            characteristic: char.uuid,
+            known: isLikelyHRCharacteristic(uuid) || service.uuid.toLowerCase() === HEART_RATE_SERVICE,
+            standard: uuid === HEART_RATE_MEASUREMENT,
+          });
+        }
+      }
+      return candidates;
+    },
+    []
+  );
+
+  const noHeartRateError = () => {
+    const err = new Error(
+      'Dispositivo conectado, mas nenhuma leitura de FC chegou. Ative o modo "transmissão de FC" no dispositivo (ou inicie um treino nele) e tente novamente.'
+    );
+    err.name = 'NoHeartRateError';
+    return err;
+  };
+
+  // Callback de desconexão inesperada (definido via ref para evitar closures velhas).
+  const handleUnexpectedDisconnectRef = useRef<(deviceId: string) => void>(() => {});
+
+  // --------------------------------------------------------------------------
+  // CONNECT — NATIVO
+  // establishNative: 1 tentativa de GATT connect (com timeout que CANCELA a
+  // conexão pendente) + service discovery + probe das characteristics até uma
+  // entregar FC de verdade.
+  // --------------------------------------------------------------------------
+  const establishNative = useCallback(
+    async (deviceId: string): Promise<void> => {
+      const Ble = await getBleClient();
+      const gen = sessionGenRef.current;
+
+      await new Promise<void>((resolve, reject) => {
+        let timedOut = false;
+        const timer = setTimeout(() => {
+          timedOut = true;
+          // Sem isso, o connect segue em background e o device fica "ocupado"
+          // (conecta sozinho depois e a próxima tentativa falha).
+          Ble.disconnect(deviceId).catch(() => {});
+          reject(new Error('Timeout ao conectar. O dispositivo pode estar fora de alcance.'));
+        }, GATT_CONNECT_TIMEOUT_MS);
+
+        Ble.connect(deviceId, () => handleUnexpectedDisconnectRef.current(deviceId))
+          .then(() => {
+            clearTimeout(timer);
+            if (!timedOut) resolve();
+          })
+          .catch((e) => {
+            clearTimeout(timer);
+            if (!timedOut) reject(e);
+          });
+      });
+
+      const services = await Ble.getServices(deviceId);
+      console.log('[BLE] Serviços descobertos:', services.map((s) => s.uuid));
+
+      const candidates = buildCandidates(
+        services.map((s) => ({
+          uuid: s.uuid,
+          characteristics: (s.characteristics || []).map((c) => ({
+            uuid: c.uuid,
+            notifiable: !!(c.properties?.notify || c.properties?.indicate),
+          })),
+        }))
+      );
+
+      const probeStart = Date.now();
+      for (const cand of candidates) {
+        if (sessionGenRef.current !== gen) throw new Error('Operação cancelada.');
+        if (Date.now() - probeStart > PROBE_TOTAL_BUDGET_MS) break;
+
+        const waitMs = cand.known ? PROBE_KNOWN_MS : PROBE_GENERIC_MS;
+        const ok = await new Promise<boolean>((resolve) => {
+          let settled = false;
+          const finish = (v: boolean) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(v);
+          };
+          const timer = setTimeout(() => finish(false), waitMs);
+          Ble.startNotifications(deviceId, cand.service, cand.characteristic, (value) => {
+            const bpm = parseHeartRateFallback(value);
+            if (bpm !== null) pushHeartRate(bpm);
+            // 0x2A37 padrão: qualquer notificação confirma o canal de FC
+            // (cinta sem contato com a pele manda 0 bpm até "pegar").
+            if (bpm !== null || cand.standard) finish(true);
+          }).catch(() => finish(false));
+        });
+
+        if (ok) {
+          console.log(`[BLE] ✅ HR ativo em ${cand.service} / ${cand.characteristic}`);
+          nativeDeviceIdRef.current = deviceId;
+          activeSubRef.current = { service: cand.service, characteristic: cand.characteristic };
+          return;
+        }
+        try {
+          await Ble.stopNotifications(deviceId, cand.service, cand.characteristic);
+        } catch {
+          /* noop */
+        }
+        console.warn(`[BLE] Sem leitura de FC em ${cand.service}/${cand.characteristic}`);
+      }
+
+      try {
+        await Ble.disconnect(deviceId);
+      } catch {
+        /* noop */
+      }
+      throw noHeartRateError();
+    },
+    [buildCandidates, pushHeartRate]
+  );
+
   const connectNative = useCallback(
     async (deviceId: string): Promise<void> => {
       const Ble = await getBleClient();
+      await ensureNativeReady(Ble); // Bluetooth ligado? (importante p/ "Reconectar" sem scan)
       try {
         await Ble.stopLEScan();
       } catch {
         /* noop */
       }
+      if (scanTimerRef.current) {
+        clearTimeout(scanTimerRef.current);
+        scanTimerRef.current = null;
+      }
 
-      connectAbortRef.current = new AbortController();
-      const { signal } = connectAbortRef.current;
+      intentionalDisconnectRef.current = false;
+      const gen = ++sessionGenRef.current;
 
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        const timer = setTimeout(() => {
-          reject(new Error('Timeout ao conectar. O dispositivo pode estar fora de alcance.'));
-        }, 12000);
-        signal.addEventListener('abort', () => clearTimeout(timer));
-      });
-
-      const connectPromise = (async () => {
-        await Ble.connect(deviceId, () => {
-          console.log('[BLE] desconectado');
-          setStatus('disconnected');
-          setConnectedDevice(null);
-          setHeartRate(null);
-          lastBpmRef.current = null;
-          nativeDeviceIdRef.current = null;
-          activeSubRef.current = null;
-          removeFromSupabase();
-        });
-
-        const services = await Ble.getServices(deviceId);
-        console.log('[BLE] Serviços descobertos:', services.map((s) => s.uuid));
-
-        // Serviços: HR padrão → proprietários prováveis → resto
-        const sortedServices = [...services].sort((a, b) => {
-          const aHR = a.uuid.toLowerCase() === HEART_RATE_SERVICE;
-          const bHR = b.uuid.toLowerCase() === HEART_RATE_SERVICE;
-          if (aHR !== bHR) return aHR ? -1 : 1;
-          const aLikely = isLikelyHRService(a.uuid);
-          const bLikely = isLikelyHRService(b.uuid);
-          if (aLikely !== bLikely) return aLikely ? -1 : 1;
-          return 0;
-        });
-
-        for (const service of sortedServices) {
-          // getServices() já retorna as características embutidas em cada serviço.
-          const characteristics = service.characteristics || [];
-          const notifiable = characteristics.filter(
-            (c) => c.properties?.notify || c.properties?.indicate
-          );
-
-          const prioritized = [...notifiable].sort((a, b) => {
-            const aKnown = isLikelyHRCharacteristic(a.uuid);
-            const bKnown = isLikelyHRCharacteristic(b.uuid);
-            if (aKnown !== bKnown) return aKnown ? -1 : 1;
-            return 0;
-          });
-
-          for (const char of prioritized) {
-            try {
-              await Ble.startNotifications(deviceId, service.uuid, char.uuid, (value) => {
-                const bpm = parseHeartRateFallback(value);
-                if (bpm !== null) pushHeartRate(bpm);
-              });
-              console.log(`[BLE] ✅ HR ativo em ${service.uuid} / ${char.uuid}`);
-              nativeDeviceIdRef.current = deviceId;
-              activeSubRef.current = { service: service.uuid, characteristic: char.uuid };
-              return;
-            } catch (e) {
-              console.warn(`[BLE] Falha ao notificar ${service.uuid}/${char.uuid}:`, e);
-            }
+      let lastErr: unknown = null;
+      for (let attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt++) {
+        if (sessionGenRef.current !== gen) throw new Error('Operação cancelada.');
+        try {
+          await establishNative(deviceId);
+          lastErr = null;
+          break;
+        } catch (e: any) {
+          lastErr = e;
+          try {
+            await Ble.disconnect(deviceId);
+          } catch {
+            /* noop */
+          }
+          // Falta de leitura de FC é determinística — retry não ajuda.
+          if (e?.name === 'NoHeartRateError') break;
+          if (attempt < CONNECT_ATTEMPTS) {
+            console.warn(`[BLE] Tentativa ${attempt} falhou, tentando de novo...`, e);
+            await sleep(RETRY_BASE_DELAY_MS * attempt);
           }
         }
-
-        throw new Error(
-          'Dispositivo conectado mas não foi possível ativar o monitor cardíaco. ' +
-            'Verifique se o dispositivo está no modo "transmissão" ou pareie primeiro em outro app.'
-        );
-      })();
-
-      await Promise.race([connectPromise, timeoutPromise]);
+      }
+      if (lastErr) throw lastErr;
 
       const dev =
         devices.find((d) => d.id === deviceId) || {
           id: deviceId,
-          name: `Dispositivo ${deviceId.slice(-5)}`,
+          name: lastDevice?.id === deviceId ? lastDevice.name : `Dispositivo ${deviceId.slice(-5)}`,
           hasHeartRateService: true,
         };
       setConnectedDevice(dev);
-      setStatus('connected');
+      rememberDevice({ id: dev.id, name: dev.name });
+      updateStatus('connected');
     },
-    [devices, pushHeartRate, removeFromSupabase]
+    [devices, ensureNativeReady, establishNative, lastDevice, rememberDevice, updateStatus]
   );
 
   // --------------------------------------------------------------------------
-  // CONNECT — WEB (service discovery dinâmico)
+  // CONNECT — WEB (mesma estratégia de probe do nativo)
   // --------------------------------------------------------------------------
+  const establishWeb = useCallback(
+    async (device: BluetoothDevice): Promise<void> => {
+      const gen = sessionGenRef.current;
+      const server = await device.gatt!.connect();
+
+      let services: BluetoothRemoteGATTService[];
+      try {
+        services = await server.getPrimaryServices();
+      } catch {
+        services = [];
+        for (const svcUUID of [HEART_RATE_SERVICE, POLAR_PMD_SERVICE, WAHOO_SERVICE, ...GENERIC_SERVICES]) {
+          try {
+            services.push(await server.getPrimaryService(svcUUID));
+          } catch {
+            /* serviço ausente */
+          }
+        }
+      }
+
+      // Descobre as characteristics de cada serviço para montar os candidatos.
+      const withChars: { uuid: string; chars: Map<string, BluetoothRemoteGATTCharacteristic> }[] = [];
+      for (const service of services) {
+        try {
+          const chars = await service.getCharacteristics();
+          withChars.push({
+            uuid: service.uuid,
+            chars: new Map(chars.map((c) => [c.uuid.toLowerCase(), c])),
+          });
+        } catch {
+          /* serviço sem characteristics acessíveis */
+        }
+      }
+
+      const candidates = buildCandidates(
+        withChars.map((s) => ({
+          uuid: s.uuid,
+          characteristics: Array.from(s.chars.values()).map((c) => ({
+            uuid: c.uuid,
+            notifiable: !!(c.properties.notify || c.properties.indicate),
+          })),
+        }))
+      );
+
+      const probeStart = Date.now();
+      for (const cand of candidates) {
+        if (sessionGenRef.current !== gen) throw new Error('Operação cancelada.');
+        if (Date.now() - probeStart > PROBE_TOTAL_BUDGET_MS) break;
+
+        const svc = withChars.find((s) => s.uuid === cand.service);
+        const char = svc?.chars.get(cand.characteristic.toLowerCase());
+        if (!char) continue;
+
+        const waitMs = cand.known ? PROBE_KNOWN_MS : PROBE_GENERIC_MS;
+
+        // O listener do probe é o mesmo que fica ativo após a conexão — em caso
+        // de sucesso ele permanece registrado; em falha é removido.
+        const listener = (e: any) => {
+          const value: DataView = e.target.value;
+          const bpm = parseHeartRateFallback(value);
+          if (bpm !== null) pushHeartRate(bpm);
+        };
+
+        const ok = await new Promise<boolean>((resolve) => {
+          let settled = false;
+          const finish = (v: boolean) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            if (!v) char.removeEventListener('characteristicvaluechanged', probeListener);
+            resolve(v);
+          };
+          const probeListener = (e: any) => {
+            listener(e);
+            const value: DataView = e.target.value;
+            const bpm = parseHeartRateFallback(value);
+            if (bpm !== null || cand.standard) finish(true);
+          };
+          const timer = setTimeout(() => finish(false), waitMs);
+          char.addEventListener('characteristicvaluechanged', probeListener);
+          char.startNotifications().catch(() => finish(false));
+        });
+
+        if (ok) {
+          webCharRef.current = char;
+          return;
+        }
+        try {
+          await char.stopNotifications();
+        } catch {
+          /* noop */
+        }
+      }
+
+      try {
+        device.gatt?.disconnect();
+      } catch {
+        /* noop */
+      }
+      throw noHeartRateError();
+    },
+    [buildCandidates, pushHeartRate]
+  );
+
   const connectWeb = useCallback(async (): Promise<void> => {
     const device = webDeviceRef.current;
     if (!device) throw new Error('Nenhum dispositivo selecionado.');
 
-    device.addEventListener('gattserverdisconnected', () => {
-      setStatus('disconnected');
-      setConnectedDevice(null);
-      setHeartRate(null);
-      lastBpmRef.current = null;
-      webCharRef.current = null;
-      removeFromSupabase();
-    });
+    intentionalDisconnectRef.current = false;
+    const gen = ++sessionGenRef.current;
 
-    const server = await device.gatt!.connect();
-
-    let services: BluetoothRemoteGATTService[];
-    try {
-      services = await server.getPrimaryServices();
-    } catch {
-      services = [];
-      for (const svcUUID of [HEART_RATE_SERVICE, POLAR_PMD_SERVICE, WAHOO_SERVICE, ...GENERIC_SERVICES]) {
-        try {
-          services.push(await server.getPrimaryService(svcUUID));
-        } catch {
-          /* serviço ausente */
-        }
-      }
-    }
-
-    services.sort((a, b) => {
-      if (a.uuid.toLowerCase() === HEART_RATE_SERVICE) return -1;
-      if (b.uuid.toLowerCase() === HEART_RATE_SERVICE) return 1;
-      const aL = isLikelyHRService(a.uuid);
-      const bL = isLikelyHRService(b.uuid);
-      if (aL !== bL) return aL ? -1 : 1;
-      return 0;
-    });
-
-    for (const service of services) {
-      let characteristics: BluetoothRemoteGATTCharacteristic[];
+    let lastErr: unknown = null;
+    for (let attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt++) {
+      if (sessionGenRef.current !== gen) throw new Error('Operação cancelada.');
       try {
-        characteristics = await service.getCharacteristics();
-      } catch {
-        continue;
-      }
-
-      const notifiable = characteristics.filter((c) => c.properties.notify || c.properties.indicate);
-      const prioritized = [...notifiable].sort((a, b) => {
-        const aK = isLikelyHRCharacteristic(a.uuid);
-        const bK = isLikelyHRCharacteristic(b.uuid);
-        if (aK !== bK) return aK ? -1 : 1;
-        return 0;
-      });
-
-      for (const char of prioritized) {
+        await establishWeb(device);
+        lastErr = null;
+        break;
+      } catch (e: any) {
+        lastErr = e;
         try {
-          await char.startNotifications();
-          char.addEventListener('characteristicvaluechanged', (e: any) => {
-            const value: DataView = e.target.value;
-            const bpm = parseHeartRateFallback(value);
-            if (bpm !== null) pushHeartRate(bpm);
-          });
-          webCharRef.current = char;
-          setConnectedDevice({
-            id: device.id,
-            name: device.name || `Dispositivo ${device.id.slice(-5)}`,
-            hasHeartRateService: true,
-          });
-          setStatus('connected');
-          return;
+          device.gatt?.disconnect();
         } catch {
-          continue;
+          /* noop */
         }
+        if (e?.name === 'NoHeartRateError') break;
+        if (attempt < CONNECT_ATTEMPTS) await sleep(RETRY_BASE_DELAY_MS * attempt);
       }
     }
+    if (lastErr) throw lastErr;
 
-    throw new Error(
-      'Dispositivo conectado mas não expõe Frequência Cardíaca. Tente outro dispositivo ou ative o modo de transmissão.'
+    // Listener {once:true} — re-registrado a cada conexão bem-sucedida para
+    // não acumular handlers duplicados no mesmo device.
+    device.addEventListener(
+      'gattserverdisconnected',
+      () => handleUnexpectedDisconnectRef.current(device.id),
+      { once: true }
     );
-  }, [pushHeartRate, removeFromSupabase]);
+
+    const dev = {
+      id: device.id,
+      name: device.name || `Dispositivo ${device.id.slice(-5)}`,
+      hasHeartRateService: true,
+    };
+    setConnectedDevice(dev);
+    rememberDevice({ id: dev.id, name: dev.name });
+    updateStatus('connected');
+  }, [establishWeb, rememberDevice, updateStatus]);
+
+  // --------------------------------------------------------------------------
+  // AUTO-RECONEXÃO em queda de sinal (não encerra a sessão de treino).
+  // --------------------------------------------------------------------------
+  const autoReconnect = useCallback(
+    async (deviceId: string) => {
+      const gen = ++sessionGenRef.current;
+      updateStatus('reconnecting');
+      setHeartRate(null);
+
+      for (let i = 0; i < RECONNECT_DELAYS_MS.length; i++) {
+        await sleep(RECONNECT_DELAYS_MS[i]);
+        if (sessionGenRef.current !== gen || intentionalDisconnectRef.current) return;
+        try {
+          if (isNative) {
+            await establishNative(deviceId);
+          } else {
+            const device = webDeviceRef.current;
+            if (!device) break;
+            await establishWeb(device);
+            device.addEventListener(
+              'gattserverdisconnected',
+              () => handleUnexpectedDisconnectRef.current(device.id),
+              { once: true }
+            );
+          }
+          if (sessionGenRef.current !== gen || intentionalDisconnectRef.current) {
+            // usuário desistiu enquanto reconectava — desfaz a conexão
+            try {
+              if (isNative) (await getBleClient()).disconnect(deviceId).catch(() => {});
+              else webDeviceRef.current?.gatt?.disconnect();
+            } catch {
+              /* noop */
+            }
+            return;
+          }
+          console.log(`[BLE] 🔄 Reconectado após queda (tentativa ${i + 1})`);
+          updateStatus('connected');
+          return;
+        } catch (e) {
+          console.warn(`[BLE] Reconexão ${i + 1}/${RECONNECT_DELAYS_MS.length} falhou`, e);
+        }
+      }
+
+      if (sessionGenRef.current === gen) resetToDisconnected();
+    },
+    [isNative, establishNative, establishWeb, resetToDisconnected, updateStatus]
+  );
+
+  useEffect(() => {
+    handleUnexpectedDisconnectRef.current = (deviceId: string) => {
+      console.log('[BLE] desconectado', deviceId);
+      activeSubRef.current = null;
+      nativeDeviceIdRef.current = null;
+      webCharRef.current = null;
+      if (intentionalDisconnectRef.current) {
+        resetToDisconnected();
+        return;
+      }
+      // Queda durante conexão/probe: quem trata é o próprio fluxo de connect.
+      if (statusRef.current !== 'connected') return;
+      void autoReconnect(deviceId);
+    };
+  }, [autoReconnect, resetToDisconnected]);
 
   // --------------------------------------------------------------------------
   // CONNECT — dispatcher
@@ -469,25 +852,25 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   const connect = useCallback(
     async (deviceId: string) => {
       setError(null);
-      setStatus('connecting');
+      updateStatus('connecting');
       try {
         if (isNative) await connectNative(deviceId);
         else await connectWeb();
       } catch (err: any) {
         console.error('[BLE] connect erro', err);
-        setError(err?.name === 'AbortError' ? 'Operação cancelada.' : err?.message || 'Erro ao conectar');
-        setStatus('error');
+        setError(err?.name === 'AbortError' ? 'Operação cancelada.' : friendlyBleError(err));
+        updateStatus('error');
       }
     },
-    [isNative, connectNative, connectWeb]
+    [isNative, connectNative, connectWeb, updateStatus]
   );
 
   // --------------------------------------------------------------------------
-  // DISCONNECT
+  // DISCONNECT (pedido pelo usuário — não dispara auto-reconexão)
   // --------------------------------------------------------------------------
   const disconnect = useCallback(async () => {
-    connectAbortRef.current?.abort();
-    connectAbortRef.current = null;
+    intentionalDisconnectRef.current = true;
+    sessionGenRef.current++;
 
     try {
       if (isNative && nativeDeviceIdRef.current) {
@@ -501,8 +884,6 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           }
         }
         await Ble.disconnect(nativeDeviceIdRef.current);
-        nativeDeviceIdRef.current = null;
-        activeSubRef.current = null;
       } else if (webDeviceRef.current?.gatt?.connected) {
         webDeviceRef.current.gatt.disconnect();
       }
@@ -514,12 +895,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       clearInterval(syncTimerRef.current);
       syncTimerRef.current = null;
     }
-    removeFromSupabase();
-    lastBpmRef.current = null;
-    setStatus('disconnected');
-    setConnectedDevice(null);
-    setHeartRate(null);
-  }, [isNative, removeFromSupabase]);
+    resetToDisconnected();
+  }, [isNative, resetToDisconnected]);
 
   // --------------------------------------------------------------------------
   // Auto-reconexão Web (Chrome 122+)
@@ -554,6 +931,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     error,
     devices,
     connectedDevice,
+    lastDevice,
     heartRate,
     scan,
     stopScan,

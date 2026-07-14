@@ -145,30 +145,36 @@ function ModeSelector({ onPick, platform }: { onPick: (m: Mode) => void; platfor
 
 // ─── Modo: Conexão Direta (Bluetooth LE) ─────────────────────────────────────
 function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallback: () => void; canFallback: boolean }) {
-  const { status, error, devices, connectedDevice, heartRate, scan, stopScan, connect, disconnect, isSupported, isIOSWeb } =
-    useBluetooth(userId);
+  const {
+    status, error, devices, connectedDevice, lastDevice, heartRate,
+    scan, stopScan, connect, disconnect, isSupported, isIOSWeb, isNative,
+  } = useBluetooth(userId);
   const [hasScanned, setHasScanned] = useState(false);
   const [finished, setFinished] = useState(false);
 
   const isScanning = status === 'scanning';
   const isConnecting = status === 'connecting';
   const isConnected = status === 'connected';
+  const isReconnecting = status === 'reconnecting';
+  // Sessão segue ativa durante a auto-reconexão — queda de sinal não encerra o treino.
+  const isSessionActive = isConnected || isReconnecting;
 
-  const { samples, reset, startedAt } = useHeartRateSession(heartRate, isConnected);
+  const { samples, reset, startedAt } = useHeartRateSession(heartRate, isSessionActive);
   const bio = useUserBiometrics(userId);
 
   useEffect(() => {
     if (isScanning) setHasScanned(true);
   }, [isScanning]);
 
-  // Mostra o resumo quando a sessão conectada termina (clique OU queda do sinal).
+  // Mostra o resumo quando a sessão conectada termina (clique OU queda do sinal
+  // sem conseguir reconectar).
   const wasConnected = useRef(false);
   useEffect(() => {
-    if (wasConnected.current && !isConnected && samples.length >= MIN_SUMMARY_SAMPLES) {
+    if (wasConnected.current && !isSessionActive && samples.length >= MIN_SUMMARY_SAMPLES) {
       setFinished(true);
     }
-    wasConnected.current = isConnected;
-  }, [isConnected, samples.length]);
+    wasConnected.current = isSessionActive;
+  }, [isSessionActive, samples.length]);
 
   const emptyAfterScan = hasScanned && !isScanning && !isConnected && devices.length === 0;
 
@@ -182,10 +188,23 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
     return <HeartRateSummary samples={samples} deviceName={connectedDevice?.name} bio={bio} startedAt={startedAt} onClose={closeSummary} />;
   }
 
-  if (isConnected) {
+  if (isSessionActive) {
     return (
       <div className="flex flex-col gap-4">
-        <BpmDisplay bpm={heartRate} deviceName={connectedDevice?.name} waitingLabel="Conectado — aguardando leitura de FC..." />
+        {isReconnecting ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="rounded-2xl bg-yellow-400/5 border border-yellow-400/20 p-6 flex flex-col items-center gap-2">
+            <Loader2 className="w-8 h-8 text-yellow-400 animate-spin" />
+            <p className="text-yellow-400 text-xs font-black uppercase tracking-widest text-center">
+              Sinal perdido — reconectando{connectedDevice?.name ? ` a ${connectedDevice.name}` : ''}...
+            </p>
+            <p className="text-white/30 text-[9px] font-black uppercase tracking-widest text-center">
+              Seu treino continua sendo registrado
+            </p>
+          </motion.div>
+        ) : (
+          <BpmDisplay bpm={heartRate} deviceName={connectedDevice?.name} waitingLabel="Conectado — aguardando leitura de FC..." />
+        )}
         {error && <ErrorBox message={error} />}
         <button onClick={disconnect}
           className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-black uppercase tracking-widest hover:bg-red-500/20 transition-all">
@@ -252,6 +271,16 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
       )}
 
       {error && <ErrorBox message={error} />}
+
+      {/* Reconexão com um toque ao último dispositivo usado (nativo: conecta
+          direto pelo ID, sem precisar de novo scan) */}
+      {isNative && lastDevice && !isScanning && !isConnecting && (
+        <button onClick={() => connect(lastDevice.id)}
+          className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-primary/10 border border-primary/30 text-primary text-xs font-black uppercase tracking-widest hover:bg-primary/20 transition-all">
+          <RefreshCw className="w-4 h-4" />
+          <span className="truncate">Reconectar a {lastDevice.name}</span>
+        </button>
+      )}
 
       {/* Fallback automático quando o scan não acha nada */}
       {emptyAfterScan && canFallback && (
