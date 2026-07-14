@@ -30,7 +30,8 @@ type Mode = 'select' | 'ble' | 'health';
 const DEVICE_TIPS: { name: string; tip: string }[] = [
   { name: 'Polar / Wahoo / cintas',   tip: 'Umedeça os eletrodos antes de vestir. Aparecem como "Polar H10", "TICKR" etc.' },
   { name: 'Garmin (relógio)',         tip: 'Inicie uma atividade → Configurações → Transmitir FC. Depois busque aqui.' },
-  { name: 'Samsung / WearOS',         tip: 'Galaxy Watch não transmite FC por Bluetooth direto. Use "Sincronizar com App de Saúde" (Health Connect).' },
+  { name: 'Samsung Galaxy Watch',     tip: 'Não transmite FC por Bluetooth direto. Use "Sincronizar com App de Saúde" (Health Connect) ou instale um app transmissor no relógio (ex.: "Heart for Bluetooth").' },
+  { name: 'Samsung Galaxy Fit (pulseira)', tip: 'Conecta direto: inicie um treino NA PULSEIRA (medição contínua de FC) e busque aqui. Se falhar, feche o app Galaxy Wearable — conectada ao celular, ela recusa o BoxLink.' },
   { name: 'iPhone (navegador)',       tip: 'Safari e Chrome do iPhone não têm Bluetooth. Abra o BoxLink pelo navegador Bluefy (grátis na App Store) para conectar sem o app nativo.' },
   { name: 'Apple Watch',              tip: 'Não transmite FC por Bluetooth. Use "Sincronizar com App de Saúde" (Apple Health) ou um app broadcaster (ex.: HeartCast) aberto no Bluefy.' },
   { name: 'Huawei / Xiaomi / genéricos', tip: 'Muitos usam UUID proprietário (0x3802) — já suportado. Se aparecer só como "Watch", confira pelo endereço/RSSI.' },
