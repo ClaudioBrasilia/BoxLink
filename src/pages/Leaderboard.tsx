@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import ShareRankingButton from '../components/ShareRankingButton';
 import AthletePhoto from '../components/AthletePhoto';
 import { supabase } from '../lib/supabase';
+import { getWodByDate, getLatestWod } from '../lib/wods';
 import { formatInTimeZone } from 'date-fns-tz';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
 
@@ -70,7 +71,7 @@ export default function Leaderboard() {
         { data: checkinsMonth },
         { data: clansData },
         { data: membershipsData },
-        { data: todayWod },
+        todayWod,
       ] = await Promise.all([
         supabase.from('profiles').select('*').eq('status', 'approved'),
         supabase.from('box_settings').select('inactivity, name, logo').maybeSingle(),
@@ -78,7 +79,7 @@ export default function Leaderboard() {
         supabase.from('checkins').select('user_id, date').gte('date', firstDayOfMonth),
         supabase.from('clans').select('*').eq('is_active', true),
         supabase.from('clan_memberships').select('clan_id, user_id').eq('status', 'approved'),
-        supabase.from('wods').select('*').eq('date', todayStr).maybeSingle(),
+        getWodByDate(todayStr),
       ]);
 
       if (usersError) throw usersError;
@@ -169,8 +170,7 @@ export default function Leaderboard() {
       // ── WOD ───────────────────────────────────────────────────────────────
       let activeWod = todayWod;
       if (!activeWod) {
-        const { data: latestWods } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1);
-        activeWod = latestWods?.[0] ?? null;
+        activeWod = await getLatestWod(todayStr);
       }
       setWodInfo(activeWod);
 

@@ -83,24 +83,36 @@ export default function Coach() {
       return;
     }
 
-    const { data, error } = await supabase
+    const payload = {
+      name: newWod.name,
+      type: newWod.type,
+      warmup: newWod.warmup,
+      skill: newWod.skill,
+      rx: newWod.rx,
+      scaled: newWod.scaled,
+      reps_per_round: isAmrap(newWod.type || '') ? (newWod.reps_per_round || null) : null,
+    };
+
+    // Se já existe WOD nesta data, atualiza em vez de inserir — duplicar a
+    // data fazia a TV e o app continuarem presos no WOD antigo.
+    const { data: existing } = await supabase
       .from('wods')
-      .insert({
-        date: newWod.date,
-        name: newWod.name,
-        type: newWod.type,
-        warmup: newWod.warmup,
-        skill: newWod.skill,
-        rx: newWod.rx,
-        scaled: newWod.scaled,
-        reps_per_round: isAmrap(newWod.type || '') ? (newWod.reps_per_round || null) : null,
-      })
-      .select()
-      .single();
+      .select('id')
+      .eq('date', newWod.date)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const { data, error } = existing && existing.length > 0
+      ? await supabase.from('wods').update(payload).eq('id', existing[0].id).select().single()
+      : await supabase.from('wods').insert({ date: newWod.date, ...payload }).select().single();
 
     if (!error && data) {
-      setWods([data, ...wods]);
-      toast.success('WOD postado com sucesso!');
+      setWods(existing && existing.length > 0
+        ? wods.map(w => w.id === data.id ? data : w)
+        : [data, ...wods]);
+      toast.success(existing && existing.length > 0
+        ? 'Já existia um WOD nesta data — ele foi atualizado!'
+        : 'WOD postado com sucesso!');
       setNewWod({
         date: formatInTimeZone(new Date(), TIMEZONE, 'yyyy-MM-dd'),
         name: '',
