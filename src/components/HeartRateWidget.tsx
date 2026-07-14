@@ -9,6 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Heart, Bluetooth, BluetoothOff, Loader2, AlertCircle, X, Watch,
   ChevronDown, ChevronUp, Zap, RefreshCw, Settings, ArrowLeft, Activity,
+  Globe, Copy, Check, ExternalLink,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
@@ -107,6 +108,71 @@ function DeviceTips() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// ─── Guia para iPhone na web (Apple bloqueia Web Bluetooth no WebKit) ────────
+const BLUEFY_APP_STORE_URL = 'https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055';
+
+function IOSWebGuide() {
+  const [copied, setCopied] = useState(false);
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      /* clipboard indisponível — o usuário pode copiar pela barra de endereço */
+    }
+  };
+
+  const steps = [
+    'Baixe o navegador Bluefy (grátis) na App Store',
+    'Copie o link do BoxLink e abra no Bluefy',
+    'Toque em "Buscar Dispositivos" e conecte seu monitor',
+  ];
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+      className="rounded-2xl bg-white/5 border border-white/10 p-4 flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <Globe className="w-5 h-5 text-primary" />
+        <p className="text-white text-xs font-black uppercase tracking-widest">Bluetooth no iPhone</p>
+      </div>
+
+      <p className="text-white/50 text-[10px] leading-relaxed">
+        A Apple bloqueia o Bluetooth em todos os navegadores do iPhone (Safari, Chrome, Edge...).
+        Para conectar seu monitor de FC, use o navegador gratuito{' '}
+        <span className="text-primary font-black">Bluefy</span>:
+      </p>
+
+      <div className="flex flex-col gap-2">
+        {steps.map((step, i) => (
+          <div key={i} className="flex items-start gap-2.5">
+            <span className="shrink-0 w-5 h-5 rounded-full bg-primary/15 border border-primary/30 text-primary text-[10px] font-black flex items-center justify-center">
+              {i + 1}
+            </span>
+            <p className="text-white/60 text-[10px] font-bold leading-relaxed pt-0.5">{step}</p>
+          </div>
+        ))}
+      </div>
+
+      <a href={BLUEFY_APP_STORE_URL} target="_blank" rel="noopener noreferrer"
+        className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-primary text-black text-xs font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-[0_0_20px_rgba(202,253,0,0.2)]">
+        <ExternalLink className="w-4 h-4" /> Baixar Bluefy na App Store
+      </a>
+
+      <button onClick={copyLink}
+        className="flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl bg-white/5 border border-white/10 text-white/60 text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all">
+        {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+        {copied ? 'Link copiado!' : 'Copiar link do BoxLink'}
+      </button>
+
+      <p className="text-white/30 text-[9px] leading-relaxed text-center">
+        Tem Apple Watch? Instale um app transmissor no relógio (ex.: HeartCast) e conecte pelo Bluefy.
+      </p>
+    </motion.div>
   );
 }
 
@@ -215,6 +281,12 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
     );
   }
 
+  // iPhone no navegador comum: sem Web Bluetooth (bloqueio da Apple no WebKit).
+  // Mostra o passo a passo do Bluefy em vez de um botão desabilitado.
+  if (isIOSWeb && !isSupported) {
+    return <IOSWebGuide />;
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* Lista de dispositivos encontrados (prováveis monitores de FC por
@@ -275,9 +347,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
           <p className="text-white/40 text-xs font-black uppercase tracking-wider text-center">
             {isSupported
               ? 'Conecte seu relógio ou cinto cardíaco'
-              : isIOSWeb
-                ? 'iPhone: abra o BoxLink pelo navegador Bluefy (App Store) para conectar via Bluetooth'
-                : 'Use o app instalado, Chrome ou Edge para conectar'}
+              : 'Use o app instalado, Chrome ou Edge para conectar'}
           </p>
         </motion.div>
       )}
