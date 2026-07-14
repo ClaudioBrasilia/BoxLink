@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Calendar, Megaphone, Plus, Settings, ChevronRight, Activity, Timer, Trophy, Check, X, Shield, UserPlus, Info, Edit2, Save } from 'lucide-react';
+import { LayoutDashboard, Users, Calendar, Megaphone, Plus, Settings, ChevronRight, Activity, Timer, Trophy, Check, X, Shield, UserPlus, Info, Edit2, Save, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Wod, User } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -83,24 +83,36 @@ export default function Coach() {
       return;
     }
 
-    const { data, error } = await supabase
+    const payload = {
+      name: newWod.name,
+      type: newWod.type,
+      warmup: newWod.warmup,
+      skill: newWod.skill,
+      rx: newWod.rx,
+      scaled: newWod.scaled,
+      reps_per_round: isAmrap(newWod.type || '') ? (newWod.reps_per_round || null) : null,
+    };
+
+    // Se já existe WOD nesta data, atualiza em vez de inserir — duplicar a
+    // data fazia a TV e o app continuarem presos no WOD antigo.
+    const { data: existing } = await supabase
       .from('wods')
-      .insert({
-        date: newWod.date,
-        name: newWod.name,
-        type: newWod.type,
-        warmup: newWod.warmup,
-        skill: newWod.skill,
-        rx: newWod.rx,
-        scaled: newWod.scaled,
-        reps_per_round: isAmrap(newWod.type || '') ? (newWod.reps_per_round || null) : null,
-      })
-      .select()
-      .single();
+      .select('id')
+      .eq('date', newWod.date)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const { data, error } = existing && existing.length > 0
+      ? await supabase.from('wods').update(payload).eq('id', existing[0].id).select().single()
+      : await supabase.from('wods').insert({ date: newWod.date, ...payload }).select().single();
 
     if (!error && data) {
-      setWods([data, ...wods]);
-      toast.success('WOD postado com sucesso!');
+      setWods(existing && existing.length > 0
+        ? wods.map(w => w.id === data.id ? data : w)
+        : [data, ...wods]);
+      toast.success(existing && existing.length > 0
+        ? 'Já existia um WOD nesta data — ele foi atualizado!'
+        : 'WOD postado com sucesso!');
       setNewWod({
         date: formatInTimeZone(new Date(), TIMEZONE, 'yyyy-MM-dd'),
         name: '',
@@ -196,6 +208,20 @@ export default function Coach() {
       toast.success('WOD atualizado com sucesso!');
     } else {
       toast.error('Erro ao atualizar: ' + error.message);
+    }
+  };
+
+  const handleDeleteWod = async (wod: Wod) => {
+    const dateBr = (wod.date || '').split('-').reverse().join('/');
+    if (!confirm(`Excluir o WOD "${wod.name}" de ${dateBr}?\n\nOs resultados lançados pelos alunos neste WOD também serão apagados. Esta ação não pode ser desfeita.`)) return;
+    // .select() confirma que a linha foi mesmo apagada — sem isso, um delete
+    // barrado pelo RLS (usuário não-admin) voltaria sem erro e sem efeito.
+    const { data, error } = await supabase.from('wods').delete().eq('id', wod.id).select('id');
+    if (!error && data && data.length > 0) {
+      setWods(wods.filter(w => w.id !== wod.id));
+      toast.success('WOD excluído!');
+    } else {
+      toast.error('Erro ao excluir WOD: ' + (error?.message || 'sem permissão para excluir'));
     }
   };
 
@@ -377,17 +403,24 @@ export default function Coach() {
                         <h4 className="text-xl font-headline font-black text-on-surface uppercase italic">{historyWod.name}</h4>
                         <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mt-1">{historyWod.type}</p>
                       </div>
-                      <button onClick={() => setEditingWod({
-                          ...historyWod,
-                          warmup: historyWod.warmup || '',
-                          skill: historyWod.skill || '',
-                          rx: historyWod.rx || '',
-                          scaled: historyWod.scaled || '',
-                        })}
-                        className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary hover:text-background transition-all flex items-center gap-1">
-                        <Edit2 className="w-4 h-4" />
-                        <span className="text-[9px] font-black uppercase">EDITAR</span>
-                      </button>
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditingWod({
+                            ...historyWod,
+                            warmup: historyWod.warmup || '',
+                            skill: historyWod.skill || '',
+                            rx: historyWod.rx || '',
+                            scaled: historyWod.scaled || '',
+                          })}
+                          className="bg-primary/20 text-primary p-2 rounded-xl hover:bg-primary hover:text-background transition-all flex items-center gap-1">
+                          <Edit2 className="w-4 h-4" />
+                          <span className="text-[9px] font-black uppercase">EDITAR</span>
+                        </button>
+                        <button onClick={() => handleDeleteWod(historyWod)}
+                          className="bg-error/20 text-error p-2 rounded-xl hover:bg-error hover:text-background transition-all flex items-center gap-1">
+                          <Trash2 className="w-4 h-4" />
+                          <span className="text-[9px] font-black uppercase">EXCLUIR</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 

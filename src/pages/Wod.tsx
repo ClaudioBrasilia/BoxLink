@@ -8,6 +8,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
+import { getWodByDate, getLatestWod } from '../lib/wods';
 import { addReward, getRewardSettings } from '../utils/rewards';
 import { calcInactivity, InactivitySettings, InactivityState } from '../utils/inactivity';
 import HeartRateDisplay from '../components/HeartRateDisplay';
@@ -230,10 +231,9 @@ export default function Wod() {
     if (!user) return;
     setLoading(true); setSubmitted(false); setExistingResultId(null); setResult('');
     const dateStr = formatInTimeZone(selectedDate, TIMEZONE, 'yyyy-MM-dd');
-    let { data: wodData } = await supabase.from('wods').select('*').eq('date', dateStr).maybeSingle();
+    let wodData = await getWodByDate(dateStr);
     if (!wodData && isSameDay(selectedDate, new Date())) {
-      const { data: latestWod } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
-      wodData = latestWod;
+      wodData = await getLatestWod(dateStr);
     }
     setWod(wodData ?? null);
     if (wodData) {

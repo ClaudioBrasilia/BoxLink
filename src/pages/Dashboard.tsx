@@ -8,6 +8,7 @@ import { Wod, User } from '../types';
 import confetti from 'canvas-confetti';
 import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
+import { getWodByDate, getLatestWod } from '../lib/wods';
 import { addReward, checkAndPayWeeklyBonus, getRewardSettings } from '../utils/rewards';
 import { useInactivity } from '../hooks/useInactivity';
 import HeartRateWidget from '../components/HeartRateWidget';
@@ -44,10 +45,9 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     const todayDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-    let { data: wodsData } = await supabase.from('wods').select('*').eq('date', todayDate).maybeSingle();
+    let wodsData = await getWodByDate(todayDate);
     if (!wodsData) {
-      const { data: latestWod } = await supabase.from('wods').select('*').order('date', { ascending: false }).limit(1).maybeSingle();
-      wodsData = latestWod;
+      wodsData = await getLatestWod(todayDate);
     }
     if (wodsData) setWod(wodsData);
 
