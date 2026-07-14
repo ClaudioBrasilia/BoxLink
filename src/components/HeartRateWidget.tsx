@@ -120,7 +120,9 @@ function IOSWebGuide() {
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      // Copia só a raiz do site: links com rota interna (ex.: /dashboard)
+      // dependem do fallback de SPA do servidor e podem dar 404.
+      await navigator.clipboard.writeText(window.location.origin);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
