@@ -87,8 +87,6 @@ export const OPTIONAL_SERVICES: (string | number)[] = [
   POLAR_PMD_SERVICE,
   WAHOO_SERVICE,
   ...GENERIC_SERVICES,
-  'battery_service',
-  'device_information',
 ];
 
 // ─── Prefixos de nome (para filtros Web Bluetooth e ranqueamento) ────────────

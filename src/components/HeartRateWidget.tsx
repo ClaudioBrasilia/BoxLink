@@ -151,6 +151,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
   } = useBluetooth(userId);
   const [hasScanned, setHasScanned] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [showAllDevices, setShowAllDevices] = useState(false);
 
   const isScanning = status === 'scanning';
   const isConnecting = status === 'connecting';
@@ -216,37 +217,48 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Lista de dispositivos encontrados */}
-      {(isScanning || devices.length > 0) && !isConnecting && (
-        <div className="flex flex-col gap-2">
-          <p className="text-yellow-400 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
-            {isScanning && <Loader2 className="w-3 h-3 animate-spin" />}
-            {isScanning ? 'Buscando...' : `Encontrados (${devices.length})`}
-          </p>
-          <div className="max-h-48 overflow-y-auto flex flex-col gap-2">
-            {devices.map((d) => (
-              <button key={d.id} onClick={() => connect(d.id)}
-                className={cn('rounded-xl p-3 text-left transition-colors flex items-center justify-between gap-2 border',
-                  d.hasHeartRateService
-                    ? 'bg-primary/10 border-primary/30 hover:bg-primary/20'
-                    : 'bg-white/5 border-white/10 hover:bg-white/10')}>
-                <div className="min-w-0">
-                  <p className="text-xs font-black text-white truncate">{d.name}</p>
-                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest truncate">
-                    {d.hasHeartRateService ? '❤ Monitor cardíaco' : `ID ${d.id.slice(-8)}`}
-                  </p>
-                </div>
-                {typeof d.rssi === 'number' && (
-                  <span className="text-[8px] font-black text-white/30 shrink-0">{d.rssi} dBm</span>
-                )}
+      {/* Lista de dispositivos encontrados (prováveis monitores de FC por
+          padrão; toggle exibe também TVs/fones/celulares ao redor) */}
+      {(isScanning || devices.length > 0) && !isConnecting && (() => {
+        const visibleDevices = showAllDevices ? devices : devices.filter((d) => d.likelyHR);
+        const hiddenCount = devices.length - visibleDevices.length;
+        return (
+          <div className="flex flex-col gap-2">
+            <p className="text-yellow-400 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+              {isScanning && <Loader2 className="w-3 h-3 animate-spin" />}
+              {isScanning ? 'Buscando...' : `Encontrados (${visibleDevices.length})`}
+            </p>
+            <div className="max-h-48 overflow-y-auto flex flex-col gap-2">
+              {visibleDevices.map((d) => (
+                <button key={d.id} onClick={() => connect(d.id)}
+                  className={cn('rounded-xl p-3 text-left transition-colors flex items-center justify-between gap-2 border',
+                    d.hasHeartRateService
+                      ? 'bg-primary/10 border-primary/30 hover:bg-primary/20'
+                      : 'bg-white/5 border-white/10 hover:bg-white/10')}>
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-white truncate">{d.name}</p>
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-widest truncate">
+                      {d.hasHeartRateService ? '❤ Monitor cardíaco' : d.bonded ? '🔗 Pareado no aparelho' : `ID ${d.id.slice(-8)}`}
+                    </p>
+                  </div>
+                  {typeof d.rssi === 'number' && (
+                    <span className="text-[8px] font-black text-white/30 shrink-0">{d.rssi} dBm</span>
+                  )}
+                </button>
+              ))}
+              {isScanning && visibleDevices.length === 0 && (
+                <p className="text-white/30 text-[10px] font-black uppercase text-center py-4">Procurando dispositivos próximos...</p>
+              )}
+            </div>
+            {(hiddenCount > 0 || showAllDevices) && (
+              <button onClick={() => setShowAllDevices(!showAllDevices)}
+                className="text-white/30 text-[9px] font-black uppercase tracking-widest hover:text-white/50 transition-colors">
+                {showAllDevices ? 'Mostrar só monitores de FC' : `Mostrar todos (${devices.length})`}
               </button>
-            ))}
-            {isScanning && devices.length === 0 && (
-              <p className="text-white/30 text-[10px] font-black uppercase text-center py-4">Procurando dispositivos próximos...</p>
             )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {isConnecting && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -297,13 +309,21 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
           <Loader2 className="w-4 h-4 animate-spin" /> Parar Busca
         </button>
       ) : !isConnecting && (
-        <button onClick={scan} disabled={!isSupported}
+        <button onClick={() => scan()} disabled={!isSupported}
           className={cn('flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all',
             isSupported
               ? 'bg-primary text-black hover:scale-[1.02] shadow-[0_0_20px_rgba(202,253,0,0.2)]'
               : 'bg-white/5 text-white/20 cursor-not-allowed border border-white/10')}>
           <Bluetooth className="w-4 h-4" />
           {devices.length > 0 ? 'Buscar Novamente' : 'Buscar Dispositivos'}
+        </button>
+      )}
+
+      {/* Web: o chooser padrão filtra por monitores de FC — fallback para tudo */}
+      {!isNative && isSupported && !isScanning && !isConnecting && (
+        <button onClick={() => scan({ showAll: true })}
+          className="text-white/30 text-[9px] font-black uppercase tracking-widest hover:text-white/50 transition-colors">
+          Não achou? Mostrar todos os dispositivos
         </button>
       )}
 
