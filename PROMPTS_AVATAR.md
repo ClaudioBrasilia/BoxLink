@@ -130,6 +130,13 @@ REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
+em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
+vestida no corpo da base anexada: ombros e mangas acompanhando os ombros
+da base, gola no pescoço, laterais acompanhando o tronco. Pense em
+"adesivo da peça vestida", recortado.
+
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 270 → 755   (largura 485 px)
 - y: 330 → 800   (altura 470 px)
@@ -170,6 +177,13 @@ REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
+em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
+vestida no corpo da base anexada: ombros e mangas acompanhando os ombros
+da base, gola no pescoço, laterais acompanhando o tronco. Pense em
+"adesivo da peça vestida", recortado.
+
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 300 → 725   (largura 425 px)
 - y: 340 → 800   (altura 460 px)
@@ -207,6 +221,13 @@ SEM sombra projetada externa.
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
+
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
+em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
+vestida no corpo da base anexada: ombros e mangas acompanhando os ombros
+da base, gola no pescoço, laterais acompanhando o tronco. Pense em
+"adesivo da peça vestida", recortado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 250 → 775   (largura 525 px)
@@ -249,6 +270,13 @@ REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
+em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
+vestida no corpo da base anexada: cós reto na altura do cós da base e
+pernas acompanhando as pernas da base. Pense em "adesivo da peça
+vestida", recortado.
+
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 355 → 670   (largura 315 px)
 - y: 770 → 1020  (altura 250 px)
@@ -287,6 +315,13 @@ SEM sombra projetada externa.
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
+
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
+em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
+vestida no corpo da base anexada: cós reto na altura do cós da base e
+pernas acompanhando as pernas da base. Pense em "adesivo da peça
+vestida", recortado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 355 → 670   (largura 315 px)
@@ -329,6 +364,11 @@ REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal — o boné como aparece
+vestido na cabeça da base anexada (copa + aba frontal), NÃO foto de
+produto em ângulo 3/4.
+
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 390 → 630   (largura 240 px)
 - y:  60 → 210   (altura 150 px)
@@ -367,6 +407,11 @@ SEM sombra projetada externa.
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
+
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal — as DUAS unidades como
+aparecem vestidas na base anexada (mesma orientação e mesmo espaçamento
+entre elas), NÃO foto de produto em ângulo.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 238 → 786
@@ -407,6 +452,11 @@ SEM sombra projetada externa.
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
+
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal — as DUAS unidades como
+aparecem vestidas na base anexada (mesma orientação e mesmo espaçamento
+entre elas), NÃO foto de produto em ângulo.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 225 → 792
@@ -449,6 +499,11 @@ REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal — as DUAS unidades como
+aparecem vestidas na base anexada (mesma orientação e mesmo espaçamento
+entre elas), NÃO foto de produto em ângulo.
+
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 378 → 645
 - y: 1070 → 1180  (altura 110 px)
@@ -488,6 +543,11 @@ SEM sombra projetada externa.
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
+
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal — as DUAS unidades como
+aparecem vestidas na base anexada (mesma orientação e mesmo espaçamento
+entre elas), NÃO foto de produto em ângulo.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 330 → 692
@@ -535,6 +595,13 @@ SEM sombra projetada externa.
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
+
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
+em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
+vestida no corpo da base anexada: ombros e mangas acompanhando os ombros
+da base, gola no pescoço, laterais acompanhando o tronco. Pense em
+"adesivo da peça vestida", recortado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 330 → 700   (largura 370 px)
@@ -623,6 +690,13 @@ REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
+em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
+vestida no corpo da base anexada: ombros e mangas acompanhando os ombros
+da base, gola no pescoço, laterais acompanhando o tronco. Pense em
+"adesivo da peça vestida", recortado.
+
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 310 → 720   (largura 410 px)
 - y: 390 → 840   (altura 450 px)
@@ -661,6 +735,13 @@ SEM sombra projetada externa.
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
+
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
+em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
+vestida no corpo da base anexada: cós reto na altura do cós da base e
+pernas acompanhando as pernas da base. Pense em "adesivo da peça
+vestida", recortado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 340 → 685   (largura 345 px)
@@ -701,6 +782,13 @@ SEM sombra projetada externa.
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
+
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
+em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
+vestida no corpo da base anexada: cós reto na altura do cós da base e
+pernas acompanhando as pernas da base. Pense em "adesivo da peça
+vestida", recortado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 335 → 690   (largura 355 px)
@@ -743,6 +831,11 @@ REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal — o boné como aparece
+vestido na cabeça da base anexada (copa + aba frontal), NÃO foto de
+produto em ângulo 3/4.
+
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 370 → 655   (largura 285 px)
 - y:  60 → 225   (altura 165 px)
@@ -784,6 +877,11 @@ REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal — as DUAS unidades como
+aparecem vestidas na base anexada (mesma orientação e mesmo espaçamento
+entre elas), NÃO foto de produto em ângulo.
+
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 248 → 775
 - y: 785 → 875   (altura 90 px)
@@ -823,6 +921,11 @@ SEM sombra projetada externa.
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
+
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal — as DUAS unidades como
+aparecem vestidas na base anexada (mesma orientação e mesmo espaçamento
+entre elas), NÃO foto de produto em ângulo.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 218 → 805
@@ -865,6 +968,11 @@ REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal — as DUAS unidades como
+aparecem vestidas na base anexada (mesma orientação e mesmo espaçamento
+entre elas), NÃO foto de produto em ângulo.
+
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 345 → 680
 - y: 1090 → 1190  (altura 100 px)
@@ -904,6 +1012,11 @@ SEM sombra projetada externa.
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
 "base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
+
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal — as DUAS unidades como
+aparecem vestidas na base anexada (mesma orientação e mesmo espaçamento
+entre elas), NÃO foto de produto em ângulo.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 295 → 725
