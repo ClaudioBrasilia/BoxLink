@@ -7,7 +7,18 @@
  */
 
 import { CANVAS, PieceSpec } from './pieceSpecs';
-import { computeFitTransform, detectContentBBox, validateFit, FitMode, FitTransform, Box } from './geometry';
+import { computeFitTransform, detectContentBBox, validateFit, removeBorderConnectedBackground, FitMode, FitTransform, Box } from './geometry';
+
+/** Imagem de peça aceita pelas funções de encaixe (foto ou canvas processado) */
+export type PieceImageSource = HTMLImageElement | HTMLCanvasElement;
+
+function sourceWidth(img: PieceImageSource): number {
+  return img instanceof HTMLImageElement ? img.naturalWidth : img.width;
+}
+
+function sourceHeight(img: PieceImageSource): number {
+  return img instanceof HTMLImageElement ? img.naturalHeight : img.height;
+}
 
 export function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -33,9 +44,46 @@ export function getImageData(img: HTMLImageElement | HTMLCanvasElement): ImageDa
 }
 
 /** Detecta a bounding box do conteúdo opaco de uma imagem já carregada. */
-export function detectImageContentBox(img: HTMLImageElement, alphaThreshold = 10): Box | null {
+export function detectImageContentBox(img: PieceImageSource, alphaThreshold = 10): Box | null {
   const data = getImageData(img);
   return detectContentBBox(data.data, data.width, data.height, alphaThreshold);
+}
+
+/**
+ * Garante que a imagem de uma peça tenha fundo transparente.
+ *
+ * Geradores de imagem (ChatGPT/DALL-E etc.) frequentemente entregam a peça
+ * sobre um fundo sólido mesmo quando o prompt pede PNG transparente. Sem
+ * transparência, o encaixe detectaria a imagem inteira como conteúdo e
+ * desenharia um retângulo opaco sobre o avatar.
+ *
+ * Se a imagem já tem transparência real (>0,5% dos pixels), é devolvida
+ * intacta. Caso contrário, o fundo sólido conectado às bordas é removido
+ * (flood fill pela cor mediana da borda) e um canvas processado é devolvido.
+ * Limitação: aberturas totalmente fechadas (ex.: interior de um anel)
+ * continuam opacas — precisam vir vazadas na arte.
+ */
+export function ensureTransparentBackground(img: HTMLImageElement): PieceImageSource {
+  const data = getImageData(img);
+  const totalPixels = data.width * data.height;
+  if (totalPixels === 0) return img;
+
+  let transparent = 0;
+  for (let i = 3; i < data.data.length; i += 4) {
+    if (data.data[i] < 245) transparent++;
+  }
+  if (transparent / totalPixels > 0.005) return img; // já tem alpha útil
+
+  const removed = removeBorderConnectedBackground(data.data, data.width, data.height);
+  if (removed === 0) return img;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = data.width;
+  canvas.height = data.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return img;
+  ctx.putImageData(data, 0, 0);
+  return canvas;
 }
 
 export interface FitPieceResult {
@@ -61,7 +109,7 @@ export interface FitPieceResult {
  * redesenhada com a mesma transformação afim.
  */
 export function fitPieceToCanvas(
-  img: HTMLImageElement,
+  img: PieceImageSource,
   spec: PieceSpec,
   mode: FitMode = 'contain'
 ): FitPieceResult {
@@ -87,8 +135,8 @@ export function fitPieceToCanvas(
   // coordenadas do canvas de referência antes de validar — sem isso, imagens
   // que não sejam 1024×1536 (ex.: uploads 512×768) nunca seriam consideradas
   // bem posicionadas mesmo quando estão.
-  const normX = CANVAS.width / (img.naturalWidth || CANVAS.width);
-  const normY = CANVAS.height / (img.naturalHeight || CANVAS.height);
+  const normX = CANVAS.width / (sourceWidth(img) || CANVAS.width);
+  const normY = CANVAS.height / (sourceHeight(img) || CANVAS.height);
   const normalizedContentBox = {
     x1: detectedContentBox.x1 * normX,
     y1: detectedContentBox.y1 * normY,
@@ -112,8 +160,8 @@ export function fitPieceToCanvas(
     img,
     transform.translateX,
     transform.translateY,
-    img.naturalWidth * transform.scaleX,
-    img.naturalHeight * transform.scaleY
+    sourceWidth(img) * transform.scaleX,
+    sourceHeight(img) * transform.scaleY
   );
 
   return { canvas, spec, transform, detectedContentBox, wasAlreadyWellPositioned, warnings };
