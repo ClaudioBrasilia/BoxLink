@@ -70,6 +70,28 @@ export function computeFitTransform(
   return { scaleX, scaleY, translateX, translateY };
 }
 
+/**
+ * Razão máxima de deformação aceita para usar 'stretch'. Acima disso a
+ * proporção da arte é considerada incompatível com a caixa e usa-se
+ * 'contain' para não deformar a peça.
+ */
+export const STRETCH_MAX_DISTORTION = 1.35;
+
+/**
+ * Escolhe o modo de encaixe a partir das proporções (altura/largura) do
+ * conteúdo detectado e da caixa alvo. Roupas devem casar com a largura do
+ * corpo, então o padrão é 'stretch' (preenche a caixa exata — evita camiseta
+ * estreita deixando os ombros da base à mostra); quando a proporção da arte
+ * difere demais da caixa, cai para 'contain' para não deformar.
+ */
+export function chooseFitMode(contentAspect: number, boxAspect: number): FitMode {
+  if (!isFinite(contentAspect) || !isFinite(boxAspect) || contentAspect <= 0 || boxAspect <= 0) {
+    return 'contain';
+  }
+  const ratio = contentAspect > boxAspect ? contentAspect / boxAspect : boxAspect / contentAspect;
+  return ratio <= STRETCH_MAX_DISTORTION ? 'stretch' : 'contain';
+}
+
 /** Aplica um FitTransform a um ponto/caixa arbitrário (útil para testes/QA). */
 export function applyTransformToBox(box: Box, t: FitTransform): Box {
   return {
