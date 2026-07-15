@@ -24,7 +24,7 @@ import {
   AvatarSlotKey,
 } from './avatarLayers';
 import { CANVAS, getPieceSpec, AvatarBaseId } from './fitting/pieceSpecs';
-import { validateFit, chooseFitMode } from './fitting/geometry';
+import { validateFit, chooseFitMode, STRETCH_MAX_DISTORTION, STRETCH_MAX_DISTORTION_BODY } from './fitting/geometry';
 import { loadImage, fitPieceToCanvas, detectImageContentBox } from './fitting/canvasFit';
 import { resolveRenderSpecId } from './fitting/slotFallback';
 
@@ -124,9 +124,12 @@ async function computeFittedLayerUrl(
   }
 
   // 'stretch' preenche a caixa exata (roupa casa com a largura do corpo);
-  // se a proporção da arte destoar muito da caixa, usa 'contain'.
+  // se a proporção da arte destoar muito da caixa, usa 'contain'. Peças que
+  // vestem o corpo (top/bottom) toleram deformação maior.
   const boxAspect = (spec.box.y2 - spec.box.y1) / (spec.box.x2 - spec.box.x1);
-  const fitted = fitPieceToCanvas(img, spec, chooseFitMode(contentAspect, boxAspect));
+  const maxDistortion =
+    slot === 'top' || slot === 'bottom' ? STRETCH_MAX_DISTORTION_BODY : STRETCH_MAX_DISTORTION;
+  const fitted = fitPieceToCanvas(img, spec, chooseFitMode(contentAspect, boxAspect, maxDistortion));
 
   const out = document.createElement('canvas');
   out.width = OUTPUT.w;

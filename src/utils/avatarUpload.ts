@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { AvatarSlotKey } from '../lib/avatarLayers';
-import { PIECE_SPECS, loadImage, fitPieceToCanvas, detectImageContentBox, chooseFitMode } from '../lib/fitting';
+import { PIECE_SPECS, loadImage, fitPieceToCanvas, detectImageContentBox, chooseFitMode, STRETCH_MAX_DISTORTION, STRETCH_MAX_DISTORTION_BODY } from '../lib/fitting';
 
 const BUCKET = 'avatar-assets';
 
@@ -69,13 +69,16 @@ export async function uploadAvatarItem(
 
   if (spec) {
     // Mesmo critério do encaixe em renderização: 'stretch' preenche a caixa
-    // exata; proporção muito diferente da caixa cai para 'contain'.
+    // exata; proporção muito diferente da caixa cai para 'contain'. Peças
+    // que vestem o corpo (top/bottom) toleram deformação maior.
     const contentBox = detectImageContentBox(img);
     const boxAspect = (spec.box.y2 - spec.box.y1) / (spec.box.x2 - spec.box.x1);
     const contentAspect = contentBox
       ? (contentBox.y2 - contentBox.y1) / (contentBox.x2 - contentBox.x1)
       : boxAspect;
-    const fitted = fitPieceToCanvas(img, spec, chooseFitMode(contentAspect, boxAspect));
+    const maxDistortion =
+      slot === 'top' || slot === 'bottom' ? STRETCH_MAX_DISTORTION_BODY : STRETCH_MAX_DISTORTION;
+    const fitted = fitPieceToCanvas(img, spec, chooseFitMode(contentAspect, boxAspect, maxDistortion));
     ctx.drawImage(fitted.canvas, 0, 0, TARGET.w, TARGET.h);
     autoFitted = true;
     wasAlreadyWellPositioned = fitted.wasAlreadyWellPositioned;

@@ -78,18 +78,34 @@ export function computeFitTransform(
 export const STRETCH_MAX_DISTORTION = 1.35;
 
 /**
+ * Limite de deformação para peças que VESTEM o corpo (top, camiseta,
+ * short, calça): nelas, casar com a largura do corpo importa mais que
+ * preservar a proporção da arte — um top estreito deixa a base à mostra
+ * nas laterais. Artes de vestuário geradas "soltas" costumam ser mais
+ * quadradas que a região do corpo que cobrem, então o limite é maior.
+ */
+export const STRETCH_MAX_DISTORTION_BODY = 1.75;
+
+/**
  * Escolhe o modo de encaixe a partir das proporções (altura/largura) do
  * conteúdo detectado e da caixa alvo. Roupas devem casar com a largura do
  * corpo, então o padrão é 'stretch' (preenche a caixa exata — evita camiseta
  * estreita deixando os ombros da base à mostra); quando a proporção da arte
  * difere demais da caixa, cai para 'contain' para não deformar.
+ *
+ * `maxDistortion` permite calibrar o limite por tipo de peça
+ * (STRETCH_MAX_DISTORTION_BODY para roupas de corpo).
  */
-export function chooseFitMode(contentAspect: number, boxAspect: number): FitMode {
+export function chooseFitMode(
+  contentAspect: number,
+  boxAspect: number,
+  maxDistortion: number = STRETCH_MAX_DISTORTION
+): FitMode {
   if (!isFinite(contentAspect) || !isFinite(boxAspect) || contentAspect <= 0 || boxAspect <= 0) {
     return 'contain';
   }
   const ratio = contentAspect > boxAspect ? contentAspect / boxAspect : boxAspect / contentAspect;
-  return ratio <= STRETCH_MAX_DISTORTION ? 'stretch' : 'contain';
+  return ratio <= maxDistortion ? 'stretch' : 'contain';
 }
 
 /** Aplica um FitTransform a um ponto/caixa arbitrário (útil para testes/QA). */
