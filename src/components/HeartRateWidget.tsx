@@ -86,6 +86,29 @@ function ErrorBox({ message }: { message: string }) {
   );
 }
 
+// Detecta relógios Garmin pelo nome (transmitem FC só no modo "Transmitir FC").
+function isGarminName(name?: string | null): boolean {
+  if (!name) return false;
+  return /garmin|forerunner|fenix|f[eé]nix|venu|vivoactive|vivosmart|instinct|epix|enduro|swim|marq|descent|approach/i.test(name);
+}
+
+// Dica específica para Garmin ao falhar a leitura de FC.
+function GarminHint() {
+  return (
+    <div className="flex flex-col gap-1.5 bg-primary/5 border border-primary/20 rounded-xl p-3">
+      <p className="text-primary text-[9px] font-black uppercase tracking-widest">Garmin detectado</p>
+      <p className="text-white/60 text-[9px] font-black uppercase leading-relaxed">
+        O Garmin só envia a FC no modo <span className="text-white">"Transmitir FC"</span>:
+      </p>
+      <ol className="text-white/50 text-[9px] font-black uppercase leading-relaxed list-decimal pl-3.5 flex flex-col gap-0.5">
+        <li>Desconecte o relógio do celular/Garmin Connect (ele transmite p/ 1 aparelho por vez).</li>
+        <li>No relógio: Configurações → Sensores → FC no pulso → <span className="text-white">Transmitir FC</span> (ou inicie um treino).</li>
+        <li>Com o relógio no pulso, toque em "Buscar Novamente".</li>
+      </ol>
+    </div>
+  );
+}
+
 function DeviceTips() {
   const [open, setOpen] = useState(false);
   return (
@@ -356,6 +379,11 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
       )}
 
       {error && <ErrorBox message={error} />}
+
+      {/* Dica específica de Garmin quando a leitura de FC falha */}
+      {error && (devices.some((d) => isGarminName(d.name)) || isGarminName(connectedDevice?.name) || isGarminName(lastDevice?.name)) && (
+        <GarminHint />
+      )}
 
       {/* Reconexão com um toque ao último dispositivo usado (nativo: conecta
           direto pelo ID, sem precisar de novo scan) */}
