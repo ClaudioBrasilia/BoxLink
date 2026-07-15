@@ -1,39 +1,71 @@
 # PROMPTS_AVATAR — Geração de Peças de Vestuário para Avatar Fitness
 
-> **Versão:** Prompt único com caixa exata no canvas  
-> **Canvas:** 1024×1536 px  
-> **Bases oficiais:** `base-masculina.png` · `base-feminina.png`  
+> **Versão:** 2.0 — coordenadas CALIBRADAS com as imagens reais das bases
+> **Canvas:** 1024×1536 px
+> **Bases oficiais:** `public/avatar-bases/base masculina.png` · `public/avatar-bases/base feminina.png`
 > **Estilo:** Cartoon 3D Disney/Pixar — jogo fitness mobile premium
 
 ---
 
-## Mapa de Coordenadas das Bases
+## Como funciona o encaixe (leia antes de gerar)
+
+O app aplica **encaixe automático** (upload e renderização): ele detecta o
+desenho da peça no PNG e o reposiciona/escala para a caixa exata. Por isso,
+a posição absoluta no canvas não precisa ser perfeita — o que **precisa**
+estar certo na arte é:
+
+1. **Proporção da peça** ≈ proporção da caixa (largura × altura indicadas).
+   O encaixe preserva a proporção da arte; se ela for muito diferente da
+   caixa, a peça fica menor num dos eixos.
+2. **Peças em par** (munhequeira, luvas, joelheira, tênis): desenhar as
+   DUAS unidades no mesmo PNG, com o espaçamento indicado — o encaixe trata
+   o conjunto como um bloco único, então a distância entre as duas unidades
+   deve corresponder à distância entre os dois pulsos/joelhos/pés da base.
+3. **Aberturas vazadas** com alpha=0 de verdade (gola, cavas, punhos etc.).
+4. **Somente a peça** — sem corpo, sem fundo, sem sombra projetada.
+5. Ao cadastrar o item no Admin, selecione o **Tipo de peça** correspondente
+   (M-01..M-10 / F-01..F-10).
+
+---
+
+## Mapa de Coordenadas — BASE MASCULINA (medido na arte real)
 
 ```
-Canvas 1024 x 1536
+Canvas 1024 x 1536 — corpo em y 60 → 1530, centralizado em x 512
 
-         x:0 ────────────────────────── x:1024
-y:0     ┌───────────────────────────────┐
-        │           CABEÇA               │  y  60 →  310   (boné/cabelo)
-y:310   │           PESCOÇO              │  y 290 →  360
-        │  ┌─────────────────────────┐   │
-        │  │       OMBROS            │   │  y 320 →  420
-        │  │       TRONCO            │   │  y 360 →  720
-        │  │  (camiseta/top/jaqueta) │   │
-y:720   │  └─────────────────────────┘   │
-        │      QUADRIL / SHORT           │  y 720 →  950
-        │      ┌────────┐                │
-y:950   │      │ COXA   │                │  y 950 → 1230
-y:1180  │      │ JOELHO │                │  y 1180 → 1290 (joelheira)
-y:1230  │      │ PANTUR.│                │  y 1230 → 1430
-y:1430  │      └─PÉS────┘                │  y 1430 → 1530 (tênis)
-y:1536  └───────────────────────────────┘
+CABEÇA        y   60 →  310    x 405 → 620 (cabelo/orelhas: 392 → 631)
+PESCOÇO       y  310 →  400    x 456 → 567
+OMBROS        y  400 →  480    ombro-a-ombro: x 293 → 731
+TRONCO        y  400 →  780    (peito/abdômen; braços separam do corpo em y 600)
+CÓS DO SHORT  y ≈ 775
+QUADRIL/SHORT y  780 → 1015    x 367 → 656
+PULSOS        y  810 →  900    esquerdo x 238 → 315 · direito x 706 → 786
+MÃOS (punhos) y  860 → 1005
+COXA          y  910 → 1120
+JOELHOS       y 1070 → 1180    esquerdo x 378 → 485 · direito x 538 → 645
+PANTURRILHA   y 1180 → 1400
+TORNOZELOS    y 1400 → 1440    esquerdo x 399 → 453 · direito x 571 → 625
+PÉS           y 1400 → 1532    esquerdo x 337 → 460 · direito x 565 → 685
+```
 
-Pulsos (mãos baixas):     y  880 → 1000
-Largura ombro-a-ombro M:  x  310 →  700  (≈ 390 px)
-Largura ombro-a-ombro F:  x  360 →  660  (≈ 300 px)
-Largura quadril M:        x  360 →  670
-Largura quadril F:        x  370 →  660
+## Mapa de Coordenadas — BASE FEMININA (medido na arte real)
+
+```
+Canvas 1024 x 1536 — corpo em y 60 → 1530, centralizado em x 512
+
+CABEÇA        y   60 →  380    x 375 → 652 (rabo de cavalo à direita: x 594 → 669)
+PESCOÇO       y  380 →  440    x 474 → 553
+OMBROS        y  440 →  500    ombro-a-ombro: x 351 → 677
+TRONCO        y  440 →  725    (top da base: y 495 → 635; braços separam em y 600)
+CÓS DO SHORT  y ≈ 725
+QUADRIL/SHORT y  725 →  915    x 350 → 674
+PULSOS        y  785 →  875    esquerdo x 248 → 315 · direito x 708 → 775
+MÃOS (punhos) y  840 →  935
+COXA          y  875 → 1140
+JOELHOS       y 1090 → 1190    esquerdo x 345 → 447 · direito x 578 → 680
+PANTURRILHA   y 1190 → 1380
+TORNOZELOS    y 1380 → 1420    esquerdo x 340 → 396 · direito x 628 → 685
+PÉS           y 1380 → 1532    esquerdo x 303 → 390 · direito x 635 → 721
 ```
 
 ---
@@ -46,16 +78,16 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-[masculina|feminina].png". Use APENAS para posicionar a peça
+"base [masculina|feminina].png". Use APENAS para posicionar a peça
 sobre o avatar. NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: [X1] → [X2]
 - y: [Y1] → [Y2]
-- A peça DEVE ocupar exatamente esta caixa.
+- A peça DEVE ocupar exatamente esta caixa, com a MESMA PROPORÇÃO
+  largura/altura da caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
 [âncora específica da peça]
@@ -77,7 +109,7 @@ Saída: PNG 1024x1536 transparente, peça posicionada DENTRO da caixa acima.
 
 ## MASCULINO — 10 Peças
 
-> Anexar sempre: `base-masculina.png`
+> Anexar sempre: `base masculina.png` (a de `public/avatar-bases/`)
 
 ---
 
@@ -89,27 +121,26 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-masculina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 280 → 740
-- y: 320 → 720
+- x: 270 → 755   (largura 485 px)
+- y: 330 → 800   (altura 470 px)
 - A peça DEVE ocupar exatamente esta caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Gola alinhada ao pescoço da base; ombros da peça nos ombros da base;
-barra da camiseta na linha da cintura.
+Gola alinhada ao pescoço da base (y 330); ombros da peça nos ombros da
+base (y 400–480); mangas curtas cobrindo o topo dos braços; barra reta
+na altura do cós do short da base (y ≈ 780–800).
 
 TAMANHO RELATIVO À BASE:
-Largura = ombro-a-ombro da base (≈ 390 px);
-Altura = pescoço até cintura.
+Largura = ombro-a-ombro + mangas (≈ 485 px); Altura = pescoço até o cós.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
-- Gola redonda (centro superior)
+- Gola redonda (centro superior, x ≈ 456–567)
 - 2 bocas de manga (esquerda e direita)
 Sem forro, sem sombra interna, sem cor de fundo nessas áreas.
 
@@ -130,23 +161,22 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-masculina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 300 → 720
-- y: 330 → 720
+- x: 300 → 725   (largura 425 px)
+- y: 340 → 800   (altura 460 px)
 - A peça DEVE ocupar exatamente esta caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Gola alinhada ao pescoço da base; cavas largas nos ombros;
-barra da regata na linha da cintura.
+Gola alinhada ao pescoço da base; cavas largas nos ombros (sem manga);
+barra reta na altura do cós do short da base (y ≈ 780–800).
 
 TAMANHO RELATIVO À BASE:
-Largura = largura do peito; Altura = pescoço até cintura.
+Largura = largura do peito (≈ 425 px); Altura = pescoço até o cós.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Gola (centro superior)
@@ -169,20 +199,20 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-masculina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 240 → 780
-- y: 310 → 760
+- x: 250 → 775   (largura 525 px)
+- y: 320 → 860   (altura 540 px)
 - A peça DEVE ocupar exatamente esta caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Gola alinhada ao pescoço da base; ombros da jaqueta nos ombros da base;
-barra abaixo da cintura (nível quadril alto).
+Gola alinhada ao pescoço da base; ombros da jaqueta nos ombros da base
+(y 400–480); mangas compridas acompanhando os braços; barra abaixo do
+cós, no quadril alto (y ≈ 860).
 
 TAMANHO RELATIVO À BASE:
 Largura = ombro-a-ombro + 5% cada lado; Altura = pescoço até quadril alto.
@@ -210,23 +240,22 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-masculina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 340 → 690
-- y: 720 → 960
+- x: 355 → 670   (largura 315 px)
+- y: 770 → 1020  (altura 250 px)
 - A peça DEVE ocupar exatamente esta caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Cintura do short alinhada ao quadril da base;
-barra das pernas no meio da coxa.
+Cós alinhado ao cós do short da própria base (y ≈ 775);
+barra das pernas no meio da coxa (y ≈ 1015).
 
 TAMANHO RELATIVO À BASE:
-Largura = largura do quadril; Altura = quadril até meio da coxa.
+Largura = largura do quadril (x 367–656); Altura = cós até meio da coxa.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Cintura (abertura superior)
@@ -250,27 +279,28 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-masculina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 340 → 690
-- y: 720 → 1430
+- x: 355 → 670   (largura 315 px)
+- y: 770 → 1440  (altura 670 px)
 - A peça DEVE ocupar exatamente esta caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Cintura da calça alinhada ao quadril da base;
-barra das pernas no tornozelo.
+Cós alinhado ao cós do short da base (y ≈ 775); duas pernas separadas
+acompanhando as pernas da base (vão entre as pernas com alpha=0);
+barra das pernas nos tornozelos (y ≈ 1420).
 
 TAMANHO RELATIVO À BASE:
-Largura = largura do quadril; Altura = quadril até tornozelo.
+Largura = largura do quadril; Altura = cós até tornozelo.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Cintura (abertura superior)
 - 2 barras de perna nos tornozelos (esquerda e direita)
+- Vão entre as duas pernas (do gancho y ≈ 910 para baixo)
 Sem forro, sem sombra interna, sem cor de fundo nessas áreas.
 
 ESTILO VISUAL (edite aqui):
@@ -290,25 +320,26 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-masculina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 340 → 680
-- y:  60 → 280
+- x: 390 → 630   (largura 240 px)
+- y:  60 → 210   (altura 150 px)
 - A peça DEVE ocupar exatamente esta caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Aba do boné sobre a testa do avatar; copa cobre o topo da cabeça.
+Copa cobre o topo da cabeça (y 60); aba frontal termina na testa,
+ACIMA das sobrancelhas (y ≈ 210) — não pode cobrir os olhos.
+Cabeça da base: x ≈ 405–620.
 
 TAMANHO RELATIVO À BASE:
-Largura = largura da cabeça; Altura = topo da cabeça até a testa.
+Largura = largura da cabeça (≈ 240 px); Altura = topo da cabeça até a testa.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
-- Abertura inferior circular (encaixe da cabeça)
+- Abertura inferior (encaixe da cabeça)
 Sem forro, sem sombra interna, sem cor de fundo nessas áreas.
 
 ESTILO VISUAL (edite aqui):
@@ -328,24 +359,25 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-masculina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 220 → 820
-- y: 880 → 1000
-- A peça DEVE ocupar exatamente esta caixa.
-- Posicionar UMA munhequeira em cada pulso da base
-  (pulso esquerdo ≈ x 220–370 / pulso direito ≈ x 670–820).
+- x: 238 → 786
+- y: 805 → 905   (altura 100 px)
+- Posicionar UMA munhequeira em cada pulso da base:
+  pulso esquerdo x 238 → 315 · pulso direito x 706 → 786.
+- O ESPAÇAMENTO entre as duas munhequeiras deve ser exatamente este
+  (elas são tratadas como um bloco único no encaixe).
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Uma munhequeira em cada pulso da base; altura = 80 px cada.
+Uma munhequeira em cada pulso da base (braços caídos ao lado do corpo,
+pulsos na altura y 810–900).
 
 TAMANHO RELATIVO À BASE:
-Cada munhequeira: largura = pulso da base; altura = 80 px.
+Cada munhequeira: largura = pulso da base (≈ 78 px); altura ≈ 100 px.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Interior do anel de cada munhequeira (buraco central de cada uma)
@@ -367,24 +399,25 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-masculina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 180 → 860
-- y: 880 → 1040
-- A peça DEVE ocupar exatamente esta caixa.
-- Posicionar UMA luva em cada mão da base
-  (mão esquerda ≈ x 180–390 / mão direita ≈ x 650–860).
+- x: 225 → 792
+- y: 820 → 1015  (altura 195 px)
+- Posicionar UMA luva em cada mão da base:
+  mão esquerda x 225 → 330 · mão direita x 690 → 792.
+- O ESPAÇAMENTO entre as duas luvas deve ser exatamente este
+  (elas são tratadas como um bloco único no encaixe).
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Dedos apontados para baixo; encaixe do punho nos pulsos da base.
+Dedos apontados para baixo (mãos fechadas da base); punho da luva no
+pulso da base (y ≈ 820); ponta dos dedos em y ≈ 1005.
 
 TAMANHO RELATIVO À BASE:
-Cada luva: de dedos até punho da base.
+Cada luva: do punho até a ponta dos dedos da base (≈ 105 px de largura).
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Punho de cada luva (abertura de encaixe no pulso)
@@ -407,24 +440,24 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-masculina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 360 → 670
-- y: 1180 → 1290
-- A peça DEVE ocupar exatamente esta caixa.
-- Posicionar UMA joelheira em cada joelho da base
-  (joelho esquerdo ≈ x 360–510 / joelho direito ≈ x 520–670).
+- x: 378 → 645
+- y: 1070 → 1180  (altura 110 px)
+- Posicionar UMA joelheira em cada joelho da base:
+  joelho esquerdo x 378 → 485 · joelho direito x 538 → 645.
+- O ESPAÇAMENTO entre as duas joelheiras deve ser exatamente este
+  (elas são tratadas como um bloco único no encaixe).
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Centradas em cada joelho da base; altura = 110 px cada.
+Centradas em cada joelho da base (joelhos na altura y 1070–1180).
 
 TAMANHO RELATIVO À BASE:
-Cada joelheira: largura = joelho da base; altura = 110 px.
+Cada joelheira: largura = joelho da base (≈ 105 px); altura ≈ 110 px.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Interior do anel de cada joelheira (buraco central de cada uma)
@@ -447,24 +480,25 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-masculina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base masculina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 340 → 690
-- y: 1430 → 1530
-- A peça DEVE ocupar exatamente esta caixa.
-- Posicionar UM tênis sob cada pé da base
-  (pé esquerdo ≈ x 340–510 / pé direito ≈ x 520–690).
+- x: 330 → 692
+- y: 1400 → 1532  (altura 132 px)
+- Posicionar UM tênis sob cada pé da base:
+  pé esquerdo x 337 → 460 · pé direito x 565 → 685.
+- O ESPAÇAMENTO entre os dois tênis deve ser exatamente este
+  (eles são tratados como um bloco único no encaixe).
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Solado sob cada pé da base; cano alinhado ao tornozelo.
+Solado apoiado na linha do chão (y ≈ 1530); cano na altura do
+tornozelo da base (y ≈ 1400); pés da base levemente virados para fora.
 
 TAMANHO RELATIVO À BASE:
-Cada tênis: largura = largura do pé; altura = solado até cano.
+Cada tênis: largura = pé da base (≈ 125 px); altura = solado até o cano.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Cano superior de cada tênis (abertura de encaixe do pé)
@@ -481,7 +515,7 @@ Saída: PNG 1024x1536 transparente, peça posicionada DENTRO da caixa acima.
 
 ## FEMININO — 10 Peças
 
-> Anexar sempre: `base-feminina.png`
+> Anexar sempre: `base feminina.png` (a de `public/avatar-bases/`)
 
 ---
 
@@ -493,27 +527,25 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-feminina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 310 → 720
-- y: 320 → 720
+- x: 330 → 700   (largura 370 px)
+- y: 400 → 780   (altura 380 px)
 - A peça DEVE ocupar exatamente esta caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Gola alinhada ao pescoço da base; ombros da peça nos ombros da base;
-barra da camiseta na linha da cintura.
+Gola alinhada ao pescoço da base (y ≈ 410); ombros da peça nos ombros
+da base (y 440–500); barra na altura do cós do short da base (y ≈ 725–780).
 
 TAMANHO RELATIVO À BASE:
-Largura = ombro-a-ombro da base (≈ 300 px);
-Altura = pescoço até cintura.
+Largura = ombro-a-ombro + mangas (≈ 370 px); Altura = pescoço até o cós.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
-- Gola (centro superior)
+- Gola (centro superior, x ≈ 474–553)
 - 2 bocas de manga (esquerda e direita)
 Sem forro, sem sombra interna, sem cor de fundo nessas áreas.
 
@@ -534,23 +566,23 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-feminina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 340 → 690
-- y: 340 → 560
-- A peça DEVE ocupar exatamente esta caixa.
+- x: 340 → 685   (largura 345 px)
+- y: 450 → 640   (altura 190 px)
+- A peça DEVE ocupar exatamente esta caixa
+  (mesma posição do top que a base já veste).
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Alças nos ombros da base; barra acima do umbigo
-(nível das costelas baixas).
+Alças nos ombros da base (y ≈ 450); barra acima do umbigo (y ≈ 635) —
+exatamente sobre o top que a base já veste.
 
 TAMANHO RELATIVO À BASE:
-Largura = largura do peito; Altura = ombros até costelas baixas.
+Largura = largura do peito (x 351–677); Altura = ombros até costelas baixas.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Decote (abertura superior)
@@ -575,20 +607,19 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-feminina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 270 → 760
-- y: 310 → 760
+- x: 310 → 720   (largura 410 px)
+- y: 390 → 840   (altura 450 px)
 - A peça DEVE ocupar exatamente esta caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Gola alinhada ao pescoço da base; ombros nos ombros da base;
-barra no quadril alto.
+Gola alinhada ao pescoço da base; ombros nos ombros da base (y 440–500);
+mangas compridas acompanhando os braços; barra no quadril alto (y ≈ 840).
 
 TAMANHO RELATIVO À BASE:
 Largura = ombro-a-ombro + 5% cada lado; Altura = pescoço até quadril.
@@ -615,23 +646,23 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-feminina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 350 → 680
-- y: 720 → 940
-- A peça DEVE ocupar exatamente esta caixa.
+- x: 340 → 685   (largura 345 px)
+- y: 715 → 1000  (altura 285 px)
+- A peça DEVE ocupar exatamente esta caixa
+  (mesma posição do short que a base já veste, descendo até meio da coxa).
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Cintura alta alinhada ao quadril da base;
-barra das pernas no meio da coxa.
+Cós de cintura alta alinhado ao cós do short da base (y ≈ 725);
+barra das pernas no meio da coxa (y ≈ 1000).
 
 TAMANHO RELATIVO À BASE:
-Largura = largura do quadril; Altura = quadril até meio da coxa.
+Largura = largura do quadril (x 350–674); Altura = cós até meio da coxa.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Cintura (abertura superior)
@@ -655,27 +686,28 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-feminina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 350 → 680
-- y: 720 → 1430
+- x: 335 → 690   (largura 355 px)
+- y: 715 → 1430  (altura 715 px)
 - A peça DEVE ocupar exatamente esta caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Cintura alta alinhada ao quadril da base;
-barra das pernas no tornozelo.
+Cós de cintura alta alinhado ao cós do short da base (y ≈ 725);
+duas pernas separadas acompanhando as pernas da base (vão entre as
+pernas com alpha=0); barra das pernas nos tornozelos (y ≈ 1400).
 
 TAMANHO RELATIVO À BASE:
-Largura = largura do quadril; Altura = quadril até tornozelo.
+Largura = largura do quadril; Altura = cós até tornozelo.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Cintura (abertura superior)
 - 2 barras de perna nos tornozelos (esquerda e direita)
+- Vão entre as duas pernas (do gancho y ≈ 875 para baixo)
 Sem forro, sem sombra interna, sem cor de fundo nessas áreas.
 
 ESTILO VISUAL (edite aqui):
@@ -695,26 +727,27 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-feminina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 360 → 660
-- y:  60 → 280
+- x: 370 → 655   (largura 285 px)
+- y:  60 → 225   (altura 165 px)
 - A peça DEVE ocupar exatamente esta caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Aba do boné sobre a testa do avatar;
-abertura traseira para passar o rabo de cavalo.
+Copa cobre o topo da cabeça (y 60); aba frontal termina na testa,
+ACIMA das sobrancelhas (y ≈ 225) — não pode cobrir os olhos.
+Abertura traseira para o rabo de cavalo (lado direito da imagem,
+x ≈ 594–669).
 
 TAMANHO RELATIVO À BASE:
-Largura = largura da cabeça; Altura = topo da cabeça até a testa.
+Largura = largura da cabeça (≈ 285 px); Altura = topo da cabeça até a testa.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
-- Abertura inferior circular (encaixe da cabeça)
+- Abertura inferior (encaixe da cabeça)
 - Abertura traseira oval (passagem do rabo de cavalo)
 Sem forro, sem sombra interna, sem cor de fundo nessas áreas.
 
@@ -735,24 +768,25 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-feminina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 240 → 800
-- y: 880 → 1000
-- A peça DEVE ocupar exatamente esta caixa.
-- Posicionar UMA munhequeira em cada pulso da base
-  (pulso esquerdo ≈ x 240–380 / pulso direito ≈ x 660–800).
+- x: 248 → 775
+- y: 785 → 875   (altura 90 px)
+- Posicionar UMA munhequeira em cada pulso da base:
+  pulso esquerdo x 248 → 315 · pulso direito x 708 → 775.
+- O ESPAÇAMENTO entre as duas munhequeiras deve ser exatamente este
+  (elas são tratadas como um bloco único no encaixe).
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Uma munhequeira em cada pulso da base; altura = 80 px cada.
+Uma munhequeira em cada pulso da base (braços caídos ao lado do corpo,
+pulsos na altura y 785–875, logo acima das mãos fechadas).
 
 TAMANHO RELATIVO À BASE:
-Cada munhequeira: largura = pulso da base; altura = 80 px.
+Cada munhequeira: largura = pulso da base (≈ 67 px); altura ≈ 90 px.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Interior do anel de cada munhequeira (buraco central de cada uma)
@@ -774,24 +808,25 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-feminina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 200 → 840
-- y: 880 → 1040
-- A peça DEVE ocupar exatamente esta caixa.
-- Posicionar UMA luva em cada mão da base
-  (mão esquerda ≈ x 200–390 / mão direita ≈ x 650–840).
+- x: 218 → 805
+- y: 800 → 945   (altura 145 px)
+- Posicionar UMA luva em cada mão da base:
+  mão esquerda x 218 → 310 · mão direita x 715 → 805.
+- O ESPAÇAMENTO entre as duas luvas deve ser exatamente este
+  (elas são tratadas como um bloco único no encaixe).
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Dedos apontados para baixo; encaixe do punho nos pulsos da base.
+Mãos fechadas (punhos cerrados, como a base); punho da luva no pulso
+da base (y ≈ 800); parte inferior da luva em y ≈ 935.
 
 TAMANHO RELATIVO À BASE:
-Cada luva: de dedos até punho da base.
+Cada luva: do punho até cobrir a mão fechada da base (≈ 92 px de largura).
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Punho de cada luva (abertura de encaixe no pulso)
@@ -814,24 +849,24 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-feminina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 370 → 660
-- y: 1180 → 1290
-- A peça DEVE ocupar exatamente esta caixa.
-- Posicionar UMA joelheira em cada joelho da base
-  (joelho esquerdo ≈ x 370–510 / joelho direito ≈ x 520–660).
+- x: 345 → 680
+- y: 1090 → 1190  (altura 100 px)
+- Posicionar UMA joelheira em cada joelho da base:
+  joelho esquerdo x 345 → 447 · joelho direito x 578 → 680.
+- O ESPAÇAMENTO entre as duas joelheiras deve ser exatamente este
+  (elas são tratadas como um bloco único no encaixe).
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Centradas em cada joelho da base; altura = 110 px cada.
+Centradas em cada joelho da base (joelhos na altura y 1090–1190).
 
 TAMANHO RELATIVO À BASE:
-Cada joelheira: largura = joelho da base; altura = 110 px.
+Cada joelheira: largura = joelho da base (≈ 100 px); altura ≈ 100 px.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Interior do anel de cada joelheira (buraco central de cada uma)
@@ -854,24 +889,25 @@ Canvas 1024x1536. PNG transparente. Somente a peça. SEM corpo. SEM fundo.
 SEM sombra projetada externa.
 
 REFERÊNCIA DE ENCAIXE (obrigatória — anexar imagem):
-"base-feminina.png". Use APENAS para posicionar a peça sobre o avatar.
+"base feminina.png". Use APENAS para posicionar a peça sobre o avatar.
 NÃO desenhar o corpo no resultado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 350 → 680
-- y: 1430 → 1530
-- A peça DEVE ocupar exatamente esta caixa.
-- Posicionar UM tênis sob cada pé da base
-  (pé esquerdo ≈ x 350–510 / pé direito ≈ x 520–680).
+- x: 295 → 725
+- y: 1375 → 1532  (altura 157 px)
+- Posicionar UM tênis sob cada pé da base:
+  pé esquerdo x 303 → 390 · pé direito x 635 → 721.
+- O ESPAÇAMENTO entre os dois tênis deve ser exatamente este
+  (eles são tratados como um bloco único no encaixe).
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
-- PROIBIDO mover para cima/baixo/lados fora da caixa.
 
 ÂNCORA ANATÔMICA:
-Solado sob cada pé da base; cano alinhado ao tornozelo.
+Solado apoiado na linha do chão (y ≈ 1530); cano na altura do
+tornozelo da base (y ≈ 1380).
 
 TAMANHO RELATIVO À BASE:
-Cada tênis: largura = largura do pé; altura = solado até cano.
+Cada tênis: largura = pé da base (≈ 90 px); altura = solado até o cano.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Cano superior de cada tênis (abertura de encaixe do pé)
@@ -890,27 +926,40 @@ Saída: PNG 1024x1536 transparente, peça posicionada DENTRO da caixa acima.
 
 | ID | Peça | x_min | x_max | y_min | y_max | Base |
 |----|------|-------|-------|-------|-------|------|
-| M-01 | Camiseta | 280 | 740 | 320 | 720 | masculina |
-| M-02 | Regata | 300 | 720 | 330 | 720 | masculina |
-| M-03 | Jaqueta | 240 | 780 | 310 | 760 | masculina |
-| M-04 | Short | 340 | 690 | 720 | 960 | masculina |
-| M-05 | Calça | 340 | 690 | 720 | 1430 | masculina |
-| M-06 | Boné | 340 | 680 | 60 | 280 | masculina |
-| M-07 | Munhequeira | 220 | 820 | 880 | 1000 | masculina |
-| M-08 | Luvas | 180 | 860 | 880 | 1040 | masculina |
-| M-09 | Joelheira | 360 | 670 | 1180 | 1290 | masculina |
-| M-10 | Tênis | 340 | 690 | 1430 | 1530 | masculina |
-| F-01 | Camiseta | 310 | 720 | 320 | 720 | feminina |
-| F-02 | Top | 340 | 690 | 340 | 560 | feminina |
-| F-03 | Jaqueta | 270 | 760 | 310 | 760 | feminina |
-| F-04 | Short | 350 | 680 | 720 | 940 | feminina |
-| F-05 | Legging | 350 | 680 | 720 | 1430 | feminina |
-| F-06 | Boné | 360 | 660 | 60 | 280 | feminina |
-| F-07 | Munhequeira | 240 | 800 | 880 | 1000 | feminina |
-| F-08 | Luvas | 200 | 840 | 880 | 1040 | feminina |
-| F-09 | Joelheira | 370 | 660 | 1180 | 1290 | feminina |
-| F-10 | Tênis | 350 | 680 | 1430 | 1530 | feminina |
+| M-01 | Camiseta | 270 | 755 | 330 | 800 | masculina |
+| M-02 | Regata | 300 | 725 | 340 | 800 | masculina |
+| M-03 | Jaqueta | 250 | 775 | 320 | 860 | masculina |
+| M-04 | Short | 355 | 670 | 770 | 1020 | masculina |
+| M-05 | Calça | 355 | 670 | 770 | 1440 | masculina |
+| M-06 | Boné | 390 | 630 | 60 | 210 | masculina |
+| M-07 | Munhequeira | 238 | 786 | 805 | 905 | masculina |
+| M-08 | Luvas | 225 | 792 | 820 | 1015 | masculina |
+| M-09 | Joelheira | 378 | 645 | 1070 | 1180 | masculina |
+| M-10 | Tênis | 330 | 692 | 1400 | 1532 | masculina |
+| F-01 | Camiseta | 330 | 700 | 400 | 780 | feminina |
+| F-02 | Top | 340 | 685 | 450 | 640 | feminina |
+| F-03 | Jaqueta | 310 | 720 | 390 | 840 | feminina |
+| F-04 | Short | 340 | 685 | 715 | 1000 | feminina |
+| F-05 | Legging | 335 | 690 | 715 | 1430 | feminina |
+| F-06 | Boné | 370 | 655 | 60 | 225 | feminina |
+| F-07 | Munhequeira | 248 | 775 | 785 | 875 | feminina |
+| F-08 | Luvas | 218 | 805 | 800 | 945 | feminina |
+| F-09 | Joelheira | 345 | 680 | 1090 | 1190 | feminina |
+| F-10 | Tênis | 295 | 725 | 1375 | 1532 | feminina |
+
+> Estas caixas são as mesmas de `src/lib/fitting/pieceSpecs.ts` — se uma
+> mudar, a outra deve mudar junto.
 
 ---
 
-*Para gerar uma variação de cor/estilo: copie o prompt da peça desejada, substitua apenas o bloco **ESTILO VISUAL** e envie junto com a imagem base correspondente.*
+## Fluxo completo para publicar uma peça
+
+1. Copie o prompt da peça, edite só o bloco **ESTILO VISUAL** e envie ao
+   gerador de imagem junto com a base correspondente
+   (`public/avatar-bases/base masculina.png` ou `base feminina.png`).
+2. Confira o PNG: transparente, sem corpo, aberturas vazadas, e no caso de
+   pares as duas unidades com o espaçamento indicado.
+3. No **Admin → Itens**, preencha o ID/nome, escolha o slot, selecione o
+   **Tipo de peça** (M-XX/F-XX) e faça o upload — o encaixe automático
+   posiciona a arte na caixa exata antes de salvar.
+4. Equipe o item num avatar de teste e confira no Perfil.
