@@ -81,10 +81,12 @@ export const STRETCH_MAX_DISTORTION = 1.35;
  * Limite de deformação para peças que VESTEM o corpo (top, camiseta,
  * short, calça): nelas, casar com a largura do corpo importa mais que
  * preservar a proporção da arte — um top estreito deixa a base à mostra
- * nas laterais. Artes de vestuário geradas "soltas" costumam ser mais
- * quadradas que a região do corpo que cobrem, então o limite é maior.
+ * nas laterais. Artes de vestuário geradas "soltas" (e fotos de produto
+ * com fundo removido) costumam ser quase quadradas, enquanto a região do
+ * corpo que cobrem é larga e baixa — um top real precisou de 1,77× —
+ * então o limite é bem maior que o dos acessórios.
  */
-export const STRETCH_MAX_DISTORTION_BODY = 1.75;
+export const STRETCH_MAX_DISTORTION_BODY = 2.0;
 
 /**
  * Escolhe o modo de encaixe a partir das proporções (altura/largura) do

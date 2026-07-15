@@ -72,11 +72,13 @@ describe('chooseFitMode', () => {
   });
 
   it('com limite de roupa de corpo, estica artes mais quadradas (caso do top F-02)', () => {
-    // Caixa do top F-02: 345x190 → aspecto ≈ 0,55; arte de top solta ≈ 0,9
-    expect(chooseFitMode(0.9, 0.55)).toBe('contain'); // limite padrão recusa
-    expect(chooseFitMode(0.9, 0.55, STRETCH_MAX_DISTORTION_BODY)).toBe('stretch');
+    // Caixa do top F-02: 345x190 → aspecto ≈ 0,551; arte de top solta ≈ 0,9
+    expect(chooseFitMode(0.9, 0.551)).toBe('contain'); // limite padrão recusa
+    expect(chooseFitMode(0.9, 0.551, STRETCH_MAX_DISTORTION_BODY)).toBe('stretch');
+    // caso real: foto de top com fundo removido, aspecto 0,974 → razão 1,77
+    expect(chooseFitMode(0.974, 0.551, STRETCH_MAX_DISTORTION_BODY)).toBe('stretch');
     // mas arte absurdamente diferente ainda cai para contain
-    expect(chooseFitMode(2.0, 0.55, STRETCH_MAX_DISTORTION_BODY)).toBe('contain');
+    expect(chooseFitMode(1.2, 0.551, STRETCH_MAX_DISTORTION_BODY)).toBe('contain');
   });
 
   it('cai para contain com entradas degeneradas', () => {
