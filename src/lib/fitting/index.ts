@@ -20,7 +20,7 @@
  */
 
 import { getPieceSpec, listPieceSpecs, PIECE_SPECS, PieceSpec, AvatarBaseId, CANVAS, ANATOMY_ZONES, BASE_WIDTHS } from './pieceSpecs';
-import { computeFitTransform, detectContentBBox, validateFit, applyTransformToBox } from './geometry';
+import { computeFitTransform, detectContentBBox, validateFit, applyTransformToBox, chooseFitMode, STRETCH_MAX_DISTORTION } from './geometry';
 import type { Box, FitTransform, FitMode, FitValidation } from './geometry';
 import { loadImage, fitPieceToCanvas, composeAvatar, detectImageContentBox, getImageData } from './canvasFit';
 import type { FitPieceResult, AvatarLayerInput, ComposeAvatarResult } from './canvasFit';
@@ -36,6 +36,8 @@ export {
   detectContentBBox,
   validateFit,
   applyTransformToBox,
+  chooseFitMode,
+  STRETCH_MAX_DISTORTION,
   loadImage,
   fitPieceToCanvas,
   composeAvatar,

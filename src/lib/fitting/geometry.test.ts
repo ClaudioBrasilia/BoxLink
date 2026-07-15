@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeFitTransform, applyTransformToBox, validateFit, detectContentBBox } from './geometry';
+import { computeFitTransform, applyTransformToBox, validateFit, detectContentBBox, chooseFitMode, STRETCH_MAX_DISTORTION } from './geometry';
 import { PIECE_SPECS, getPieceSpec, listPieceSpecs, boxWidth, boxHeight } from './pieceSpecs';
 
 describe('computeFitTransform', () => {
@@ -52,6 +52,29 @@ describe('computeFitTransform', () => {
     const target = { x1: 0, y1: 0, x2: 100, y2: 100 };
     expect(() => computeFitTransform(zero, target)).toThrow();
     expect(() => computeFitTransform(target, zero)).toThrow();
+  });
+});
+
+describe('chooseFitMode', () => {
+  it('usa stretch quando a proporção da arte é próxima da caixa', () => {
+    expect(chooseFitMode(1.0, 1.0)).toBe('stretch');
+    expect(chooseFitMode(1.1, 0.97)).toBe('stretch'); // camiseta um pouco mais alta que a caixa
+    expect(chooseFitMode(0.8, 1.0)).toBe('stretch');
+  });
+
+  it('cai para contain quando a proporção destoa demais da caixa', () => {
+    expect(chooseFitMode(2.0, 1.0)).toBe('contain');
+    expect(chooseFitMode(1.0, 1.0 * STRETCH_MAX_DISTORTION + 0.01)).toBe('contain');
+  });
+
+  it('é simétrico (arte mais alta ou mais larga que a caixa)', () => {
+    expect(chooseFitMode(1.3, 1.0)).toBe(chooseFitMode(1.0, 1.3));
+  });
+
+  it('cai para contain com entradas degeneradas', () => {
+    expect(chooseFitMode(0, 1)).toBe('contain');
+    expect(chooseFitMode(1, Infinity)).toBe('contain');
+    expect(chooseFitMode(NaN, 1)).toBe('contain');
   });
 });
 

@@ -24,7 +24,7 @@ import {
   AvatarSlotKey,
 } from './avatarLayers';
 import { CANVAS, getPieceSpec, AvatarBaseId } from './fitting/pieceSpecs';
-import { validateFit } from './fitting/geometry';
+import { validateFit, chooseFitMode } from './fitting/geometry';
 import { loadImage, fitPieceToCanvas, detectImageContentBox } from './fitting/canvasFit';
 import { resolveRenderSpecId } from './fitting/slotFallback';
 
@@ -123,7 +123,10 @@ async function computeFittedLayerUrl(
     if (validateFit(normalized, spec.box).withinTolerance) return null;
   }
 
-  const fitted = fitPieceToCanvas(img, spec);
+  // 'stretch' preenche a caixa exata (roupa casa com a largura do corpo);
+  // se a proporção da arte destoar muito da caixa, usa 'contain'.
+  const boxAspect = (spec.box.y2 - spec.box.y1) / (spec.box.x2 - spec.box.x1);
+  const fitted = fitPieceToCanvas(img, spec, chooseFitMode(contentAspect, boxAspect));
 
   const out = document.createElement('canvas');
   out.width = OUTPUT.w;
