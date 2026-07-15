@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { AvatarSlotKey } from '../lib/avatarLayers';
-import { PIECE_SPECS, loadImage, fitPieceToCanvas, detectImageContentBox, chooseFitMode, STRETCH_MAX_DISTORTION, STRETCH_MAX_DISTORTION_BODY } from '../lib/fitting';
+import { PIECE_SPECS, loadImage, fitPieceToCanvas, detectImageContentBox, ensureTransparentBackground, chooseFitMode, STRETCH_MAX_DISTORTION, STRETCH_MAX_DISTORTION_BODY } from '../lib/fitting';
 
 const BUCKET = 'avatar-assets';
 
@@ -55,7 +55,9 @@ export async function uploadAvatarItem(
     reader.readAsDataURL(file);
   });
 
-  const img = await loadImage(dataUrl);
+  // Geradores (ChatGPT etc.) muitas vezes entregam a peça com fundo sólido
+  // mesmo pedindo PNG transparente — remove o fundo antes de encaixar.
+  const img = ensureTransparentBackground(await loadImage(dataUrl));
 
   const canvas = document.createElement('canvas');
   canvas.width = TARGET.w;
@@ -85,10 +87,12 @@ export async function uploadAvatarItem(
     warnings = fitted.warnings;
   } else {
     // Item sem especificação cadastrada: centraliza mantendo proporção (comportamento anterior).
-    const scale = Math.min(TARGET.w / img.naturalWidth, TARGET.h / img.naturalHeight);
-    const dx = (TARGET.w - img.naturalWidth * scale) / 2;
-    const dy = (TARGET.h - img.naturalHeight * scale) / 2;
-    ctx.drawImage(img, dx, dy, img.naturalWidth * scale, img.naturalHeight * scale);
+    const iw = img instanceof HTMLImageElement ? img.naturalWidth : img.width;
+    const ih = img instanceof HTMLImageElement ? img.naturalHeight : img.height;
+    const scale = Math.min(TARGET.w / iw, TARGET.h / ih);
+    const dx = (TARGET.w - iw * scale) / 2;
+    const dy = (TARGET.h - ih * scale) / 2;
+    ctx.drawImage(img, dx, dy, iw * scale, ih * scale);
   }
 
   const blob: Blob = await new Promise((resolve, reject) => {

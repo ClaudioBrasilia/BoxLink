@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeFitTransform, applyTransformToBox, validateFit, detectContentBBox, chooseFitMode, STRETCH_MAX_DISTORTION, STRETCH_MAX_DISTORTION_BODY } from './geometry';
+import { computeFitTransform, applyTransformToBox, validateFit, detectContentBBox, removeBorderConnectedBackground, chooseFitMode, STRETCH_MAX_DISTORTION, STRETCH_MAX_DISTORTION_BODY } from './geometry';
 import { PIECE_SPECS, getPieceSpec, listPieceSpecs, boxWidth, boxHeight } from './pieceSpecs';
 
 describe('computeFitTransform', () => {
@@ -146,6 +146,51 @@ describe('detectContentBBox', () => {
     data[3] = 5; // near-transparent pixel at (0,0)
     expect(detectContentBBox(data, width, height, 10)).toBeNull();
     expect(detectContentBBox(data, width, height, 2)).toEqual({ x1: 0, y1: 0, x2: 1, y2: 1 });
+  });
+});
+
+describe('removeBorderConnectedBackground', () => {
+  /** Monta um buffer RGBA a partir de uma matriz de cores nomeadas. */
+  function buildRgba(rows: string[]): Uint8ClampedArray {
+    const colors: Record<string, [number, number, number, number]> = {
+      W: [255, 255, 255, 255], // fundo branco
+      R: [255, 0, 0, 255],     // peça
+    };
+    const h = rows.length;
+    const w = rows[0].length;
+    const data = new Uint8ClampedArray(w * h * 4);
+    rows.forEach((row, y) => {
+      [...row].forEach((ch, x) => {
+        data.set(colors[ch], (y * w + x) * 4);
+      });
+    });
+    return data;
+  }
+
+  it('remove o fundo conectado à borda e preserva a peça', () => {
+    const rows = ['WWWW', 'WRRW', 'WRRW', 'WWWW'];
+    const data = buildRgba(rows);
+    const removed = removeBorderConnectedBackground(data, 4, 4);
+    expect(removed).toBe(12); // 16 pixels - 4 da peça
+    const box = detectContentBBox(data, 4, 4);
+    expect(box).toEqual({ x1: 1, y1: 1, x2: 3, y2: 3 });
+  });
+
+  it('não alcança aberturas totalmente fechadas (interior de anel)', () => {
+    const rows = ['WWWWW', 'WRRRW', 'WRWRW', 'WRRRW', 'WWWWW'];
+    const data = buildRgba(rows);
+    removeBorderConnectedBackground(data, 5, 5);
+    // centro (2,2) é branco mas cercado pela peça: alpha continua 255
+    expect(data[(2 * 5 + 2) * 4 + 3]).toBe(255);
+    // borda foi removida
+    expect(data[3]).toBe(0);
+  });
+
+  it('devolve 0 quando nada se parece com o fundo da borda', () => {
+    const rows = ['RR', 'RR'];
+    const data = buildRgba(rows);
+    // borda toda vermelha → "fundo" é a própria peça; tolerância 0 impede remoção
+    expect(removeBorderConnectedBackground(data, 2, 2, -1)).toBe(0);
   });
 });
 

@@ -25,7 +25,7 @@ import {
 } from './avatarLayers';
 import { CANVAS, getPieceSpec, AvatarBaseId } from './fitting/pieceSpecs';
 import { validateFit, chooseFitMode, STRETCH_MAX_DISTORTION, STRETCH_MAX_DISTORTION_BODY } from './fitting/geometry';
-import { loadImage, fitPieceToCanvas, detectImageContentBox } from './fitting/canvasFit';
+import { loadImage, fitPieceToCanvas, detectImageContentBox, ensureTransparentBackground } from './fitting/canvasFit';
 import { resolveRenderSpecId } from './fitting/slotFallback';
 
 /** Mesmo formato padronizado do upload (512×768, proporção 2:3) */
@@ -100,7 +100,9 @@ async function computeFittedLayerUrl(
   avatarBase: AvatarBaseId,
   explicitSpecId?: string | null
 ): Promise<string | null> {
-  const img = await loadImage(url);
+  // Remove fundo sólido de assets antigos que subiram sem transparência
+  // (ex.: imagem gerada por IA com fundo branco).
+  const img = ensureTransparentBackground(await loadImage(url));
   const contentBox = detectImageContentBox(img);
   if (!contentBox) return null;
 
@@ -111,8 +113,10 @@ async function computeFittedLayerUrl(
 
   // Se a imagem tem a proporção do canvas e o conteúdo já está na caixa
   // exata (caso dos uploads novos, já encaixados), evita gerar data URL.
-  const sx = CANVAS.width / img.naturalWidth;
-  const sy = CANVAS.height / img.naturalHeight;
+  const iw = img instanceof HTMLImageElement ? img.naturalWidth : img.width;
+  const ih = img instanceof HTMLImageElement ? img.naturalHeight : img.height;
+  const sx = CANVAS.width / iw;
+  const sy = CANVAS.height / ih;
   if (Math.abs(sx - sy) < 0.01) {
     const normalized = {
       x1: contentBox.x1 * sx,

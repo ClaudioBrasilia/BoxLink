@@ -152,6 +152,84 @@ export function validateFit(box: Box, targetBox: Box, tolerancePx = 12): FitVali
 }
 
 /**
+ * Remove o fundo sólido de um buffer RGBA in-place: detecta a cor de fundo
+ * (mediana dos pixels da borda) e zera o alpha de tudo que é parecido com
+ * ela E conectado à borda (flood fill 4-vizinhos). Aberturas totalmente
+ * fechadas (ex.: interior de um anel) não são alcançadas — essas ainda
+ * precisam vir vazadas na arte.
+ *
+ * Retorna o número de pixels removidos (0 = nada parecia fundo).
+ */
+export function removeBorderConnectedBackground(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  tolerance = 100
+): number {
+  if (width <= 0 || height <= 0) return 0;
+
+  const rs: number[] = [];
+  const gs: number[] = [];
+  const bs: number[] = [];
+  const pushBorder = (x: number, y: number) => {
+    const i = (y * width + x) * 4;
+    rs.push(rgba[i]);
+    gs.push(rgba[i + 1]);
+    bs.push(rgba[i + 2]);
+  };
+  for (let x = 0; x < width; x++) {
+    pushBorder(x, 0);
+    pushBorder(x, height - 1);
+  }
+  for (let y = 0; y < height; y++) {
+    pushBorder(0, y);
+    pushBorder(width - 1, y);
+  }
+  const median = (arr: number[]) => {
+    arr.sort((a, b) => a - b);
+    return arr[arr.length >> 1];
+  };
+  const bgR = median(rs);
+  const bgG = median(gs);
+  const bgB = median(bs);
+
+  const isBgish = (i: number) =>
+    Math.abs(rgba[i] - bgR) + Math.abs(rgba[i + 1] - bgG) + Math.abs(rgba[i + 2] - bgB) <= tolerance;
+
+  const visited = new Uint8Array(width * height);
+  const queue: number[] = [];
+  const seed = (x: number, y: number) => {
+    const p = y * width + x;
+    if (!visited[p] && isBgish(p * 4)) {
+      visited[p] = 1;
+      queue.push(p);
+    }
+  };
+  for (let x = 0; x < width; x++) {
+    seed(x, 0);
+    seed(x, height - 1);
+  }
+  for (let y = 0; y < height; y++) {
+    seed(0, y);
+    seed(width - 1, y);
+  }
+
+  let removed = 0;
+  while (queue.length) {
+    const p = queue.pop()!;
+    rgba[p * 4 + 3] = 0;
+    removed++;
+    const x = p % width;
+    const y = (p / width) | 0;
+    if (x > 0) seed(x - 1, y);
+    if (x < width - 1) seed(x + 1, y);
+    if (y > 0) seed(x, y - 1);
+    if (y < height - 1) seed(x, y + 1);
+  }
+  return removed;
+}
+
+/**
  * Varre um buffer RGBA (ex.: ImageData.data) e retorna a bounding box dos
  * pixels com alpha acima de `alphaThreshold`. Retorna null se a imagem for
  * inteiramente transparente. Função pura — recebe qualquer array RGBA
