@@ -98,7 +98,10 @@ export async function uploadAvatarItem(
   const filename = `${itemId}.png`;
   const { data, error } = await supabase.storage
     .from(BUCKET)
-    .upload(filename, blob, { upsert: true, contentType: 'image/png' });
+    // cacheControl curto: o upload substitui o arquivo mantendo a mesma URL,
+    // então um cache longo (padrão 1h) faz o app mostrar a arte antiga por
+    // muito tempo depois de um re-upload.
+    .upload(filename, blob, { upsert: true, contentType: 'image/png', cacheControl: '60' });
 
   if (error) throw error;
 
