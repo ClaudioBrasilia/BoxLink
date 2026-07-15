@@ -17,6 +17,12 @@ estar certo na arte é:
 1. **Proporção da peça** ≈ proporção da caixa (largura × altura indicadas).
    O encaixe preserva a proporção da arte; se ela for muito diferente da
    caixa, a peça fica menor num dos eixos.
+1b. **Formato "vestido", não foto de produto.** A peça deve ser desenhada
+   CHAPADA (flat, vista frontal), com a MESMA silhueta que teria vestida na
+   base anexada — alças subindo até a linha dos ombros, barra na altura
+   certa. Foto de produto em perspectiva 3D (manequim invisível) faz as
+   alças "darem a volta por trás" e terminarem soltas no meio do peito
+   quando aplicada no avatar.
 2. **Peças em par** (munhequeira, luvas, joelheira, tênis): desenhar as
    DUAS unidades no mesmo PNG, com o espaçamento indicado — o encaixe trata
    o conjunto como um bloco único, então a distância entre as duas unidades
@@ -580,6 +586,13 @@ CAIXA EXATA NO CANVAS (crítico — não centralizar):
 ÂNCORA ANATÔMICA:
 Alças nos ombros da base (y ≈ 450); barra acima do umbigo (y ≈ 635) —
 exatamente sobre o top que a base já veste.
+
+FORMATO DA ARTE (crítico):
+Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
+em perspectiva 3D, NÃO manequim invisível. A silhueta deve ser IGUAL à do
+top que a base já veste na imagem anexada: alças que sobem até a linha dos
+ombros e terminam no contorno do ombro; decote alto tipo nadador; laterais
+acompanhando o tronco. Pense em "adesivo do top vestido", recortado.
 
 TAMANHO RELATIVO À BASE:
 Largura = largura do peito (x 351–677); Altura = ombros até costelas baixas.
