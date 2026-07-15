@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeFitTransform, applyTransformToBox, validateFit, detectContentBBox, chooseFitMode, STRETCH_MAX_DISTORTION } from './geometry';
+import { computeFitTransform, applyTransformToBox, validateFit, detectContentBBox, chooseFitMode, STRETCH_MAX_DISTORTION, STRETCH_MAX_DISTORTION_BODY } from './geometry';
 import { PIECE_SPECS, getPieceSpec, listPieceSpecs, boxWidth, boxHeight } from './pieceSpecs';
 
 describe('computeFitTransform', () => {
@@ -69,6 +69,14 @@ describe('chooseFitMode', () => {
 
   it('é simétrico (arte mais alta ou mais larga que a caixa)', () => {
     expect(chooseFitMode(1.3, 1.0)).toBe(chooseFitMode(1.0, 1.3));
+  });
+
+  it('com limite de roupa de corpo, estica artes mais quadradas (caso do top F-02)', () => {
+    // Caixa do top F-02: 345x190 → aspecto ≈ 0,55; arte de top solta ≈ 0,9
+    expect(chooseFitMode(0.9, 0.55)).toBe('contain'); // limite padrão recusa
+    expect(chooseFitMode(0.9, 0.55, STRETCH_MAX_DISTORTION_BODY)).toBe('stretch');
+    // mas arte absurdamente diferente ainda cai para contain
+    expect(chooseFitMode(2.0, 0.55, STRETCH_MAX_DISTORTION_BODY)).toBe('contain');
   });
 
   it('cai para contain com entradas degeneradas', () => {
