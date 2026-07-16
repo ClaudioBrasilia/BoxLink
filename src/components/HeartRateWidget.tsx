@@ -16,6 +16,7 @@ import { Capacitor } from '@capacitor/core';
 import { useBluetooth } from '../hooks/useBluetooth';
 import { useNativeHealth } from '../hooks/useNativeHealth';
 import { useHeartRateSession } from '../hooks/useHeartRateSession';
+import { useKeepScreenAwake } from '../hooks/useKeepScreenAwake';
 import { useUserBiometrics } from '../hooks/useUserBiometrics';
 import HeartRateSummary from './HeartRateSummary';
 import { getHeartRateZone, intensityPct } from '../lib/heartRate';
@@ -253,6 +254,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
   const isSessionActive = isConnected || isReconnecting;
 
   const { samples, reset, startedAt } = useHeartRateSession(heartRate, isSessionActive);
+  useKeepScreenAwake(isSessionActive); // não deixa a tela dormir durante o treino
   const bio = useUserBiometrics(userId);
 
   useEffect(() => {
@@ -444,6 +446,7 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
 
   const [finished, setFinished] = useState(false);
   const { samples, reset, startedAt } = useHeartRateSession(bpm, isActive);
+  useKeepScreenAwake(isActive); // não deixa a tela dormir durante a leitura
   const bio = useUserBiometrics(userId);
 
   const wasActive = useRef(false);
