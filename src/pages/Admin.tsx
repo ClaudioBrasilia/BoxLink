@@ -18,6 +18,19 @@ import { uploadAvatarItem } from '../utils/avatarUpload';
 import type { AvatarSlotKey } from '../lib/avatarLayers';
 import { listPieceSpecs } from '../lib/fitting';
 
+// Preço-base sugerido por slot (faixa "Comum" de entrada, em BrazaCoins).
+// Usado para pré-preencher o campo Preço ao escolher o slot de um novo item.
+// O admin pode ajustar livremente depois (ex.: subir para as faixas Raro/Épico/Lendário).
+const SLOT_DEFAULT_PRICE: Record<string, number> = {
+  top: 80,
+  bottom: 80,
+  shoes: 120,
+  accessory: 60,
+  head_accessory: 60,
+  wrist_accessory: 60,
+  special: 1500,
+};
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function Admin() {
@@ -147,7 +160,7 @@ export default function Admin() {
     id: '',
     name: '',
     slot: 'top',
-    price: 100,
+    price: SLOT_DEFAULT_PRICE.top,
     image: '',
     piece_spec_id: null
   });
@@ -567,7 +580,7 @@ export default function Admin() {
     }).select();
     if (!error && data) {
       setItems([data[0], ...items]);
-      setNewItem({ id: '', name: '', slot: 'top', price: 100, image: '', piece_spec_id: null });
+      setNewItem({ id: '', name: '', slot: 'top', price: SLOT_DEFAULT_PRICE.top, image: '', piece_spec_id: null });
       toast.success('Item adicionado!');
     } else toast.error('Erro ao adicionar item: ' + (error?.message || 'Erro desconhecido'));
   };
@@ -1667,7 +1680,15 @@ export default function Admin() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Slot</label>
-                  <select value={editingItem ? editingItem.slot : newItem.slot} onChange={e => editingItem ? setEditingItem({...editingItem, slot: e.target.value as any}) : setNewItem({...newItem, slot: e.target.value as any})}
+                  <select value={editingItem ? editingItem.slot : newItem.slot} onChange={e => {
+                      const slot = e.target.value as any;
+                      if (editingItem) {
+                        setEditingItem({ ...editingItem, slot });
+                      } else {
+                        // Item novo: pré-preenche o preço com o padrão do slot escolhido.
+                        setNewItem({ ...newItem, slot, price: SLOT_DEFAULT_PRICE[slot] ?? newItem.price });
+                      }
+                    }}
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
                     <option value="top">Camiseta (top)</option>
                     <option value="bottom">Calça/Short (bottom)</option>
