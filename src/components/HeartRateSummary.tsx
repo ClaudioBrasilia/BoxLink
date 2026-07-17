@@ -4,7 +4,7 @@
 // Gráfico moderno de BPM × tempo (área com gradiente) + estatísticas e
 // distribuição por zona de esforço. Engaja o aluno ao fechar a sessão.
 // ============================================================================
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from 'recharts';
@@ -15,6 +15,7 @@ import {
   ageFromBirthDate, estimateCalories, maxHrPercent, hasCalorieData, type Biometrics,
 } from '../lib/heartRate';
 import { readWorkoutMetrics, type WorkoutDeviceMetrics } from '../lib/healthMetrics';
+import { saveHeartRateSession } from '../lib/heartRateSessions';
 import { cn } from '../lib/utils';
 
 interface Props {
@@ -25,6 +26,18 @@ interface Props {
   startedAt?: number | null;
   /** Habilita leitura de calorias/passos reais do app de saúde (só modo Saúde). */
   enableDeviceMetrics?: boolean;
+  /** Salva o treino no histórico (só ao encerrar ao vivo; false ao reabrir do histórico). */
+  persist?: boolean;
+  /** ID do atleta — necessário para persistir. */
+  userId?: string;
+  /** Origem da sessão: 'ble' | 'health'. */
+  source?: 'ble' | 'health';
+  /** Métricas já salvas (histórico) — exibe sem refazer a leitura do app de saúde. */
+  deviceOverride?: WorkoutDeviceMetrics;
+  /** Origem das calorias salvas (histórico) — controla o rótulo "do relógio"/"estimativa". */
+  caloriesSourceOverride?: 'device' | 'estimate' | null;
+  /** Texto do botão de fechar (padrão "Novo Treino"). */
+  closeLabel?: string;
   onClose: () => void;
 }
 
@@ -81,7 +94,10 @@ function ChartTooltip({ active, payload }: any) {
   );
 }
 
-export default function HeartRateSummary({ samples, deviceName, bio = {}, startedAt, enableDeviceMetrics, onClose }: Props) {
+export default function HeartRateSummary({
+  samples, deviceName, bio = {}, startedAt, enableDeviceMetrics,
+  persist, userId, source, deviceOverride, caloriesSourceOverride, closeLabel, onClose,
+}: Props) {
   const stats = useMemo(() => {
     const bpms = samples.map((s) => s.bpm);
     const avg = Math.round(bpms.reduce((a, b) => a + b, 0) / bpms.length);
@@ -109,23 +125,54 @@ export default function HeartRateSummary({ samples, deviceName, bio = {}, starte
     return { avg, max, min, durationSec, zoneSecs, totalZoneSec, dominant, effort, estCalories, avgPctMax };
   }, [samples, bio]);
 
-  // Métricas REAIS do relógio (calorias/passos) via Health Connect / Apple Health
-  const [device, setDevice] = useState<WorkoutDeviceMetrics>({});
+  // Métricas REAIS do relógio (calorias/passos) via Health Connect / Apple Health.
+  // No histórico (deviceOverride) usamos o valor salvo, sem refazer a leitura.
+  const [device, setDevice] = useState<WorkoutDeviceMetrics>(deviceOverride ?? {});
+  const [metricsSettled, setMetricsSettled] = useState(!enableDeviceMetrics || !!deviceOverride);
   useEffect(() => {
-    if (!enableDeviceMetrics || !startedAt) return;
+    if (deviceOverride) return;
+    if (!enableDeviceMetrics || !startedAt) { setMetricsSettled(true); return; }
     let cancelled = false;
     readWorkoutMetrics(startedAt, Date.now()).then((m) => {
-      if (!cancelled) setDevice(m);
+      if (!cancelled) { setDevice(m); setMetricsSettled(true); }
     });
     return () => { cancelled = true; };
-  }, [enableDeviceMetrics, startedAt]);
+  }, [enableDeviceMetrics, startedAt, deviceOverride]);
 
   // Calorias: prioriza o valor real do relógio; cai para a estimativa.
   const calories = device.calories ?? stats.estCalories;
-  const caloriesFromDevice = device.calories != null;
+  const caloriesFromDevice =
+    caloriesSourceOverride != null ? caloriesSourceOverride === 'device' : device.calories != null;
   const showCalories = calories != null;
   const showPct = stats.avgPctMax != null;
   const showSteps = device.steps != null;
+
+  // Salva o treino no histórico UMA vez (apenas ao encerrar ao vivo).
+  const savedRef = useRef(false);
+  useEffect(() => {
+    if (!persist || !userId || savedRef.current || !metricsSettled) return;
+    if (samples.length < 2) return;
+    savedRef.current = true;
+    const now = Date.now();
+    saveHeartRateSession({
+      user_id: userId,
+      started_at: startedAt ? new Date(startedAt).toISOString() : null,
+      ended_at: new Date(now).toISOString(),
+      duration_sec: stats.durationSec,
+      avg_bpm: stats.avg,
+      max_bpm: stats.max,
+      min_bpm: stats.min,
+      effort: stats.effort,
+      calories: calories ?? null,
+      calories_source: calories == null ? null : caloriesFromDevice ? 'device' : 'estimate',
+      steps: device.steps ?? null,
+      zone_secs: stats.zoneSecs,
+      dominant_zone: stats.dominant,
+      samples,
+      device_name: deviceName ?? null,
+      source: source ?? null,
+    }).catch(() => {});
+  }, [persist, userId, metricsSettled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const yDomain: [number, number] = [Math.max(30, stats.min - 8), stats.max + 8];
 
@@ -248,7 +295,7 @@ export default function HeartRateSummary({ samples, deviceName, bio = {}, starte
 
       <button onClick={onClose}
         className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-primary text-black text-xs font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-[0_0_20px_rgba(202,253,0,0.2)]">
-        <RotateCcw className="w-4 h-4" /> Novo Treino
+        <RotateCcw className="w-4 h-4" /> {closeLabel ?? 'Novo Treino'}
       </button>
     </motion.div>
   );

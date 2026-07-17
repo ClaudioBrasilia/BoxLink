@@ -280,7 +280,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
 
   // Resumo de treino ao encerrar
   if (finished && samples.length >= MIN_SUMMARY_SAMPLES) {
-    return <HeartRateSummary samples={samples} deviceName={connectedDevice?.name} bio={bio} startedAt={startedAt} onClose={closeSummary} />;
+    return <HeartRateSummary samples={samples} deviceName={connectedDevice?.name} bio={bio} startedAt={startedAt} persist userId={userId} source="ble" onClose={closeSummary} />;
   }
 
   if (isSessionActive) {
@@ -463,7 +463,7 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
   };
 
   if (finished && samples.length >= MIN_SUMMARY_SAMPLES) {
-    return <HeartRateSummary samples={samples} deviceName={appName} bio={bio} startedAt={startedAt} enableDeviceMetrics onClose={closeSummary} />;
+    return <HeartRateSummary samples={samples} deviceName={appName} bio={bio} startedAt={startedAt} enableDeviceMetrics persist userId={userId} source="health" onClose={closeSummary} />;
   }
 
   return (

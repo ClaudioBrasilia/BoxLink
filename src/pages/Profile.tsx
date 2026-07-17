@@ -9,6 +9,8 @@ import AvatarPreview from '../components/AvatarPreview';
 import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
 import { LayerAdjustment } from '../lib/avatarLayers';
+import HeartRateHistory from '../components/HeartRateHistory';
+import type { Biometrics } from '../lib/heartRate';
 
 import { supabase } from '../lib/supabase';
 
@@ -43,6 +45,17 @@ export default function Profile() {
   const [bioSex, setBioSex] = useState<'' | 'male' | 'female'>('');
   const [bioSaving, setBioSaving] = useState(false);
   const [bioSaved, setBioSaved] = useState(false);
+
+  // Biometria (para %FC máx no histórico) montada a partir dos campos do perfil
+  const historyBio: Biometrics = {
+    weightKg: bioWeight ? Number(bioWeight) : null,
+    heightCm: bioHeight ? Number(bioHeight) : null,
+    birthDate:
+      bioDay && bioMonth && bioYear
+        ? `${bioYear}-${String(Number(bioMonth)).padStart(2, '0')}-${String(Number(bioDay)).padStart(2, '0')}`
+        : null,
+    sex: bioSex || null,
+  };
 
   useEffect(() => {
     if (user?.id) {
@@ -498,6 +511,9 @@ export default function Profile() {
           Política de Privacidade <ChevronRight className="w-3 h-3" />
         </a>
       </section>
+
+      {/* Histórico de treinos de FC */}
+      <HeartRateHistory userId={user?.id} bio={historyBio} />
 
       {/* Benchmarks / PRs */}
       <section className="space-y-4">
