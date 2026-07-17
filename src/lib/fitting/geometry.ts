@@ -152,11 +152,18 @@ export function validateFit(box: Box, targetBox: Box, tolerancePx = 12): FitVali
 }
 
 /**
- * Remove o fundo sólido de um buffer RGBA in-place: detecta a cor de fundo
- * (mediana dos pixels da borda) e zera o alpha de tudo que é parecido com
- * ela E conectado à borda (flood fill 4-vizinhos). Aberturas totalmente
- * fechadas (ex.: interior de um anel) não são alcançadas — essas ainda
- * precisam vir vazadas na arte.
+ * Remove o fundo sólido de um buffer RGBA in-place: detecta a(s) cor(es) de
+ * fundo pela borda e zera o alpha de tudo que é parecido com elas E
+ * conectado à borda (flood fill 4-vizinhos).
+ *
+ * Suporta até DOIS tons de fundo: geradores de imagem às vezes pintam um
+ * xadrez cinza de "transparência falsa" como pixels reais. Quando a borda
+ * tem um segundo tom relevante e ambos são neutros (cinzas), pixels neutros
+ * na faixa de luminância do xadrez também são tratados como fundo — isso
+ * cobre o vinhete que clareia o xadrez em direção ao centro.
+ *
+ * Aberturas totalmente fechadas (ex.: interior de um anel) não são
+ * alcançadas — essas ainda precisam vir vazadas na arte.
  *
  * Retorna o número de pixels removidos (0 = nada parecia fundo).
  */
@@ -168,33 +175,57 @@ export function removeBorderConnectedBackground(
 ): number {
   if (width <= 0 || height <= 0) return 0;
 
-  const rs: number[] = [];
-  const gs: number[] = [];
-  const bs: number[] = [];
-  const pushBorder = (x: number, y: number) => {
-    const i = (y * width + x) * 4;
-    rs.push(rgba[i]);
-    gs.push(rgba[i + 1]);
-    bs.push(rgba[i + 2]);
-  };
+  const borderIdx: number[] = [];
   for (let x = 0; x < width; x++) {
-    pushBorder(x, 0);
-    pushBorder(x, height - 1);
+    borderIdx.push(x * 4, ((height - 1) * width + x) * 4);
   }
   for (let y = 0; y < height; y++) {
-    pushBorder(0, y);
-    pushBorder(width - 1, y);
+    borderIdx.push(y * width * 4, (y * width + width - 1) * 4);
   }
-  const median = (arr: number[]) => {
-    arr.sort((a, b) => a - b);
+  const medianOf = (idx: number[], channel: number) => {
+    const arr = idx.map((i) => rgba[i + channel]).sort((a, b) => a - b);
     return arr[arr.length >> 1];
   };
-  const bgR = median(rs);
-  const bgG = median(gs);
-  const bgB = median(bs);
+  const tone1 = [medianOf(borderIdx, 0), medianOf(borderIdx, 1), medianOf(borderIdx, 2)];
 
-  const isBgish = (i: number) =>
-    Math.abs(rgba[i] - bgR) + Math.abs(rgba[i + 1] - bgG) + Math.abs(rgba[i + 2] - bgB) <= tolerance;
+  const distTo = (i: number, tone: number[]) =>
+    Math.abs(rgba[i] - tone[0]) + Math.abs(rgba[i + 1] - tone[1]) + Math.abs(rgba[i + 2] - tone[2]);
+
+  // Segundo tom de fundo (xadrez): pixels de borda longe do tom principal
+  const farIdx = borderIdx.filter((i) => distTo(i, tone1) > tolerance);
+  const tone2 =
+    farIdx.length >= borderIdx.length * 0.15
+      ? [medianOf(farIdx, 0), medianOf(farIdx, 1), medianOf(farIdx, 2)]
+      : null;
+
+  // Ambos os tons neutros → fundo tipo "xadrez de transparência": aceita
+  // qualquer pixel neutro na faixa de luminância do xadrez (com folga para
+  // o vinhete que clareia em direção ao centro).
+  let neutralRange: { min: number; max: number } | null = null;
+  if (tone2) {
+    const spread = (t: number[]) => Math.max(...t) - Math.min(...t);
+    if (spread(tone1) <= 30 && spread(tone2) <= 30) {
+      const lum1 = (tone1[0] + tone1[1] + tone1[2]) / 3;
+      const lum2 = (tone2[0] + tone2[1] + tone2[2]) / 3;
+      neutralRange = { min: Math.min(lum1, lum2) - 40, max: Math.max(lum1, lum2) + 80 };
+    }
+  }
+
+  const isBgish = (i: number) => {
+    if (distTo(i, tone1) <= tolerance) return true;
+    if (tone2 && distTo(i, tone2) <= tolerance) return true;
+    if (neutralRange) {
+      const r = rgba[i];
+      const g = rgba[i + 1];
+      const b = rgba[i + 2];
+      const spread = Math.max(r, g, b) - Math.min(r, g, b);
+      if (spread <= 30) {
+        const lum = (r + g + b) / 3;
+        if (lum >= neutralRange.min && lum <= neutralRange.max) return true;
+      }
+    }
+    return false;
+  };
 
   const visited = new Uint8Array(width * height);
   const queue: number[] = [];
