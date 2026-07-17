@@ -17,32 +17,7 @@ import { createNotification } from '../hooks/useNotifications';
 import { uploadAvatarItem } from '../utils/avatarUpload';
 import type { AvatarSlotKey } from '../lib/avatarLayers';
 import { listPieceSpecs } from '../lib/fitting';
-
-// Raridades disponíveis para pré-preencher o preço (apenas auxílio de UI — não é salvo no banco).
-type Rarity = 'comum' | 'raro' | 'epico' | 'lendario';
-const RARITY_LABELS: Record<Rarity, string> = {
-  comum: '🟢 Comum',
-  raro: '🔵 Raro',
-  epico: '🟣 Épico',
-  lendario: '🟠 Lendário',
-};
-
-// Matriz de preços sugeridos (BrazaCoins) por slot × raridade.
-// Usada para pré-preencher o campo Preço; o admin pode ajustar livremente depois.
-const SLOT_RARITY_PRICE: Record<string, Record<Rarity, number>> = {
-  top:             { comum: 80,  raro: 250, epico: 500, lendario: 1000 },
-  bottom:          { comum: 80,  raro: 250, epico: 500, lendario: 1000 },
-  shoes:           { comum: 120, raro: 350, epico: 700, lendario: 1200 },
-  accessory:       { comum: 60,  raro: 180, epico: 400, lendario: 900  },
-  head_accessory:  { comum: 60,  raro: 180, epico: 400, lendario: 900  },
-  wrist_accessory: { comum: 60,  raro: 150, epico: 350, lendario: 800  },
-  special:         { comum: 800, raro: 1000, epico: 1250, lendario: 1500 },
-};
-
-// Retorna o preço sugerido para um slot/raridade, com fallback seguro.
-function getSlotPrice(slot: string, rarity: Rarity): number {
-  return SLOT_RARITY_PRICE[slot]?.[rarity] ?? SLOT_RARITY_PRICE.top[rarity];
-}
+import { type Rarity, RARITIES, RARITY_LABELS, RARITY_EMOJI, getSlotPrice, normalizeRarity } from '../lib/rarity';
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
@@ -175,10 +150,11 @@ export default function Admin() {
     slot: 'top',
     price: getSlotPrice('top', 'comum'),
     image: '',
-    piece_spec_id: null
+    piece_spec_id: null,
+    rarity: 'comum'
   });
   const [editingItem, setEditingItem] = useState<Item | null>(null);
-  // Raridade selecionada só para calcular o preço sugerido (não é persistida).
+  // Raridade selecionada no formulário (sugere o preço e é salva no item).
   const [itemRarity, setItemRarity] = useState<Rarity>('comum');
 
   const [isManageUsersOpen, setIsManageUsersOpen] = useState(false);
@@ -591,11 +567,11 @@ export default function Admin() {
     if (!newItem.id || !newItem.name || !newItem.price) return;
     const { data, error } = await supabase.from('items').insert({
       id: newItem.id, name: newItem.name, slot: newItem.slot, price: newItem.price, image: newItem.image,
-      piece_spec_id: newItem.piece_spec_id || null
+      piece_spec_id: newItem.piece_spec_id || null, rarity: itemRarity
     }).select();
     if (!error && data) {
       setItems([data[0], ...items]);
-      setNewItem({ id: '', name: '', slot: 'top', price: getSlotPrice('top', 'comum'), image: '', piece_spec_id: null });
+      setNewItem({ id: '', name: '', slot: 'top', price: getSlotPrice('top', 'comum'), image: '', piece_spec_id: null, rarity: 'comum' });
       setItemRarity('comum');
       toast.success('Item adicionado!');
     } else toast.error('Erro ao adicionar item: ' + (error?.message || 'Erro desconhecido'));
@@ -612,10 +588,11 @@ export default function Admin() {
     if (!editingItem) return;
     const { error } = await supabase.from('items').update({
       name: editingItem.name, slot: editingItem.slot, price: editingItem.price, image: editingItem.image,
-      piece_spec_id: editingItem.piece_spec_id || null
+      piece_spec_id: editingItem.piece_spec_id || null, rarity: itemRarity
     }).eq('id', editingItem.id);
     if (!error) {
-      setItems(items.map(i => i.id === editingItem.id ? editingItem : i));
+      const updated = { ...editingItem, rarity: itemRarity };
+      setItems(items.map(i => i.id === editingItem.id ? updated : i));
       setEditingItem(null);
       toast.success('Item atualizado com sucesso!');
     } else toast.error('Erro ao atualizar item: ' + error.message);
@@ -1727,8 +1704,8 @@ export default function Admin() {
                       editingItem ? setEditingItem({ ...editingItem, price }) : setNewItem({ ...newItem, price });
                     }}
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
-                    {(Object.keys(RARITY_LABELS) as Rarity[]).map(r => (
-                      <option key={r} value={r}>{RARITY_LABELS[r]}</option>
+                    {RARITIES.map(r => (
+                      <option key={r} value={r}>{RARITY_EMOJI[r]} {RARITY_LABELS[r]}</option>
                     ))}
                   </select>
                 </div>
@@ -1802,7 +1779,7 @@ export default function Admin() {
               {items.map((item) => (
                 <div key={item.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-3 group relative">
                   <div className="absolute top-2 right-2 flex gap-1 z-10">
-                    <button onClick={() => { setEditingItem(item); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="p-2 bg-primary/20 text-primary rounded-xl hover:bg-primary hover:text-background transition-all"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => { setEditingItem(item); setItemRarity(normalizeRarity(item.rarity)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="p-2 bg-primary/20 text-primary rounded-xl hover:bg-primary hover:text-background transition-all"><Edit2 className="w-4 h-4" /></button>
                     <button onClick={() => handleDeleteItem(item.id)} className="p-2 bg-error-container text-on-error-container rounded-xl hover:bg-error hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
                   </div>
                   <div className="aspect-square rounded-2xl bg-surface-container-highest flex items-center justify-center overflow-hidden">
