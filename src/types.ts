@@ -18,6 +18,8 @@ export interface Item {
   slot: keyof AvatarSlot;
   price: number;
   image: string;
+  /** Raridade do item (comum | raro | epico | lendario). Define a etiqueta na loja. */
+  rarity?: 'comum' | 'raro' | 'epico' | 'lendario';
   layer_adjustment?: Record<string, any> | null;
   gender_target?: 'male' | 'female' | 'both';
   /** Chave de src/lib/fitting/pieceSpecs.ts (ex.: "M-01", "F-05") usada para o encaixe automático no upload. */

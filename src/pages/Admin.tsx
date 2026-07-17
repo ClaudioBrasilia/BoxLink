@@ -17,6 +17,7 @@ import { createNotification } from '../hooks/useNotifications';
 import { uploadAvatarItem } from '../utils/avatarUpload';
 import type { AvatarSlotKey } from '../lib/avatarLayers';
 import { listPieceSpecs } from '../lib/fitting';
+import { type Rarity, RARITIES, RARITY_LABELS, RARITY_EMOJI, getSlotPrice, normalizeRarity } from '../lib/rarity';
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
@@ -147,11 +148,14 @@ export default function Admin() {
     id: '',
     name: '',
     slot: 'top',
-    price: 100,
+    price: getSlotPrice('top', 'comum'),
     image: '',
-    piece_spec_id: null
+    piece_spec_id: null,
+    rarity: 'comum'
   });
   const [editingItem, setEditingItem] = useState<Item | null>(null);
+  // Raridade selecionada no formulário (sugere o preço e é salva no item).
+  const [itemRarity, setItemRarity] = useState<Rarity>('comum');
 
   const [isManageUsersOpen, setIsManageUsersOpen] = useState(false);
   const [openSections, setOpenSections] = useState<string[]>([]);
@@ -563,11 +567,12 @@ export default function Admin() {
     if (!newItem.id || !newItem.name || !newItem.price) return;
     const { data, error } = await supabase.from('items').insert({
       id: newItem.id, name: newItem.name, slot: newItem.slot, price: newItem.price, image: newItem.image,
-      piece_spec_id: newItem.piece_spec_id || null
+      piece_spec_id: newItem.piece_spec_id || null, rarity: itemRarity
     }).select();
     if (!error && data) {
       setItems([data[0], ...items]);
-      setNewItem({ id: '', name: '', slot: 'top', price: 100, image: '', piece_spec_id: null });
+      setNewItem({ id: '', name: '', slot: 'top', price: getSlotPrice('top', 'comum'), image: '', piece_spec_id: null, rarity: 'comum' });
+      setItemRarity('comum');
       toast.success('Item adicionado!');
     } else toast.error('Erro ao adicionar item: ' + (error?.message || 'Erro desconhecido'));
   };
@@ -583,10 +588,11 @@ export default function Admin() {
     if (!editingItem) return;
     const { error } = await supabase.from('items').update({
       name: editingItem.name, slot: editingItem.slot, price: editingItem.price, image: editingItem.image,
-      piece_spec_id: editingItem.piece_spec_id || null
+      piece_spec_id: editingItem.piece_spec_id || null, rarity: itemRarity
     }).eq('id', editingItem.id);
     if (!error) {
-      setItems(items.map(i => i.id === editingItem.id ? editingItem : i));
+      const updated = { ...editingItem, rarity: itemRarity };
+      setItems(items.map(i => i.id === editingItem.id ? updated : i));
       setEditingItem(null);
       toast.success('Item atualizado com sucesso!');
     } else toast.error('Erro ao atualizar item: ' + error.message);
@@ -1667,7 +1673,16 @@ export default function Admin() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Slot</label>
-                  <select value={editingItem ? editingItem.slot : newItem.slot} onChange={e => editingItem ? setEditingItem({...editingItem, slot: e.target.value as any}) : setNewItem({...newItem, slot: e.target.value as any})}
+                  <select value={editingItem ? editingItem.slot : newItem.slot} onChange={e => {
+                      const slot = e.target.value as any;
+                      if (editingItem) {
+                        // Na edição, recalcula o preço a partir do slot + raridade atual.
+                        setEditingItem({ ...editingItem, slot, price: getSlotPrice(slot, itemRarity) });
+                      } else {
+                        // Item novo: pré-preenche o preço com base no slot + raridade escolhidos.
+                        setNewItem({ ...newItem, slot, price: getSlotPrice(slot, itemRarity) });
+                      }
+                    }}
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
                     <option value="top">Camiseta (top)</option>
                     <option value="bottom">Calça/Short (bottom)</option>
@@ -1679,10 +1694,26 @@ export default function Admin() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Preço (Coins)</label>
-                  <input type="number" value={editingItem ? editingItem.price : newItem.price} onChange={e => editingItem ? setEditingItem({...editingItem, price: parseInt(e.target.value)}) : setNewItem({...newItem, price: parseInt(e.target.value)})}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Raridade (sugere o preço)</label>
+                  <select value={itemRarity} onChange={e => {
+                      const rarity = e.target.value as Rarity;
+                      setItemRarity(rarity);
+                      // Recalcula o preço sugerido para o slot do item em edição/criação.
+                      const slot = editingItem ? editingItem.slot : newItem.slot;
+                      const price = getSlotPrice(slot, rarity);
+                      editingItem ? setEditingItem({ ...editingItem, price }) : setNewItem({ ...newItem, price });
+                    }}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                    {RARITIES.map(r => (
+                      <option key={r} value={r}>{RARITY_EMOJI[r]} {RARITY_LABELS[r]}</option>
+                    ))}
+                  </select>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Preço (Coins) — ajuste livre</label>
+                <input type="number" value={editingItem ? editingItem.price : newItem.price} onChange={e => editingItem ? setEditingItem({...editingItem, price: parseInt(e.target.value)}) : setNewItem({...newItem, price: parseInt(e.target.value)})}
+                  className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
               </div>
 
               <div className="space-y-2">
@@ -1748,7 +1779,7 @@ export default function Admin() {
               {items.map((item) => (
                 <div key={item.id} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col gap-3 group relative">
                   <div className="absolute top-2 right-2 flex gap-1 z-10">
-                    <button onClick={() => { setEditingItem(item); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="p-2 bg-primary/20 text-primary rounded-xl hover:bg-primary hover:text-background transition-all"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => { setEditingItem(item); setItemRarity(normalizeRarity(item.rarity)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="p-2 bg-primary/20 text-primary rounded-xl hover:bg-primary hover:text-background transition-all"><Edit2 className="w-4 h-4" /></button>
                     <button onClick={() => handleDeleteItem(item.id)} className="p-2 bg-error-container text-on-error-container rounded-xl hover:bg-error hover:text-white transition-all"><Trash2 className="w-4 h-4" /></button>
                   </div>
                   <div className="aspect-square rounded-2xl bg-surface-container-highest flex items-center justify-center overflow-hidden">

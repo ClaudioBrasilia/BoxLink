@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Item, AvatarSlot } from '../types';
 import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
+import { RARITY_LABELS, RARITY_BADGE_CLASS, normalizeRarity } from '../lib/rarity';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const BUCKET = 'avatar-assets';
@@ -240,10 +241,19 @@ export default function AvatarCustomization() {
                   isEquipped ? 'border-primary bg-primary/5' : 'border-outline-variant/10 hover:border-primary/30')}>
 
                 {isEquipped && (
-                  <div className="absolute top-3 right-3 bg-primary text-on-primary p-1 rounded-full shadow-lg">
+                  <div className="absolute top-3 right-3 bg-primary text-on-primary p-1 rounded-full shadow-lg z-10">
                     <Check className="w-3 h-3" />
                   </div>
                 )}
+
+                {(() => {
+                  const rarity = normalizeRarity(item.rarity);
+                  return (
+                    <div className={cn('absolute top-3 left-3 z-10 px-2 py-0.5 rounded-full border text-[7px] font-black uppercase tracking-widest shadow-sm', RARITY_BADGE_CLASS[rarity])}>
+                      {RARITY_LABELS[rarity]}
+                    </div>
+                  );
+                })()}
 
                 <div className="aspect-square rounded-2xl bg-surface-container-highest overflow-hidden group-hover:scale-105 transition-transform">
                   {item.image ? (
