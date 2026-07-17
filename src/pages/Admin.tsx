@@ -18,18 +18,31 @@ import { uploadAvatarItem } from '../utils/avatarUpload';
 import type { AvatarSlotKey } from '../lib/avatarLayers';
 import { listPieceSpecs } from '../lib/fitting';
 
-// Preço-base sugerido por slot (faixa "Comum" de entrada, em BrazaCoins).
-// Usado para pré-preencher o campo Preço ao escolher o slot de um novo item.
-// O admin pode ajustar livremente depois (ex.: subir para as faixas Raro/Épico/Lendário).
-const SLOT_DEFAULT_PRICE: Record<string, number> = {
-  top: 80,
-  bottom: 80,
-  shoes: 120,
-  accessory: 60,
-  head_accessory: 60,
-  wrist_accessory: 60,
-  special: 1500,
+// Raridades disponíveis para pré-preencher o preço (apenas auxílio de UI — não é salvo no banco).
+type Rarity = 'comum' | 'raro' | 'epico' | 'lendario';
+const RARITY_LABELS: Record<Rarity, string> = {
+  comum: '🟢 Comum',
+  raro: '🔵 Raro',
+  epico: '🟣 Épico',
+  lendario: '🟠 Lendário',
 };
+
+// Matriz de preços sugeridos (BrazaCoins) por slot × raridade.
+// Usada para pré-preencher o campo Preço; o admin pode ajustar livremente depois.
+const SLOT_RARITY_PRICE: Record<string, Record<Rarity, number>> = {
+  top:             { comum: 80,  raro: 250, epico: 500, lendario: 1000 },
+  bottom:          { comum: 80,  raro: 250, epico: 500, lendario: 1000 },
+  shoes:           { comum: 120, raro: 350, epico: 700, lendario: 1200 },
+  accessory:       { comum: 60,  raro: 180, epico: 400, lendario: 900  },
+  head_accessory:  { comum: 60,  raro: 180, epico: 400, lendario: 900  },
+  wrist_accessory: { comum: 60,  raro: 150, epico: 350, lendario: 800  },
+  special:         { comum: 800, raro: 1000, epico: 1250, lendario: 1500 },
+};
+
+// Retorna o preço sugerido para um slot/raridade, com fallback seguro.
+function getSlotPrice(slot: string, rarity: Rarity): number {
+  return SLOT_RARITY_PRICE[slot]?.[rarity] ?? SLOT_RARITY_PRICE.top[rarity];
+}
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
@@ -160,11 +173,13 @@ export default function Admin() {
     id: '',
     name: '',
     slot: 'top',
-    price: SLOT_DEFAULT_PRICE.top,
+    price: getSlotPrice('top', 'comum'),
     image: '',
     piece_spec_id: null
   });
   const [editingItem, setEditingItem] = useState<Item | null>(null);
+  // Raridade selecionada só para calcular o preço sugerido (não é persistida).
+  const [itemRarity, setItemRarity] = useState<Rarity>('comum');
 
   const [isManageUsersOpen, setIsManageUsersOpen] = useState(false);
   const [openSections, setOpenSections] = useState<string[]>([]);
@@ -580,7 +595,8 @@ export default function Admin() {
     }).select();
     if (!error && data) {
       setItems([data[0], ...items]);
-      setNewItem({ id: '', name: '', slot: 'top', price: SLOT_DEFAULT_PRICE.top, image: '', piece_spec_id: null });
+      setNewItem({ id: '', name: '', slot: 'top', price: getSlotPrice('top', 'comum'), image: '', piece_spec_id: null });
+      setItemRarity('comum');
       toast.success('Item adicionado!');
     } else toast.error('Erro ao adicionar item: ' + (error?.message || 'Erro desconhecido'));
   };
@@ -1683,10 +1699,11 @@ export default function Admin() {
                   <select value={editingItem ? editingItem.slot : newItem.slot} onChange={e => {
                       const slot = e.target.value as any;
                       if (editingItem) {
-                        setEditingItem({ ...editingItem, slot });
+                        // Na edição, recalcula o preço a partir do slot + raridade atual.
+                        setEditingItem({ ...editingItem, slot, price: getSlotPrice(slot, itemRarity) });
                       } else {
-                        // Item novo: pré-preenche o preço com o padrão do slot escolhido.
-                        setNewItem({ ...newItem, slot, price: SLOT_DEFAULT_PRICE[slot] ?? newItem.price });
+                        // Item novo: pré-preenche o preço com base no slot + raridade escolhidos.
+                        setNewItem({ ...newItem, slot, price: getSlotPrice(slot, itemRarity) });
                       }
                     }}
                     className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
@@ -1700,10 +1717,26 @@ export default function Admin() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Preço (Coins)</label>
-                  <input type="number" value={editingItem ? editingItem.price : newItem.price} onChange={e => editingItem ? setEditingItem({...editingItem, price: parseInt(e.target.value)}) : setNewItem({...newItem, price: parseInt(e.target.value)})}
-                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                  <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Raridade (sugere o preço)</label>
+                  <select value={itemRarity} onChange={e => {
+                      const rarity = e.target.value as Rarity;
+                      setItemRarity(rarity);
+                      // Recalcula o preço sugerido para o slot do item em edição/criação.
+                      const slot = editingItem ? editingItem.slot : newItem.slot;
+                      const price = getSlotPrice(slot, rarity);
+                      editingItem ? setEditingItem({ ...editingItem, price }) : setNewItem({ ...newItem, price });
+                    }}
+                    className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer">
+                    {(Object.keys(RARITY_LABELS) as Rarity[]).map(r => (
+                      <option key={r} value={r}>{RARITY_LABELS[r]}</option>
+                    ))}
+                  </select>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Preço (Coins) — ajuste livre</label>
+                <input type="number" value={editingItem ? editingItem.price : newItem.price} onChange={e => editingItem ? setEditingItem({...editingItem, price: parseInt(e.target.value)}) : setNewItem({...newItem, price: parseInt(e.target.value)})}
+                  className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
               </div>
 
               <div className="space-y-2">
