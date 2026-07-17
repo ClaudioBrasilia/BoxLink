@@ -93,6 +93,42 @@ function isGarminName(name?: string | null): boolean {
   return /garmin|forerunner|fenix|f[eé]nix|venu|vivoactive|vivosmart|instinct|epix|enduro|swim|marq|descent|approach/i.test(name);
 }
 
+// Detecta relógios/pulseiras Samsung pelo nome.
+function isSamsungName(name?: string | null): boolean {
+  if (!name) return false;
+  return /galaxy|samsung|gear|\bsm-r/i.test(name);
+}
+
+// Dica específica para Samsung ao falhar a conexão/leitura de FC.
+// Galaxy Watch (Wear OS) NÃO transmite FC por Bluetooth direto — o caminho
+// confiável é o Health Connect. A pulseira Galaxy Fit conecta direto, mas o
+// app Galaxy Wearable "segura" a conexão e recusa o BoxLink.
+function SamsungHint({ platform, onUseHealth }: { platform: string; onUseHealth?: () => void }) {
+  return (
+    <div className="flex flex-col gap-1.5 bg-primary/5 border border-primary/20 rounded-xl p-3">
+      <p className="text-primary text-[9px] font-black uppercase tracking-widest">Samsung detectado</p>
+      <p className="text-white/60 text-[9px] font-black uppercase leading-relaxed">
+        O <span className="text-white">Galaxy Watch</span> não transmite FC por Bluetooth direto. Caminhos que funcionam:
+      </p>
+      <ol className="text-white/50 text-[9px] font-black uppercase leading-relaxed list-decimal pl-3.5 flex flex-col gap-0.5">
+        {platform === 'android' ? (
+          <li>Use <span className="text-white">"Sincronizar com App de Saúde"</span> (Health Connect): inicie um treino no Samsung Health e leia a FC por lá.</li>
+        ) : (
+          <li>Use <span className="text-white">"Sincronizar com App de Saúde"</span> (Apple Health) ou um app transmissor no relógio.</li>
+        )}
+        <li><span className="text-white">Galaxy Fit</span> (pulseira): inicie um treino NA PULSEIRA e feche o app Galaxy Wearable — conectada a ele, ela recusa o BoxLink.</li>
+        <li>Depois toque em "Buscar Novamente".</li>
+      </ol>
+      {platform === 'android' && onUseHealth && (
+        <button onClick={onUseHealth}
+          className="mt-1 flex items-center justify-center gap-2 w-full py-2 rounded-xl bg-primary/10 border border-primary/30 text-primary text-[9px] font-black uppercase tracking-widest hover:bg-primary/20 transition-all">
+          <RefreshCw className="w-3 h-3" /> Sincronizar via App de Saúde
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Dica específica para Garmin ao falhar a leitura de FC.
 function GarminHint() {
   return (
@@ -385,6 +421,12 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
       {/* Dica específica de Garmin quando a leitura de FC falha */}
       {error && (devices.some((d) => isGarminName(d.name)) || isGarminName(connectedDevice?.name) || isGarminName(lastDevice?.name)) && (
         <GarminHint />
+      )}
+
+      {/* Dica específica de Samsung: Galaxy Watch não transmite FC direto —
+          encaminha para o App de Saúde (Health Connect / Apple Health) */}
+      {error && (devices.some((d) => isSamsungName(d.name)) || isSamsungName(connectedDevice?.name) || isSamsungName(lastDevice?.name)) && (
+        <SamsungHint platform={Capacitor.getPlatform()} onUseHealth={canFallback ? onFallback : undefined} />
       )}
 
       {/* Reconexão com um toque ao último dispositivo usado (nativo: conecta
