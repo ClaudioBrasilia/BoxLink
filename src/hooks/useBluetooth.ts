@@ -61,6 +61,14 @@ const PROBE_GENERIC_MS = 4000;
 const PROBE_TOTAL_BUDGET_MS = 20000;
 // Auto-reconexão em queda de sinal.
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000];
+// Watchdog de leitura travada: monitores de FC (Garmin, cintas, etc.) enviam
+// ~1 leitura/seg. Se o GATT continua "conectado" mas as notificações param de
+// chegar (comum no modo "Transmitir FC" do Garmin — a transmissão pausa sem
+// derrubar o link), o último valor fica CONGELADO na tela. Passado este tempo
+// sem nova leitura, tratamos como sinal perdido: limpamos o número travado e
+// re-armamos a inscrição (reconexão) para retomar o fluxo.
+const HR_STALE_TIMEOUT_MS = 10000;
+const HR_STALE_CHECK_MS = 2000;
 
 const LAST_DEVICE_KEY = 'boxlink:lastBleDevice';
 
@@ -202,6 +210,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   const activeSubRef = useRef<{ service: string; characteristic: string } | null>(null);
   const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBpmRef = useRef<number | null>(null);
+  // Instante (epoch ms) da última leitura de FC recebida — base do watchdog de
+  // leitura travada. null = nenhuma leitura fresca no momento.
+  const lastBpmAtRef = useRef<number | null>(null);
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Espelho síncrono do status (callbacks de desconexão chegam fora do React).
@@ -237,6 +248,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     syncTimerRef.current = setInterval(() => {
       const bpm = lastBpmRef.current;
       if (!bpm) return;
+      // Não retransmite um valor travado para a TV: só envia leituras frescas.
+      const at = lastBpmAtRef.current;
+      if (at == null || Date.now() - at > HR_STALE_TIMEOUT_MS) return;
       upsertLiveHeartRate(userId, bpm, connectedDevice?.name ?? 'Bluetooth').catch(() => {});
     }, 5000);
     return () => {
@@ -247,6 +261,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
 
   const pushHeartRate = useCallback((bpm: number) => {
     lastBpmRef.current = bpm;
+    lastBpmAtRef.current = Date.now();
     setHeartRate(bpm);
   }, []);
 
@@ -255,6 +270,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     setConnectedDevice(null);
     setHeartRate(null);
     lastBpmRef.current = null;
+    lastBpmAtRef.current = null;
     nativeDeviceIdRef.current = null;
     activeSubRef.current = null;
     webCharRef.current = null;
@@ -739,6 +755,51 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       void autoReconnect(deviceId);
     };
   }, [autoReconnect, resetToDisconnected]);
+
+  // --------------------------------------------------------------------------
+  // WATCHDOG de leitura travada.
+  // O GATT pode continuar "conectado" enquanto as notificações de FC param
+  // (Garmin no modo "Transmitir FC" pausa a transmissão sem derrubar o link).
+  // Sem isto, o último BPM fica congelado na tela — 150 no app enquanto o
+  // relógio já marca 95. Ao detectar silêncio prolongado, limpamos o número
+  // travado e re-armamos a inscrição via reconexão (retoma o fluxo de leituras).
+  // --------------------------------------------------------------------------
+  useEffect(() => {
+    if (status !== 'connected') return;
+    const id = setInterval(() => {
+      const at = lastBpmAtRef.current;
+      if (at == null) return; // ainda aguardando a 1ª leitura — não é "travado"
+      if (Date.now() - at <= HR_STALE_TIMEOUT_MS) return;
+
+      console.warn('[BLE] FC travada (sem novas leituras) — reconectando para retomar');
+      // Zera o valor congelado: a UI volta a "aguardando leitura" e o broadcast
+      // para a TV para de reenviar o número velho.
+      setHeartRate(null);
+      lastBpmRef.current = null;
+      lastBpmAtRef.current = null;
+
+      const deviceId = nativeDeviceIdRef.current ?? webDeviceRef.current?.id;
+      if (!deviceId) return;
+
+      // Marca 'reconnecting' ANTES de derrubar o link: o callback de desconexão
+      // ignora quedas fora do estado 'connected', evitando reconexão dupla.
+      updateStatus('reconnecting');
+      // Força uma desconexão limpa — no caso travado o GATT ainda está de pé, e
+      // reconectar por cima às vezes não re-arma as notificações. Uma reconexão
+      // do zero recria a inscrição e retoma o fluxo de leituras.
+      if (isNative) {
+        getBleClient().then((Ble) => Ble.disconnect(deviceId)).catch(() => {});
+      } else {
+        try {
+          webDeviceRef.current?.gatt?.disconnect();
+        } catch {
+          /* noop */
+        }
+      }
+      void autoReconnect(deviceId);
+    }, HR_STALE_CHECK_MS);
+    return () => clearInterval(id);
+  }, [status, isNative, autoReconnect, updateStatus]);
 
   // --------------------------------------------------------------------------
   // CONNECT — dispatcher
