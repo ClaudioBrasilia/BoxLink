@@ -31,6 +31,7 @@ import {
   OPTIONAL_SERVICES,
   NAME_PREFIXES,
   parseHeartRateFallback,
+  parseStandardHeartRate,
   isLikelyHRDeviceName,
   isLikelyHRService,
   isLikelyHRCharacteristic,
@@ -56,6 +57,11 @@ const GATT_CONNECT_TIMEOUT_MS = 12000;
 const CONNECT_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 800;
 // Probe: tempo máximo aguardando a 1ª leitura de FC em cada characteristic.
+// A characteristic PADRÃO (0x2A37) ganha janela maior: um relógio pode levar
+// alguns segundos para começar a transmitir após conectar, e não queremos
+// desistir dela cedo e latchar numa characteristic proprietária que devolve
+// bytes aleatórios (parse tolerante) — origem de leituras de FC "malucas".
+const PROBE_STANDARD_MS = 12000;
 const PROBE_KNOWN_MS = 6000;
 const PROBE_GENERIC_MS = 4000;
 const PROBE_TOTAL_BUDGET_MS = 20000;
@@ -376,8 +382,25 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           });
         }
       }
-      return candidates;
+
+      // Se o dispositivo expõe a characteristic PADRÃO de FC (0x2A37), ela é a
+      // fonte autoritativa — usa SÓ ela. Relógios (Garmin, Polar, Wahoo...)
+      // também expõem characteristics proprietárias "faladeiras"; o parse
+      // tolerante transformaria os bytes delas em BPM aleatório. Restringir ao
+      // padrão evita latchar no canal errado e ler FC "maluca".
+      const standardOnly = candidates.filter((c) => c.standard);
+      return standardOnly.length > 0 ? standardOnly : candidates;
     },
+    []
+  );
+
+  // Parser por candidato: no canal PADRÃO (0x2A37) usa SEMPRE o parser estrito
+  // (respeita flags/formato) — nunca o tolerante, que poderia inventar um BPM a
+  // partir de bytes de RR-interval/energia. Só canais não padronizados usam o
+  // fallback heurístico.
+  const parseCandidateBpm = useCallback(
+    (value: DataView, cand: ProbeCandidate): number | null =>
+      cand.standard ? parseStandardHeartRate(value) : parseHeartRateFallback(value),
     []
   );
 
@@ -442,7 +465,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         if (sessionGenRef.current !== gen) throw new Error('Operação cancelada.');
         if (Date.now() - probeStart > PROBE_TOTAL_BUDGET_MS) break;
 
-        const waitMs = cand.known ? PROBE_KNOWN_MS : PROBE_GENERIC_MS;
+        const waitMs = cand.standard ? PROBE_STANDARD_MS : cand.known ? PROBE_KNOWN_MS : PROBE_GENERIC_MS;
         const ok = await new Promise<boolean>((resolve) => {
           let settled = false;
           const finish = (v: boolean) => {
@@ -453,7 +476,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           };
           const timer = setTimeout(() => finish(false), waitMs);
           Ble.startNotifications(deviceId, cand.service, cand.characteristic, (value) => {
-            const bpm = parseHeartRateFallback(value);
+            const bpm = parseCandidateBpm(value, cand);
             if (bpm !== null) pushHeartRate(bpm);
             // 0x2A37 padrão: qualquer notificação confirma o canal de FC
             // (cinta sem contato com a pele manda 0 bpm até "pegar").
@@ -482,7 +505,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       }
       throw noHeartRateError();
     },
-    [buildCandidates, pushHeartRate]
+    [buildCandidates, parseCandidateBpm, pushHeartRate]
   );
 
   const connectNative = useCallback(
@@ -595,13 +618,13 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         const char = svc?.chars.get(cand.characteristic.toLowerCase());
         if (!char) continue;
 
-        const waitMs = cand.known ? PROBE_KNOWN_MS : PROBE_GENERIC_MS;
+        const waitMs = cand.standard ? PROBE_STANDARD_MS : cand.known ? PROBE_KNOWN_MS : PROBE_GENERIC_MS;
 
         // O listener do probe é o mesmo que fica ativo após a conexão — em caso
         // de sucesso ele permanece registrado; em falha é removido.
         const listener = (e: any) => {
           const value: DataView = e.target.value;
-          const bpm = parseHeartRateFallback(value);
+          const bpm = parseCandidateBpm(value, cand);
           if (bpm !== null) pushHeartRate(bpm);
         };
 
@@ -617,7 +640,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           const probeListener = (e: any) => {
             listener(e);
             const value: DataView = e.target.value;
-            const bpm = parseHeartRateFallback(value);
+            const bpm = parseCandidateBpm(value, cand);
             if (bpm !== null || cand.standard) finish(true);
           };
           const timer = setTimeout(() => finish(false), waitMs);
@@ -643,7 +666,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       }
       throw noHeartRateError();
     },
-    [buildCandidates, pushHeartRate]
+    [buildCandidates, parseCandidateBpm, pushHeartRate]
   );
 
   const connectWeb = useCallback(async (): Promise<void> => {
