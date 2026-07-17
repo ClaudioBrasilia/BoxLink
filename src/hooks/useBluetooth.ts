@@ -383,13 +383,17 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         }
       }
 
-      // Se o dispositivo expõe a characteristic PADRÃO de FC (0x2A37), ela é a
-      // fonte autoritativa — usa SÓ ela. Relógios (Garmin, Polar, Wahoo...)
-      // também expõem characteristics proprietárias "faladeiras"; o parse
-      // tolerante transformaria os bytes delas em BPM aleatório. Restringir ao
-      // padrão evita latchar no canal errado e ler FC "maluca".
-      const standardOnly = candidates.filter((c) => c.standard);
-      return standardOnly.length > 0 ? standardOnly : candidates;
+      // A characteristic PADRÃO (0x2A37) é a fonte autoritativa: probamos ela
+      // SEMPRE PRIMEIRO, com janela longa (PROBE_STANDARD_MS) e parser estrito.
+      // Isso evita latchar num canal proprietário "faladeiro" — que o parse
+      // tolerante transformaria em BPM aleatório (bug do Garmin).
+      // MAS os demais canais permanecem como FALLBACK: muitos relógios Samsung
+      // e genéricos ANUNCIAM o 0x180D porém só entregam a FC de fato por uma
+      // characteristic proprietária. Restringir só ao padrão os deixava sem
+      // conectar. Ordena: padrão(ões) primeiro, resto depois (ordem preservada).
+      const standard = candidates.filter((c) => c.standard);
+      const rest = candidates.filter((c) => !c.standard);
+      return [...standard, ...rest];
     },
     []
   );
