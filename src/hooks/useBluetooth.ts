@@ -156,6 +156,19 @@ function saveLastDevice(device: LastDevice): void {
   }
 }
 
+/**
+ * Marcas que SEMPRE transmitem FC pelo canal padrão 0x2A37 — nunca por uma
+ * characteristic proprietária. Para elas, restringimos o probe ao canal padrão:
+ * evita "latchar" num canal proprietário faladeiro (ex.: Garmin no iPhone/Bluefy),
+ * que o parser tolerante transformaria numa FREQUÊNCIA FALSA.
+ */
+function isStandardOnlyBrand(name?: string | null): boolean {
+  if (!name) return false;
+  return /garmin|forerunner|f[eé]nix|fenix|venu|vivoactive|vivosmart|instinct|epix|enduro|marq|descent|\bpolar\b|wahoo|tickr|coospo|magene|suunto|scosche|decathlon|kalenji|geonaute/i.test(
+    name
+  );
+}
+
 /** Converte erros técnicos do plugin/navegador em mensagens acionáveis. */
 function friendlyBleError(err: unknown): string {
   const msg = String((err as any)?.message || err || '');
@@ -351,7 +364,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   // --------------------------------------------------------------------------
   const buildCandidates = useCallback(
     (
-      services: { uuid: string; characteristics: { uuid: string; notifiable: boolean }[] }[]
+      services: { uuid: string; characteristics: { uuid: string; notifiable: boolean }[] }[],
+      deviceName?: string | null
     ): ProbeCandidate[] => {
       const sortedServices = [...services].sort((a, b) => {
         const aHR = a.uuid.toLowerCase() === HEART_RATE_SERVICE;
@@ -393,6 +407,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       // conectar. Ordena: padrão(ões) primeiro, resto depois (ordem preservada).
       const standard = candidates.filter((c) => c.standard);
       const rest = candidates.filter((c) => !c.standard);
+      // Marca padrão-only (Garmin/Polar/Wahoo/etc.) COM canal 0x2A37 presente:
+      // usa SÓ o padrão. Nunca cai num canal proprietário — que geraria BPM falso.
+      if (standard.length > 0 && isStandardOnlyBrand(deviceName)) return standard;
       return [...standard, ...rest];
     },
     []
@@ -426,7 +443,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   // entregar FC de verdade.
   // --------------------------------------------------------------------------
   const establishNative = useCallback(
-    async (deviceId: string): Promise<void> => {
+    async (deviceId: string, deviceName?: string | null): Promise<void> => {
       const Ble = await getBleClient();
       const gen = sessionGenRef.current;
 
@@ -461,7 +478,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
             uuid: c.uuid,
             notifiable: !!(c.properties?.notify || c.properties?.indicate),
           })),
-        }))
+        })),
+        deviceName
       );
 
       const probeStart = Date.now();
@@ -529,11 +547,15 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       intentionalDisconnectRef.current = false;
       const gen = ++sessionGenRef.current;
 
+      const knownName =
+        devices.find((d) => d.id === deviceId)?.name ??
+        (lastDevice?.id === deviceId ? lastDevice.name : undefined);
+
       let lastErr: unknown = null;
       for (let attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt++) {
         if (sessionGenRef.current !== gen) throw new Error('Operação cancelada.');
         try {
-          await establishNative(deviceId);
+          await establishNative(deviceId, knownName);
           lastErr = null;
           break;
         } catch (e: any) {
@@ -610,7 +632,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
             uuid: c.uuid,
             notifiable: !!(c.properties.notify || c.properties.indicate),
           })),
-        }))
+        })),
+        device.name
       );
 
       const probeStart = Date.now();
