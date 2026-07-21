@@ -66,7 +66,10 @@ const VisitorGuard = ({ children, page }: { children: React.ReactNode; page: key
 
   if (user?.role !== 'visitor') return <>{children}</>;
   if (loading) return null;
-  if (!permissions || !permissions[page]) return <VisitorBlockedPage />;
+  // 'blocked' e 'hidden' são strings truthy — a checagem precisa ser explícita.
+  // `true` cobre registros antigos que guardavam boolean no banco.
+  const value = permissions?.[page] as VisitorPermissions[keyof VisitorPermissions] | boolean | undefined;
+  if (value !== 'allowed' && value !== true) return <VisitorBlockedPage />;
   return <>{children}</>;
 };
 
