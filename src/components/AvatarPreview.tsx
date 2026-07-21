@@ -13,6 +13,7 @@ import React, { useState } from 'react';
 import type { AvatarSlot } from '../types';
 import { cn } from '../lib/utils';
 import { adjustmentToCSS, LayerAdjustment } from '../lib/avatarLayers';
+import { avatarAssetKey } from '../lib/avatarAssetKey';
 import { useFittedAvatarLayers } from '../lib/avatarFit';
 
 interface AvatarPreviewProps {
@@ -36,7 +37,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const BUCKET = 'avatar-assets';
 
 function getAvatarImageUrl(filename: string): string {
-  const encoded = encodeURIComponent(filename);
+  const encoded = encodeURIComponent(avatarAssetKey(filename));
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encoded}.png`;
 }
 

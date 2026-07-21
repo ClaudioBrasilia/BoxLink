@@ -1,5 +1,22 @@
-export type UserRole = 'athlete' | 'coach' | 'admin';
+export type UserRole = 'athlete' | 'coach' | 'admin' | 'visitor';
 export type UserStatus = 'pending' | 'approved' | 'rejected';
+
+/** allowed = acessa | blocked = vê página de bloqueio | hidden = some do menu */
+export type VisitorPermissionValue = 'allowed' | 'blocked' | 'hidden';
+
+/** Permissões por página para usuários com role 'visitor' (box_settings.visitor_permissions) */
+export interface VisitorPermissions {
+  feed: VisitorPermissionValue;
+  wod: VisitorPermissionValue;
+  leaderboard: VisitorPermissionValue;
+  challenges: VisitorPermissionValue;
+  clans: VisitorPermissionValue;
+  mybox: VisitorPermissionValue;
+  benchmarks: VisitorPermissionValue;
+  duels: VisitorPermissionValue;
+  progress: VisitorPermissionValue;
+  avatar: VisitorPermissionValue;
+}
 
 export interface AvatarSlot {
   base_outfit: string;
@@ -175,15 +192,34 @@ export interface BoxSettings {
     challenge_special_coins: number;
     duel_win_xp: number;
     duel_win_coins: number;
+    wod_xp: number;
+    wod_coins: number;
   };
   isActive: boolean;
-  announcements?: string[];
+  /** Registros antigos guardavam apenas strings; os novos são objetos Announcement. */
+  announcements?: Array<string | Announcement>;
   timezone: string;
   modules: {
     economy: boolean;
     store: boolean;
     duels: boolean;
     challenges: boolean;
+    clans: boolean;
   };
   clans_enabled?: boolean;
+  max_clan_members?: number;
+  inactivity?: {
+    enabled: boolean;
+    minWorkoutsPerWeek: number;
+    excludeSunday: boolean;
+    showOnTV: boolean;
+  };
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  active: boolean;
 }

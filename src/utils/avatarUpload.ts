@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { avatarAssetKey } from '../lib/avatarAssetKey';
 import type { AvatarSlotKey } from '../lib/avatarLayers';
 import { PIECE_SPECS, loadImage, fitPieceToCanvas, detectImageContentBox, ensureTransparentBackground, chooseFitMode, STRETCH_MAX_DISTORTION, STRETCH_MAX_DISTORTION_BODY } from '../lib/fitting';
 
@@ -31,8 +32,9 @@ export interface UploadAvatarItemResult {
  * proporção original.
  *
  * Em ambos os casos o resultado final é padronizado para 512×768,
- * fundo transparente, e salvo como `{itemId}.png` — exatamente o que o
- * AvatarPreview busca. O `itemId` pode ser qualquer texto livre.
+ * fundo transparente, e salvo como `{avatarAssetKey(itemId)}.png` —
+ * exatamente a chave que o AvatarPreview busca. O `itemId` pode ser
+ * qualquer texto livre (acentos e símbolos são sanitizados na chave).
  *
  * @param file        Arquivo selecionado pelo admin
  * @param itemId      ID do item na loja (texto livre, deve estar preenchido antes do upload)
@@ -99,7 +101,7 @@ export async function uploadAvatarItem(
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Falha ao processar imagem'))), 'image/png');
   });
 
-  const filename = `${itemId}.png`;
+  const filename = `${avatarAssetKey(itemId)}.png`;
   const { data, error } = await supabase.storage
     .from(BUCKET)
     // cacheControl curto: o upload substitui o arquivo mantendo a mesma URL,

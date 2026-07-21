@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Item, AvatarSlot } from '../types';
 import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
+import { avatarAssetKey } from '../lib/avatarAssetKey';
 import { RARITY_LABELS, RARITY_BADGE_CLASS, normalizeRarity } from '../lib/rarity';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -20,7 +21,7 @@ function normalizeAvatarAssetKey(rawKey: string): string {
 function getItemImageUrl(imageKey: string): string {
   if (!imageKey) return '';
   if (imageKey.startsWith('http')) return imageKey;
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(normalizeAvatarAssetKey(imageKey))}.png`;
+  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(avatarAssetKey(normalizeAvatarAssetKey(imageKey)))}.png`;
 }
 
 const SLOT_ICONS: Record<string, any> = {
