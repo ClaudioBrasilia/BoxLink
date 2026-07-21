@@ -1,54 +1,57 @@
 // src/hooks/useKeepScreenAwake.ts
 // ============================================================================
 // Mantém a tela ligada enquanto `active` for true (ex.: durante a leitura de FC),
-// evitando que o celular entre em descanso e derrube a conexão Bluetooth.
-// Usa a Screen Wake Lock API (Chrome/Android e iOS 16.4+/Bluefy). No app nativo
-// (WebView do Capacitor) a mesma API costuma funcionar; se não estiver disponível,
-// o hook é um no-op silencioso.
+// evitando que o celular durma e derrube a conexão Bluetooth.
+//
+// Usa a biblioteca NoSleep.js, que combina:
+//   • Screen Wake Lock API (Chrome/Android, Safari 16.4+);
+//   • Fallback de vídeo mudo em loop para navegadores SEM Wake Lock —
+//     ESSENCIAL no iPhone via Bluefy/WKWebView, onde a Wake Lock API não existe.
+//
+// O fallback de vídeo do iOS só INICIA dentro de um gesto do usuário. Como o
+// atleta está tocando na tela ao conectar (buscar/escolher device), religamos o
+// NoSleep no próximo toque — assim funciona mesmo no Bluefy.
 // ============================================================================
 import { useEffect, useRef } from 'react';
+import NoSleep from 'nosleep.js';
 
 export function useKeepScreenAwake(active: boolean): void {
-  const sentinelRef = useRef<any>(null);
+  const noSleepRef = useRef<NoSleep | null>(null);
 
   useEffect(() => {
-    const wakeLock: any =
-      typeof navigator !== 'undefined' ? (navigator as any).wakeLock : undefined;
-    if (!active || !wakeLock?.request) return;
+    if (!active || typeof navigator === 'undefined' || typeof document === 'undefined') return;
 
-    let cancelled = false;
-
-    const acquire = async () => {
-      if (cancelled || sentinelRef.current) return;
+    if (!noSleepRef.current) {
       try {
-        const sentinel = await wakeLock.request('screen');
-        if (cancelled) {
-          sentinel.release?.().catch?.(() => {});
-          return;
-        }
-        sentinelRef.current = sentinel;
-        // O SO libera o lock quando a página fica oculta; limpamos a ref.
-        sentinel.addEventListener?.('release', () => {
-          sentinelRef.current = null;
-        });
+        noSleepRef.current = new NoSleep();
       } catch {
-        /* permissão negada ou indisponível — segue sem wake lock */
+        return; // ambiente sem DOM/vídeo — nada a fazer
       }
-    };
+    }
+    const ns = noSleepRef.current;
+    if (!ns) return;
 
-    // Reobtém o lock ao voltar o foco (necessário após a página ficar oculta).
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') acquire();
-    };
+    // 1) Tentativa imediata — funciona onde há Wake Lock API (Chrome/Android).
+    ns.enable().catch(() => {
+      /* iOS/Bluefy sem Wake Lock: o vídeo precisa de um gesto — tratado abaixo */
+    });
 
-    acquire();
-    document.addEventListener('visibilitychange', onVisibility);
+    // 2) Backstop: religa no próximo toque/clique (necessário p/ o vídeo no iOS).
+    const onGesture = () => {
+      if (!ns.isEnabled) ns.enable().catch(() => {});
+    };
+    const opts: AddEventListenerOptions = { capture: true, passive: true };
+    document.addEventListener('touchend', onGesture, opts);
+    document.addEventListener('click', onGesture, opts);
 
     return () => {
-      cancelled = true;
-      document.removeEventListener('visibilitychange', onVisibility);
-      sentinelRef.current?.release?.().catch?.(() => {});
-      sentinelRef.current = null;
+      document.removeEventListener('touchend', onGesture, opts);
+      document.removeEventListener('click', onGesture, opts);
+      try {
+        ns.disable();
+      } catch {
+        /* noop */
+      }
     };
   }, [active]);
 }
