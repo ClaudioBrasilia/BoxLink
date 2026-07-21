@@ -31,7 +31,7 @@ type Mode = 'select' | 'ble' | 'health';
 const DEVICE_TIPS: { name: string; tip: string }[] = [
   { name: 'Polar / Wahoo / cintas',   tip: 'Umedeça os eletrodos antes de vestir. Aparecem como "Polar H10", "TICKR" etc.' },
   { name: 'Garmin (relógio)',         tip: 'Inicie uma atividade → Configurações → Transmitir FC. Depois busque aqui.' },
-  { name: 'Samsung Galaxy Watch',     tip: 'Não transmite FC por Bluetooth direto. Use "Sincronizar com App de Saúde" (Health Connect) ou instale um app transmissor no relógio (ex.: "Heart for Bluetooth").' },
+  { name: 'Samsung Galaxy Watch',     tip: 'Não transmite FC por Bluetooth direto. Para FC em tempo real, instale "Heart for Bluetooth" (grátis) na Play Store do relógio e deixe transmitindo. Alternativa: "Sincronizar com App de Saúde" (Health Connect) — mas a FC chega com atraso.' },
   { name: 'Samsung Galaxy Fit (pulseira)', tip: 'Conecta direto: inicie um treino NA PULSEIRA (medição contínua de FC) e busque aqui. Se falhar, feche o app Galaxy Wearable — conectada ao celular, ela recusa o BoxLink.' },
   { name: 'iPhone (navegador)',       tip: 'Safari e Chrome do iPhone não têm Bluetooth. Abra o BoxLink pelo navegador Bluefy (grátis na App Store) para conectar sem o app nativo.' },
   { name: 'Apple Watch',              tip: 'Não transmite FC por Bluetooth. Use "Sincronizar com App de Saúde" (Apple Health) ou um app broadcaster (ex.: HeartCast) aberto no Bluefy.' },
@@ -111,13 +111,17 @@ function SamsungHint({ platform, onUseHealth }: { platform: string; onUseHealth?
         O <span className="text-white">Galaxy Watch</span> não transmite FC por Bluetooth direto. Caminhos que funcionam:
       </p>
       <ol className="text-white/50 text-[9px] font-black uppercase leading-relaxed list-decimal pl-3.5 flex flex-col gap-0.5">
+        <li>
+          <span className="text-white">Tempo real (recomendado)</span>: instale o app grátis{' '}
+          <span className="text-white">"Heart for Bluetooth"</span> na Play Store DO RELÓGIO, abra-o no relógio
+          e deixe transmitindo. Aí toque em "Buscar Novamente" — a FC chega direto, sem atraso.
+        </li>
         {platform === 'android' ? (
-          <li>Use <span className="text-white">"Sincronizar com App de Saúde"</span> (Health Connect): inicie um treino no Samsung Health e leia a FC por lá.</li>
+          <li>Ou use <span className="text-white">"Sincronizar com App de Saúde"</span> (Health Connect): inicie um treino no Samsung Health no relógio. Atenção: a FC chega com atraso de alguns minutos — o Samsung Health não sincroniza em tempo real.</li>
         ) : (
-          <li>Use <span className="text-white">"Sincronizar com App de Saúde"</span> (Apple Health) ou um app transmissor no relógio.</li>
+          <li>Ou use <span className="text-white">"Sincronizar com App de Saúde"</span> (Apple Health) — a FC pode chegar com atraso.</li>
         )}
         <li><span className="text-white">Galaxy Fit</span> (pulseira): inicie um treino NA PULSEIRA e feche o app Galaxy Wearable — conectada a ele, ela recusa o BoxLink.</li>
-        <li>Depois toque em "Buscar Novamente".</li>
       </ol>
       {platform === 'android' && onUseHealth && (
         <button onClick={onUseHealth}
