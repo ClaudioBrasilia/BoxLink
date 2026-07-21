@@ -186,6 +186,27 @@ describe('removeBorderConnectedBackground', () => {
     expect(data[3]).toBe(0);
   });
 
+  it('remove fundo xadrez de "transparência falsa" (dois tons neutros)', () => {
+    // Xadrez de cinzas 10/160 (distância 450 > tolerância 100 entre si) com
+    // peça vermelha no centro e um pixel de vinhete claro (200) no caminho.
+    const D: [number, number, number, number] = [10, 10, 10, 255];
+    const L: [number, number, number, number] = [160, 160, 160, 255];
+    const V: [number, number, number, number] = [200, 200, 200, 255]; // vinhete
+    const R: [number, number, number, number] = [255, 0, 0, 255];
+    const grid = [
+      [D, L, D, L, D],
+      [L, V, L, V, L],
+      [D, L, R, L, D],
+      [L, D, L, D, L],
+    ];
+    const data = new Uint8ClampedArray(5 * 4 * 4);
+    grid.forEach((row, y) => row.forEach((px, x) => data.set(px, (y * 5 + x) * 4)));
+
+    const removed = removeBorderConnectedBackground(data, 5, 4);
+    expect(removed).toBe(19); // tudo menos a peça
+    expect(detectContentBBox(data, 5, 4)).toEqual({ x1: 2, y1: 2, x2: 3, y2: 3 });
+  });
+
   it('devolve 0 quando nada se parece com o fundo da borda', () => {
     const rows = ['RR', 'RR'];
     const data = buildRgba(rows);
