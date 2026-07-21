@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.2.0",
+    "@capacitor-community/keep-awake": "^8.0.1",
     "@capacitor/android": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "@capacitor/geolocation": "^7.0.1",
