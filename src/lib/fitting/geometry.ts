@@ -165,13 +165,19 @@ export function validateFit(box: Box, targetBox: Box, tolerancePx = 12): FitVali
  * Aberturas totalmente fechadas (ex.: interior de um anel) não são
  * alcançadas — essas ainda precisam vir vazadas na arte.
  *
+ * A tolerância é deliberadamente APERTADA (45): peças escuras sobre fundo
+ * escuro (ex.: short preto sobre fundo preto puro) têm o tecido a poucas
+ * unidades do fundo — uma tolerância larga apagava a própria peça, deixando
+ * só as barras claras. Sombras da peça na exata cor do fundo continuam
+ * inseparáveis (limitação da arte, não do algoritmo).
+ *
  * Retorna o número de pixels removidos (0 = nada parecia fundo).
  */
 export function removeBorderConnectedBackground(
   rgba: Uint8ClampedArray,
   width: number,
   height: number,
-  tolerance = 100
+  tolerance = 45
 ): number {
   if (width <= 0 || height <= 0) return 0;
 
