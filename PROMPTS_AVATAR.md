@@ -29,6 +29,15 @@ estar certo na arte é:
    deve corresponder à distância entre os dois pulsos/joelhos/pés da base.
 3. **Aberturas vazadas** com alpha=0 de verdade (gola, cavas, punhos etc.).
 4. **Somente a peça** — sem corpo, sem fundo, sem sombra projetada.
+4b. **Fundo: transparente OU branco liso — NUNCA da cor da peça.** O app
+   remove o fundo automaticamente no upload, mas se o gerador entregar a
+   peça sobre um fundo **da mesma cor dela** (ex.: short PRETO sobre fundo
+   PRETO), as sombras da peça se confundem com o fundo e são apagadas junto
+   — sobra só o contorno claro. Regra prática por cor da peça:
+   - Peça **escura** (preta/marinho/cinza-escuro) → peça o fundo **BRANCO**.
+   - Peça **clara** (branca/bege/cinza-claro) → peça o fundo **PRETO** (ou
+     um cinza médio).
+   - Fundo xadrez de "transparência" também funciona (o app reconhece).
 5. Ao cadastrar o item no Admin, selecione o **Tipo de peça** correspondente
    (M-01..M-10 / F-01..F-10).
 

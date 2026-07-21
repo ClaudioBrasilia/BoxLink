@@ -207,6 +207,30 @@ describe('removeBorderConnectedBackground', () => {
     expect(detectContentBBox(data, 5, 4)).toEqual({ x1: 2, y1: 2, x2: 3, y2: 3 });
   });
 
+  it('preserva peça escura (carvão) sobre fundo preto puro', () => {
+    // Fundo preto (0) com peça carvão (24) e barra clara (255) no meio —
+    // reproduz o short preto que era destruído com tolerância larga.
+    const K: [number, number, number, number] = [0, 0, 0, 255];   // fundo
+    const C: [number, number, number, number] = [24, 24, 24, 255]; // tecido
+    const B: [number, number, number, number] = [255, 255, 255, 255]; // barra
+    const grid = [
+      [K, K, K, K, K],
+      [K, C, C, C, K],
+      [K, C, B, C, K],
+      [K, C, C, C, K],
+      [K, K, K, K, K],
+    ];
+    const data = new Uint8ClampedArray(5 * 5 * 4);
+    grid.forEach((row, y) => row.forEach((px, x) => data.set(px, (y * 5 + x) * 4)));
+
+    const removed = removeBorderConnectedBackground(data, 5, 5);
+    expect(removed).toBe(16); // só a moldura preta
+    // o tecido carvão e a barra continuam opacos
+    expect(data[(2 * 5 + 1) * 4 + 3]).toBe(255); // carvão
+    expect(data[(2 * 5 + 2) * 4 + 3]).toBe(255); // barra
+    expect(detectContentBBox(data, 5, 5)).toEqual({ x1: 1, y1: 1, x2: 4, y2: 4 });
+  });
+
   it('devolve 0 quando nada se parece com o fundo da borda', () => {
     const rows = ['RR', 'RR'];
     const data = buildRgba(rows);
