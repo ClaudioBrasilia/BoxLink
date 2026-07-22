@@ -8,11 +8,11 @@ RETURNS trigger AS $$
 BEGIN
   INSERT INTO public.profiles (id, name, email, role, status)
   VALUES (
-    new.id, 
-    COALESCE(new.raw_user_meta_data->>'name', 'Novo Atleta'), 
+    new.id,
+    COALESCE(new.raw_user_meta_data->>'name', 'Novo Atleta'),
     new.email,
-    CASE WHEN new.email = 'claudiobrasilia13@gmail.com' THEN 'admin' ELSE 'athlete' END,
-    CASE WHEN new.email = 'claudiobrasilia13@gmail.com' THEN 'approved' ELSE 'pending' END
+    'athlete',
+    'pending'
   )
   ON CONFLICT (id) DO NOTHING;
   RETURN new;
@@ -27,17 +27,18 @@ CREATE TRIGGER on_auth_user_created
 
 -- 3. Backfill: Sincronizar usuários órfãos (que estão no auth.users mas não no public.profiles)
 INSERT INTO public.profiles (id, name, email, role, status)
-SELECT 
-    id, 
-    COALESCE(raw_user_meta_data->>'name', 'Atleta'), 
+SELECT
+    id,
+    COALESCE(raw_user_meta_data->>'name', 'Atleta'),
     email,
-    CASE WHEN email = 'claudiobrasilia13@gmail.com' THEN 'admin' ELSE 'athlete' END,
-    CASE WHEN email = 'claudiobrasilia13@gmail.com' THEN 'approved' ELSE 'pending' END
+    'athlete',
+    'pending'
 FROM auth.users
 WHERE id NOT IN (SELECT id FROM public.profiles)
 ON CONFLICT (id) DO NOTHING;
 
--- 4. Garantir que o admin específico está correto
-UPDATE public.profiles 
-SET role = 'admin', status = 'approved' 
-WHERE email = 'claudiobrasilia13@gmail.com';
+-- 4. Promover o administrador do box. Rode UMA VEZ trocando pelo seu e-mail
+--    (mantenha seu e-mail fora do código versionado):
+-- UPDATE public.profiles
+-- SET role = 'admin', status = 'approved'
+-- WHERE email = 'SEU-EMAIL@AQUI.com';

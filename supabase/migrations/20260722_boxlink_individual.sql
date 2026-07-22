@@ -80,12 +80,10 @@ BEGIN
     new.id,
     COALESCE(new.raw_user_meta_data->>'name', 'Novo Atleta'),
     new.email,
-    CASE WHEN new.email = 'claudiobrasilia13@gmail.com' THEN 'admin' ELSE 'athlete' END,
-    CASE
-      WHEN new.email = 'claudiobrasilia13@gmail.com' THEN 'approved'
-      WHEN v_account_type = 'individual' THEN 'approved'
-      ELSE 'pending'
-    END,
+    'athlete',
+    -- Conta individual entra liberada; aluno de box aguarda aprovação do admin.
+    -- Admin é atribuído manualmente (SQL) ou por outro admin no painel — nunca no cadastro.
+    CASE WHEN v_account_type = 'individual' THEN 'approved' ELSE 'pending' END,
     v_account_type
   );
   RETURN new;
