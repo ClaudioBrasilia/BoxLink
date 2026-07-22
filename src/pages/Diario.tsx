@@ -24,7 +24,7 @@ import { useToast } from '../context/ToastContext';
 import { addReward, getRewardSettings, checkAndPayWeeklyBonus } from '../utils/rewards';
 import { createNotification } from '../hooks/useNotifications';
 import { TrainingLog, TrainingLogCategory, TrainingFeeling } from '../types';
-import { isPremium, PLAN_LIMITS } from '../lib/plan';
+import { isPremium, planLimits, PLAN_LIMITS } from '../lib/plan';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -108,10 +108,10 @@ export default function Diario() {
   const [feeling, setFeeling] = useState<TrainingFeeling | null>(null);
   const [notes, setNotes] = useState('');
 
-  // Duelo por código de amigo
+  // Duelo por código de amigo (lista de convidados — vários amigos no premium)
   const [codeInput, setCodeInput] = useState('');
   const [searchingFriend, setSearchingFriend] = useState(false);
-  const [friend, setFriend] = useState<FriendProfile | null>(null);
+  const [friends, setFriends] = useState<FriendProfile[]>([]);
   const [duelName, setDuelName] = useState('');
   const [duelType, setDuelType] = useState<'FOR TIME' | 'AMRAP' | 'EMOM'>('FOR TIME');
   const [duelDesc, setDuelDesc] = useState('');
@@ -122,6 +122,7 @@ export default function Diario() {
   const [sendingJoin, setSendingJoin] = useState(false);
 
   const premium = isPremium(user);
+  const maxDuelFriends = planLimits(user).maxDuelFriends;
 
   // ─── Load ────────────────────────────────────────────────────────────────
 
@@ -357,8 +358,16 @@ export default function Diario() {
     if (code === user.friendCode) {
       toast.warning('Esse é o seu próprio código! Chame um colega. 😄'); return;
     }
+    if (friends.some(f => f.friend_code === code)) {
+      toast.warning('Esse amigo já está na lista.'); return;
+    }
+    if (friends.length >= maxDuelFriends) {
+      toast.warning(premium
+        ? `Limite de ${maxDuelFriends} amigos por duelo.`
+        : `No plano grátis você chama 1 amigo por duelo. Premium: até ${PLAN_LIMITS.premium.maxDuelFriends}.`);
+      return;
+    }
     setSearchingFriend(true);
-    setFriend(null);
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -367,7 +376,9 @@ export default function Diario() {
         .maybeSingle();
       if (error) throw error;
       if (!data) { toast.error('Nenhum atleta encontrado com esse código.'); return; }
-      setFriend(data as FriendProfile);
+      if (friends.some(f => f.id === data.id)) { toast.warning('Esse amigo já está na lista.'); return; }
+      setFriends(prev => [...prev, data as FriendProfile]);
+      setCodeInput('');
     } catch (err: any) {
       console.error('Error finding friend:', err);
       toast.error('Erro ao buscar atleta.');
@@ -376,16 +387,22 @@ export default function Diario() {
     }
   };
 
+  const removeFriend = (id: string) => setFriends(prev => prev.filter(f => f.id !== id));
+
   const handleCreateDuel = async () => {
-    if (!user || !friend) return;
+    if (!user || friends.length === 0) return;
     if (!duelName.trim() || !duelDesc.trim()) {
       toast.warning('Preencha nome e descrição do desafio.'); return;
     }
     setCreatingDuel(true);
     try {
+      const opponentIds = friends.map(f => f.id);
+      const results: Record<string, null> = { [user.id]: null };
+      opponentIds.forEach(id => { results[id] = null; });
+
       const { error } = await supabase.from('duels').insert({
         challenger_id: user.id,
-        opponent_ids: [friend.id],
+        opponent_ids: opponentIds,
         accepted_by: [],
         status: 'pending',
         bet_amount: 0,
@@ -397,23 +414,27 @@ export default function Diario() {
         wod_rx: duelDesc.trim(),
         wod_custom: true,
         category: 'RX',
-        results: { [user.id]: null, [friend.id]: null },
+        results,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
       if (error) throw error;
 
-      await createNotification(
-        friend.id,
-        'duel_created',
-        '⚔️ Novo Duelo!',
-        `${user.name || 'Um atleta'} te desafiou para um duelo — ${duelName.trim()}`,
-        { challengerId: user.id, wodName: duelName.trim() }
-      );
+      for (const f of friends) {
+        await createNotification(
+          f.id,
+          'duel_created',
+          '⚔️ Novo Duelo!',
+          `${user.name || 'Um atleta'} te desafiou para um duelo — ${duelName.trim()}`,
+          { challengerId: user.id, wodName: duelName.trim() }
+        );
+      }
 
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ['#CAFD00', '#ffffff'] });
-      toast.success(`Duelo enviado para ${friend.name}! Acompanhe na aba Duelos. ⚔️`);
-      setFriend(null); setCodeInput(''); setDuelName(''); setDuelDesc('');
+      toast.success(friends.length === 1
+        ? `Duelo enviado para ${friends[0].name}! Acompanhe na aba Duelos. ⚔️`
+        : `Duelo enviado para ${friends.length} amigos! Acompanhe na aba Duelos. ⚔️`);
+      setFriends([]); setCodeInput(''); setDuelName(''); setDuelDesc('');
     } catch (err: any) {
       console.error('Error creating friend duel:', err);
       toast.error('Erro ao criar duelo: ' + err.message);
@@ -724,7 +745,7 @@ export default function Diario() {
           </button>
         </div>
 
-        {/* Selo premium: recursos avançados de duelo/liga (grátis vê o convite) */}
+        {/* Selo premium: convidar vários amigos (grátis chama 1) */}
         {!premium && (
           <div className="bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
             <span className="text-sm">🔒</span>
@@ -734,28 +755,35 @@ export default function Diario() {
           </div>
         )}
 
-        {/* Amigo encontrado → montar duelo */}
+        {/* Amigos convidados (chips) */}
+        {friends.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {friends.map(f => (
+              <div key={f.id} className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 text-primary px-3 py-1.5 rounded-full">
+                <span className="text-[11px] font-black uppercase italic">{f.name.split(' ')[0]}</span>
+                <span className="text-[9px] font-bold opacity-70">Nv{f.level}</span>
+                <button onClick={() => removeFriend(f.id)}>
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+            {premium && (
+              <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest self-center px-1">
+                {friends.length}/{maxDuelFriends}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Com ao menos 1 amigo → montar duelo */}
         <AnimatePresence>
-          {friend && (
+          {friends.length > 0 && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               className="flex flex-col gap-3 overflow-hidden"
             >
-              <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center font-headline font-black text-on-surface">
-                  {friend.name[0]}
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-on-surface uppercase italic">{friend.name}</p>
-                  <p className="text-[10px] text-on-surface-variant font-bold">Nível {friend.level} • {friend.xp} XP</p>
-                </div>
-                <button onClick={() => setFriend(null)} className="ml-auto">
-                  <X className="w-4 h-4 text-on-surface-variant" />
-                </button>
-              </div>
-
               <input
                 type="text"
                 placeholder="Nome do desafio (ex: 100 Burpees)"
@@ -787,7 +815,7 @@ export default function Diario() {
                 {creatingDuel
                   ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
                   : <Swords className="w-5 h-5" />}
-                ENVIAR DESAFIO
+                {friends.length > 1 ? `ENVIAR DESAFIO (${friends.length})` : 'ENVIAR DESAFIO'}
               </button>
             </motion.div>
           )}

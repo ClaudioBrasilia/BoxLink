@@ -125,7 +125,18 @@ Página `/liga` (na navegação do individual): ranking só de atletas
 - **XP Total** (grátis): ranking acumulado desde o início.
 - **Liga do Mês** (premium, `leagueRanking`): competição mensal com reset,
   XP ganho no mês (via `reward_history`); para usuário grátis aparece
-  bloqueada com CTA de upgrade.
+  bloqueada com CTA de upgrade. Tem **divisões Bronze / Prata / Ouro** por
+  faixa de XP do mês (badges no pódio, na lista e na sua posição).
+
+### Duelo com vários amigos (entregue)
+No Diário, o convite por código vira uma **lista de amigos**: grátis chama 1
+(`maxDuelFriends`), premium chama até 8 no mesmo duelo (usa `opponent_ids`).
+
+### Insights (entregue, premium)
+Página `/insights` (premium via `advancedInsights`): a partir de
+`training_logs` mostra treinos, RPE médio, frequência semanal, distribuição de
+sensação, **RPE médio por sensação** (como sono/dor/cansaço afetam o esforço) e
+**evolução de carga por exercício**. Grátis vê um teaser bloqueado.
 - **Fase 3:** **Duelo de Intensidade** — duelo validado por frequência
   cardíaca (% da FC máxima), em que vence quem se mantém mais tempo na zona
   alvo. Democratiza o duelo: o iniciante pode vencer o atleta de elite, porque

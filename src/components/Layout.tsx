@@ -53,6 +53,7 @@ export default function Layout() {
 
   const moreItems = isIndividual
     ? [
+        { icon: Activity,  label: 'Insights', path: '/insights' },
         { icon: LineChart, label: 'Evolução', path: '/progress' },
         { icon: Sparkles,  label: 'Avatar',   path: '/avatar' },
       ]
