@@ -20,9 +20,9 @@ export default defineConfig(({ mode }) => {
           navigateFallbackDenylist: [/^\/api/],
         },
         manifest: {
-          name: 'CrossCity Hub',
-          short_name: 'CrossCity',
-          description: 'High-performance fitness app',
+          name: 'BoxLink',
+          short_name: 'BoxLink',
+          description: 'BoxLink — treino, duelos e liga para atletas',
           theme_color: '#0e0e0e',
           background_color: '#0e0e0e',
           display: 'standalone',

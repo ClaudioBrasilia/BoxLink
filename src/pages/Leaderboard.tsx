@@ -43,7 +43,7 @@ export default function Leaderboard() {
   const [refreshing, setRefreshing]     = useState(false);
   const [error, setError]               = useState<string | null>(null);
   const [inactivitySettings, setInactivitySettings] = useState<InactivitySettings | null>(null);
-  const [boxName, setBoxName] = useState<string>('CrossCity Hub');
+  const [boxName, setBoxName] = useState<string>('BoxLink');
   const [boxLogo, setBoxLogo] = useState<string>('');
   const [checkinsByUser, setCheckinsByUser] = useState<Record<string, { date: string }[]>>({});
 

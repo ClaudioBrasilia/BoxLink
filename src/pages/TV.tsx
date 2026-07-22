@@ -234,7 +234,7 @@ export default function TV() {
       });
 
       setData({
-        settings: settings || { name: "CrossCity Hub", logo: "" },
+        settings: settings || { name: "BoxLink", logo: "" },
         tvConfig, rewards: economy, wod: activeWod || null, checkins: checkins || [],
         challenges: challenges || [],
         duels: mappedDuels,
@@ -376,7 +376,7 @@ export default function TV() {
           </div>
           <div>
             <h1 className="text-4xl font-headline font-black text-white italic tracking-tighter uppercase leading-none">{settings.name}</h1>
-            <p className="text-primary text-[10px] font-black tracking-[0.4em] uppercase italic mt-1">CROSSCITY HUB • PERFORMANCE ELITE</p>
+            <p className="text-primary text-[10px] font-black tracking-[0.4em] uppercase italic mt-1">BOXLINK • PERFORMANCE ELITE</p>
           </div>
         </div>
 

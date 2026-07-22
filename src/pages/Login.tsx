@@ -46,7 +46,7 @@ export default function Login() {
           <div className="w-24 h-24 bg-surface-container-low rounded-[2rem] border border-outline-variant/10 flex items-center justify-center mx-auto mb-6 shadow-2xl">
             <Shield className="w-12 h-12 text-primary" />
           </div>
-          <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter uppercase italic">CROSSCITY <span className="text-primary">HUB</span></h1>
+          <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter uppercase italic">BOX<span className="text-primary">LINK</span></h1>
           <p className="text-on-surface-variant text-xs font-bold tracking-widest uppercase mt-2 italic">A Arena Espera Por Você</p>
         </div>
 
@@ -58,7 +58,7 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-surface-container-low border border-outline-variant/10 rounded-2xl p-5 font-headline font-bold text-on-surface focus:border-primary/50 transition-all outline-none"
-              placeholder="atleta@crosscity.com"
+              placeholder="seu@email.com"
               required
             />
           </div>

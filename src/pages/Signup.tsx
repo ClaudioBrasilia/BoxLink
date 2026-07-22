@@ -47,7 +47,7 @@ export default function Signup() {
           <div className="w-24 h-24 bg-surface-container-low rounded-[2rem] border border-outline-variant/10 flex items-center justify-center mx-auto mb-6 shadow-2xl">
             <UserPlus className="w-12 h-12 text-secondary" />
           </div>
-          <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter uppercase italic">ENTRE NO <span className="text-secondary">HUB</span></h1>
+          <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter uppercase italic">ENTRE NA <span className="text-secondary">BOXLINK</span></h1>
           <p className="text-on-surface-variant text-xs font-bold tracking-widest uppercase mt-2 italic">Solicite seu Acesso de Atleta</p>
         </div>
 
@@ -103,7 +103,7 @@ export default function Signup() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-surface-container-low border border-outline-variant/10 rounded-2xl p-5 font-headline font-bold text-on-surface focus:border-secondary/50 transition-all outline-none"
-              placeholder="atleta@crosscity.com"
+              placeholder="seu@email.com"
               required
             />
           </div>

@@ -1,5 +1,5 @@
 {
-  "name": "CrossCity Hub",
+  "name": "BoxLink",
   "description": "Plataforma de academia/box gamificada com WOD, Desafios, Duelos, Ranking e Avatar.",
   "requestFramePermissions": ["geolocation"]
 }

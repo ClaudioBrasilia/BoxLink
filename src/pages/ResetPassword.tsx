@@ -94,7 +94,7 @@ export default function ResetPassword() {
             <Shield className="w-12 h-12 text-primary" />
           </div>
           <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter uppercase italic">
-            CROSSCITY <span className="text-primary">HUB</span>
+            BOX<span className="text-primary">LINK</span>
           </h1>
           <p className="text-on-surface-variant text-xs font-bold tracking-widest uppercase mt-2 italic">
             Nova Senha

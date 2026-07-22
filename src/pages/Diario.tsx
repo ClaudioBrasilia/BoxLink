@@ -24,9 +24,11 @@ import { cn } from '../lib/utils';
 import { useToast } from '../context/ToastContext';
 import { addReward, getRewardSettings, checkAndPayWeeklyBonus } from '../utils/rewards';
 import { createNotification } from '../hooks/useNotifications';
-import { TrainingLog, TrainingLogCategory, TrainingFeeling } from '../types';
+import { TrainingLog, TrainingLogCategory, TrainingFeeling, AvatarSlot } from '../types';
 import { isPremium, planLimits, PLAN_LIMITS } from '../lib/plan';
 import WodTimer, { WodTimerResult } from '../components/WodTimer';
+import AvatarPreview from '../components/AvatarPreview';
+import { useNavigate } from 'react-router-dom';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -92,6 +94,7 @@ interface FriendProfile {
 export default function Diario() {
   const { user, updateUser } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
 
   const [logs, setLogs] = useState<TrainingLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -474,9 +477,17 @@ export default function Diario() {
               Seu treino, suas regras
             </p>
           </div>
-          <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
-            <BookOpen className="w-6 h-6 text-primary" />
-          </div>
+          <button
+            onClick={() => navigate('/avatar')}
+            className="w-14 h-14 rounded-full bg-primary/10 border border-primary/20 overflow-hidden flex items-center justify-center hover:border-primary/50 active:scale-95 transition-all"
+            aria-label="Personalizar avatar"
+          >
+            <AvatarPreview
+              equipped={(user?.avatar?.equipped || {}) as AvatarSlot}
+              size="sm"
+              className="w-full h-full border-none shadow-none"
+            />
+          </button>
         </div>
 
         {/* Streak + status do dia */}

@@ -254,7 +254,7 @@ async function generateRankingImage(
 
 export default function ShareRankingButton({
   top3, rankingType, title,
-  boxName = 'CrossCity Hub',
+  boxName = 'BoxLink',
   boxLogo = '',
   monthName = '',
 }: ShareRankingButtonProps) {
