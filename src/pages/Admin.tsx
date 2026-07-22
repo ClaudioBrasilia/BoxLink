@@ -161,6 +161,10 @@ export default function Admin() {
   const [openSections, setOpenSections] = useState<string[]>([]);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
+  // ── Pedidos de entrada no box (atletas individuais) ──
+  const [joinRequests, setJoinRequests] = useState<any[]>([]);
+  const [resolvingJoinId, setResolvingJoinId] = useState<string | null>(null);
+
   // ── Comunicados ──
   const [announcements, setAnnouncements] = useState<any[]>([]);
 
@@ -217,6 +221,13 @@ export default function Admin() {
       mappedUsers.forEach((u: User) => { roles[u.id] = u.role; });
       setSelectedRoles(roles);
     }
+
+    const { data: joinReqData } = await supabase
+      .from('box_join_requests')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+    setJoinRequests(joinReqData || []);
 
     const { data: settingsData } = await supabase.from('box_settings').select('*').maybeSingle();
     if (settingsData) {
@@ -368,6 +379,45 @@ export default function Admin() {
 
   const handleRoleChange = (userId: string, role: string) => {
     setSelectedRoles(prev => ({ ...prev, [userId]: role }));
+  };
+
+  /** Aprova ou recusa pedido de atleta individual para entrar no box */
+  const handleJoinRequest = async (request: any, approve: boolean) => {
+    setResolvingJoinId(request.id);
+    try {
+      const { error } = await supabase
+        .from('box_join_requests')
+        .update({ status: approve ? 'approved' : 'rejected', resolved_at: new Date().toISOString() })
+        .eq('id', request.id);
+      if (error) throw error;
+
+      if (approve) {
+        // Conta vira aluno do box mantendo histórico, pontos, PRs e diário
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ account_type: 'box', status: 'approved' })
+          .eq('id', request.user_id);
+        if (profileError) throw profileError;
+      }
+
+      await createNotification(
+        request.user_id,
+        approve ? 'join_approved' : 'join_rejected',
+        approve ? '🎉 Bem-vindo ao Box!' : 'Pedido de entrada recusado',
+        approve
+          ? 'Seu pedido foi aprovado! Agora você é aluno do box — seu histórico, pontos e PRs foram mantidos.'
+          : 'Seu pedido de entrada no box foi recusado. Você continua como atleta individual.',
+        { requestId: request.id }
+      );
+
+      setJoinRequests(prev => prev.filter(r => r.id !== request.id));
+      toast.success(approve ? 'Atleta aprovado no box!' : 'Pedido recusado.');
+      if (approve) await fetchAll();
+    } catch (e: any) {
+      toast.error('Erro ao resolver pedido: ' + e.message);
+    } finally {
+      setResolvingJoinId(null);
+    }
   };
 
   const handleRoleUpdate = async (userId: string) => {
@@ -787,6 +837,56 @@ export default function Admin() {
                 </div>
               )}
             </div>
+
+            {/* ── Pedidos de entrada no box (atletas individuais) ── */}
+            {joinRequests.length > 0 && (
+              <>
+                <div className="flex justify-between items-center mb-2 mt-4">
+                  <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic">QUEREM ENTRAR NO BOX</h3>
+                  <span className="bg-secondary/20 text-secondary text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{joinRequests.length} PEDIDOS</span>
+                </div>
+                <div className="space-y-3">
+                  {joinRequests.map((req) => {
+                    const requester = users.find(u => u.id === req.user_id);
+                    return (
+                      <div key={req.id} className="bg-surface-container-low p-4 rounded-3xl border border-secondary/20 flex justify-between items-center gap-4">
+                        <div className="flex items-center gap-4 min-w-0">
+                          <div className="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface font-headline font-black text-xl flex-shrink-0">
+                            {(requester?.name || 'A')[0]}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-on-surface font-bold uppercase text-sm truncate">{requester?.name || 'Atleta'}</p>
+                            <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest truncate">{requester?.email}</p>
+                            <span className="inline-block mt-1 bg-primary/10 text-primary text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">
+                              ATLETA INDIVIDUAL • NÍVEL {requester?.level ?? 1} • {requester?.xp ?? 0} XP
+                            </span>
+                            {req.message && (
+                              <p className="text-on-surface-variant text-[10px] font-medium mt-1 italic truncate">"{req.message}"</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => handleJoinRequest(req, true)}
+                            disabled={resolvingJoinId === req.id}
+                            className="p-2 bg-primary/20 text-primary rounded-xl hover:bg-primary hover:text-background transition-all disabled:opacity-50"
+                          >
+                            <Check className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => handleJoinRequest(req, false)}
+                            disabled={resolvingJoinId === req.id}
+                            className="p-2 bg-error-container text-on-error-container rounded-xl hover:bg-error hover:text-on-error transition-all disabled:opacity-50"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
 
             <div className="mt-6">
               <button onClick={() => setIsManageUsersOpen(!isManageUsersOpen)}
