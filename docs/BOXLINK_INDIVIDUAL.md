@@ -128,6 +128,18 @@ Página `/liga` (na navegação do individual): ranking só de atletas
   bloqueada com CTA de upgrade. Tem **divisões Bronze / Prata / Ouro** por
   faixa de XP do mês (badges no pódio, na lista e na sua posição).
 
+### Meu WOD — cronômetro próprio (entregue)
+Como o atleta individual não tem um box definindo o WOD do dia, ele **cria e
+faz o próprio WOD**. No Diário, o card "Fazer meu WOD" abre um cronômetro em
+tela cheia com quatro modos:
+- **For Time** (conta pra cima, com time cap opcional),
+- **AMRAP** (contagem regressiva; ao fim informa rounds+reps),
+- **EMOM** (bipe a cada minuto),
+- **Tabata** (20s work / 10s rest, bipe nas transições).
+Tem áudio/vibração nos avisos e mantém a tela ligada (`useKeepScreenAwake`).
+Ao terminar, pré-preenche o formulário do Diário (tipo, nome, movimentos e
+resultado) e salva como treino — com check-in solo e pontos.
+
 ### Duelo com vários amigos (entregue)
 No Diário, o convite por código vira uma **lista de amigos**: grátis chama 1
 (`maxDuelFriends`), premium chama até 8 no mesmo duelo (usa `opponent_ids`).

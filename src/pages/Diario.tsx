@@ -7,6 +7,7 @@ import {
   Flame,
   Dumbbell,
   Timer,
+  Play,
   StickyNote,
   Trash2,
   Copy,
@@ -25,6 +26,7 @@ import { addReward, getRewardSettings, checkAndPayWeeklyBonus } from '../utils/r
 import { createNotification } from '../hooks/useNotifications';
 import { TrainingLog, TrainingLogCategory, TrainingFeeling } from '../types';
 import { isPremium, planLimits, PLAN_LIMITS } from '../lib/plan';
+import WodTimer, { WodTimerResult } from '../components/WodTimer';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,6 +97,7 @@ export default function Diario() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [showTimer, setShowTimer] = useState(false);
 
   // Formulário
   const [category, setCategory] = useState<TrainingLogCategory>('wod');
@@ -322,6 +325,18 @@ export default function Diario() {
     }
   };
 
+  // Cronômetro terminou → pré-preenche o formulário de registro (WOD)
+  const handleTimerFinish = (data: WodTimerResult) => {
+    setCategory('wod');
+    setWodType(data.wodType);
+    setTitle(data.title);
+    setDescription(data.description);
+    setResult(data.result);
+    setShowTimer(false);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleDelete = async (log: TrainingLog) => {
     try {
       const { error } = await supabase.from('training_logs').delete().eq('id', log.id);
@@ -498,6 +513,23 @@ export default function Diario() {
           </p>
         )}
       </header>
+
+      {/* ── Fazer WOD com cronômetro ── */}
+      <button
+        onClick={() => setShowTimer(true)}
+        className="mx-6 mb-4 bg-gradient-to-r from-primary/15 to-secondary/10 border border-primary/25 rounded-3xl p-5 flex items-center gap-4 hover:border-primary/50 transition-all text-left w-[calc(100%-3rem)]"
+      >
+        <div className="w-12 h-12 rounded-2xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+          <Timer className="w-6 h-6 text-primary" />
+        </div>
+        <div className="flex-1">
+          <p className="font-headline font-black text-base text-on-surface uppercase italic leading-tight">Fazer meu WOD</p>
+          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
+            Cronômetro For Time · AMRAP · EMOM · Tabata
+          </p>
+        </div>
+        <Play className="w-5 h-5 text-primary flex-shrink-0" />
+      </button>
 
       {/* ── Formulário de registro ── */}
       <AnimatePresence>
@@ -943,6 +975,11 @@ export default function Diario() {
       >
         {showForm ? <X className="w-6 h-6" strokeWidth={3} /> : <Plus className="w-6 h-6" strokeWidth={3} />}
       </button>
+
+      {/* Cronômetro de WOD (tela cheia) */}
+      {showTimer && (
+        <WodTimer onClose={() => setShowTimer(false)} onFinish={handleTimerFinish} />
+      )}
     </div>
   );
 }
