@@ -92,6 +92,18 @@ export default function Login() {
           </button>
         </form>
 
+        {/* Aviso do modo Individual */}
+        <div className="bg-surface-container-low border border-primary/20 rounded-2xl p-4 flex flex-col gap-2 text-center">
+          <p className="text-[11px] font-black text-primary uppercase tracking-widest italic">Treina sem box?</p>
+          <p className="text-[10px] text-on-surface-variant font-bold tracking-wide leading-relaxed">
+            Crie uma conta <span className="text-primary">Individual</span> e use sozinho: diário de treino,
+            check-in com pontos, duelos com amigos por código e liga de atletas. Acesso imediato, sem aprovação.
+          </p>
+          <Link to="/signup" className="text-[10px] text-primary font-black uppercase tracking-widest hover:underline mt-1">
+            Criar conta individual →
+          </Link>
+        </div>
+
         <div className="text-center">
           <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest">
             Novo no box? <Link to="/signup" className="text-primary hover:underline">Solicitar Acesso</Link>
