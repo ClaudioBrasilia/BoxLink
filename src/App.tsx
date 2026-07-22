@@ -74,6 +74,25 @@ const VisitorGuard = ({ children, page }: { children: React.ReactNode; page: key
   return <>{children}</>;
 };
 
+/**
+ * Bloqueia páginas exclusivas do Box para contas individuais.
+ * O atleta individual não é cadastrado em nenhum box, então não acessa
+ * WOD do box, ranking, desafios, meu box, times ou feed — é redirecionado
+ * para o próprio Diário.
+ */
+const BoxOnlyGuard = ({ children }: { children: React.ReactNode }) => {
+  const { user } = useAuth();
+  if (user?.accountType === 'individual') return <Navigate to="/diario" replace />;
+  return <>{children}</>;
+};
+
+/** Home: individual cai no Diário; conta de box vê o Dashboard do box. */
+const HomeRoute = () => {
+  const { user } = useAuth();
+  if (user?.accountType === 'individual') return <Navigate to="/diario" replace />;
+  return <Dashboard />;
+};
+
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
   const { user, loading, logout } = useAuth();
 
@@ -119,19 +138,19 @@ function AppRoutes() {
         <Route path="/install"         element={<Install />} />
         <Route path="/tv"              element={<TV />} />
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-          <Route index element={<Dashboard />} />
-          <Route path="wod"         element={<VisitorGuard page="wod"><Wod /></VisitorGuard>} />
-          <Route path="leaderboard" element={<VisitorGuard page="leaderboard"><Leaderboard /></VisitorGuard>} />
+          <Route index element={<HomeRoute />} />
+          <Route path="wod"         element={<BoxOnlyGuard><VisitorGuard page="wod"><Wod /></VisitorGuard></BoxOnlyGuard>} />
+          <Route path="leaderboard" element={<BoxOnlyGuard><VisitorGuard page="leaderboard"><Leaderboard /></VisitorGuard></BoxOnlyGuard>} />
           <Route path="profile"     element={<Profile />} />
           <Route path="diario"      element={<Diario />} />
-          <Route path="challenges"  element={<VisitorGuard page="challenges"><Challenges /></VisitorGuard>} />
+          <Route path="challenges"  element={<BoxOnlyGuard><VisitorGuard page="challenges"><Challenges /></VisitorGuard></BoxOnlyGuard>} />
           <Route path="duels"       element={<VisitorGuard page="duels"><Duels /></VisitorGuard>} />
           <Route path="progress"    element={<VisitorGuard page="progress"><Progress /></VisitorGuard>} />
-          <Route path="mybox"       element={<VisitorGuard page="mybox"><MyBox /></VisitorGuard>} />
-          <Route path="clans"       element={<VisitorGuard page="clans"><Clans /></VisitorGuard>} />
+          <Route path="mybox"       element={<BoxOnlyGuard><VisitorGuard page="mybox"><MyBox /></VisitorGuard></BoxOnlyGuard>} />
+          <Route path="clans"       element={<BoxOnlyGuard><VisitorGuard page="clans"><Clans /></VisitorGuard></BoxOnlyGuard>} />
           <Route path="avatar"      element={<VisitorGuard page="avatar"><AvatarCustomization /></VisitorGuard>} />
           <Route path="benchmarks"  element={<VisitorGuard page="benchmarks"><Benchmarks /></VisitorGuard>} />
-          <Route path="feed"        element={<VisitorGuard page="feed"><Feed /></VisitorGuard>} />
+          <Route path="feed"        element={<BoxOnlyGuard><VisitorGuard page="feed"><Feed /></VisitorGuard></BoxOnlyGuard>} />
           <Route path="admin"       element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
           <Route path="coach"       element={<ProtectedRoute roles={['coach', 'admin']}><Coach /></ProtectedRoute>} />
         </Route>

@@ -34,28 +34,37 @@ export default function Layout() {
   // Conta individual: o Diário assume o lugar de destaque na navegação
   const isIndividual = user?.accountType === 'individual';
 
-  const navItems = [
-    isIndividual
-      ? { icon: BookOpen, label: 'Diário', path: '/diario',  badge: homeBadge }
-      : { icon: Home,     label: 'Início', path: '/',        badge: homeBadge },
-    { icon: Swords, label: 'Duelos',   path: '/duels',       badge: duelBadge },
-    { icon: Users,  label: 'Feed',     path: '/feed',        badge: feedBadge },
-    { icon: Trophy, label: 'Ranking',  path: '/leaderboard', badge: 0 },
-    { icon: User,   label: 'Perfil',   path: '/profile',     badge: 0 },
-  ];
+  // Conta individual: navegação só com o que é dela — nada do Box (Feed, Ranking,
+  // Desafios, Meu Box, Times ficam de fora).
+  const navItems = isIndividual
+    ? [
+        { icon: BookOpen, label: 'Diário',   path: '/diario',   badge: homeBadge },
+        { icon: Swords,   label: 'Duelos',   path: '/duels',    badge: duelBadge },
+        { icon: LineChart,label: 'Evolução', path: '/progress', badge: 0 },
+        { icon: User,     label: 'Perfil',   path: '/profile',  badge: 0 },
+      ]
+    : [
+        { icon: Home,   label: 'Início',   path: '/',            badge: homeBadge },
+        { icon: Swords, label: 'Duelos',   path: '/duels',       badge: duelBadge },
+        { icon: Users,  label: 'Feed',     path: '/feed',        badge: feedBadge },
+        { icon: Trophy, label: 'Ranking',  path: '/leaderboard', badge: 0 },
+        { icon: User,   label: 'Perfil',   path: '/profile',     badge: 0 },
+      ];
 
-  const moreItems = [
-    isIndividual
-      ? { icon: Home,     label: 'Início', path: '/' }
-      : { icon: BookOpen, label: 'Diário', path: '/diario' },
-    { icon: Zap,         label: 'Desafios', path: '/challenges' },
-    { icon: LineChart,   label: 'Evolução', path: '/progress' },
-    { icon: Box,         label: 'Meu Box',  path: '/mybox' },
-    { icon: Users,       label: 'Times',    path: '/clans' },
-    { icon: Sparkles,    label: 'Avatar',   path: '/avatar' },
-    ...(user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Admin', path: '/admin' }] : []),
-    ...(user?.role === 'coach' || user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Coach', path: '/coach' }] : []),
-  ];
+  const moreItems = isIndividual
+    ? [
+        { icon: Sparkles, label: 'Avatar', path: '/avatar' },
+      ]
+    : [
+        { icon: BookOpen,  label: 'Diário',   path: '/diario' },
+        { icon: Zap,       label: 'Desafios', path: '/challenges' },
+        { icon: LineChart, label: 'Evolução', path: '/progress' },
+        { icon: Box,       label: 'Meu Box',  path: '/mybox' },
+        { icon: Users,     label: 'Times',    path: '/clans' },
+        { icon: Sparkles,  label: 'Avatar',   path: '/avatar' },
+        ...(user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Admin', path: '/admin' }] : []),
+        ...(user?.role === 'coach' || user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Coach', path: '/coach' }] : []),
+      ];
 
   const handleLogout = () => {
     logout();

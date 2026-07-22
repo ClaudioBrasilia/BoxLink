@@ -158,6 +158,10 @@ export default function Duels() {
   const { user, updateUser } = useAuth();
   const toast = useToast();
 
+  // Conta individual cria duelo só pelo código de amigo (no Diário) — não vê o
+  // formulário de busca que listaria os atletas do box.
+  const isIndividual = user?.accountType === 'individual';
+
   // Data
   const [duels, setDuels] = useState<Duel[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -686,9 +690,9 @@ export default function Duels() {
         </div>
       </header>
 
-      {/* ── Formulário de criação ── */}
+      {/* ── Formulário de criação (não disponível para conta individual) ── */}
       <AnimatePresence>
-        {showCreate && (
+        {showCreate && !isIndividual && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -888,6 +892,18 @@ export default function Duels() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Individual: atalho para criar duelo por código no Diário */}
+      {isIndividual && (
+        <div className="mx-6 mb-4 bg-surface-container rounded-3xl border border-outline-variant/10 p-4 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center flex-shrink-0">
+            <Sword className="w-5 h-5 text-secondary" />
+          </div>
+          <p className="text-[11px] text-on-surface-variant font-bold uppercase tracking-widest leading-snug">
+            Para desafiar um amigo, use o <span className="text-secondary">código de atleta</span> na tela do Diário.
+          </p>
+        </div>
+      )}
 
       {/* ── Lista de duelos ── */}
       <main className="px-6 flex flex-col gap-4">
@@ -1147,13 +1163,15 @@ export default function Duels() {
         )}
       </main>
 
-      {/* FAB */}
-      <button
-        onClick={() => setShowCreate(s => !s)}
-        className="fixed bottom-28 right-6 w-14 h-14 bg-primary text-background rounded-2xl shadow-xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
-      >
-        {showCreate ? <X className="w-6 h-6" strokeWidth={3} /> : <Plus className="w-6 h-6" strokeWidth={3} />}
-      </button>
+      {/* FAB (conta de box cria duelo aqui; individual cria pelo código no Diário) */}
+      {!isIndividual && (
+        <button
+          onClick={() => setShowCreate(s => !s)}
+          className="fixed bottom-28 right-6 w-14 h-14 bg-primary text-background rounded-2xl shadow-xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
+        >
+          {showCreate ? <X className="w-6 h-6" strokeWidth={3} /> : <Plus className="w-6 h-6" strokeWidth={3} />}
+        </button>
+      )}
     </div>
   );
 }
