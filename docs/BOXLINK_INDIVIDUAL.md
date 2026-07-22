@@ -116,8 +116,16 @@ tela — nenhuma regra de plano fica espalhada pelo app.
 
 - **Fase 1 (feita):** diário + check-in solo + PR automático + duelo por código.
 - **Fase 2:** insights cruzando RPE/sensação/sono com resultados; gráficos de
-  evolução de carga por exercício na página Evolução; ligas mensais de atletas
-  individuais (ranking global por pontos).
+  evolução de carga por exercício na página Evolução. **(Liga/ranking de
+  atletas individuais já entregue — ver abaixo.)**
+
+### Liga de atletas individuais (entregue)
+Página `/liga` (na navegação do individual): ranking só de atletas
+`account_type = 'individual'`, com pódio e destaque da sua posição.
+- **XP Total** (grátis): ranking acumulado desde o início.
+- **Liga do Mês** (premium, `leagueRanking`): competição mensal com reset,
+  XP ganho no mês (via `reward_history`); para usuário grátis aparece
+  bloqueada com CTA de upgrade.
 - **Fase 3:** **Duelo de Intensidade** — duelo validado por frequência
   cardíaca (% da FC máxima), em que vence quem se mantém mais tempo na zona
   alvo. Democratiza o duelo: o iniciante pode vencer o atleta de elite, porque

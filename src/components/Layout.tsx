@@ -38,10 +38,10 @@ export default function Layout() {
   // Desafios, Meu Box, Times ficam de fora).
   const navItems = isIndividual
     ? [
-        { icon: BookOpen, label: 'Diário',   path: '/diario',   badge: homeBadge },
-        { icon: Swords,   label: 'Duelos',   path: '/duels',    badge: duelBadge },
-        { icon: LineChart,label: 'Evolução', path: '/progress', badge: 0 },
-        { icon: User,     label: 'Perfil',   path: '/profile',  badge: 0 },
+        { icon: BookOpen, label: 'Diário', path: '/diario', badge: homeBadge },
+        { icon: Swords,   label: 'Duelos', path: '/duels',  badge: duelBadge },
+        { icon: Trophy,   label: 'Liga',   path: '/liga',   badge: 0 },
+        { icon: User,     label: 'Perfil', path: '/profile', badge: 0 },
       ]
     : [
         { icon: Home,   label: 'Início',   path: '/',            badge: homeBadge },
@@ -53,7 +53,8 @@ export default function Layout() {
 
   const moreItems = isIndividual
     ? [
-        { icon: Sparkles, label: 'Avatar', path: '/avatar' },
+        { icon: LineChart, label: 'Evolução', path: '/progress' },
+        { icon: Sparkles,  label: 'Avatar',   path: '/avatar' },
       ]
     : [
         { icon: BookOpen,  label: 'Diário',   path: '/diario' },
