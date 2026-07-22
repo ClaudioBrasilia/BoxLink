@@ -24,6 +24,7 @@ import { useToast } from '../context/ToastContext';
 import { addReward, getRewardSettings, checkAndPayWeeklyBonus } from '../utils/rewards';
 import { createNotification } from '../hooks/useNotifications';
 import { TrainingLog, TrainingLogCategory, TrainingFeeling } from '../types';
+import { isPremium, PLAN_LIMITS } from '../lib/plan';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,8 @@ export default function Diario() {
   // Pedido de entrada no box (só para conta individual)
   const [joinRequest, setJoinRequest] = useState<{ id: string; status: string } | null>(null);
   const [sendingJoin, setSendingJoin] = useState(false);
+
+  const premium = isPremium(user);
 
   // ─── Load ────────────────────────────────────────────────────────────────
 
@@ -720,6 +723,16 @@ export default function Diario() {
               : 'Buscar'}
           </button>
         </div>
+
+        {/* Selo premium: recursos avançados de duelo/liga (grátis vê o convite) */}
+        {!premium && (
+          <div className="bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
+            <span className="text-sm">🔒</span>
+            <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest leading-snug">
+              <span className="text-secondary">Premium:</span> convide até {PLAN_LIMITS.premium.maxDuelFriends} amigos no mesmo duelo, liga e ranking de atletas
+            </p>
+          </div>
+        )}
 
         {/* Amigo encontrado → montar duelo */}
         <AnimatePresence>

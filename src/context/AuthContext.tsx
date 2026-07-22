@@ -66,7 +66,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         paidBonuses: data.paid_bonuses || [],
         createdAt: data.created_at,
         accountType: data.account_type || 'box',
-        friendCode: data.friend_code || null
+        friendCode: data.friend_code || null,
+        plan: data.plan || 'free',
+        planExpiresAt: data.plan_expires_at || null
       };
 
       setUser(mappedUser);

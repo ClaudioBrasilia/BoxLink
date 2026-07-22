@@ -95,6 +95,8 @@ export interface User {
   monthCheckinCount?: number;
   accountType?: AccountType;
   friendCode?: string | null;
+  plan?: 'free' | 'premium';
+  planExpiresAt?: string | null;
 }
 
 export interface Wod {

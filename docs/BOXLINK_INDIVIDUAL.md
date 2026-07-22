@@ -82,6 +82,25 @@ O atleta individual escolhe: **segue sozinho ou pede para entrar no box**.
   pedir de novo).
 - O atleta é notificado do resultado dentro do app.
 
+## 3.1 Base de planos (premium) — já preparada
+
+O código de atleta é **fixo e permanente** (gerado uma vez, nunca muda), ideal
+para compartilhar. A fundação de monetização já está no código, pronta para
+"ligar" quando você definir preços:
+
+- Coluna `profiles.plan` (`free` | `premium`) + `plan_expires_at` (validade).
+- `src/lib/plan.ts` centraliza **todos** os limites por plano
+  (`PLAN_LIMITS`) e os helpers `isPremium(user)` / `planLimits(user)`.
+- Recursos já mapeados como premium: **duelo com vários amigos**
+  (`maxDuelFriends`), **liga/ranking individual** (`leagueRanking`),
+  **histórico ilimitado** (`diaryHistoryDays`), **código personalizado**
+  (`customFriendCode`), **duelos ativos simultâneos** (`maxActiveDuels`) e
+  **insights avançados** (`advancedInsights`).
+- O Diário já exibe um selo premium para o usuário grátis, lido dessa config.
+
+Para lançar um recurso pago, basta ajustar `PLAN_LIMITS` e checar o helper na
+tela — nenhuma regra de plano fica espalhada pelo app.
+
 ## 4. Planos sugeridos (monetização)
 
 | | **Free** | **Basic (R$ 9,90/mês)** | **Pro (R$ 19,90/mês)** |
