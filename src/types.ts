@@ -43,6 +43,30 @@ export interface Item {
   piece_spec_id?: string | null;
 }
 
+/** Tipo de conta: 'box' = vinculado a um box | 'individual' = atleta solo (BoxLink Individual) */
+export type AccountType = 'box' | 'individual';
+
+export type TrainingLogCategory = 'wod' | 'forca' | 'desafio' | 'nota';
+export type TrainingFeeling = 'otimo' | 'bem' | 'normal' | 'cansado' | 'dor';
+
+/** Registro do Diário de Treino (modo Individual) */
+export interface TrainingLog {
+  id: string;
+  user_id: string;
+  date: string;
+  title: string;
+  category: TrainingLogCategory;
+  wod_type?: string | null;
+  description?: string | null;
+  result?: string | null;
+  exercise?: string | null;
+  load_kg?: number | null;
+  rpe?: number | null;
+  feeling?: TrainingFeeling | null;
+  notes?: string | null;
+  created_at: string;
+}
+
 export interface PersonalRecord {
   id: string;
   user_id: string;
@@ -69,6 +93,8 @@ export interface User {
   paidBonuses: string[];
   createdAt: string;
   monthCheckinCount?: number;
+  accountType?: AccountType;
+  friendCode?: string | null;
 }
 
 export interface Wod {

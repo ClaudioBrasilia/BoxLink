@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { UserPlus, ChevronRight, Shield } from 'lucide-react';
+import { UserPlus, ChevronRight, Building2, Dumbbell } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import { cn } from '../lib/utils';
 
 export default function Signup() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [accountType, setAccountType] = useState<'box' | 'individual'>('box');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const { signup, loading } = useAuth();
@@ -18,9 +20,11 @@ export default function Signup() {
     setError('');
     setMessage('');
     try {
-      const { error } = await signup(email, password, name);
+      const { error } = await signup(email, password, name, accountType);
       if (!error) {
-        setMessage('Cadastro realizado com sucesso, aguardando aprovação');
+        setMessage(accountType === 'individual'
+          ? 'Cadastro realizado! Sua conta individual já está liberada.'
+          : 'Cadastro realizado com sucesso, aguardando aprovação');
         setTimeout(() => navigate('/login'), 3000);
       } else {
         setError(error.message || 'Erro ao realizar cadastro');
@@ -48,6 +52,39 @@ export default function Signup() {
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="space-y-2">
+            <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest ml-4">Como você treina?</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setAccountType('box')}
+                className={cn(
+                  'flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all',
+                  accountType === 'box'
+                    ? 'bg-secondary/10 border-secondary text-secondary'
+                    : 'bg-surface-container-low border-outline-variant/10 text-on-surface-variant'
+                )}
+              >
+                <Building2 className="w-6 h-6" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Sou de um Box</span>
+                <span className="text-[8px] font-bold uppercase tracking-wider opacity-60">Aprovação do admin</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAccountType('individual')}
+                className={cn(
+                  'flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all',
+                  accountType === 'individual'
+                    ? 'bg-secondary/10 border-secondary text-secondary'
+                    : 'bg-surface-container-low border-outline-variant/10 text-on-surface-variant'
+                )}
+              >
+                <Dumbbell className="w-6 h-6" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Atleta Individual</span>
+                <span className="text-[8px] font-bold uppercase tracking-wider opacity-60">Acesso imediato</span>
+              </button>
+            </div>
+          </div>
           <div className="space-y-2">
             <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest ml-4">Nome Completo</label>
             <input

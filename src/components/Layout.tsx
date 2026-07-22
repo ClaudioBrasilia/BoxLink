@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity, Users } from 'lucide-react';
+import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity, Users, BookOpen } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { useState, useEffect } from 'react';
@@ -31,8 +31,13 @@ export default function Layout() {
   const challengeBadge = notifications.filter(n => !n.read && ['challenge_done', 'challenge_new'].includes(n.type)).length;
   const homeBadge = notifications.filter(n => !n.read && ['announcement'].includes(n.type)).length;
 
+  // Conta individual: o Diário assume o lugar de destaque na navegação
+  const isIndividual = user?.accountType === 'individual';
+
   const navItems = [
-    { icon: Home,   label: 'Início',   path: '/',            badge: homeBadge },
+    isIndividual
+      ? { icon: BookOpen, label: 'Diário', path: '/diario',  badge: homeBadge }
+      : { icon: Home,     label: 'Início', path: '/',        badge: homeBadge },
     { icon: Swords, label: 'Duelos',   path: '/duels',       badge: duelBadge },
     { icon: Users,  label: 'Feed',     path: '/feed',        badge: feedBadge },
     { icon: Trophy, label: 'Ranking',  path: '/leaderboard', badge: 0 },
@@ -40,6 +45,9 @@ export default function Layout() {
   ];
 
   const moreItems = [
+    isIndividual
+      ? { icon: Home,     label: 'Início', path: '/' }
+      : { icon: BookOpen, label: 'Diário', path: '/diario' },
     { icon: Zap,         label: 'Desafios', path: '/challenges' },
     { icon: LineChart,   label: 'Evolução', path: '/progress' },
     { icon: Box,         label: 'Meu Box',  path: '/mybox' },

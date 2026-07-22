@@ -22,6 +22,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import DebugFlow from './pages/DebugFlow';
 import Benchmarks from './pages/Benchmarks';
+import Diario from './pages/Diario';
 import Install from './pages/Install';
 import Feed from './pages/Feed';
 import { Shield, Lock } from 'lucide-react';
@@ -122,6 +123,7 @@ function AppRoutes() {
           <Route path="wod"         element={<VisitorGuard page="wod"><Wod /></VisitorGuard>} />
           <Route path="leaderboard" element={<VisitorGuard page="leaderboard"><Leaderboard /></VisitorGuard>} />
           <Route path="profile"     element={<Profile />} />
+          <Route path="diario"      element={<Diario />} />
           <Route path="challenges"  element={<VisitorGuard page="challenges"><Challenges /></VisitorGuard>} />
           <Route path="duels"       element={<VisitorGuard page="duels"><Duels /></VisitorGuard>} />
           <Route path="progress"    element={<VisitorGuard page="progress"><Progress /></VisitorGuard>} />

@@ -7,7 +7,7 @@ const ONBOARDING_KEY = 'boxlink_onboarding_done';
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<{ error: any }>;
-  signup: (email: string, password: string, name: string) => Promise<{ error: any }>;
+  signup: (email: string, password: string, name: string, accountType?: 'box' | 'individual') => Promise<{ error: any }>;
   logout: () => Promise<void>;
   updateUser: (userData: User) => void;
   loading: boolean;
@@ -64,7 +64,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           classTime: c.class_time
         })),
         paidBonuses: data.paid_bonuses || [],
-        createdAt: data.created_at
+        createdAt: data.created_at,
+        accountType: data.account_type || 'box',
+        friendCode: data.friend_code || null
       };
 
       setUser(mappedUser);
@@ -132,11 +134,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signup = async (email: string, password: string, name: string) => {
+  const signup = async (email: string, password: string, name: string, accountType: 'box' | 'individual' = 'box') => {
     setLoading(true);
     try {
       const { error: authError } = await supabase.auth.signUp({
-        email, password, options: { data: { name } }
+        email, password, options: { data: { name, account_type: accountType } }
       });
       if (authError) { setLoading(false); return { error: authError }; }
       setLoading(false);
