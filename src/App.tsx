@@ -25,7 +25,6 @@ import Benchmarks from './pages/Benchmarks';
 import Diario from './pages/Diario';
 import Liga from './pages/Liga';
 import Insights from './pages/Insights';
-import WodDoDia from './pages/WodDoDia';
 import Install from './pages/Install';
 import Feed from './pages/Feed';
 import { Shield, Lock } from 'lucide-react';
@@ -70,26 +69,17 @@ const VisitorGuard = ({ children, page }: { children: React.ReactNode; page: key
 
   if (user?.role !== 'visitor') return <>{children}</>;
   if (loading) return null;
-  // 'blocked' e 'hidden' são strings truthy — a checagem precisa ser explícita.
-  // `true` cobre registros antigos que guardavam boolean no banco.
   const value = permissions?.[page] as VisitorPermissions[keyof VisitorPermissions] | boolean | undefined;
   if (value !== 'allowed' && value !== true) return <VisitorBlockedPage />;
   return <>{children}</>;
 };
 
-/**
- * Bloqueia páginas exclusivas do Box para contas individuais.
- * O atleta individual não é cadastrado em nenhum box, então não acessa
- * WOD do box, ranking, desafios, meu box, times ou feed — é redirecionado
- * para o próprio Diário.
- */
 const BoxOnlyGuard = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
   if (user?.accountType === 'individual') return <Navigate to="/diario" replace />;
   return <>{children}</>;
 };
 
-/** Home: individual cai no Diário; conta de box vê o Dashboard do box. */
 const HomeRoute = () => {
   const { user } = useAuth();
   if (user?.accountType === 'individual') return <Navigate to="/diario" replace />;
@@ -148,7 +138,6 @@ function AppRoutes() {
           <Route path="diario"      element={<Diario />} />
           <Route path="liga"        element={<Liga />} />
           <Route path="insights"    element={<Insights />} />
-          <Route path="wod-do-dia"  element={<WodDoDia />} />
           <Route path="challenges"  element={<BoxOnlyGuard><VisitorGuard page="challenges"><Challenges /></VisitorGuard></BoxOnlyGuard>} />
           <Route path="duels"       element={<VisitorGuard page="duels"><Duels /></VisitorGuard>} />
           <Route path="progress"    element={<VisitorGuard page="progress"><Progress /></VisitorGuard>} />
