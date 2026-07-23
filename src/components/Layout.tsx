@@ -31,11 +31,8 @@ export default function Layout() {
   const challengeBadge = notifications.filter(n => !n.read && ['challenge_done', 'challenge_new'].includes(n.type)).length;
   const homeBadge = notifications.filter(n => !n.read && ['announcement'].includes(n.type)).length;
 
-  // Conta individual: o Diário assume o lugar de destaque na navegação
   const isIndividual = user?.accountType === 'individual';
 
-  // Conta individual: navegação só com o que é dela — nada do Box (Feed, Ranking,
-  // Desafios, Meu Box, Times ficam de fora).
   const navItems = isIndividual
     ? [
         { icon: BookOpen, label: 'Diário', path: '/diario', badge: homeBadge },
@@ -53,7 +50,6 @@ export default function Layout() {
 
   const moreItems = isIndividual
     ? [
-        { icon: Flame,     label: 'WOD do Dia', path: '/wod-do-dia' },
         { icon: Activity,  label: 'Insights',   path: '/insights' },
         { icon: LineChart, label: 'Evolução',   path: '/progress' },
         { icon: Sparkles,  label: 'Avatar',     path: '/avatar' },
@@ -77,8 +73,6 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-background text-on-surface font-body selection:bg-primary selection:text-background">
 
-      {/* Barra "Live HR" é contexto de box (batimentos dos atletas do box).
-          Não faz sentido para a conta individual, que treina sozinha. */}
       {!isIndividual && (
         <div className="bg-surface-container-highest/50 border-b border-outline-variant/10 px-4 py-1.5 flex items-center justify-between overflow-hidden z-10 sticky top-0 backdrop-blur-md pointer-events-none">
           <div className="flex items-center gap-4 animate-marquee-slow whitespace-nowrap flex-1 overflow-hidden mr-3">
@@ -102,12 +96,10 @@ export default function Layout() {
         </div>
       )}
 
-      {/* 🔧 FIX: overflow-y-auto garante scroll correto no WebView do Capacitor */}
       <main className="max-w-md mx-auto min-h-screen relative pb-24 overflow-y-auto">
         <Outlet />
       </main>
 
-      {/* More Menu Overlay */}
       <AnimatePresence>
         {isMenuOpen && (
           <motion.div
@@ -147,7 +139,6 @@ export default function Layout() {
         )}
       </AnimatePresence>
 
-      {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 w-full bg-surface-container-low/80 backdrop-blur-xl border-t border-outline-variant/10 z-40 safe-bottom">
         <div className="max-w-md mx-auto flex justify-around items-center h-20 px-2">
           {navItems.map((item) => (
