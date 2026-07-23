@@ -8,7 +8,6 @@ import {
   Dumbbell,
   Timer,
   Play,
-  Trophy,
   StickyNote,
   Trash2,
   Copy,
@@ -29,10 +28,8 @@ import { TrainingLog, TrainingLogCategory, TrainingFeeling, AvatarSlot } from '.
 import { isPremium, planLimits, PLAN_LIMITS } from '../lib/plan';
 import WodTimer, { WodTimerResult } from '../components/WodTimer';
 import AvatarPreview from '../components/AvatarPreview';
+import DailyWodPanel from '../components/DailyWodPanel';
 import { useNavigate } from 'react-router-dom';
-import { getDailyWod } from '../lib/dailyWods';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const todayBR = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
@@ -54,7 +51,6 @@ const CATEGORIES: { value: TrainingLogCategory; label: string; icon: typeof Time
 
 const WOD_TYPES = ['FOR TIME', 'AMRAP', 'EMOM', 'TABATA', 'OUTRO'];
 
-/** Streak: dias consecutivos com registro, terminando hoje ou ontem */
 const calcStreak = (dates: string[]): number => {
   if (dates.length === 0) return 0;
   const unique = Array.from(new Set(dates)).sort().reverse();
@@ -73,7 +69,6 @@ const calcStreak = (dates: string[]): number => {
   return streak;
 };
 
-/** Extrai número de um valor de PR guardado como texto (ex: "100kg" → 100) */
 const parseLoad = (value: string): number =>
   parseFloat(String(value).replace(',', '.').replace(/[^0-9.]/g, '')) || 0;
 
@@ -91,8 +86,6 @@ interface FriendProfile {
   friend_code: string;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export default function Diario() {
   const { user, updateUser } = useAuth();
   const toast = useToast();
@@ -104,7 +97,6 @@ export default function Diario() {
   const [showForm, setShowForm] = useState(false);
   const [showTimer, setShowTimer] = useState(false);
 
-  // Formulário
   const [category, setCategory] = useState<TrainingLogCategory>('wod');
   const [title, setTitle] = useState('');
   const [wodType, setWodType] = useState('FOR TIME');
@@ -116,7 +108,6 @@ export default function Diario() {
   const [feeling, setFeeling] = useState<TrainingFeeling | null>(null);
   const [notes, setNotes] = useState('');
 
-  // Duelo por código de amigo (lista de convidados — vários amigos no premium)
   const [codeInput, setCodeInput] = useState('');
   const [searchingFriend, setSearchingFriend] = useState(false);
   const [friends, setFriends] = useState<FriendProfile[]>([]);
@@ -125,14 +116,11 @@ export default function Diario() {
   const [duelDesc, setDuelDesc] = useState('');
   const [creatingDuel, setCreatingDuel] = useState(false);
 
-  // Pedido de entrada no box (só para conta individual)
   const [joinRequest, setJoinRequest] = useState<{ id: string; status: string } | null>(null);
   const [sendingJoin, setSendingJoin] = useState(false);
 
   const premium = isPremium(user);
   const maxDuelFriends = planLimits(user).maxDuelFriends;
-
-  // ─── Load ────────────────────────────────────────────────────────────────
 
   const loadLogs = async () => {
     if (!user) return;
@@ -188,8 +176,6 @@ export default function Diario() {
     }
   };
 
-  // ─── Derived ─────────────────────────────────────────────────────────────
-
   const streak = useMemo(() => {
     const dates = [
       ...logs.map(l => l.date),
@@ -206,8 +192,6 @@ export default function Diario() {
     logs.forEach(l => { (groups[l.date] ||= []).push(l); });
     return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
   }, [logs]);
-
-  // ─── Recompensas ─────────────────────────────────────────────────────────
 
   const refreshBalances = async () => {
     if (!user) return;
@@ -228,13 +212,11 @@ export default function Diario() {
     }
   };
 
-  /** Primeiro registro do dia = check-in solo automático + pontos */
   const soloCheckin = async () => {
     if (!user || checkedInToday) return;
     const { error } = await supabase.from('checkins').insert({
       user_id: user.id, date: todayBR(), class_time: 'SOLO',
     });
-    // 23505 = já fez check-in hoje (constraint unique) — segue sem premiar de novo
     if (error) {
       if (error.code !== '23505') console.error('Solo check-in error:', error);
       return;
@@ -252,7 +234,6 @@ export default function Diario() {
     );
   };
 
-  /** Categoria Força: detecta e registra novo PR automaticamente */
   const detectPr = async (): Promise<boolean> => {
     if (!user || !exercise.trim() || !loadKg) return false;
     const load = parseFloat(loadKg.replace(',', '.'));
@@ -278,8 +259,6 @@ export default function Diario() {
     toast.success(`🏆 NOVO PR! ${exercise.trim()} ${load}kg — +30 XP, +10 coins`);
     return true;
   };
-
-  // ─── Salvar registro ─────────────────────────────────────────────────────
 
   const resetForm = () => {
     setTitle(''); setDescription(''); setResult('');
@@ -314,7 +293,6 @@ export default function Diario() {
       if (error) throw error;
 
       if (category === 'forca') await detectPr();
-      // Nota solta não vale check-in — treino registrado sim
       if (category !== 'nota') await soloCheckin();
       await refreshBalances();
 
@@ -330,7 +308,6 @@ export default function Diario() {
     }
   };
 
-  // Cronômetro terminou → pré-preenche o formulário de registro (WOD)
   const handleTimerFinish = (data: WodTimerResult) => {
     setCategory('wod');
     setWodType(data.wodType);
@@ -352,8 +329,6 @@ export default function Diario() {
       toast.error('Erro ao remover: ' + err.message);
     }
   };
-
-  // ─── Duelo por código de amigo ───────────────────────────────────────────
 
   const handleCopyCode = async () => {
     if (!user?.friendCode) return;
@@ -463,12 +438,9 @@ export default function Diario() {
     }
   };
 
-  // ─── Render ──────────────────────────────────────────────────────────────
-
   return (
     <div className="min-h-screen bg-background pb-32">
 
-      {/* Header */}
       <header className="p-6 pt-12 flex flex-col gap-4">
         <div className="flex justify-between items-center">
           <div>
@@ -492,7 +464,6 @@ export default function Diario() {
           </button>
         </div>
 
-        {/* Streak + status do dia */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-surface-container rounded-3xl p-4 border border-outline-variant/10 flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center">
@@ -527,7 +498,6 @@ export default function Diario() {
         )}
       </header>
 
-      {/* ── Fazer WOD com cronômetro ── */}
       <button
         onClick={() => setShowTimer(true)}
         className="mx-6 mb-4 bg-gradient-to-r from-primary/15 to-secondary/10 border border-primary/25 rounded-3xl p-5 flex items-center gap-4 hover:border-primary/50 transition-all text-left w-[calc(100%-3rem)]"
@@ -544,26 +514,8 @@ export default function Diario() {
         <Play className="w-5 h-5 text-primary flex-shrink-0" />
       </button>
 
-      {/* ── WOD do Dia (placar comunitário) ── */}
-      <button
-        onClick={() => navigate('/wod-do-dia')}
-        className="mx-6 mb-4 bg-surface-container border border-secondary/25 rounded-3xl p-5 flex items-center gap-4 hover:border-secondary/50 transition-all text-left w-[calc(100%-3rem)]"
-      >
-        <div className="w-12 h-12 rounded-2xl bg-secondary/15 flex items-center justify-center flex-shrink-0">
-          <Flame className="w-6 h-6 text-secondary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-headline font-black text-base text-on-surface uppercase italic leading-tight">
-            WOD do Dia · <span className="text-secondary">{getDailyWod().name}</span>
-          </p>
-          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
-            Poste seu resultado e veja o placar
-          </p>
-        </div>
-        <Trophy className="w-5 h-5 text-secondary flex-shrink-0" />
-      </button>
+      <DailyWodPanel />
 
-      {/* ── Formulário de registro ── */}
       <AnimatePresence>
         {showForm && (
           <motion.div
@@ -579,7 +531,6 @@ export default function Diario() {
               </button>
             </div>
 
-            {/* Categoria */}
             <div className="grid grid-cols-4 gap-2">
               {CATEGORIES.map(cat => (
                 <button
@@ -598,7 +549,6 @@ export default function Diario() {
               ))}
             </div>
 
-            {/* Campos por categoria */}
             {category === 'forca' ? (
               <div className="flex flex-col gap-2">
                 <input
@@ -677,7 +627,6 @@ export default function Diario() {
               </div>
             )}
 
-            {/* RPE */}
             {category !== 'nota' && (
               <div className="flex flex-col gap-2">
                 <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">
@@ -700,7 +649,6 @@ export default function Diario() {
               </div>
             )}
 
-            {/* Como se sentiu */}
             <div className="flex flex-col gap-2">
               <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Como você está?</label>
               <div className="flex gap-2">
@@ -727,7 +675,6 @@ export default function Diario() {
               </div>
             </div>
 
-            {/* Anotações */}
             <textarea
               placeholder="Anotações (sono, dieta, dores, observações...)"
               value={notes}
@@ -750,7 +697,6 @@ export default function Diario() {
         )}
       </AnimatePresence>
 
-      {/* ── Duelo por código de amigo ── */}
       <section className="mx-6 mb-6 bg-surface-container rounded-3xl border border-outline-variant/10 p-6 flex flex-col gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center">
@@ -762,7 +708,6 @@ export default function Diario() {
           </div>
         </div>
 
-        {/* Meu código */}
         <div className="bg-surface-container-highest/50 rounded-2xl p-4 flex items-center justify-between border border-outline-variant/10">
           <div>
             <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest mb-0.5">Meu código de atleta</p>
@@ -786,7 +731,6 @@ export default function Diario() {
           </div>
         </div>
 
-        {/* Buscar amigo */}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant/50" />
@@ -809,7 +753,6 @@ export default function Diario() {
           </button>
         </div>
 
-        {/* Selo premium: convidar vários amigos (grátis chama 1) */}
         {!premium && (
           <div className="bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
             <span className="text-sm">🔒</span>
@@ -819,7 +762,6 @@ export default function Diario() {
           </div>
         )}
 
-        {/* Amigos convidados (chips) */}
         {friends.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {friends.map(f => (
@@ -839,7 +781,6 @@ export default function Diario() {
           </div>
         )}
 
-        {/* Com ao menos 1 amigo → montar duelo */}
         <AnimatePresence>
           {friends.length > 0 && (
             <motion.div
@@ -886,7 +827,6 @@ export default function Diario() {
         </AnimatePresence>
       </section>
 
-      {/* ── Quero entrar no Box (só conta individual) ── */}
       {user?.accountType === 'individual' && (
         <section className="mx-6 mb-6 bg-surface-container rounded-3xl border border-outline-variant/10 p-6 flex flex-col gap-3">
           <div className="flex items-center gap-3">
@@ -935,7 +875,6 @@ export default function Diario() {
         </section>
       )}
 
-      {/* ── Histórico ── */}
       <main className="px-6 flex flex-col gap-5">
         <h2 className="font-headline font-black text-sm text-on-surface-variant uppercase italic tracking-widest">Histórico</h2>
 
@@ -1000,7 +939,6 @@ export default function Diario() {
         )}
       </main>
 
-      {/* FAB */}
       <button
         onClick={() => setShowForm(s => !s)}
         className="fixed bottom-28 right-6 w-14 h-14 bg-primary text-background rounded-2xl shadow-xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
@@ -1008,7 +946,6 @@ export default function Diario() {
         {showForm ? <X className="w-6 h-6" strokeWidth={3} /> : <Plus className="w-6 h-6" strokeWidth={3} />}
       </button>
 
-      {/* Cronômetro de WOD (tela cheia) */}
       {showTimer && (
         <WodTimer onClose={() => setShowTimer(false)} onFinish={handleTimerFinish} />
       )}
