@@ -25,6 +25,7 @@ import Benchmarks from './pages/Benchmarks';
 import Diario from './pages/Diario';
 import Liga from './pages/Liga';
 import Insights from './pages/Insights';
+import WodDoDia from './pages/WodDoDia';
 import Install from './pages/Install';
 import Feed from './pages/Feed';
 import { Shield, Lock } from 'lucide-react';
@@ -147,6 +148,7 @@ function AppRoutes() {
           <Route path="diario"      element={<Diario />} />
           <Route path="liga"        element={<Liga />} />
           <Route path="insights"    element={<Insights />} />
+          <Route path="wod-do-dia"  element={<WodDoDia />} />
           <Route path="challenges"  element={<BoxOnlyGuard><VisitorGuard page="challenges"><Challenges /></VisitorGuard></BoxOnlyGuard>} />
           <Route path="duels"       element={<VisitorGuard page="duels"><Duels /></VisitorGuard>} />
           <Route path="progress"    element={<VisitorGuard page="progress"><Progress /></VisitorGuard>} />

@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity, Users, BookOpen } from 'lucide-react';
+import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity, Users, BookOpen, Flame } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { useState, useEffect } from 'react';
@@ -53,9 +53,10 @@ export default function Layout() {
 
   const moreItems = isIndividual
     ? [
-        { icon: Activity,  label: 'Insights', path: '/insights' },
-        { icon: LineChart, label: 'Evolução', path: '/progress' },
-        { icon: Sparkles,  label: 'Avatar',   path: '/avatar' },
+        { icon: Flame,     label: 'WOD do Dia', path: '/wod-do-dia' },
+        { icon: Activity,  label: 'Insights',   path: '/insights' },
+        { icon: LineChart, label: 'Evolução',   path: '/progress' },
+        { icon: Sparkles,  label: 'Avatar',     path: '/avatar' },
       ]
     : [
         { icon: BookOpen,  label: 'Diário',   path: '/diario' },

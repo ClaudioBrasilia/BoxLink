@@ -174,6 +174,27 @@ export async function checkAndPayWeeklyBonus(userId: string): Promise<{
 }
 
 // 🎯 CORREÇÃO 3: Buscar recompensas de uma fonte única (box_settings.rewards)
+/**
+ * Registra um check-in solo do dia (atleta individual) e paga XP/coins + bônus
+ * semanal. Idempotente por dia: se já houve check-in hoje, não paga de novo.
+ */
+export async function registerSoloCheckin(userId: string, classTime = 'SOLO') {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const { error } = await supabase
+    .from('checkins')
+    .insert({ user_id: userId, date: today, class_time: classTime });
+
+  // 23505 = já fez check-in hoje (constraint unique) → não premia novamente
+  if (error) return { checkedIn: false, xp: 0, coins: 0, weekly: null as any };
+
+  const settings = await getRewardSettings();
+  const xp = settings?.xp_per_checkin ?? 20;
+  const coins = settings?.coins_per_checkin ?? 5;
+  await addReward(userId, 'checkin', xp, coins, `Check-in solo — ${classTime}`);
+  const weekly = await checkAndPayWeeklyBonus(userId);
+  return { checkedIn: true, xp, coins, weekly };
+}
+
 export async function getRewardSettings() {
   // Tenta box_settings primeiro (fonte principal)
   const { data: boxSettings } = await supabase

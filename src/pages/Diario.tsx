@@ -8,6 +8,7 @@ import {
   Dumbbell,
   Timer,
   Play,
+  Trophy,
   StickyNote,
   Trash2,
   Copy,
@@ -29,6 +30,7 @@ import { isPremium, planLimits, PLAN_LIMITS } from '../lib/plan';
 import WodTimer, { WodTimerResult } from '../components/WodTimer';
 import AvatarPreview from '../components/AvatarPreview';
 import { useNavigate } from 'react-router-dom';
+import { getDailyWod } from '../lib/dailyWods';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -540,6 +542,25 @@ export default function Diario() {
           </p>
         </div>
         <Play className="w-5 h-5 text-primary flex-shrink-0" />
+      </button>
+
+      {/* ── WOD do Dia (placar comunitário) ── */}
+      <button
+        onClick={() => navigate('/wod-do-dia')}
+        className="mx-6 mb-4 bg-surface-container border border-secondary/25 rounded-3xl p-5 flex items-center gap-4 hover:border-secondary/50 transition-all text-left w-[calc(100%-3rem)]"
+      >
+        <div className="w-12 h-12 rounded-2xl bg-secondary/15 flex items-center justify-center flex-shrink-0">
+          <Flame className="w-6 h-6 text-secondary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-headline font-black text-base text-on-surface uppercase italic leading-tight">
+            WOD do Dia · <span className="text-secondary">{getDailyWod().name}</span>
+          </p>
+          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
+            Poste seu resultado e veja o placar
+          </p>
+        </div>
+        <Trophy className="w-5 h-5 text-secondary flex-shrink-0" />
       </button>
 
       {/* ── Formulário de registro ── */}

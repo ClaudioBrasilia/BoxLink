@@ -140,6 +140,16 @@ Tem áudio/vibração nos avisos e mantém a tela ligada (`useKeepScreenAwake`).
 Ao terminar, pré-preenche o formulário do Diário (tipo, nome, movimentos e
 resultado) e salva como treino — com check-in solo e pontos.
 
+### WOD do Dia com placar (entregue)
+Página `/wod-do-dia`: um WOD comunitário por dia para os atletas individuais,
+escolhido por **rotação determinística** de benchmarks (`src/lib/dailyWods.ts`,
+Fran/Cindy/Grace/Karen/Murph…), sem depender de admin. O atleta **posta o
+resultado** (RX ou Scaled) e vê o **placar ranqueado** de todo mundo (medalhas,
+filtro RX/Scaled, destaque para você). A primeira postagem do dia dá pontos
+(wod_xp/coins) e faz o **check-in solo** (com bônus semanal). Tabela
+`daily_wod_results` (RLS: placar público, cada um edita o seu). Card no Diário
+e item no menu do individual.
+
 ### Duelo com vários amigos (entregue)
 No Diário, o convite por código vira uma **lista de amigos**: grátis chama 1
 (`maxDuelFriends`), premium chama até 8 no mesmo duelo (usa `opponent_ids`).
