@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">CrossCity Hub</string>
-    <string name="title_activity_main">CrossCity Hub</string>
+    <string name="app_name">BoxLink</string>
+    <string name="title_activity_main">BoxLink</string>
     <string name="package_name">com.crosscity.hub</string>
     <string name="custom_url_scheme">com.crosscity.hub</string>
     <!-- URL da política de privacidade exibida pelo Health Connect.

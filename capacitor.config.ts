@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.crosscity.hub',
-  appName: 'CrossCity Hub',
+  appName: 'BoxLink',
   webDir: 'dist',
   server: {
     androidScheme: 'https'
