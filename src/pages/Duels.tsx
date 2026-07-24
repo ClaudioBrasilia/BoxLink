@@ -206,7 +206,7 @@ export default function Duels() {
       ]);
 
       if (duelsRes.data) {
-        setDuels(duelsRes.data.map((d: any) => ({
+        const mapped = duelsRes.data.map((d: any) => ({
           id: d.id,
           challengerId: d.challenger_id,
           opponentIds: d.opponent_ids ?? (d.opponent_id ? [d.opponent_id] : []),
@@ -227,7 +227,12 @@ export default function Duels() {
           category: d.category ?? 'RX',
           results: d.results ?? {},
           createdAt: d.created_at,
-        })));
+        }));
+        // Individual não faz parte de um box: só vê os próprios duelos, nunca
+        // o "social feed" de duelos entre atletas do box.
+        setDuels(isIndividual
+          ? mapped.filter(d => d.challengerId === user.id || d.opponentIds.includes(user.id))
+          : mapped);
       }
       if (usersRes.data) setUsers(usersRes.data);
       if (wodsRes.data) setWods(wodsRes.data);
