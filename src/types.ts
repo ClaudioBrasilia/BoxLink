@@ -65,6 +65,12 @@ export interface TrainingLog {
   feeling?: TrainingFeeling | null;
   notes?: string | null;
   created_at: string;
+  /** Esforço (FC) medido durante o WOD, quando conectado */
+  hr_avg?: number | null;
+  hr_max?: number | null;
+  hr_avg_pct?: number | null;
+  effort_index?: number | null;
+  hr_zone?: string | null;
 }
 
 export interface PersonalRecord {

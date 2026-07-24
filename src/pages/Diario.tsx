@@ -96,6 +96,7 @@ export default function Diario() {
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showTimer, setShowTimer] = useState(false);
+  const [effortData, setEffortData] = useState<WodTimerResult['effort']>(null);
 
   const [category, setCategory] = useState<TrainingLogCategory>('wod');
   const [title, setTitle] = useState('');
@@ -264,6 +265,7 @@ export default function Diario() {
     setTitle(''); setDescription(''); setResult('');
     setExercise(''); setLoadKg(''); setRpe(0);
     setFeeling(null); setNotes(''); setWodType('FOR TIME');
+    setEffortData(null);
   };
 
   const handleSave = async () => {
@@ -276,6 +278,7 @@ export default function Diario() {
 
     setSaving(true);
     try {
+      const eff = category === 'wod' ? effortData : null;
       const { error } = await supabase.from('training_logs').insert({
         user_id: user.id,
         date: todayBR(),
@@ -289,6 +292,11 @@ export default function Diario() {
         rpe: rpe > 0 ? rpe : null,
         feeling,
         notes: notes.trim() || null,
+        hr_avg: eff?.avgBpm ?? null,
+        hr_max: eff?.maxBpm ?? null,
+        hr_avg_pct: eff?.avgPctMax ?? null,
+        effort_index: eff?.effortIndex ?? null,
+        hr_zone: eff?.dominantZone ?? null,
       });
       if (error) throw error;
 
@@ -314,6 +322,7 @@ export default function Diario() {
     setTitle(data.title);
     setDescription(data.description);
     setResult(data.result);
+    setEffortData(data.effort ?? null);
     setShowTimer(false);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -931,6 +940,20 @@ export default function Diario() {
                         {[log.description, log.notes].filter(Boolean).join('\n')}
                       </p>
                     )}
+                    {(log.hr_avg_pct || log.effort_index) && (
+                      <div className="ml-12 flex items-center gap-2 flex-wrap">
+                        {log.hr_avg_pct != null && (
+                          <span className="text-[9px] font-black uppercase tracking-widest bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full">
+                            ❤️ {log.hr_avg_pct}% FCmáx
+                          </span>
+                        )}
+                        {log.effort_index != null && (
+                          <span className="text-[9px] font-black uppercase tracking-widest bg-surface-container-highest text-on-surface-variant px-2 py-0.5 rounded-full">
+                            Esforço {log.effort_index}{log.hr_zone ? ` · ${log.hr_zone}` : ''}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -947,7 +970,7 @@ export default function Diario() {
       </button>
 
       {showTimer && (
-        <WodTimer onClose={() => setShowTimer(false)} onFinish={handleTimerFinish} />
+        <WodTimer onClose={() => setShowTimer(false)} onFinish={handleTimerFinish} userId={user?.id} />
       )}
     </div>
   );

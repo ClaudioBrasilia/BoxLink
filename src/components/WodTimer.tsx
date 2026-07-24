@@ -1,7 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Play, Pause, RotateCcw, Flag, Timer as TimerIcon } from 'lucide-react';
+import { X, Play, Pause, RotateCcw, Flag, Timer as TimerIcon, Heart, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useKeepScreenAwake } from '../hooks/useKeepScreenAwake';
+import { useBluetooth } from '../hooks/useBluetooth';
+import { useHeartRateSession } from '../hooks/useHeartRateSession';
+import { useUserBiometrics } from '../hooks/useUserBiometrics';
+import { getHeartRateZone } from '../lib/heartRate';
+import { computeEffort, EffortResult } from '../lib/effort';
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 export type WodTimerType = 'FOR TIME' | 'AMRAP' | 'EMOM' | 'TABATA';
@@ -11,11 +16,13 @@ export interface WodTimerResult {
   title: string;
   description: string;
   result: string;   // "12:45", "5+12", "Completo (CAP)"...
+  effort?: EffortResult | null;   // esforço (FC) medido durante o WOD, se conectado
 }
 
 interface Props {
   onClose: () => void;
   onFinish: (data: WodTimerResult) => void;
+  userId?: string;
 }
 
 const fmt = (totalSec: number) => {
@@ -28,7 +35,32 @@ const fmt = (totalSec: number) => {
 const TABATA_WORK = 20;
 const TABATA_REST = 10;
 
-export default function WodTimer({ onClose, onFinish }: Props) {
+function EffortCard({ effort }: { effort: EffortResult }) {
+  return (
+    <div className="bg-surface-container rounded-2xl px-4 py-3 border border-secondary/20 flex items-center justify-around gap-2">
+      <div className="flex flex-col items-center">
+        <span className="text-lg font-headline font-black text-secondary italic tabular-nums">
+          {effort.avgPctMax != null ? `${effort.avgPctMax}%` : effort.avgBpm}
+        </span>
+        <span className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant">
+          {effort.avgPctMax != null ? 'FC máx' : 'FC média'}
+        </span>
+      </div>
+      <div className="w-px h-8 bg-outline-variant/20" />
+      <div className="flex flex-col items-center">
+        <span className="text-lg font-headline font-black text-on-surface italic tabular-nums">{effort.effortIndex}</span>
+        <span className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant">Esforço</span>
+      </div>
+      <div className="w-px h-8 bg-outline-variant/20" />
+      <div className="flex flex-col items-center">
+        <span className="text-sm font-headline font-black text-on-surface italic uppercase">{effort.dominantZone}</span>
+        <span className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant">Zona</span>
+      </div>
+    </div>
+  );
+}
+
+export default function WodTimer({ onClose, onFinish, userId }: Props) {
   // Setup
   const [phase, setPhase] = useState<'setup' | 'run' | 'amrapScore'>('setup');
   const [type, setType] = useState<WodTimerType>('FOR TIME');
@@ -51,6 +83,17 @@ export default function WodTimer({ onClose, onFinish }: Props) {
   const [reps, setReps] = useState('');
 
   useKeepScreenAwake(phase === 'run');
+
+  // ── Frequência cardíaca (opcional) ──
+  const {
+    status: hrStatus, devices: hrDevices, connectedDevice, heartRate,
+    scan: hrScan, connect: hrConnect, disconnect: hrDisconnect, isSupported: hrSupported,
+  } = useBluetooth(userId);
+  const bio = useUserBiometrics(userId);
+  const hrConnected = hrStatus === 'connected' || hrStatus === 'reconnecting';
+  // Coleta amostras enquanto o WOD roda E a FC está conectada
+  const { samples: hrSamples } = useHeartRateSession(heartRate, running && hrConnected);
+  const [showHrPanel, setShowHrPanel] = useState(false);
 
   // ── Áudio ──
   const audioRef = useRef<AudioContext | null>(null);
@@ -165,8 +208,11 @@ export default function WodTimer({ onClose, onFinish }: Props) {
     return `${tabataRounds} rounds`; // TABATA
   };
 
+  const effort = computeEffort(hrSamples, bio);
+
   const confirm = () => {
     onFinish({
+      effort,
       wodType: type,
       title: title.trim() || type,
       description: description.trim(),
@@ -198,7 +244,7 @@ export default function WodTimer({ onClose, onFinish }: Props) {
           <TimerIcon className="w-5 h-5 text-primary" />
           <h2 className="font-headline font-black text-lg text-on-surface uppercase italic">Meu WOD</h2>
         </div>
-        <button onClick={onClose} className="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center">
+        <button onClick={() => { try { hrDisconnect(); } catch { /* noop */ } onClose(); }} className="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center">
           <X className="w-5 h-5 text-on-surface-variant" />
         </button>
       </div>
@@ -280,6 +326,48 @@ export default function WodTimer({ onClose, onFinish }: Props) {
             {bigTime}
           </div>
           {title && <p className="text-sm font-headline font-black text-on-surface-variant uppercase italic -mt-4">{title}</p>}
+
+          {/* FC ao vivo / conectar */}
+          {!finished && (hrSupported || hrConnected) && (
+            hrConnected ? (
+              <div className="flex items-center gap-2 bg-surface-container rounded-2xl px-4 py-2 border border-outline-variant/10">
+                <Heart className={cn('w-4 h-4', heartRate ? getHeartRateZone(heartRate).color : 'text-on-surface-variant', heartRate ? 'animate-pulse' : '')} />
+                <span className={cn('text-lg font-headline font-black italic tabular-nums', heartRate ? getHeartRateZone(heartRate).color : 'text-on-surface-variant')}>
+                  {heartRate ?? '—'}
+                </span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">bpm{heartRate ? ` · ${getHeartRateZone(heartRate).label}` : ''}</span>
+              </div>
+            ) : (
+              <button onClick={() => { setShowHrPanel(true); hrScan(); }}
+                className="flex items-center gap-2 bg-surface-container rounded-2xl px-4 py-2 border border-outline-variant/10 text-on-surface-variant hover:text-primary transition-all">
+                <Heart className="w-4 h-4" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Conectar FC</span>
+              </button>
+            )
+          )}
+
+          {/* Lista de dispositivos de FC */}
+          {!hrConnected && showHrPanel && (
+            <div className="w-full bg-surface-container rounded-2xl border border-outline-variant/10 p-3 flex flex-col gap-2 max-h-40 overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant flex items-center gap-1">
+                  {hrStatus === 'scanning' && <Loader2 className="w-3 h-3 animate-spin" />}
+                  {hrStatus === 'scanning' ? 'Buscando...' : hrStatus === 'connecting' ? 'Conectando...' : 'Dispositivos'}
+                </span>
+                <button onClick={() => setShowHrPanel(false)}><X className="w-3.5 h-3.5 text-on-surface-variant" /></button>
+              </div>
+              {hrDevices.filter(d => d.likelyHR).length === 0 && hrStatus !== 'scanning' && (
+                <p className="text-[9px] text-on-surface-variant/60 font-bold uppercase tracking-widest text-center py-2">Nenhum monitor encontrado</p>
+              )}
+              {hrDevices.filter(d => d.likelyHR).map(d => (
+                <button key={d.id} onClick={() => hrConnect(d.id)}
+                  className="rounded-xl p-2.5 text-left border border-outline-variant/10 bg-surface-container-highest hover:border-primary/40 transition-all">
+                  <span className="text-xs font-bold text-on-surface">{d.name || 'Monitor de FC'}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {finished && <p className="text-secondary font-black uppercase tracking-widest text-sm animate-pulse">Tempo!</p>}
 
           {/* Controles */}
@@ -308,6 +396,7 @@ export default function WodTimer({ onClose, onFinish }: Props) {
                   <span className="text-[11px] font-black text-on-surface-variant uppercase tracking-widest">Resultado</span>
                   <span className="text-xl font-headline font-black text-primary italic">{buildResult()}</span>
                 </div>
+                {effort && <EffortCard effort={effort} />}
                 <button onClick={confirm}
                   className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic hover:opacity-90 transition-all">
                   Salvar no Diário
@@ -338,6 +427,7 @@ export default function WodTimer({ onClose, onFinish }: Props) {
               <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Reps</span>
             </div>
           </div>
+          {effort && <div className="w-full"><EffortCard effort={effort} /></div>}
           <button onClick={confirm}
             className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic hover:opacity-90 transition-all">
             Salvar no Diário
