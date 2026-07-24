@@ -11,6 +11,7 @@ import {
   Search,
   Timer,
   Hash,
+  Info,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
@@ -146,6 +147,7 @@ export default function Duels() {
   const [activeTab, setActiveTab] = useState<'all' | 'mine' | 'pending'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showScoreInfo, setShowScoreInfo] = useState(false);
 
   // Submissão de resultado por duelo
   const [submission, setSubmission] = useState<Record<string, string>>({});
@@ -684,10 +686,46 @@ export default function Duels() {
               Desafie e conquiste
             </p>
           </div>
-          <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
-            <Sword className="w-6 h-6 text-primary" />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowScoreInfo(s => !s)}
+              className={cn(
+                'w-12 h-12 rounded-full border flex items-center justify-center transition-all',
+                showScoreInfo ? 'bg-secondary/20 border-secondary/30' : 'bg-surface-container-highest border-outline-variant/10'
+              )}
+              aria-label="Como o placar do duelo é calculado"
+            >
+              <Info className={cn('w-5 h-5', showScoreInfo ? 'text-secondary' : 'text-on-surface-variant')} />
+            </button>
+            <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <Sword className="w-6 h-6 text-primary" />
+            </div>
           </div>
         </div>
+
+        {/* Como o placar é calculado */}
+        <AnimatePresence>
+          {showScoreInfo && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-surface-container-highest/50 rounded-2xl p-4 border border-outline-variant/10 flex flex-col gap-2 overflow-hidden"
+            >
+              <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">
+                Como o vencedor é decidido
+              </p>
+              <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">
+                O placar de cada atleta é <span className="text-primary font-bold">70% desempenho</span> + <span className="text-secondary font-bold">30% esforço</span>.
+              </p>
+              <ul className="text-[11px] text-on-surface-variant font-medium leading-relaxed list-disc pl-4 flex flex-col gap-1">
+                <li><span className="text-on-surface font-bold">Desempenho:</span> seu resultado comparado ao melhor do duelo (o melhor fica em 100).</li>
+                <li><span className="text-on-surface font-bold">Esforço:</span> sua % da FC máxima, comparada ao seu próprio limite — assim iniciante e avançado competem de forma justa.</li>
+                <li><span className="text-on-surface font-bold">Só conta se todos registrarem a FC:</span> se alguém não tem sensor, o esforço fica de fora e decide só o resultado.</li>
+              </ul>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Tabs */}
         <div className="flex gap-2 bg-surface-container-highest p-1 rounded-2xl">
