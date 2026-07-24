@@ -23,11 +23,16 @@ import { AvatarSlot } from '../types';
 import { addReward } from '../utils/rewards';
 import { useToast } from '../context/ToastContext';
 import { createNotification } from '../hooks/useNotifications';
+import { computeDuelScore, DuelScoreOutcome } from '../lib/duelScore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DuelResult {
   [userId: string]: string | null;
+}
+
+interface DuelIntensity {
+  [userId: string]: number | null;
 }
 
 interface Duel {
@@ -50,6 +55,7 @@ interface Duel {
   wodCustom?: boolean;
   category: string;
   results: DuelResult;
+  intensity: DuelIntensity;
   createdAt: string;
 }
 
@@ -110,40 +116,6 @@ const isTimeBasedDuel = (wodType: string | undefined, results: DuelResult): bool
 const isTimeBased = (wodType?: string) =>
   TIME_BASED_KEYWORDS.some(k => (wodType || '').toUpperCase().includes(k));
 
-/**
- * Retorna o id do vencedor, ou null se:
- *   - nenhum participante tem resultado válido/parseável, OU
- *   - há empate (mesmo melhor valor entre os válidos)
- */
-const pickWinner = (
-  results: DuelResult,
-  participantIds: string[],
-  wodType: string | undefined,
-): string | null => {
-  const timeBased = isTimeBasedDuel(wodType, results);
-
-  const validIds = participantIds.filter(id => {
-    if (!results[id]) return false;
-    const val = parseResultValue(results[id]!, timeBased);
-    // Sentinel 999999 = valor não parseável em modo time-based
-    return !(timeBased && val === 999999);
-  });
-
-  if (validIds.length === 0) return null;
-
-  const bestVal = validIds.reduce<number>((best, id) => {
-    const val = parseResultValue(results[id]!, timeBased);
-    return timeBased ? Math.min(best, val) : Math.max(best, val);
-  }, timeBased ? Infinity : -Infinity);
-
-  const tied = validIds.filter(
-    id => parseResultValue(results[id]!, timeBased) === bestVal,
-  );
-
-  // Mais de um com o mesmo melhor valor → empate → null
-  return tied.length === 1 ? tied[0] : null;
-};
-
 const getVisibleResult = (duel: Duel, userId: string): string => {
   if (duel.status === 'finished') return duel.results[userId] || '—';
   const allParticipants = [duel.challengerId, ...duel.opponentIds];
@@ -177,6 +149,10 @@ export default function Duels() {
 
   // Submissão de resultado por duelo
   const [submission, setSubmission] = useState<Record<string, string>>({});
+  // % da FC máx registrada junto do resultado (opcional, por duelo)
+  const [submissionIntensity, setSubmissionIntensity] = useState<Record<string, string>>({});
+  // % da FC máx do treino de hoje (usado para pré-preencher o esforço)
+  const [todayPct, setTodayPct] = useState<number | null>(null);
 
   // Criação de duelo
   const [opponentSearch, setOpponentSearch] = useState('');
@@ -226,6 +202,7 @@ export default function Duels() {
           wodCustom: d.wod_custom,
           category: d.category ?? 'RX',
           results: d.results ?? {},
+          intensity: d.intensity ?? {},
           createdAt: d.created_at,
         }));
         // Individual não faz parte de um box: só vê os próprios duelos, nunca
@@ -237,6 +214,19 @@ export default function Duels() {
       if (usersRes.data) setUsers(usersRes.data);
       if (wodsRes.data) setWods(wodsRes.data);
       if (settingsRes.data) setBoxSettings(settingsRes.data);
+
+      // % da FC máx do treino de hoje → pré-preenche o esforço no duelo
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: todayLog } = await supabase
+        .from('training_logs')
+        .select('hr_avg_pct, date')
+        .eq('user_id', user.id)
+        .eq('date', today)
+        .not('hr_avg_pct', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setTodayPct(todayLog?.hr_avg_pct ?? null);
     } catch (err) {
       console.error('Error loading duels:', err);
     } finally {
@@ -502,14 +492,31 @@ export default function Duels() {
       toast.warning('Preencha seu resultado.'); return;
     }
 
+    // Esforço (% da FC máx) opcional — só entra no cálculo se TODOS registrarem.
+    // Se o campo estiver vazio, usa o esforço do treino de hoje (se houver).
+    const rawPct = submissionIntensity[duel.id]?.trim();
+    const parsedPct = rawPct ? Number(rawPct.replace(/[^0-9.]/g, '')) : (todayPct ?? null);
+    const myPct = parsedPct != null && !Number.isNaN(parsedPct)
+      ? Math.max(0, Math.min(100, parsedPct))
+      : null;
+
     setSaving(true);
     try {
       const newResults: DuelResult = { ...duel.results, [user.id]: result };
+      const newIntensity: DuelIntensity = { ...duel.intensity, [user.id]: myPct && myPct > 0 ? myPct : null };
       const allParticipants = [duel.challengerId, ...duel.opponentIds];
       const allSubmitted = allParticipants.every(id => newResults[id]);
 
       if (allSubmitted) {
-        const winnerId = pickWinner(newResults, allParticipants, duel.wodType);
+        const timeBased = isTimeBasedDuel(duel.wodType, newResults);
+        const outcome: DuelScoreOutcome = computeDuelScore(
+          newResults,
+          newIntensity,
+          allParticipants,
+          timeBased,
+          parseResultValue,
+        );
+        const winnerId = outcome.winnerId;
         const isTie = winnerId === null;
 
         // ── Audit log ──────────────────────────────────────────────────────
@@ -517,6 +524,9 @@ export default function Duels() {
           duelId: duel.id,
           wodType: duel.wodType,
           results: newResults,
+          intensity: newIntensity,
+          usedIntensity: outcome.usedIntensity,
+          entries: outcome.entries,
           winnerId,
           losers: isTie ? [] : allParticipants.filter(id => id !== winnerId),
           totalPrize: duel.betAmount * allParticipants.length,
@@ -525,6 +535,7 @@ export default function Duels() {
 
         const updates: any = {
           results: newResults,
+          intensity: newIntensity,
           status: 'finished',
           winner_id: winnerId,   // null = empate ou sem resultado válido
           updated_at: new Date().toISOString(),
@@ -617,6 +628,7 @@ export default function Duels() {
       } else {
         await supabase.from('duels').update({
           results: newResults,
+          intensity: newIntensity,
           updated_at: new Date().toISOString(),
         }).eq('id', duel.id);
 
@@ -633,6 +645,7 @@ export default function Duels() {
       }
 
       setSubmission(prev => ({ ...prev, [duel.id]: '' }));
+      setSubmissionIntensity(prev => ({ ...prev, [duel.id]: '' }));
       await loadData();
     } catch (err: any) {
       console.error('Error submitting result:', err);
@@ -933,6 +946,17 @@ export default function Duels() {
             const allSubmitted = allParticipants.every(id => duel.results[id]);
             const timeBased = isTimeBased(duel.wodType);
 
+            // Detalhamento do placar (desempenho + esforço) quando finalizado
+            const outcome: DuelScoreOutcome | null = duel.status === 'finished' && allSubmitted
+              ? computeDuelScore(
+                  duel.results,
+                  duel.intensity,
+                  allParticipants,
+                  isTimeBasedDuel(duel.wodType, duel.results),
+                  parseResultValue,
+                )
+              : null;
+
             return (
               <motion.div
                 key={duel.id}
@@ -1039,27 +1063,42 @@ export default function Duels() {
                       const visible = getVisibleResult(duel, pid);
                       const isWinner = duel.status === 'finished' && duel.winnerId === pid;
                       const isTieFinished = duel.status === 'finished' && duel.winnerId === null;
+                      const entry = outcome?.usedIntensity ? outcome.entries[pid] : null;
                       return (
                         <div key={pid} className={cn(
-                          'flex justify-between items-center px-3 py-2 rounded-xl',
+                          'px-3 py-2 rounded-xl',
                           isWinner ? 'bg-primary/10 border border-primary/20'
                             : isTieFinished ? 'bg-secondary/10 border border-secondary/20'
                             : 'bg-surface-container-highest/30'
                         )}>
-                          <span className="text-[11px] font-bold text-on-surface uppercase italic">
-                            {getUserName(pid)}
-                            {isWinner && ' 🏆'}
-                            {isTieFinished && ' 🤝'}
-                          </span>
-                          <span className={cn(
-                            'text-[11px] font-black italic',
-                            visible === 'Aguardando' ? 'text-on-surface-variant' : 'text-primary'
-                          )}>
-                            {visible}
-                          </span>
+                          <div className="flex justify-between items-center">
+                            <span className="text-[11px] font-bold text-on-surface uppercase italic">
+                              {getUserName(pid)}
+                              {isWinner && ' 🏆'}
+                              {isTieFinished && ' 🤝'}
+                            </span>
+                            <span className={cn(
+                              'text-[11px] font-black italic',
+                              visible === 'Aguardando' ? 'text-on-surface-variant' : 'text-primary'
+                            )}>
+                              {visible}
+                            </span>
+                          </div>
+                          {entry && (
+                            <div className="flex items-center gap-2 mt-1 text-[9px] font-black uppercase tracking-widest text-on-surface-variant/80">
+                              <span>Desemp. {entry.perf}</span>
+                              <span className="text-secondary">❤️ {entry.effort}%</span>
+                              <span className="ml-auto text-on-surface">Placar {entry.total}</span>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
+                    {outcome?.usedIntensity && (
+                      <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest text-center mt-1 italic">
+                        Placar = 70% desempenho + 30% esforço
+                      </p>
+                    )}
                     {duel.status === 'active' && !allSubmitted && (
                       <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest text-center mt-1 italic">
                         Resultados revelados quando todos enviarem
@@ -1127,21 +1166,40 @@ export default function Duels() {
 
                 {/* Ativo: submeter resultado */}
                 {duel.status === 'active' && isParticipant && !mySubmitted && (
-                  <div className="flex gap-2 mt-2">
-                    <input
-                      type="text"
-                      placeholder={timeBased ? 'Resultado (ex: 12:45)' : 'Resultado (ex: 150 reps)'}
-                      value={submission[duel.id] || ''}
-                      onChange={e => setSubmission(prev => ({ ...prev, [duel.id]: e.target.value }))}
-                      className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
-                    />
-                    <button
-                      onClick={() => handleSubmitResult(duel)}
-                      disabled={saving || !submission[duel.id]?.trim()}
-                      className="bg-primary text-background px-5 rounded-2xl font-headline font-black text-sm uppercase italic flex items-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
-                    >
-                      {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
-                    </button>
+                  <div className="flex flex-col gap-2 mt-2">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder={timeBased ? 'Resultado (ex: 12:45)' : 'Resultado (ex: 150 reps)'}
+                        value={submission[duel.id] || ''}
+                        onChange={e => setSubmission(prev => ({ ...prev, [duel.id]: e.target.value }))}
+                        className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
+                      />
+                      <button
+                        onClick={() => handleSubmitResult(duel)}
+                        disabled={saving || !submission[duel.id]?.trim()}
+                        className="bg-primary text-background px-5 rounded-2xl font-headline font-black text-sm uppercase italic flex items-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
+                      >
+                        {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    {/* Esforço opcional: % da FC máx */}
+                    <div className="flex items-center gap-2 bg-surface-container-highest/40 rounded-2xl px-4 py-2.5 border border-outline-variant/10">
+                      <span className="text-secondary text-sm">❤️</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        placeholder={todayPct ? `Esforço hoje: ${Math.round(todayPct)}%` : 'Esforço % FC máx (opcional)'}
+                        value={submissionIntensity[duel.id] ?? ''}
+                        onChange={e => setSubmissionIntensity(prev => ({ ...prev, [duel.id]: e.target.value }))}
+                        className="flex-1 bg-transparent text-sm font-bold text-on-surface outline-none placeholder:text-on-surface-variant/40 placeholder:font-medium placeholder:normal-case"
+                      />
+                      <span className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest">% FC máx</span>
+                    </div>
+                    <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest leading-snug px-1">
+                      O esforço pesa 30% no resultado — mas só entra se todos registrarem a FC.
+                    </p>
                   </div>
                 )}
 
