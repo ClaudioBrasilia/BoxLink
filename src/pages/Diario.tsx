@@ -27,10 +27,10 @@ import { addReward, getRewardSettings, checkAndPayWeeklyBonus } from '../utils/r
 import { createNotification } from '../hooks/useNotifications';
 import { TrainingLog, TrainingLogCategory, TrainingFeeling, AvatarSlot } from '../types';
 import { isPremium, planLimits, PLAN_LIMITS } from '../lib/plan';
-import WodTimer, { WodTimerResult } from '../components/WodTimer';
+import WodTimer, { WodTimerResult, WodTimerType } from '../components/WodTimer';
 import AvatarPreview from '../components/AvatarPreview';
 import DailyWodPanel from '../components/DailyWodPanel';
-import { postDailyWodResult } from '../lib/dailyWods';
+import { postDailyWodResult, dailyWodDate } from '../lib/dailyWods';
 import { useNavigate } from 'react-router-dom';
 
 const todayBR = () =>
@@ -52,6 +52,8 @@ const CATEGORIES: { value: TrainingLogCategory; label: string; icon: typeof Time
 ];
 
 const WOD_TYPES = ['FOR TIME', 'AMRAP', 'EMOM', 'TABATA', 'OUTRO'];
+// Tipos que o cronômetro (WodTimer) sabe rodar — "OUTRO" não é um deles.
+const TIMER_TYPES: WodTimerType[] = ['FOR TIME', 'AMRAP', 'EMOM', 'TABATA'];
 
 const calcStreak = (dates: string[]): number => {
   if (dates.length === 0) return 0;
@@ -113,6 +115,11 @@ export default function Diario() {
   const [postToPlacar, setPostToPlacar] = useState(true);
   const [placarScaling, setPlacarScaling] = useState<'rx' | 'scaled'>('rx');
   const [placarRefreshKey, setPlacarRefreshKey] = useState(0);
+  // WOD do dia postado em "Poste seu WOD" (definição) — usado para "Iniciar
+  // Meu WOD" já carregar o cronômetro com o que o atleta vai treinar.
+  const [myPlacarWod, setMyPlacarWod] = useState<{
+    wod_name: string; wod_type: string; description: string | null; result: string | null; scaling: 'rx' | 'scaled';
+  } | null>(null);
 
   const [codeInput, setCodeInput] = useState('');
   const [searchingFriend, setSearchingFriend] = useState(false);
@@ -149,6 +156,19 @@ export default function Diario() {
   };
 
   useEffect(() => { if (user) loadLogs(); }, [user]);
+
+  const loadMyPlacarWod = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('daily_wod_results')
+      .select('wod_name, wod_type, description, result, scaling')
+      .eq('user_id', user.id)
+      .eq('wod_date', dailyWodDate())
+      .maybeSingle();
+    setMyPlacarWod(data ?? null);
+  };
+
+  useEffect(() => { if (user) loadMyPlacarWod(); }, [user]);
 
   useEffect(() => {
     if (!user || user.accountType !== 'individual') return;
@@ -199,12 +219,9 @@ export default function Diario() {
     return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
   }, [logs]);
 
-  // WOD já registrado hoje (logs vêm ordenados por data/hora desc) — usado
-  // para pré-preencher o placar e não pedir para reescrever o mesmo WOD.
-  const todayWodLog = useMemo(
-    () => logs.find(l => l.date === todayBR() && l.category === 'wod') || null,
-    [logs],
-  );
+  // WOD já postado hoje mas ainda sem resultado — "Iniciar Meu WOD" carrega o
+  // cronômetro com ele em vez de abrir em branco.
+  const pendingPlacarWod = myPlacarWod && !myPlacarWod.result ? myPlacarWod : null;
 
   const refreshBalances = async () => {
     if (!user) return;
@@ -315,12 +332,15 @@ export default function Diario() {
       if (category === 'forca') await detectPr();
       if (category !== 'nota') await soloCheckin();
 
-      // Postar no Placar de WODs sem reescrever: usa o mesmo nome/tipo/resultado
-      // que acabou de ser salvo no diário.
+      // Registra o RESULTADO no Placar de WODs sem reescrever: usa o mesmo
+      // nome/tipo/resultado que acabou de ser salvo no diário. Se o WOD já
+      // tinha sido postado (definição), esta chamada grava o resultado na
+      // MESMA linha — não cria uma segunda entrada.
       if (category === 'wod' && postToPlacar && title.trim() && result.trim()) {
         try {
           const outcome = await postDailyWodResult({
             userId: user.id, wodName: title.trim(), wodType, result: result.trim(), scaling: placarScaling,
+            description: description.trim() || undefined,
           });
           if (outcome.firstTime) {
             confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 }, colors: ['#CAFD00', '#ffffff'] });
@@ -331,6 +351,7 @@ export default function Diario() {
             );
           }
           setPlacarRefreshKey(k => k + 1);
+          await loadMyPlacarWod();
         } catch (err: any) {
           console.error('Error posting placar from diário:', err);
           toast.error('Registro salvo, mas houve erro ao postar no placar.');
@@ -358,6 +379,7 @@ export default function Diario() {
     setDescription(data.description);
     setResult(data.result);
     setEffortData(data.effort ?? null);
+    setPlacarScaling(myPlacarWod?.scaling || 'rx');
     setShowTimer(false);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -552,14 +574,16 @@ export default function Diario() {
         <div className="flex-1">
           <p className="font-headline font-black text-base text-on-surface uppercase italic leading-tight">Iniciar Meu WOD</p>
           <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
-            Cronômetro For Time · AMRAP · EMOM · Tabata
+            {pendingPlacarWod
+              ? `${pendingPlacarWod.wod_name} • ${pendingPlacarWod.wod_type}`
+              : 'Cronômetro For Time · AMRAP · EMOM · Tabata'}
           </p>
         </div>
         <Play className="w-5 h-5 text-primary flex-shrink-0" />
       </button>
 
       <DailyWodPanel
-        todayWodLog={todayWodLog ? { title: todayWodLog.title, wod_type: todayWodLog.wod_type, result: todayWodLog.result } : null}
+        onChange={loadMyPlacarWod}
         refreshSignal={placarRefreshKey}
       />
 
@@ -659,7 +683,7 @@ export default function Diario() {
                       <div className="flex items-center gap-2">
                         <Trophy className="w-4 h-4 text-secondary" />
                         <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">
-                          Postar no Placar de WODs
+                          Registrar Resultado no Placar
                         </label>
                       </div>
                       <button
@@ -1053,7 +1077,15 @@ export default function Diario() {
       </button>
 
       {showTimer && (
-        <WodTimer onClose={() => setShowTimer(false)} onFinish={handleTimerFinish} userId={user?.id} />
+        <WodTimer
+          onClose={() => setShowTimer(false)}
+          onFinish={handleTimerFinish}
+          userId={user?.id}
+          initialTitle={pendingPlacarWod?.wod_name}
+          initialType={pendingPlacarWod && TIMER_TYPES.includes(pendingPlacarWod.wod_type as WodTimerType)
+            ? (pendingPlacarWod.wod_type as WodTimerType) : undefined}
+          initialDescription={pendingPlacarWod?.description || undefined}
+        />
       )}
     </div>
   );

@@ -1,12 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Calendar, Timer, Hash, Check, Trophy, Send } from 'lucide-react';
 import { motion } from 'framer-motion';
-import confetti from 'canvas-confetti';
 import { cn, compareBy } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { dailyWodDate, parseWodResult, isTimeBasedType, postDailyWodResult } from '../lib/dailyWods';
+import { dailyWodDate, parseWodResult, isTimeBasedType, postWodDefinition } from '../lib/dailyWods';
 import AvatarPreview from './AvatarPreview';
 import AthletePhoto from './AthletePhoto';
 import { AvatarSlot } from '../types';
@@ -18,7 +17,8 @@ interface WodResultRow {
   user_id: string;
   wod_name: string;
   wod_type: string;
-  result: string;
+  description: string | null;
+  result: string | null;
   scaling: 'rx' | 'scaled';
   name: string;
   level: number;
@@ -33,14 +33,14 @@ interface WodGroup {
 }
 
 interface DailyWodPanelProps {
-  /** WOD já registrado hoje no Diário (Novo Registro) — evita reescrever. */
-  todayWodLog?: { title: string; wod_type?: string | null; result?: string | null } | null;
-  /** Muda quando o Diário posta no placar por fora deste card — força recarregar. */
+  /** Muda quando o WOD do dia é postado/atualizado — pai pode reagir (ex: "Iniciar Meu WOD"). */
+  onChange?: () => void;
+  /** Muda quando o resultado é gravado por fora deste card — força recarregar. */
   refreshSignal?: number;
 }
 
-export default function DailyWodPanel({ todayWodLog, refreshSignal }: DailyWodPanelProps) {
-  const { user, updateUser } = useAuth();
+export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanelProps) {
+  const { user } = useAuth();
   const toast = useToast();
 
   const date = useMemo(() => dailyWodDate(), []);
@@ -49,10 +49,10 @@ export default function DailyWodPanel({ todayWodLog, refreshSignal }: DailyWodPa
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // O atleta escreve o WOD que ele mesmo fez — nada é sugerido pelo app.
+  // O atleta escreve o WOD que vai fazer — nada é sugerido pelo app.
   const [wodName, setWodName] = useState('');
   const [wodType, setWodType] = useState('FOR TIME');
-  const [result, setResult] = useState('');
+  const [description, setDescription] = useState('');
   const [scaling, setScaling] = useState<'rx' | 'scaled'>('rx');
 
   const load = useCallback(async () => {
@@ -79,7 +79,8 @@ export default function DailyWodPanel({ todayWodLog, refreshSignal }: DailyWodPa
         user_id: r.user_id,
         wod_name: r.wod_name ?? 'WOD',
         wod_type: r.wod_type ?? 'FOR TIME',
-        result: r.result,
+        description: r.description ?? null,
+        result: r.result ?? null,
         scaling: r.scaling ?? 'rx',
         name: profilesMap[r.user_id]?.name ?? 'Atleta',
         level: profilesMap[r.user_id]?.level ?? 1,
@@ -96,24 +97,21 @@ export default function DailyWodPanel({ todayWodLog, refreshSignal }: DailyWodPa
   useEffect(() => { load(); }, [load, refreshSignal]);
 
   const myRow = rows.find(r => r.user_id === user?.id);
-  // Já postou hoje → mostra o que está no placar. Senão, se já tem um WOD
-  // registrado no Diário hoje, pré-preenche com ele (nada de reescrever).
+  const trained = Boolean(myRow?.result);
+
+  // Pré-preenche o formulário de definição com o que já foi postado hoje.
   useEffect(() => {
     if (myRow) {
-      setWodName(myRow.wod_name); setWodType(myRow.wod_type); setResult(myRow.result); setScaling(myRow.scaling);
-    } else if (todayWodLog) {
-      setWodName(todayWodLog.title);
-      if (todayWodLog.wod_type) setWodType(todayWodLog.wod_type);
-      if (todayWodLog.result) setResult(todayWodLog.result);
+      setWodName(myRow.wod_name); setWodType(myRow.wod_type);
+      setDescription(myRow.description || ''); setScaling(myRow.scaling);
     }
-  }, [myRow?.id, todayWodLog?.title, todayWodLog?.wod_type, todayWodLog?.result]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [myRow?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const prefilledFromDiary = !myRow && !!todayWodLog;
-
-  // Agrupa por nome do WOD → quem fez o mesmo WOD é ranqueado junto
+  // Ranking só considera quem já treinou — definição sem resultado não conta.
   const groups = useMemo<WodGroup[]>(() => {
+    const trainedRows = rows.filter(r => r.result);
     const map: Record<string, WodResultRow[]> = {};
-    rows.forEach(r => {
+    trainedRows.forEach(r => {
       const key = (r.wod_name || 'WOD').trim().toLowerCase();
       (map[key] ||= []).push(r);
     });
@@ -121,8 +119,8 @@ export default function DailyWodPanel({ todayWodLog, refreshSignal }: DailyWodPa
       const timeBased = isTimeBasedType(list[0].wod_type);
       const ranked = [...list].sort(compareBy<WodResultRow>(
         (a, b) => {
-          const va = parseWodResult(a.result, timeBased);
-          const vb = parseWodResult(b.result, timeBased);
+          const va = parseWodResult(a.result!, timeBased);
+          const vb = parseWodResult(b.result!, timeBased);
           return timeBased ? va - vb : vb - va;
         },
         (a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'),
@@ -131,32 +129,19 @@ export default function DailyWodPanel({ todayWodLog, refreshSignal }: DailyWodPa
     }).sort((a, b) => b.ranked.length - a.ranked.length);
   }, [rows]);
 
-  const handlePost = async () => {
+  const handlePostDefinition = async () => {
     if (!user) return;
-    if (!wodName.trim()) { toast.warning('Dê um nome ao seu WOD.'); return; }
-    if (!result.trim()) { toast.warning('Informe seu resultado.'); return; }
+    if (!wodName.trim()) { toast.warning('Dê um nome ao WOD do dia.'); return; }
     setSaving(true);
     try {
-      const outcome = await postDailyWodResult({
-        userId: user.id, wodName: wodName.trim(), wodType, result: result.trim(), scaling,
+      await postWodDefinition({
+        userId: user.id, wodName: wodName.trim(), wodType, description: description.trim(), scaling,
       });
-
-      if (outcome.firstTime) {
-        const { data: profile } = await supabase.from('profiles').select('xp, coins, level').eq('id', user.id).maybeSingle();
-        if (profile) updateUser({ ...user, xp: profile.xp || 0, coins: profile.coins || 0, level: profile.level || 1 });
-
-        confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 }, colors: ['#CAFD00', '#ffffff'] });
-        toast.success(
-          outcome.weeklyBonusPaid
-            ? `WOD no placar! +${outcome.xp} XP e bônus semanal 🔥`
-            : `WOD no placar! +${outcome.xp} XP`,
-        );
-      } else {
-        toast.success('Placar atualizado!');
-      }
+      toast.success(myRow ? 'WOD do dia atualizado!' : 'WOD do dia postado! Toque em "Iniciar Meu WOD" para treinar.');
+      onChange?.();
       await load();
     } catch (err: any) {
-      console.error('Error posting placar:', err);
+      console.error('Error posting wod definition:', err);
       toast.error('Erro ao postar: ' + err.message);
     } finally {
       setSaving(false);
@@ -178,7 +163,7 @@ export default function DailyWodPanel({ todayWodLog, refreshSignal }: DailyWodPa
         <div>
           <h2 className="text-lg font-headline font-black italic text-on-surface uppercase tracking-tight">Placar de WODs</h2>
           <p className="text-on-surface-variant text-[10px] font-black uppercase tracking-widest opacity-60 flex items-center gap-1">
-            <Calendar className="w-3 h-3" /> Poste o seu e veja quem mais fez hoje
+            <Calendar className="w-3 h-3" /> Poste o seu e veja quem mais treinou hoje
           </p>
         </div>
         <div className="w-10 h-10 rounded-full bg-secondary/10 border border-secondary/20 flex items-center justify-center">
@@ -186,65 +171,86 @@ export default function DailyWodPanel({ todayWodLog, refreshSignal }: DailyWodPa
         </div>
       </div>
 
-      {/* Postar o SEU WOD */}
-      <div className="bg-surface-container rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">
-            {myRow ? 'Seu WOD de hoje' : 'Poste o seu WOD'}
-          </p>
-          {myRow && <span className="text-[10px] font-black text-primary uppercase tracking-widest">✓ no placar</span>}
+      {trained ? (
+        /* Já treinou hoje: resultado é gravado pelo cronômetro/Novo Registro, não aqui */
+        <div className="bg-surface-container rounded-3xl p-5 border border-primary/20 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">Seu WOD de hoje</p>
+            <span className="text-[10px] font-black text-primary uppercase tracking-widest">✓ Treinado</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {isTimeBasedType(myRow!.wod_type) ? <Timer className="w-4 h-4 text-primary flex-shrink-0" /> : <Hash className="w-4 h-4 text-primary flex-shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-headline font-black text-on-surface uppercase italic truncate">{myRow!.wod_name}</p>
+              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
+                {myRow!.wod_type} • {myRow!.scaling === 'rx' ? 'RX' : 'Scaled'}
+              </p>
+            </div>
+            <span className="text-lg font-headline font-black text-primary italic flex-shrink-0">{myRow!.result}</span>
+          </div>
+          {myRow!.description && (
+            <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap">{myRow!.description}</p>
+          )}
         </div>
-        {prefilledFromDiary && (
-          <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest italic opacity-70 -mt-1">
-            Preenchido com o WOD que você já registrou hoje no Diário
-          </p>
-        )}
-        <input
-          type="text"
-          placeholder="Nome do seu WOD (ex: Fran, meu AMRAP)"
-          value={wodName}
-          onChange={e => setWodName(e.target.value)}
-          className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
-        />
-        <div className="flex gap-2">
+      ) : (
+        /* Ainda não treinou: aqui é onde se escreve o WOD do dia (definição) */
+        <div className="bg-surface-container rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">
+              {myRow ? 'Seu WOD de hoje' : 'Poste o seu WOD'}
+            </p>
+            {myRow && <span className="text-[10px] font-black text-secondary uppercase tracking-widest">⏳ falta treinar</span>}
+          </div>
+          <input
+            type="text"
+            placeholder="Nome do WOD (ex: Fran, meu AMRAP)"
+            value={wodName}
+            onChange={e => setWodName(e.target.value)}
+            className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
+          />
           <select
             value={wodType}
             onChange={e => setWodType(e.target.value)}
-            className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+            className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
           >
             {WOD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <input
-            type="text"
-            placeholder={isTimeBasedType(wodType) ? 'Ex: 12:45' : 'Ex: 18 rounds ou 5+12'}
-            value={result}
-            onChange={e => setResult(e.target.value)}
-            className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
+          <textarea
+            placeholder="Movimentos (ex: 21-15-9 Thruster + Pull-up)"
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            rows={4}
+            className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
           />
-        </div>
-        <div className="flex gap-2">
-          {(['rx', 'scaled'] as const).map(s => (
-            <button key={s} onClick={() => setScaling(s)}
-              className={cn('flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all',
-                scaling === s
-                  ? s === 'rx' ? 'bg-primary text-background' : 'bg-secondary text-background'
-                  : 'bg-surface-container-highest text-on-surface-variant')}>
-              {s === 'rx' ? 'RX' : 'Scaled'}
-            </button>
-          ))}
+          <div className="flex gap-2">
+            {(['rx', 'scaled'] as const).map(s => (
+              <button key={s} onClick={() => setScaling(s)}
+                className={cn('flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all',
+                  scaling === s
+                    ? s === 'rx' ? 'bg-primary text-background' : 'bg-secondary text-background'
+                    : 'bg-surface-container-highest text-on-surface-variant')}>
+                {s === 'rx' ? 'RX' : 'Scaled'}
+              </button>
+            ))}
+          </div>
           <button
-            onClick={handlePost}
-            disabled={saving || !wodName.trim() || !result.trim()}
-            className="bg-primary text-background px-5 rounded-xl font-headline font-black text-xs uppercase italic flex items-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
+            onClick={handlePostDefinition}
+            disabled={saving || !wodName.trim()}
+            className="w-full bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
           >
             {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
               : myRow ? <Check className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-            {myRow ? 'Atualizar' : 'Postar'}
+            {myRow ? 'Atualizar WOD do dia' : 'Postar WOD do dia'}
           </button>
+          {myRow && (
+            <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest italic opacity-70 text-center">
+              Toque em "Iniciar Meu WOD" no topo para treinar e entrar no ranking
+            </p>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* Placar agrupado por WOD */}
+      {/* Placar agrupado por WOD — só entra quem já tem resultado */}
       <div className="flex flex-col gap-5">
         {loading ? (
           <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>
@@ -253,7 +259,7 @@ export default function DailyWodPanel({ todayWodLog, refreshSignal }: DailyWodPa
             <Trophy className="w-12 h-12 text-on-surface-variant/20" />
             <p className="text-on-surface-variant font-headline font-black uppercase italic">Placar vazio</p>
             <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest opacity-60">
-              Seja o primeiro a postar o WOD de hoje
+              Seja o primeiro a treinar o WOD de hoje
             </p>
           </div>
         ) : (

@@ -1,10 +1,12 @@
 // src/lib/dailyWods.ts
-// Helpers do placar de WODs. O WOD não é sugerido pelo app — cada atleta posta
-// o WOD que ele mesmo fez (o "Meu WOD"). Aqui ficam o parser de resultado, a
-// detecção de tipo (usados para ranquear o placar) e o postDailyWodResult(),
-// que é a única função que grava no placar — usada tanto pelo card "Poste o
-// seu WOD" quanto pelo toggle dentro do "Novo Registro", evitando que o
-// atleta precise digitar o mesmo WOD duas vezes.
+// Helpers do placar de WODs. O WOD não é sugerido pelo app — cada atleta
+// escreve o WOD que vai fazer. O fluxo tem duas etapas, que gravam na MESMA
+// linha (user_id, wod_date) sem nunca duplicar:
+//  1. postWodDefinition() — "Poste seu WOD": nome, tipo, movimentos. Ainda
+//     sem resultado, por isso NÃO entra no ranking nem dá recompensa.
+//  2. postDailyWodResult() — ao treinar (cronômetro ou Novo Registro):
+//     grava o resultado na mesma linha. É o resultado que faz o WOD entrar
+//     no ranking e pagar a recompensa — nunca a definição sozinha.
 
 import { supabase } from './supabase';
 import { addReward, getRewardSettings, registerSoloCheckin } from '../utils/rewards';
@@ -39,12 +41,40 @@ export function parseWodResult(result: string, timeBased: boolean): number {
   return isNaN(n) ? (timeBased ? Infinity : -1) : n;
 }
 
+export interface PostWodDefinitionParams {
+  userId: string;
+  wodName: string;
+  wodType: string;
+  description: string;
+  scaling: 'rx' | 'scaled';
+}
+
+/**
+ * Grava só a DEFINIÇÃO do WOD do dia (nome, tipo, movimentos) — sem
+ * resultado e sem recompensa. Não mexe no campo `result`, então se o
+ * atleta já tiver treinado hoje, o resultado registrado é preservado.
+ */
+export async function postWodDefinition(params: PostWodDefinitionParams): Promise<void> {
+  const { error } = await supabase.from('daily_wod_results').upsert({
+    user_id: params.userId,
+    wod_date: dailyWodDate(),
+    wod_name: params.wodName,
+    wod_type: params.wodType,
+    description: params.description,
+    scaling: params.scaling,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id,wod_date' });
+  if (error) throw error;
+}
+
 export interface PostDailyWodParams {
   userId: string;
   wodName: string;
   wodType: string;
   result: string;
   scaling: 'rx' | 'scaled';
+  /** Só sobrescreve a definição se informado — omitido preserva a existente. */
+  description?: string;
 }
 
 export interface PostDailyWodOutcome {
@@ -55,21 +85,24 @@ export interface PostDailyWodOutcome {
 }
 
 /**
- * Grava (upsert) o resultado do dia no placar. Recompensa só na primeira vez
- * do dia — verificado sempre por consulta fresca (nunca por estado local),
- * pois dois lugares diferentes podem chamar esta função no mesmo dia.
+ * Grava (upsert) o RESULTADO do dia no placar — o que efetivamente coloca o
+ * atleta no ranking. Recompensa só na primeira vez que um resultado é
+ * registrado no dia (não na primeira vez que a linha existe: pode já haver
+ * uma definição sem resultado, postada antes de treinar). Verificado sempre
+ * por consulta fresca, pois dois lugares diferentes podem chamar esta
+ * função no mesmo dia.
  */
 export async function postDailyWodResult(params: PostDailyWodParams): Promise<PostDailyWodOutcome> {
   const date = dailyWodDate();
   const { data: existing } = await supabase
     .from('daily_wod_results')
-    .select('id')
+    .select('id, result')
     .eq('user_id', params.userId)
     .eq('wod_date', date)
     .maybeSingle();
-  const firstTime = !existing;
+  const firstTime = !existing?.result;
 
-  const { error } = await supabase.from('daily_wod_results').upsert({
+  const payload: Record<string, unknown> = {
     user_id: params.userId,
     wod_date: date,
     wod_name: params.wodName,
@@ -77,7 +110,10 @@ export async function postDailyWodResult(params: PostDailyWodParams): Promise<Po
     result: params.result,
     scaling: params.scaling,
     updated_at: new Date().toISOString(),
-  }, { onConflict: 'user_id,wod_date' });
+  };
+  if (params.description) payload.description = params.description;
+
+  const { error } = await supabase.from('daily_wod_results').upsert(payload, { onConflict: 'user_id,wod_date' });
   if (error) throw error;
 
   if (!firstTime) return { firstTime: false, xp: 0, coins: 0, weeklyBonusPaid: false };

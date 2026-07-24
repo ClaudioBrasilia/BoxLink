@@ -23,6 +23,10 @@ interface Props {
   onClose: () => void;
   onFinish: (data: WodTimerResult) => void;
   userId?: string;
+  /** Pré-preenche com o WOD já postado hoje em "Poste seu WOD" — evita reescrever. */
+  initialTitle?: string;
+  initialType?: WodTimerType;
+  initialDescription?: string;
 }
 
 const fmt = (totalSec: number) => {
@@ -60,12 +64,12 @@ function EffortCard({ effort }: { effort: EffortResult }) {
   );
 }
 
-export default function WodTimer({ onClose, onFinish, userId }: Props) {
+export default function WodTimer({ onClose, onFinish, userId, initialTitle, initialType, initialDescription }: Props) {
   // Setup
   const [phase, setPhase] = useState<'setup' | 'run' | 'amrapScore'>('setup');
-  const [type, setType] = useState<WodTimerType>('FOR TIME');
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const [type, setType] = useState<WodTimerType>(initialType || 'FOR TIME');
+  const [title, setTitle] = useState(initialTitle || '');
+  const [description, setDescription] = useState(initialDescription || '');
   const [minutes, setMinutes] = useState(12);   // AMRAP duração / EMOM total / FOR TIME cap
   const [capEnabled, setCapEnabled] = useState(false);
   const [tabataRounds, setTabataRounds] = useState(8);
@@ -252,6 +256,11 @@ export default function WodTimer({ onClose, onFinish, userId }: Props) {
       {/* SETUP */}
       {phase === 'setup' && (
         <div className="flex-1 overflow-y-auto px-6 pb-8 flex flex-col gap-5">
+          {initialTitle && (
+            <p className="text-[10px] text-primary font-black uppercase tracking-widest text-center italic">
+              ✓ Carregado do seu WOD do dia
+            </p>
+          )}
           <div className="grid grid-cols-4 gap-2">
             {(['FOR TIME', 'AMRAP', 'EMOM', 'TABATA'] as WodTimerType[]).map(t => (
               <button key={t} onClick={() => setType(t)}
