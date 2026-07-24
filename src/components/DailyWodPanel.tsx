@@ -6,8 +6,7 @@ import { cn, compareBy } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { addReward, getRewardSettings, registerSoloCheckin } from '../utils/rewards';
-import { dailyWodDate, parseWodResult, isTimeBasedType } from '../lib/dailyWods';
+import { dailyWodDate, parseWodResult, isTimeBasedType, postDailyWodResult } from '../lib/dailyWods';
 import AvatarPreview from './AvatarPreview';
 import AthletePhoto from './AthletePhoto';
 import { AvatarSlot } from '../types';
@@ -33,7 +32,14 @@ interface WodGroup {
   ranked: WodResultRow[];
 }
 
-export default function DailyWodPanel() {
+interface DailyWodPanelProps {
+  /** WOD já registrado hoje no Diário (Novo Registro) — evita reescrever. */
+  todayWodLog?: { title: string; wod_type?: string | null; result?: string | null } | null;
+  /** Muda quando o Diário posta no placar por fora deste card — força recarregar. */
+  refreshSignal?: number;
+}
+
+export default function DailyWodPanel({ todayWodLog, refreshSignal }: DailyWodPanelProps) {
   const { user, updateUser } = useAuth();
   const toast = useToast();
 
@@ -87,12 +93,22 @@ export default function DailyWodPanel() {
     }
   }, [date]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshSignal]);
 
   const myRow = rows.find(r => r.user_id === user?.id);
+  // Já postou hoje → mostra o que está no placar. Senão, se já tem um WOD
+  // registrado no Diário hoje, pré-preenche com ele (nada de reescrever).
   useEffect(() => {
-    if (myRow) { setWodName(myRow.wod_name); setWodType(myRow.wod_type); setResult(myRow.result); setScaling(myRow.scaling); }
-  }, [myRow?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (myRow) {
+      setWodName(myRow.wod_name); setWodType(myRow.wod_type); setResult(myRow.result); setScaling(myRow.scaling);
+    } else if (todayWodLog) {
+      setWodName(todayWodLog.title);
+      if (todayWodLog.wod_type) setWodType(todayWodLog.wod_type);
+      if (todayWodLog.result) setResult(todayWodLog.result);
+    }
+  }, [myRow?.id, todayWodLog?.title, todayWodLog?.wod_type, todayWodLog?.result]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const prefilledFromDiary = !myRow && !!todayWodLog;
 
   // Agrupa por nome do WOD → quem fez o mesmo WOD é ranqueado junto
   const groups = useMemo<WodGroup[]>(() => {
@@ -120,32 +136,20 @@ export default function DailyWodPanel() {
     if (!wodName.trim()) { toast.warning('Dê um nome ao seu WOD.'); return; }
     if (!result.trim()) { toast.warning('Informe seu resultado.'); return; }
     setSaving(true);
-    const firstTime = !myRow;
     try {
-      const { error } = await supabase.from('daily_wod_results').upsert({
-        user_id: user.id,
-        wod_date: date,
-        wod_name: wodName.trim(),
-        wod_type: wodType,
-        result: result.trim(),
-        scaling,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id,wod_date' });
-      if (error) throw error;
+      const outcome = await postDailyWodResult({
+        userId: user.id, wodName: wodName.trim(), wodType, result: result.trim(), scaling,
+      });
 
-      if (firstTime) {
-        const settings = await getRewardSettings();
-        await addReward(user.id, 'wod', settings?.wod_xp ?? 10, settings?.wod_coins ?? 5, `WOD no placar — ${wodName.trim()}`);
-        const checkin = await registerSoloCheckin(user.id, 'WOD PLACAR');
-
+      if (outcome.firstTime) {
         const { data: profile } = await supabase.from('profiles').select('xp, coins, level').eq('id', user.id).maybeSingle();
         if (profile) updateUser({ ...user, xp: profile.xp || 0, coins: profile.coins || 0, level: profile.level || 1 });
 
         confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 }, colors: ['#CAFD00', '#ffffff'] });
         toast.success(
-          checkin.weekly?.paid
-            ? `WOD no placar! +${(settings?.wod_xp ?? 10) + checkin.xp} XP e bônus semanal 🔥`
-            : `WOD no placar! +${(settings?.wod_xp ?? 10) + checkin.xp} XP`,
+          outcome.weeklyBonusPaid
+            ? `WOD no placar! +${outcome.xp} XP e bônus semanal 🔥`
+            : `WOD no placar! +${outcome.xp} XP`,
         );
       } else {
         toast.success('Placar atualizado!');
@@ -190,6 +194,11 @@ export default function DailyWodPanel() {
           </p>
           {myRow && <span className="text-[10px] font-black text-primary uppercase tracking-widest">✓ no placar</span>}
         </div>
+        {prefilledFromDiary && (
+          <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest italic opacity-70 -mt-1">
+            Preenchido com o WOD que você já registrou hoje no Diário
+          </p>
+        )}
         <input
           type="text"
           placeholder="Nome do seu WOD (ex: Fran, meu AMRAP)"

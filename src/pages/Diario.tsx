@@ -15,6 +15,7 @@ import {
   Search,
   Share2,
   Building2,
+  Trophy,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
@@ -29,6 +30,7 @@ import { isPremium, planLimits, PLAN_LIMITS } from '../lib/plan';
 import WodTimer, { WodTimerResult } from '../components/WodTimer';
 import AvatarPreview from '../components/AvatarPreview';
 import DailyWodPanel from '../components/DailyWodPanel';
+import { postDailyWodResult } from '../lib/dailyWods';
 import { useNavigate } from 'react-router-dom';
 
 const todayBR = () =>
@@ -108,6 +110,9 @@ export default function Diario() {
   const [rpe, setRpe] = useState(0);
   const [feeling, setFeeling] = useState<TrainingFeeling | null>(null);
   const [notes, setNotes] = useState('');
+  const [postToPlacar, setPostToPlacar] = useState(true);
+  const [placarScaling, setPlacarScaling] = useState<'rx' | 'scaled'>('rx');
+  const [placarRefreshKey, setPlacarRefreshKey] = useState(0);
 
   const [codeInput, setCodeInput] = useState('');
   const [searchingFriend, setSearchingFriend] = useState(false);
@@ -194,6 +199,13 @@ export default function Diario() {
     return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
   }, [logs]);
 
+  // WOD já registrado hoje (logs vêm ordenados por data/hora desc) — usado
+  // para pré-preencher o placar e não pedir para reescrever o mesmo WOD.
+  const todayWodLog = useMemo(
+    () => logs.find(l => l.date === todayBR() && l.category === 'wod') || null,
+    [logs],
+  );
+
   const refreshBalances = async () => {
     if (!user) return;
     const [{ data: profile }, { data: checkins }] = await Promise.all([
@@ -265,7 +277,7 @@ export default function Diario() {
     setTitle(''); setDescription(''); setResult('');
     setExercise(''); setLoadKg(''); setRpe(0);
     setFeeling(null); setNotes(''); setWodType('FOR TIME');
-    setEffortData(null);
+    setEffortData(null); setPostToPlacar(true); setPlacarScaling('rx');
   };
 
   const handleSave = async () => {
@@ -302,6 +314,29 @@ export default function Diario() {
 
       if (category === 'forca') await detectPr();
       if (category !== 'nota') await soloCheckin();
+
+      // Postar no Placar de WODs sem reescrever: usa o mesmo nome/tipo/resultado
+      // que acabou de ser salvo no diário.
+      if (category === 'wod' && postToPlacar && title.trim() && result.trim()) {
+        try {
+          const outcome = await postDailyWodResult({
+            userId: user.id, wodName: title.trim(), wodType, result: result.trim(), scaling: placarScaling,
+          });
+          if (outcome.firstTime) {
+            confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 }, colors: ['#CAFD00', '#ffffff'] });
+            toast.success(
+              outcome.weeklyBonusPaid
+                ? `WOD também no placar! +${outcome.xp} XP e bônus semanal 🔥`
+                : `WOD também no placar! +${outcome.xp} XP`,
+            );
+          }
+          setPlacarRefreshKey(k => k + 1);
+        } catch (err: any) {
+          console.error('Error posting placar from diário:', err);
+          toast.error('Registro salvo, mas houve erro ao postar no placar.');
+        }
+      }
+
       await refreshBalances();
 
       resetForm();
@@ -515,7 +550,7 @@ export default function Diario() {
           <Timer className="w-6 h-6 text-primary" />
         </div>
         <div className="flex-1">
-          <p className="font-headline font-black text-base text-on-surface uppercase italic leading-tight">Fazer meu WOD</p>
+          <p className="font-headline font-black text-base text-on-surface uppercase italic leading-tight">Iniciar Meu WOD</p>
           <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
             Cronômetro For Time · AMRAP · EMOM · Tabata
           </p>
@@ -523,7 +558,10 @@ export default function Diario() {
         <Play className="w-5 h-5 text-primary flex-shrink-0" />
       </button>
 
-      <DailyWodPanel />
+      <DailyWodPanel
+        todayWodLog={todayWodLog ? { title: todayWodLog.title, wod_type: todayWodLog.wod_type, result: todayWodLog.result } : null}
+        refreshSignal={placarRefreshKey}
+      />
 
       <AnimatePresence>
         {showForm && (
@@ -613,6 +651,48 @@ export default function Diario() {
                       onChange={e => setResult(e.target.value)}
                       className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
                     />
+                  </div>
+                )}
+                {category === 'wod' && (
+                  <div className="bg-surface-container-highest/50 rounded-2xl p-4 flex flex-col gap-3 border border-outline-variant/10">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <Trophy className="w-4 h-4 text-secondary" />
+                        <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">
+                          Postar no Placar de WODs
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPostToPlacar(p => !p)}
+                        className={cn(
+                          'w-12 h-6 rounded-full transition-all relative',
+                          postToPlacar ? 'bg-primary' : 'bg-outline-variant/30'
+                        )}
+                      >
+                        <div className={cn(
+                          'w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all shadow',
+                          postToPlacar ? 'left-6' : 'left-0.5'
+                        )} />
+                      </button>
+                    </div>
+                    {postToPlacar && (
+                      <div className="flex gap-2">
+                        {(['rx', 'scaled'] as const).map(s => (
+                          <button
+                            type="button"
+                            key={s}
+                            onClick={() => setPlacarScaling(s)}
+                            className={cn('flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all',
+                              placarScaling === s
+                                ? s === 'rx' ? 'bg-primary text-background' : 'bg-secondary text-background'
+                                : 'bg-surface-container text-on-surface-variant')}
+                          >
+                            {s === 'rx' ? 'RX' : 'Scaled'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
                 {category === 'desafio' && (
@@ -964,9 +1044,12 @@ export default function Diario() {
 
       <button
         onClick={() => setShowForm(s => !s)}
-        className="fixed bottom-28 right-6 w-14 h-14 bg-primary text-background rounded-2xl shadow-xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
+        className="fixed bottom-28 right-6 h-14 pl-5 pr-6 bg-primary text-background rounded-2xl shadow-xl flex items-center gap-2 hover:scale-105 active:scale-95 transition-all"
       >
-        {showForm ? <X className="w-6 h-6" strokeWidth={3} /> : <Plus className="w-6 h-6" strokeWidth={3} />}
+        {showForm ? <X className="w-5 h-5" strokeWidth={3} /> : <Plus className="w-5 h-5" strokeWidth={3} />}
+        <span className="font-headline font-black text-xs uppercase italic tracking-wide whitespace-nowrap">
+          {showForm ? 'Fechar' : 'Novo Registro'}
+        </span>
       </button>
 
       {showTimer && (
