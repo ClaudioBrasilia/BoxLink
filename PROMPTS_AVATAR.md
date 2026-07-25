@@ -1065,7 +1065,7 @@ Saída: PNG 1024x1536 transparente, peça posicionada DENTRO da caixa acima.
 | M-02 | Regata | 300 | 725 | 340 | 800 | masculina |
 | M-03 | Jaqueta | 250 | 775 | 320 | 860 | masculina |
 | M-04 | Short | 355 | 670 | 770 | 1020 | masculina |
-| M-05 | Calça | 355 | 670 | 770 | 1440 | masculina |
+| M-05 | Calça | 330 | 695 | 765 | 1445 | masculina |
 | M-06 | Boné | 390 | 630 | 60 | 210 | masculina |
 | M-07 | Munhequeira | 238 | 786 | 805 | 905 | masculina |
 | M-08 | Luvas | 225 | 792 | 820 | 1015 | masculina |
@@ -1075,7 +1075,7 @@ Saída: PNG 1024x1536 transparente, peça posicionada DENTRO da caixa acima.
 | F-02 | Top | 340 | 685 | 450 | 640 | feminina |
 | F-03 | Jaqueta | 310 | 720 | 390 | 840 | feminina |
 | F-04 | Short | 340 | 685 | 715 | 1000 | feminina |
-| F-05 | Legging | 335 | 690 | 715 | 1430 | feminina |
+| F-05 | Legging | 305 | 720 | 705 | 1445 | feminina |
 | F-06 | Boné | 370 | 655 | 60 | 225 | feminina |
 | F-07 | Munhequeira | 248 | 775 | 785 | 875 | feminina |
 | F-08 | Luvas | 218 | 805 | 800 | 945 | feminina |
