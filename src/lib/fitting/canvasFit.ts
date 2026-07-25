@@ -58,8 +58,18 @@ export function detectImageContentBox(img: PieceImageSource, alphaThreshold = 10
  * desenharia um retângulo opaco sobre o avatar.
  *
  * Se a imagem já tem transparência real (>0,5% dos pixels), é devolvida
- * intacta. Caso contrário, o fundo sólido conectado às bordas é removido
- * (flood fill pela cor mediana da borda) e um canvas processado é devolvido.
+ * intacta. Caso contrário, o fundo conectado às bordas é removido (flood
+ * fill pela cor da borda) e um canvas processado é devolvido.
+ *
+ * DUAS PASSADAS: a 1ª usa tolerância APERTADA (45), que preserva peças
+ * coladas ao fundo em cor — short preto sobre preto, ou o branco/preto de
+ * um tênis sobre xadrez claro. Mas um xadrez claro MUITO sutil (ex.: legging
+ * preta cujo fundo tem tiles a distância ~48) não é totalmente limpo nessa
+ * tolerância, deixando pixels soltos que incham a caixa de conteúdo. Quando
+ * isso acontece (conteúdo ainda ocupa quase a imagem toda), refaz com
+ * tolerância LARGA (90) — seguro porque esse caso só ocorre com fundo claro
+ * e uniforme, onde a peça é sempre muito mais escura/colorida.
+ *
  * Limitação: aberturas totalmente fechadas (ex.: interior de um anel)
  * continuam opacas — precisam vir vazadas na arte.
  */
@@ -77,12 +87,25 @@ export function ensureTransparentBackground(img: HTMLImageElement): PieceImageSo
   const removed = removeBorderConnectedBackground(data.data, data.width, data.height);
   if (removed === 0) return img;
 
+  // Fundo não limpo? (conteúdo ainda ocupa >90% da largura E da altura) →
+  // 2ª passada com tolerância larga sobre uma cópia limpa da imagem.
+  const box = detectContentBBox(data.data, data.width, data.height);
+  const notCleaned =
+    !!box &&
+    box.x2 - box.x1 > data.width * 0.9 &&
+    box.y2 - box.y1 > data.height * 0.9;
+
+  const finalData = notCleaned ? getImageData(img) : data;
+  if (notCleaned) {
+    removeBorderConnectedBackground(finalData.data, finalData.width, finalData.height, 90);
+  }
+
   const canvas = document.createElement('canvas');
-  canvas.width = data.width;
-  canvas.height = data.height;
+  canvas.width = finalData.width;
+  canvas.height = finalData.height;
   const ctx = canvas.getContext('2d');
   if (!ctx) return img;
-  ctx.putImageData(data, 0, 0);
+  ctx.putImageData(finalData, 0, 0);
   return canvas;
 }
 

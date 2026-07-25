@@ -231,6 +231,36 @@ describe('removeBorderConnectedBackground', () => {
     expect(detectContentBBox(data, 5, 5)).toEqual({ x1: 1, y1: 1, x2: 4, y2: 4 });
   });
 
+  it('tolerância larga remove xadrez claro sutil preservando peça preta (2ª passada)', () => {
+    // Fundo xadrez claro e sutil (248 / 232, distância ~48 — não sai com a
+    // tolerância padrão 45) e peça preta no meio. A 2ª passada usa tol 90.
+    // Borda toda clara (tom1 = 248); tiles escuros (232, dist 48) só no
+    // interior; peça preta no centro.
+    const A: [number, number, number, number] = [248, 248, 248, 255];
+    const B: [number, number, number, number] = [232, 232, 232, 255];
+    const K: [number, number, number, number] = [0, 0, 0, 255]; // peça
+    const grid = [
+      [A, A, A, A, A],
+      [A, B, B, B, A],
+      [A, B, K, B, A],
+      [A, B, B, B, A],
+      [A, A, A, A, A],
+    ];
+    const data = new Uint8ClampedArray(5 * 5 * 4);
+    grid.forEach((row, y) => row.forEach((px, x) => data.set(px, (y * 5 + x) * 4)));
+
+    // Tolerância padrão (45) NÃO limpa os tiles escuros (dist 48 > 45):
+    const tight = data.slice();
+    removeBorderConnectedBackground(tight, 5, 5);
+    const tightBox = detectContentBBox(tight, 5, 5)!;
+    expect(tightBox.x2 - tightBox.x1).toBeGreaterThan(1); // sobrou o anel de tiles
+
+    // Tolerância larga (90) limpa todo o xadrez, sobrando só a peça preta:
+    const wide = data.slice();
+    removeBorderConnectedBackground(wide, 5, 5, 90);
+    expect(detectContentBBox(wide, 5, 5)).toEqual({ x1: 2, y1: 2, x2: 3, y2: 3 });
+  });
+
   it('devolve 0 quando nada se parece com o fundo da borda', () => {
     const rows = ['RR', 'RR'];
     const data = buildRgba(rows);
