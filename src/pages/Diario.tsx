@@ -307,22 +307,40 @@ export default function Diario() {
   const handleSave = async () => {
     if (!user) return;
 
-    // Modo "adicionar detalhes": o treino já foi salvo pelo cronômetro —
-    // aqui só complementa RPE/sensação/notas na MESMA linha (sem duplicar
-    // no diário nem repostar no placar).
+    // Modo "detalhes do treino": o treino já foi salvo pelo cronômetro —
+    // aqui atualiza a MESMA linha (nome/tipo/resultado, se ajustados, mais
+    // RPE/sensação/notas) e sincroniza o placar, sem duplicar nada.
     if (editingLogId) {
+      if (!title.trim()) { toast.warning('Dê um nome ao WOD.'); return; }
       setSaving(true);
       try {
         const { error } = await supabase.from('training_logs').update({
+          title: title.trim(),
+          wod_type: wodType,
+          description: description.trim() || null,
+          result: result.trim() || null,
           rpe: rpe > 0 ? rpe : null,
           feeling,
           notes: notes.trim() || null,
         }).eq('id', editingLogId);
         if (error) throw error;
 
+        if (result.trim()) {
+          try {
+            await postDailyWodResult({
+              userId: user.id, wodName: title.trim(), wodType, result: result.trim(),
+              scaling: placarScaling, description: description.trim() || undefined,
+            });
+            setPlacarRefreshKey(k => k + 1);
+            await loadMyPlacarWod();
+          } catch (err) {
+            console.error('Error syncing placar from details:', err);
+          }
+        }
+
         closeForm();
         await loadLogs();
-        toast.success('Detalhes adicionados ao treino! 📓');
+        toast.success('Detalhes salvos! 📓');
       } catch (err: any) {
         console.error('Error updating training log:', err);
         toast.error('Erro ao salvar detalhes: ' + err.message);
@@ -598,6 +616,68 @@ export default function Diario() {
     }
   };
 
+  // Blocos reaproveitados tanto no "Novo Registro" (manual) quanto em
+  // "Detalhes do Treino" (após o cronômetro) — mesmo estado, duas telas.
+  const rpeSection = category !== 'nota' && (
+    <div className="flex flex-col gap-2">
+      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">
+        Esforço percebido (RPE) {rpe > 0 ? `— ${rpe}/10` : ''}
+      </label>
+      <div className="flex gap-1">
+        {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+          <button
+            key={n}
+            onClick={() => setRpe(n === rpe ? 0 : n)}
+            className={cn(
+              'flex-1 py-2 rounded-lg text-[10px] font-black transition-all',
+              n <= rpe ? 'bg-primary text-background' : 'bg-surface-container-highest text-on-surface-variant'
+            )}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const feelingSection = (
+    <div className="flex flex-col gap-2">
+      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Como você está?</label>
+      <div className="flex gap-2">
+        {FEELINGS.map(f => (
+          <button
+            key={f.value}
+            onClick={() => setFeeling(feeling === f.value ? null : f.value)}
+            className={cn(
+              'flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border transition-all',
+              feeling === f.value
+                ? 'bg-primary/10 border-primary/40'
+                : 'bg-surface-container-highest border-transparent'
+            )}
+          >
+            <span className="text-base leading-none">{f.emoji}</span>
+            <span className={cn(
+              'text-[8px] font-black uppercase tracking-wider',
+              feeling === f.value ? 'text-primary' : 'text-on-surface-variant'
+            )}>
+              {f.label}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const notesSection = (
+    <textarea
+      placeholder="Anotações (sono, dieta, dores, observações...)"
+      value={notes}
+      onChange={e => setNotes(e.target.value)}
+      rows={2}
+      className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
+    />
+  );
+
   return (
     <div className="min-h-screen bg-background pb-32">
 
@@ -682,7 +762,82 @@ export default function Diario() {
       />
 
       <AnimatePresence>
-        {showForm && (
+        {showForm && editingLogId && (
+          /* Tela cheia — sempre visível assim que o cronômetro termina, sem
+             depender de scroll nem do tamanho do placar acima. */
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[65] bg-background flex flex-col"
+          >
+            <div className="flex items-center justify-between p-6 pt-12">
+              <h2 className="font-headline font-black text-lg text-on-surface uppercase italic">Detalhes do Treino</h2>
+              <button onClick={closeForm} className="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center">
+                <X className="w-5 h-5 text-on-surface-variant" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 pb-8 flex flex-col gap-5">
+              <div className="bg-primary/10 border border-primary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
+                <Check className="w-4 h-4 text-primary flex-shrink-0" />
+                <p className="text-[11px] text-on-surface font-bold leading-snug">
+                  Treino salvo! Confira o resultado e complete os detalhes se quiser.
+                </p>
+              </div>
+
+              <input
+                type="text"
+                placeholder="Nome do WOD"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
+              />
+              <div className="flex gap-2">
+                <select
+                  value={wodType}
+                  onChange={e => setWodType(e.target.value)}
+                  className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+                >
+                  {WOD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <input
+                  type="text"
+                  placeholder="Resultado (12:45 ou 150 reps)"
+                  value={result}
+                  onChange={e => setResult(e.target.value)}
+                  className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
+                />
+              </div>
+              <textarea
+                placeholder="Movimentos / descrição"
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                rows={2}
+                className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
+              />
+
+              {rpeSection}
+              {feelingSection}
+              {notesSection}
+
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic shadow-lg flex items-center justify-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
+              >
+                {saving
+                  ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
+                  : <Check className="w-5 h-5" />}
+                SALVAR DETALHES
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showForm && !editingLogId && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -690,24 +845,12 @@ export default function Diario() {
             className="mx-6 mb-4 bg-surface-container rounded-3xl border border-outline-variant/10 p-6 flex flex-col gap-5"
           >
             <div className="flex justify-between items-center">
-              <h2 className="font-headline font-black text-lg text-on-surface uppercase italic">
-                {editingLogId ? 'Detalhes do Treino' : 'Novo Registro'}
-              </h2>
+              <h2 className="font-headline font-black text-lg text-on-surface uppercase italic">Novo Registro</h2>
               <button onClick={closeForm}>
                 <X className="w-5 h-5 text-on-surface-variant" />
               </button>
             </div>
 
-            {editingLogId && (
-              <div className="bg-primary/10 border border-primary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
-                <Check className="w-4 h-4 text-primary flex-shrink-0" />
-                <p className="text-[11px] text-on-surface font-bold leading-snug">
-                  <span className="uppercase italic">{title}</span>{result ? ` • ${result}` : ''} já salvo no diário. Quer registrar RPE, sensação ou notas?
-                </p>
-              </div>
-            )}
-
-            {!editingLogId && (
             <div className="grid grid-cols-4 gap-2">
               {CATEGORIES.map(cat => (
                 <button
@@ -725,9 +868,8 @@ export default function Diario() {
                 </button>
               ))}
             </div>
-            )}
 
-            {!editingLogId && (category === 'forca' ? (
+            {category === 'forca' ? (
               <div className="flex flex-col gap-2">
                 <input
                   type="text"
@@ -845,63 +987,11 @@ export default function Diario() {
                   />
                 )}
               </div>
-            ))}
-
-            {category !== 'nota' && (
-              <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">
-                  Esforço percebido (RPE) {rpe > 0 ? `— ${rpe}/10` : ''}
-                </label>
-                <div className="flex gap-1">
-                  {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
-                    <button
-                      key={n}
-                      onClick={() => setRpe(n === rpe ? 0 : n)}
-                      className={cn(
-                        'flex-1 py-2 rounded-lg text-[10px] font-black transition-all',
-                        n <= rpe ? 'bg-primary text-background' : 'bg-surface-container-highest text-on-surface-variant'
-                      )}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              </div>
             )}
 
-            <div className="flex flex-col gap-2">
-              <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Como você está?</label>
-              <div className="flex gap-2">
-                {FEELINGS.map(f => (
-                  <button
-                    key={f.value}
-                    onClick={() => setFeeling(feeling === f.value ? null : f.value)}
-                    className={cn(
-                      'flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border transition-all',
-                      feeling === f.value
-                        ? 'bg-primary/10 border-primary/40'
-                        : 'bg-surface-container-highest border-transparent'
-                    )}
-                  >
-                    <span className="text-base leading-none">{f.emoji}</span>
-                    <span className={cn(
-                      'text-[8px] font-black uppercase tracking-wider',
-                      feeling === f.value ? 'text-primary' : 'text-on-surface-variant'
-                    )}>
-                      {f.label}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <textarea
-              placeholder="Anotações (sono, dieta, dores, observações...)"
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              rows={2}
-              className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
-            />
+            {rpeSection}
+            {feelingSection}
+            {notesSection}
 
             <button
               onClick={handleSave}
@@ -911,7 +1001,7 @@ export default function Diario() {
               {saving
                 ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
                 : <Check className="w-5 h-5" />}
-              {editingLogId ? 'ADICIONAR DETALHES' : 'SALVAR NO DIÁRIO'}
+              SALVAR NO DIÁRIO
             </button>
           </motion.div>
         )}
