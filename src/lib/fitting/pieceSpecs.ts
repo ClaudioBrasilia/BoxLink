@@ -145,9 +145,12 @@ const MASCULINO: PieceSpec[] = [
     id: 'M-05',
     name: 'Calça',
     avatarBase: 'masculina',
-    box: { x1: 355, x2: 670, y1: 770, y2: 1440 },
-    anchor: 'Cós alinhado ao cós do short da base (y ≈ 775); barra das pernas no tornozelo (y ≈ 1420).',
-    sizeRelative: 'Largura = largura do quadril; Altura = cós até tornozelo.',
+    // Largura estendida até o vão dos PÉS (x 337–685): as pernas da base
+    // abrem em direção aos pés, então uma caixa só da largura do quadril
+    // deixa as panturrilhas escaparem. Ver F-05.
+    box: { x1: 330, x2: 695, y1: 765, y2: 1445 },
+    anchor: 'Cós cobrindo o cós do short da base (y ≈ 765); barra das pernas no tornozelo (y ≈ 1440), acompanhando a pose de pernas abertas.',
+    sizeRelative: 'Largura = vão dos pés da base (≈ 365 px); Altura = cós até tornozelo.',
     cutouts: ['Cintura (abertura superior)', '2 barras de perna nos tornozelos (esquerda e direita)'],
   },
   {
@@ -258,9 +261,13 @@ const FEMININO: PieceSpec[] = [
     id: 'F-05',
     name: 'Calça / Legging',
     avatarBase: 'feminina',
-    box: { x1: 335, x2: 690, y1: 715, y2: 1430 },
-    anchor: 'Cós de cintura alta alinhado ao cós do short da base (y ≈ 725); barra das pernas no tornozelo (y ≈ 1400).',
-    sizeRelative: 'Largura = largura do quadril; Altura = cós até tornozelo.',
+    // Largura estendida até o vão dos PÉS (x 303–721), não só do quadril: a
+    // base feminina fica em "A" (pernas abertas) e as panturrilhas/pés
+    // escapam de uma caixa estreita — a arte da legging (pernas afunilando)
+    // esticada nesta caixa cobre as pernas inteiras até o tornozelo.
+    box: { x1: 305, x2: 720, y1: 705, y2: 1445 },
+    anchor: 'Cós de cintura alta cobrindo o cós do short da base (y ≈ 705); barra das pernas no tornozelo (y ≈ 1440), acompanhando a pose de pernas abertas.',
+    sizeRelative: 'Largura = vão dos pés da base (≈ 415 px); Altura = cós até tornozelo.',
     cutouts: ['Cintura (abertura superior)', '2 barras de perna nos tornozelos (esquerda e direita)'],
   },
   {
