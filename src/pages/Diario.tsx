@@ -120,6 +120,9 @@ export default function Diario() {
   const [myPlacarWod, setMyPlacarWod] = useState<{
     wod_name: string; wod_type: string; description: string | null; result: string | null; scaling: 'rx' | 'scaled';
   } | null>(null);
+  // Quando definido, o "Novo Registro" está em modo "adicionar detalhes" a um
+  // treino que o cronômetro já salvou — o save vira UPDATE, não um INSERT novo.
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
 
   const [codeInput, setCodeInput] = useState('');
   const [searchingFriend, setSearchingFriend] = useState(false);
@@ -295,10 +298,40 @@ export default function Diario() {
     setExercise(''); setLoadKg(''); setRpe(0);
     setFeeling(null); setNotes(''); setWodType('FOR TIME');
     setEffortData(null); setPostToPlacar(true); setPlacarScaling('rx');
+    setEditingLogId(null);
   };
+
+  const closeForm = () => { setShowForm(false); resetForm(); };
+  const openBlankForm = () => { resetForm(); setShowForm(true); };
 
   const handleSave = async () => {
     if (!user) return;
+
+    // Modo "adicionar detalhes": o treino já foi salvo pelo cronômetro —
+    // aqui só complementa RPE/sensação/notas na MESMA linha (sem duplicar
+    // no diário nem repostar no placar).
+    if (editingLogId) {
+      setSaving(true);
+      try {
+        const { error } = await supabase.from('training_logs').update({
+          rpe: rpe > 0 ? rpe : null,
+          feeling,
+          notes: notes.trim() || null,
+        }).eq('id', editingLogId);
+        if (error) throw error;
+
+        closeForm();
+        await loadLogs();
+        toast.success('Detalhes adicionados ao treino! 📓');
+      } catch (err: any) {
+        console.error('Error updating training log:', err);
+        toast.error('Erro ao salvar detalhes: ' + err.message);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     if (category === 'forca') {
       if (!exercise.trim()) { toast.warning('Informe o exercício.'); return; }
     } else if (!title.trim()) {
@@ -360,8 +393,7 @@ export default function Diario() {
 
       await refreshBalances();
 
-      resetForm();
-      setShowForm(false);
+      closeForm();
       await loadLogs();
       toast.success('Registro salvo no seu diário! 📓');
     } catch (err: any) {
@@ -372,17 +404,79 @@ export default function Diario() {
     }
   };
 
-  const handleTimerFinish = (data: WodTimerResult) => {
-    setCategory('wod');
-    setWodType(data.wodType);
-    setTitle(data.title);
-    setDescription(data.description);
-    setResult(data.result);
-    setEffortData(data.effort ?? null);
-    setPlacarScaling(myPlacarWod?.scaling || 'rx');
+  // O cronômetro já salva o treino ao finalizar — o "Novo Registro" que abre
+  // em seguida é só para ADICIONAR detalhes opcionais (RPE, sensação,
+  // notas), nunca a única chance de gravar o resultado.
+  const handleTimerFinish = async (data: WodTimerResult) => {
+    if (!user) return;
     setShowTimer(false);
-    setShowForm(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setSaving(true);
+    try {
+      const eff = data.effort;
+      const wodName = data.title.trim() || data.wodType;
+      const wodResult = data.result.trim();
+      const scaling = myPlacarWod?.scaling || 'rx';
+
+      const { data: inserted, error } = await supabase.from('training_logs').insert({
+        user_id: user.id,
+        date: todayBR(),
+        title: wodName,
+        category: 'wod',
+        wod_type: data.wodType,
+        description: data.description.trim() || null,
+        result: wodResult || null,
+        hr_avg: eff?.avgBpm ?? null,
+        hr_max: eff?.maxBpm ?? null,
+        hr_avg_pct: eff?.avgPctMax ?? null,
+        effort_index: eff?.effortIndex ?? null,
+        hr_zone: eff?.dominantZone ?? null,
+      }).select('id').single();
+      if (error) throw error;
+
+      await soloCheckin();
+
+      let placarOutcome: Awaited<ReturnType<typeof postDailyWodResult>> | null = null;
+      if (wodResult) {
+        try {
+          placarOutcome = await postDailyWodResult({
+            userId: user.id, wodName, wodType: data.wodType, result: wodResult, scaling,
+            description: data.description.trim() || undefined,
+          });
+          setPlacarRefreshKey(k => k + 1);
+          await loadMyPlacarWod();
+        } catch (err) {
+          console.error('Error posting placar from timer:', err);
+        }
+      }
+
+      await refreshBalances();
+      await loadLogs();
+
+      confetti({ particleCount: 160, spread: 90, origin: { y: 0.6 }, colors: ['#CAFD00', '#ffffff'] });
+      toast.success(
+        placarOutcome?.firstTime
+          ? `Treino salvo! +${placarOutcome.xp} XP no placar 🔥`
+          : 'Treino salvo no seu diário! 📓',
+      );
+
+      // Abre o formulário só para complementar (RPE/sensação/notas) — o
+      // treino em si já está salvo, então fechar sem tocar em nada não perde nada.
+      setEditingLogId(inserted?.id ?? null);
+      setCategory('wod');
+      setWodType(data.wodType);
+      setTitle(data.title);
+      setDescription(data.description);
+      setResult(data.result);
+      setEffortData(data.effort ?? null);
+      setPlacarScaling(scaling);
+      setShowForm(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err: any) {
+      console.error('Error saving timer result:', err);
+      toast.error('Erro ao salvar treino: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (log: TrainingLog) => {
@@ -596,12 +690,24 @@ export default function Diario() {
             className="mx-6 mb-4 bg-surface-container rounded-3xl border border-outline-variant/10 p-6 flex flex-col gap-5"
           >
             <div className="flex justify-between items-center">
-              <h2 className="font-headline font-black text-lg text-on-surface uppercase italic">Novo Registro</h2>
-              <button onClick={() => setShowForm(false)}>
+              <h2 className="font-headline font-black text-lg text-on-surface uppercase italic">
+                {editingLogId ? 'Detalhes do Treino' : 'Novo Registro'}
+              </h2>
+              <button onClick={closeForm}>
                 <X className="w-5 h-5 text-on-surface-variant" />
               </button>
             </div>
 
+            {editingLogId && (
+              <div className="bg-primary/10 border border-primary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
+                <Check className="w-4 h-4 text-primary flex-shrink-0" />
+                <p className="text-[11px] text-on-surface font-bold leading-snug">
+                  <span className="uppercase italic">{title}</span>{result ? ` • ${result}` : ''} já salvo no diário. Quer registrar RPE, sensação ou notas?
+                </p>
+              </div>
+            )}
+
+            {!editingLogId && (
             <div className="grid grid-cols-4 gap-2">
               {CATEGORIES.map(cat => (
                 <button
@@ -619,8 +725,9 @@ export default function Diario() {
                 </button>
               ))}
             </div>
+            )}
 
-            {category === 'forca' ? (
+            {!editingLogId && (category === 'forca' ? (
               <div className="flex flex-col gap-2">
                 <input
                   type="text"
@@ -738,7 +845,7 @@ export default function Diario() {
                   />
                 )}
               </div>
-            )}
+            ))}
 
             {category !== 'nota' && (
               <div className="flex flex-col gap-2">
@@ -804,7 +911,7 @@ export default function Diario() {
               {saving
                 ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
                 : <Check className="w-5 h-5" />}
-              SALVAR NO DIÁRIO
+              {editingLogId ? 'ADICIONAR DETALHES' : 'SALVAR NO DIÁRIO'}
             </button>
           </motion.div>
         )}
@@ -1067,7 +1174,7 @@ export default function Diario() {
       </main>
 
       <button
-        onClick={() => setShowForm(s => !s)}
+        onClick={() => (showForm ? closeForm() : openBlankForm())}
         className="fixed bottom-28 right-6 h-14 pl-5 pr-6 bg-primary text-background rounded-2xl shadow-xl flex items-center gap-2 hover:scale-105 active:scale-95 transition-all"
       >
         {showForm ? <X className="w-5 h-5" strokeWidth={3} /> : <Plus className="w-5 h-5" strokeWidth={3} />}
