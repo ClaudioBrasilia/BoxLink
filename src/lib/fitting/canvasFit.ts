@@ -124,12 +124,71 @@ export interface FitPieceResult {
   warnings: string[];
 }
 
+const IDENTITY_TRANSFORM: FitTransform = { scaleX: 1, scaleY: 1, translateX: 0, translateY: 0 };
+
+/**
+ * Coluna de menor densidade opaca no terço central de [box.x1, box.x2] — o
+ * vão entre as duas unidades de um par (ex.: entre os dois tênis).
+ */
+function findPairSplitColumn(data: ImageData, box: Box): number {
+  const { width } = data;
+  const lo = Math.round(box.x1 + 0.35 * (box.x2 - box.x1));
+  const hi = Math.round(box.x1 + 0.65 * (box.x2 - box.x1));
+  let best = Math.round((box.x1 + box.x2) / 2);
+  let bestCount = Infinity;
+  for (let x = lo; x <= hi; x++) {
+    let count = 0;
+    for (let y = box.y1; y < box.y2; y++) {
+      if (data.data[(y * width + x) * 4 + 3] > 10) count++;
+    }
+    if (count < bestCount) {
+      bestCount = count;
+      best = x;
+    }
+  }
+  return best;
+}
+
+/**
+ * Recorta a faixa de colunas [xStart, xEnd) da fonte (uma unidade do par),
+ * detecta o conteúdo real dela e o encaixa (contain, sem distorcer) na
+ * caixa-alvo do membro correspondente, desenhando no ctx do canvas final.
+ */
+function drawPairUnit(
+  ctx: CanvasRenderingContext2D,
+  img: PieceImageSource,
+  xStart: number,
+  xEnd: number,
+  target: Box
+): FitTransform {
+  const w = Math.max(1, Math.round(xEnd - xStart));
+  const h = sourceHeight(img);
+  const temp = document.createElement('canvas');
+  temp.width = w;
+  temp.height = h;
+  const tctx = temp.getContext('2d');
+  if (!tctx) return IDENTITY_TRANSFORM;
+  tctx.drawImage(img, Math.round(xStart), 0, w, h, 0, 0, w, h);
+
+  const unitBox = detectImageContentBox(temp);
+  if (!unitBox) return IDENTITY_TRANSFORM;
+
+  const t = computeFitTransform(unitBox, target, 'contain');
+  ctx.drawImage(temp, t.translateX, t.translateY, w * t.scaleX, h * t.scaleY);
+  return t;
+}
+
 /**
  * Reposiciona/escala a imagem de uma peça (PNG transparente 1024x1536,
  * ou um recorte apertado da peça) para que ocupe exatamente a CAIXA EXATA
  * definida em `spec.box`, preservando todas as aberturas vazadas (alpha=0)
  * porque a imagem inteira — incluindo seus buracos internos — é
  * redesenhada com a mesma transformação afim.
+ *
+ * Peças em par com `pairTargets` (tênis, luvas, joelheiras, munhequeiras)
+ * são tratadas à parte: a arte é dividida no vão central e CADA unidade é
+ * posicionada no seu membro da base — assim o par acompanha a pose da base
+ * (pés/pulsos afastados) independentemente de como a arte foi gerada.
  */
 export function fitPieceToCanvas(
   img: PieceImageSource,
@@ -169,8 +228,6 @@ export function fitPieceToCanvas(
   const validation = validateFit(normalizedContentBox, spec.box);
   const wasAlreadyWellPositioned = validation.withinTolerance;
 
-  const transform = computeFitTransform(detectedContentBox, spec.box, mode);
-
   const canvas = document.createElement('canvas');
   canvas.width = CANVAS.width;
   canvas.height = CANVAS.height;
@@ -179,6 +236,17 @@ export function fitPieceToCanvas(
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
+
+  // — Par com alvos por unidade: separa no vão central e encaixa cada lado —
+  if (spec.pairTargets) {
+    const data = getImageData(img);
+    const split = findPairSplitColumn(data, detectedContentBox);
+    const leftT = drawPairUnit(ctx, img, detectedContentBox.x1, split, spec.pairTargets.left);
+    drawPairUnit(ctx, img, split, detectedContentBox.x2, spec.pairTargets.right);
+    return { canvas, spec, transform: leftT, detectedContentBox, wasAlreadyWellPositioned, warnings };
+  }
+
+  const transform = computeFitTransform(detectedContentBox, spec.box, mode);
   ctx.drawImage(
     img,
     transform.translateX,

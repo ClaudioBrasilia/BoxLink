@@ -47,6 +47,14 @@ export interface PieceSpec {
   cutouts: string[];
   /** true quando a peça é composta por duas unidades simétricas (par) */
   isPair?: boolean;
+  /**
+   * Caixas-alvo de CADA unidade do par (esquerda/direita), medidas nos
+   * membros reais da base. Quando presente, o encaixe separa a arte no vão
+   * central e posiciona cada unidade no seu membro — independente de como a
+   * arte veio (pés juntos, afastados, etc.). "left"/"right" referem-se ao
+   * lado da IMAGEM (esquerda da imagem = perna direita anatômica do avatar).
+   */
+  pairTargets?: { left: Box; right: Box };
 }
 
 /** Canvas de referência usado por todas as bases e peças */
@@ -160,6 +168,10 @@ const MASCULINO: PieceSpec[] = [
     sizeRelative: 'Cada munhequeira: largura = pulso da base (≈ 78 px); altura ≈ 100 px.',
     cutouts: ['Interior do anel de cada munhequeira (buraco central de cada uma)'],
     isPair: true,
+    pairTargets: {
+      left: { x1: 226, y1: 800, x2: 328, y2: 912 },
+      right: { x1: 694, y1: 800, x2: 796, y2: 912 },
+    },
   },
   {
     id: 'M-08',
@@ -170,6 +182,10 @@ const MASCULINO: PieceSpec[] = [
     sizeRelative: 'Cada luva: do punho (y ≈ 820) até a ponta dos dedos (y ≈ 1015).',
     cutouts: ['Punho de cada luva (abertura de encaixe no pulso)'],
     isPair: true,
+    pairTargets: {
+      left: { x1: 214, y1: 815, x2: 340, y2: 1020 },
+      right: { x1: 680, y1: 815, x2: 806, y2: 1020 },
+    },
   },
   {
     id: 'M-09',
@@ -180,6 +196,10 @@ const MASCULINO: PieceSpec[] = [
     sizeRelative: 'Cada joelheira: largura = joelho da base (≈ 105 px); altura ≈ 110 px.',
     cutouts: ['Interior do anel de cada joelheira (buraco central de cada uma)'],
     isPair: true,
+    pairTargets: {
+      left: { x1: 366, y1: 1062, x2: 497, y2: 1188 },
+      right: { x1: 526, y1: 1062, x2: 657, y2: 1188 },
+    },
   },
   {
     id: 'M-10',
@@ -190,6 +210,10 @@ const MASCULINO: PieceSpec[] = [
     sizeRelative: 'Cada tênis: largura = largura do pé (≈ 125 px); altura = solado (y 1530) até cano (y 1400).',
     cutouts: ['Cano superior de cada tênis (abertura de encaixe do pé)'],
     isPair: true,
+    pairTargets: {
+      left: { x1: 316, y1: 1395, x2: 484, y2: 1537 },
+      right: { x1: 540, y1: 1395, x2: 708, y2: 1537 },
+    },
   },
 ];
 
@@ -257,6 +281,10 @@ const FEMININO: PieceSpec[] = [
     sizeRelative: 'Cada munhequeira: largura = pulso da base (≈ 67 px); altura ≈ 90 px.',
     cutouts: ['Interior do anel de cada munhequeira (buraco central de cada uma)'],
     isPair: true,
+    pairTargets: {
+      left: { x1: 238, y1: 782, x2: 326, y2: 878 },
+      right: { x1: 698, y1: 782, x2: 786, y2: 878 },
+    },
   },
   {
     id: 'F-08',
@@ -267,6 +295,10 @@ const FEMININO: PieceSpec[] = [
     sizeRelative: 'Cada luva: do punho (y ≈ 800) até a ponta dos dedos (y ≈ 945).',
     cutouts: ['Punho de cada luva (abertura de encaixe no pulso)'],
     isPair: true,
+    pairTargets: {
+      left: { x1: 208, y1: 798, x2: 320, y2: 948 },
+      right: { x1: 704, y1: 798, x2: 816, y2: 948 },
+    },
   },
   {
     id: 'F-09',
@@ -277,6 +309,10 @@ const FEMININO: PieceSpec[] = [
     sizeRelative: 'Cada joelheira: largura = joelho da base (≈ 100 px); altura ≈ 100 px.',
     cutouts: ['Interior do anel de cada joelheira (buraco central de cada uma)'],
     isPair: true,
+    pairTargets: {
+      left: { x1: 338, y1: 1085, x2: 454, y2: 1195 },
+      right: { x1: 571, y1: 1085, x2: 687, y2: 1195 },
+    },
   },
   {
     id: 'F-10',
@@ -287,6 +323,10 @@ const FEMININO: PieceSpec[] = [
     sizeRelative: 'Cada tênis: largura = largura do pé (≈ 90 px); altura = solado (y 1530) até cano (y 1380).',
     cutouts: ['Cano superior de cada tênis (abertura de encaixe do pé)'],
     isPair: true,
+    pairTargets: {
+      left: { x1: 273, y1: 1372, x2: 441, y2: 1537 },
+      right: { x1: 583, y1: 1372, x2: 751, y2: 1537 },
+    },
   },
 ];
 
