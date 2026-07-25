@@ -2,8 +2,6 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { User } from '../types';
 import { supabase } from '../lib/supabase';
 
-const ONBOARDING_KEY = 'boxlink_onboarding_done';
-
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<{ error: any }>;
@@ -73,10 +71,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setUser(mappedUser);
 
-      // Onboarding só para atletas aprovados (não coach/admin)
-      if (mappedUser.status === 'approved' && mappedUser.role === 'athlete') {
-        const done = localStorage.getItem(ONBOARDING_KEY + '_' + mappedUser.id);
-        if (!done) setShowOnboarding(true);
+      // Onboarding só para atletas aprovados (não coach/admin). Guardado na
+      // conta (profiles.onboarding_done), não em localStorage — assim não
+      // reaparece ao trocar de dispositivo/navegador ou reinstalar o app.
+      if (mappedUser.status === 'approved' && mappedUser.role === 'athlete' && !data.onboarding_done) {
+        setShowOnboarding(true);
       }
 
       return mappedUser;
@@ -160,8 +159,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateUser = (userData: User) => setUser(userData);
 
   const completeOnboarding = () => {
-    if (user?.id) localStorage.setItem(ONBOARDING_KEY + '_' + user.id, '1');
     setShowOnboarding(false);
+    if (user?.id) {
+      supabase.from('profiles').update({ onboarding_done: true }).eq('id', user.id)
+        .then(({ error }) => { if (error) console.error('Error saving onboarding completion:', error); });
+    }
   };
 
   return (
