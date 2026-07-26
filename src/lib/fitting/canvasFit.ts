@@ -160,7 +160,8 @@ function drawPairUnit(
   img: PieceImageSource,
   xStart: number,
   xEnd: number,
-  target: Box
+  target: Box,
+  anchor: 'center' | 'bottom' = 'center'
 ): FitTransform {
   const w = Math.max(1, Math.round(xEnd - xStart));
   const h = sourceHeight(img);
@@ -174,7 +175,13 @@ function drawPairUnit(
   const unitBox = detectImageContentBox(temp);
   if (!unitBox) return IDENTITY_TRANSFORM;
 
-  const t = computeFitTransform(unitBox, target, 'contain');
+  let t = computeFitTransform(unitBox, target, 'contain');
+  if (anchor === 'bottom') {
+    // 'contain' centraliza a folga vertical; aqui a peça desce para encostar
+    // no fundo do alvo (solado no chão em vez de flutuando sobre o pé).
+    const slack = target.y2 - (unitBox.y2 * t.scaleY + t.translateY);
+    t = { ...t, translateY: t.translateY + slack };
+  }
   ctx.drawImage(temp, t.translateX, t.translateY, w * t.scaleX, h * t.scaleY);
   return t;
 }
@@ -329,8 +336,9 @@ export function fitPieceToCanvas(
   if (spec.pairTargets) {
     const data = getImageData(img);
     const split = findPairSplitColumn(data, detectedContentBox);
-    const leftT = drawPairUnit(ctx, img, detectedContentBox.x1, split, spec.pairTargets.left);
-    drawPairUnit(ctx, img, split, detectedContentBox.x2, spec.pairTargets.right);
+    const anchor = spec.pairAnchor ?? 'center';
+    const leftT = drawPairUnit(ctx, img, detectedContentBox.x1, split, spec.pairTargets.left, anchor);
+    drawPairUnit(ctx, img, split, detectedContentBox.x2, spec.pairTargets.right, anchor);
     return { canvas, spec, transform: leftT, detectedContentBox, wasAlreadyWellPositioned, warnings };
   }
 

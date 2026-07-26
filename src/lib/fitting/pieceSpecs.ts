@@ -64,6 +64,14 @@ export interface PieceSpec {
    * lado da IMAGEM (esquerda da imagem = perna direita anatômica do avatar).
    */
   pairTargets?: { left: Box; right: Box };
+  /**
+   * Como encaixar cada unidade do par dentro do seu alvo, quando a proporção
+   * da arte não preenche a caixa toda. 'center' (padrão) sobra folga igual
+   * acima e abaixo; 'bottom' encosta a peça na base da caixa — é o que um
+   * tênis precisa, porque o solado apoia no chão e não pode flutuar sobre o
+   * pé se a arte vier mais larga que alta.
+   */
+  pairAnchor?: 'center' | 'bottom';
 }
 
 /** Canvas de referência usado por todas as bases e peças */
@@ -208,13 +216,14 @@ const MASCULINO: PieceSpec[] = [
     name: 'Joelheira',
     avatarBase: 'masculina',
     box: { x1: 378, x2: 645, y1: 1070, y2: 1180 },
-    anchor: 'Centradas em cada joelho da base (joelho esquerdo ≈ x 378–485 / joelho direito ≈ x 538–645); joelhos na altura y ≈ 1070–1180.',
+    anchor: 'Centradas em cada joelho da base (joelho esquerdo x 377–482 / joelho direito x 543–648, medidos na silhueta); joelhos na altura y ≈ 1070–1180.',
     sizeRelative: 'Cada joelheira: largura = joelho da base (≈ 105 px); altura ≈ 110 px.',
     cutouts: ['Interior do anel de cada joelheira (buraco central de cada uma)'],
     isPair: true,
+    // Centrados nos joelhos reais (429,5 e 595,5 — ver LIMB_ANCHORS).
     pairTargets: {
-      left: { x1: 366, y1: 1062, x2: 497, y2: 1188 },
-      right: { x1: 526, y1: 1062, x2: 657, y2: 1188 },
+      left: { x1: 364, y1: 1062, x2: 495, y2: 1188 },
+      right: { x1: 530, y1: 1062, x2: 661, y2: 1188 },
     },
   },
   {
@@ -222,14 +231,18 @@ const MASCULINO: PieceSpec[] = [
     name: 'Tênis',
     avatarBase: 'masculina',
     box: { x1: 330, x2: 692, y1: 1400, y2: 1532 },
-    anchor: 'Solado sob cada pé da base (pé esquerdo ≈ x 337–460 / pé direito ≈ x 565–685); cano alinhado ao tornozelo (y ≈ 1400).',
-    sizeRelative: 'Cada tênis: largura = largura do pé (≈ 125 px); altura = solado (y 1530) até cano (y 1400).',
+    anchor: 'Solado sob cada pé da base (pé esquerdo x 332–463 / pé direito x 563–694, medidos na silhueta); cano alinhado ao tornozelo (y ≈ 1400).',
+    sizeRelative: 'Cada tênis: largura = largura do pé (≈ 131 px); altura = solado (y 1530) até cano (y 1400).',
     cutouts: ['Cano superior de cada tênis (abertura de encaixe do pé)'],
     isPair: true,
+    // Alvos CENTRADOS em cada pé (centros 397,5 e 628,5 — ver LIMB_ANCHORS).
+    // Os valores antigos eram simétricos entre si, mas 7 px mais juntos que
+    // os pés, o que deixava o par fechado para dentro.
     pairTargets: {
-      left: { x1: 316, y1: 1395, x2: 484, y2: 1537 },
-      right: { x1: 540, y1: 1395, x2: 708, y2: 1537 },
+      left: { x1: 314, y1: 1395, x2: 482, y2: 1537 },
+      right: { x1: 545, y1: 1395, x2: 713, y2: 1537 },
     },
+    pairAnchor: 'bottom',
   },
 ];
 
@@ -329,13 +342,14 @@ const FEMININO: PieceSpec[] = [
     name: 'Joelheira',
     avatarBase: 'feminina',
     box: { x1: 345, x2: 680, y1: 1090, y2: 1190 },
-    anchor: 'Centradas em cada joelho da base (joelho esquerdo ≈ x 345–447 / joelho direito ≈ x 578–680); joelhos na altura y ≈ 1090–1190.',
+    anchor: 'Centradas em cada joelho da base (joelho esquerdo x 335–462 / joelho direito x 565–689, medidos na silhueta); joelhos na altura y ≈ 1090–1190.',
     sizeRelative: 'Cada joelheira: largura = joelho da base (≈ 100 px); altura ≈ 100 px.',
     cutouts: ['Interior do anel de cada joelheira (buraco central de cada uma)'],
     isPair: true,
+    // Centrados nos joelhos reais (398,5 e 627 — ver LIMB_ANCHORS).
     pairTargets: {
-      left: { x1: 338, y1: 1085, x2: 454, y2: 1195 },
-      right: { x1: 571, y1: 1085, x2: 687, y2: 1195 },
+      left: { x1: 340, y1: 1085, x2: 456, y2: 1195 },
+      right: { x1: 569, y1: 1085, x2: 685, y2: 1195 },
     },
   },
   {
@@ -343,14 +357,18 @@ const FEMININO: PieceSpec[] = [
     name: 'Tênis',
     avatarBase: 'feminina',
     box: { x1: 295, x2: 725, y1: 1375, y2: 1532 },
-    anchor: 'Solado sob cada pé da base (pé esquerdo ≈ x 303–390 / pé direito ≈ x 635–721); cano alinhado ao tornozelo (y ≈ 1380).',
-    sizeRelative: 'Cada tênis: largura = largura do pé (≈ 90 px); altura = solado (y 1530) até cano (y 1380).',
+    anchor: 'Solado sob cada pé da base (pé esquerdo x 301–396 / pé direito x 628–723, medidos na silhueta); cano alinhado ao tornozelo (y ≈ 1380).',
+    sizeRelative: 'Cada tênis: largura = largura do pé (≈ 95 px); altura = solado (y 1530) até cano (y 1380).',
     cutouts: ['Cano superior de cada tênis (abertura de encaixe do pé)'],
     isPair: true,
+    // Alvos CENTRADOS em cada pé (centros 348,5 e 675,5 — ver LIMB_ANCHORS).
+    // Os valores antigos ficavam 17 px mais juntos que os pés: os dois tênis
+    // apareciam deslocados para dentro, desalinhados com os pés.
     pairTargets: {
-      left: { x1: 273, y1: 1372, x2: 441, y2: 1537 },
-      right: { x1: 583, y1: 1372, x2: 751, y2: 1537 },
+      left: { x1: 265, y1: 1372, x2: 433, y2: 1537 },
+      right: { x1: 592, y1: 1372, x2: 760, y2: 1537 },
     },
+    pairAnchor: 'bottom',
   },
 ];
 

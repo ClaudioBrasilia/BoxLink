@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   BODY_PROFILE,
+  LIMB_ANCHORS,
+  limbCenterX,
   bodySpanAt,
   bodyEnvelope,
   computeConformMaps,
@@ -118,6 +120,58 @@ describe('body-hugging piece boxes', () => {
 
   it.each(['M-01', 'M-02', 'M-03', 'F-01', 'F-02', 'F-03'])('%s (com mangas) is not conformed', (id) => {
     expect(getPieceSpec(id).conformToBody).toBeUndefined();
+  });
+});
+
+describe('pair targets vs. the real limbs', () => {
+  // Regressão: os alvos do tênis eram simétricos entre si, mas mais juntos
+  // que os pés — 17 px na base feminina, 7 px na masculina. Os dois tênis
+  // apareciam deslocados para dentro, desalinhados com os pés.
+  const PAIRS: Array<[string, 'feet' | 'knees']> = [
+    ['M-10', 'feet'],
+    ['F-10', 'feet'],
+    ['M-09', 'knees'],
+    ['F-09', 'knees'],
+  ];
+
+  it.each(PAIRS)('%s is centred on each %s of the base', (id, limb) => {
+    const spec = getPieceSpec(id);
+    const anchors = LIMB_ANCHORS[spec.avatarBase][limb];
+    const targets = spec.pairTargets!;
+    expect(targets).toBeDefined();
+
+    for (const side of ['left', 'right'] as const) {
+      const drift = limbCenterX(targets[side]) - limbCenterX(anchors[side]);
+      expect(Math.abs(drift)).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it.each(PAIRS)('%s keeps the same spacing between units as the base %s', (id, limb) => {
+    const spec = getPieceSpec(id);
+    const anchors = LIMB_ANCHORS[spec.avatarBase][limb];
+    const targets = spec.pairTargets!;
+
+    const limbSpacing = limbCenterX(anchors.right) - limbCenterX(anchors.left);
+    const targetSpacing = limbCenterX(targets.right) - limbCenterX(targets.left);
+    expect(Math.abs(targetSpacing - limbSpacing)).toBeLessThanOrEqual(3);
+  });
+
+  it('anchors the shoes by the sole, so they never float above the foot', () => {
+    for (const id of ['M-10', 'F-10']) {
+      const spec = getPieceSpec(id);
+      expect(spec.pairAnchor).toBe('bottom');
+      const feet = LIMB_ANCHORS[spec.avatarBase].feet;
+      // O fundo do alvo tem de alcançar a sola do pé, senão ancorar embaixo
+      // deixaria o tênis parado acima do chão.
+      expect(spec.pairTargets!.left.y2).toBeGreaterThanOrEqual(feet.left.y2);
+      expect(spec.pairTargets!.right.y2).toBeGreaterThanOrEqual(feet.right.y2);
+    }
+  });
+
+  it('leaves the other pairs centred, where a floating unit is correct', () => {
+    for (const id of ['M-07', 'M-08', 'M-09', 'F-07', 'F-08', 'F-09']) {
+      expect(getPieceSpec(id).pairAnchor).toBeUndefined();
+    }
   });
 });
 

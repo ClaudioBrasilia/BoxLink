@@ -131,6 +131,54 @@ export function bodySpanAt(base: AvatarBaseId, y: number): RowSpan | null {
   return span;
 }
 
+/** Caixa de um membro, medida na silhueta da base. */
+export interface LimbBox {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+/**
+ * Onde estão, de fato, os membros que recebem peças em PAR (tênis,
+ * joelheira). Medido separando as duas pernas da silhueta de cada base —
+ * abaixo da virilha elas são blocos independentes, então cada pé e cada
+ * joelho tem caixa própria.
+ *
+ * Serve de referência para os `pairTargets` das specs: um alvo que não está
+ * centrado no membro joga a peça para dentro ou para fora do corpo. Foi
+ * exatamente esse o caso do tênis — os dois alvos estavam simétricos, mas
+ * 17 px (feminina) e 7 px (masculina) mais juntos que os pés, deixando o par
+ * visivelmente fechado.
+ */
+export const LIMB_ANCHORS: Record<AvatarBaseId, { knees: { left: LimbBox; right: LimbBox }; feet: { left: LimbBox; right: LimbBox } }> = {
+  masculina: {
+    knees: {
+      left: { x1: 377, y1: 1070, x2: 482, y2: 1180 },
+      right: { x1: 543, y1: 1070, x2: 648, y2: 1180 },
+    },
+    feet: {
+      left: { x1: 332, y1: 1400, x2: 463, y2: 1529 },
+      right: { x1: 563, y1: 1400, x2: 694, y2: 1530 },
+    },
+  },
+  feminina: {
+    knees: {
+      left: { x1: 335, y1: 1090, x2: 462, y2: 1190 },
+      right: { x1: 565, y1: 1090, x2: 689, y2: 1190 },
+    },
+    feet: {
+      left: { x1: 301, y1: 1400, x2: 396, y2: 1530 },
+      right: { x1: 628, y1: 1400, x2: 723, y2: 1530 },
+    },
+  },
+};
+
+/** Centro horizontal de uma caixa. */
+export function limbCenterX(box: LimbBox): number {
+  return (box.x1 + box.x2) / 2;
+}
+
 /** Extremos horizontais do corpo entre duas alturas — usado para conferir caixas. */
 export function bodyEnvelope(base: AvatarBaseId, yTop: number, yBottom: number): { x1: number; x2: number } | null {
   const samples = BODY_PROFILE[base].filter(([y]) => y >= yTop && y <= yBottom);
