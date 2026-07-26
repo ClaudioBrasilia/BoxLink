@@ -139,13 +139,13 @@ export default function Insights() {
         <>
           {/* Stat tiles */}
           <div className="grid grid-cols-3 gap-3">
-            <Tile icon={Activity} value={String(stats.total)} label="Treinos" />
-            <Tile icon={Gauge} value={stats.avgRpe ? stats.avgRpe.toFixed(1) : '—'} label="RPE médio" />
-            <Tile icon={TrendingUp} value={stats.perWeek ? stats.perWeek.toFixed(1) : '—'} label="Por semana" />
+            <Tile icon={Activity} value={String(stats.total)} label="Treinos" hint="Total registrado" />
+            <Tile icon={Gauge} value={stats.avgRpe ? stats.avgRpe.toFixed(1) : '—'} label="RPE médio" hint="Esforço percebido (0–10)" />
+            <Tile icon={TrendingUp} value={stats.perWeek ? stats.perWeek.toFixed(1) : '—'} label="Por semana" hint="Média nas semanas ativas" />
           </div>
 
           {/* Distribuição de sensação */}
-          <Card title="Como você se sente" icon={Activity}>
+          <Card title="Como você se sente" icon={Activity} subtitle="Quantas vezes você registrou cada sensação após o treino">
             <div className="flex flex-col gap-2">
               {FEELINGS.filter(f => stats.feelingCount[f.value]).map(f => {
                 const n = stats.feelingCount[f.value] || 0;
@@ -167,10 +167,7 @@ export default function Insights() {
 
           {/* RPE por sensação — insight cruzado */}
           {Object.keys(stats.rpeByFeeling).length > 0 && (
-            <Card title="Esforço x sensação" icon={Gauge}>
-              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-3 italic">
-                RPE médio conforme como você chegou ao treino
-              </p>
+            <Card title="Esforço x sensação" icon={Gauge} subtitle="RPE médio conforme como você chegou ao treino">
               <div className="flex flex-col gap-2">
                 {FEELINGS.filter(f => stats.rpeByFeeling[f.value]).map(f => {
                   const r = stats.rpeByFeeling[f.value];
@@ -188,7 +185,7 @@ export default function Insights() {
 
           {/* Evolução de carga */}
           {stats.loadEvolution.length > 0 && (
-            <Card title="Evolução de carga" icon={Dumbbell}>
+            <Card title="Evolução de carga" icon={Dumbbell} subtitle="Comparação entre a primeira e a última carga registrada em cada exercício">
               <div className="flex flex-col gap-2">
                 {stats.loadEvolution.slice(0, 6).map(e => (
                   <div key={e.name} className="flex items-center justify-between bg-surface-container-highest/30 rounded-xl px-4 py-2.5">
@@ -225,20 +222,28 @@ const Header = () => (
   </header>
 );
 
-const Tile = ({ icon: Icon, value, label }: { icon: typeof Activity; value: string; label: string }) => (
+const Tile = ({ icon: Icon, value, label, hint }: { icon: typeof Activity; value: string; label: string; hint?: string }) => (
   <div className="bg-surface-container rounded-3xl p-4 border border-outline-variant/10 flex flex-col items-center gap-1">
     <Icon className="w-4 h-4 text-primary mb-1" />
     <p className="text-2xl font-headline font-black text-on-surface italic leading-none">{value}</p>
     <p className="text-[8px] text-on-surface-variant font-black uppercase tracking-widest">{label}</p>
+    {hint && <p className="text-[7px] text-on-surface-variant/60 font-bold uppercase tracking-widest text-center leading-tight">{hint}</p>}
   </div>
 );
 
-const Card = ({ title, icon: Icon, children }: { title: string; icon: typeof Activity; children: React.ReactNode }) => (
+const Card = ({ title, icon: Icon, subtitle, children }: { title: string; icon: typeof Activity; subtitle?: string; children: React.ReactNode }) => (
   <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
     className="bg-surface-container rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-3">
-    <h2 className="font-headline font-black text-sm text-on-surface uppercase italic flex items-center gap-2">
-      <Icon className="w-4 h-4 text-primary" /> {title}
-    </h2>
+    <div>
+      <h2 className="font-headline font-black text-sm text-on-surface uppercase italic flex items-center gap-2">
+        <Icon className="w-4 h-4 text-primary" /> {title}
+      </h2>
+      {subtitle && (
+        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest italic mt-1 opacity-70">
+          {subtitle}
+        </p>
+      )}
+    </div>
     {children}
   </motion.section>
 );
