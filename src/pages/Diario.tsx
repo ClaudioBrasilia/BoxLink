@@ -30,6 +30,7 @@ import { isPremium, planLimits, PLAN_LIMITS } from '../lib/plan';
 import WodTimer, { WodTimerResult, WodTimerType } from '../components/WodTimer';
 import AvatarPreview from '../components/AvatarPreview';
 import DailyWodPanel from '../components/DailyWodPanel';
+import PremiumCTA from '../components/PremiumCTA';
 import { postDailyWodResult, dailyWodDate } from '../lib/dailyWods';
 import { useNavigate } from 'react-router-dom';
 
@@ -1095,11 +1096,14 @@ export default function Diario() {
         </div>
 
         {!premium && (
-          <div className="bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
-            <span className="text-sm">🔒</span>
-            <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest leading-snug">
-              <span className="text-secondary">Premium:</span> convide até {PLAN_LIMITS.premium.maxDuelFriends} amigos no mesmo duelo, liga e ranking de atletas
-            </p>
+          <div className="flex flex-col gap-2">
+            <div className="bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
+              <span className="text-sm">🔒</span>
+              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest leading-snug">
+                <span className="text-secondary">Premium:</span> convide até {PLAN_LIMITS.premium.maxDuelFriends} amigos no mesmo duelo, liga e ranking de atletas
+              </p>
+            </div>
+            <PremiumCTA />
           </div>
         )}
 

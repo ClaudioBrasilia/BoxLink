@@ -92,9 +92,13 @@ export default function Admin() {
       challenges: true,
       clans: true
     },
-    max_clan_members: 10
+    max_clan_members: 10,
+    premium_info: { price_cents: 1990, contact: '' }
   });
   const [selectedRoles, setSelectedRoles] = useState<Record<string, string>>({});
+  const [selectedPlans, setSelectedPlans] = useState<Record<string, 'free' | 'premium'>>({});
+  const [planExpiryInputs, setPlanExpiryInputs] = useState<Record<string, string>>({});
+  const [grantingPlanId, setGrantingPlanId] = useState<string | null>(null);
   const [schedule, setSchedule] = useState<Schedule[]>([]);
   const [challenges, setChallenges] = useState<any[]>([]);
   const [items, setItems] = useState<Item[]>([]);
@@ -214,12 +218,19 @@ export default function Admin() {
           classTime: c.class_time
         })),
         paidBonuses: u.paid_bonuses || [],
-        createdAt: u.created_at
+        createdAt: u.created_at,
+        plan: u.plan || 'free',
+        planExpiresAt: u.plan_expires_at || null,
       }));
       setUsers(mappedUsers);
       const roles: Record<string, string> = {};
-      mappedUsers.forEach((u: User) => { roles[u.id] = u.role; });
+      const plans: Record<string, 'free' | 'premium'> = {};
+      mappedUsers.forEach((u: User) => {
+        roles[u.id] = u.role;
+        plans[u.id] = u.plan === 'premium' ? 'premium' : 'free';
+      });
       setSelectedRoles(roles);
+      setSelectedPlans(plans);
     }
 
     const { data: joinReqData } = await supabase
@@ -431,6 +442,39 @@ export default function Admin() {
     }
   };
 
+  /** Concede/remove Premium manualmente (sem gateway de pagamento ainda) e
+   *  registra em plan_grants — histórico de vendas manuais para o negócio. */
+  const handlePlanUpdate = async (userId: string) => {
+    const plan = selectedPlans[userId] || 'free';
+    const expiryStr = planExpiryInputs[userId];
+    const expiresAt = plan === 'premium' && expiryStr ? new Date(expiryStr + 'T23:59:59').toISOString() : null;
+
+    setGrantingPlanId(userId);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ plan, plan_expires_at: expiresAt })
+        .eq('id', userId);
+      if (error) throw error;
+
+      await supabase.from('plan_grants').insert({
+        user_id: userId,
+        granted_by: user?.id ?? null,
+        plan,
+        method: 'manual',
+        expires_at: expiresAt,
+      });
+
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, plan, planExpiresAt: expiresAt } as User : u));
+      toast.success(plan === 'premium' ? '🎉 Premium concedido!' : 'Plano alterado para grátis.');
+    } catch (err: any) {
+      console.error('Error updating plan:', err);
+      toast.error('Erro ao atualizar plano: ' + err.message);
+    } finally {
+      setGrantingPlanId(null);
+    }
+  };
+
   const handleDeleteUser = async (userId: string) => { setDeletingUserId(userId); };
 
   const confirmDeleteUser = async (userId: string) => {
@@ -527,6 +571,7 @@ export default function Admin() {
         avatar_enabled: (settings as any).avatar_enabled || false,
         max_clan_members: settings.max_clan_members || 10,
         inactivity: (settings as any).inactivity || { enabled: false, minWorkoutsPerWeek: 3, excludeSunday: true, showOnTV: false },
+        premium_info: settings.premium_info || { price_cents: 1990, contact: '' },
         updated_at: new Date().toISOString()
       })
       .eq('is_active', true)
@@ -939,12 +984,45 @@ export default function Admin() {
                                     )}
                                   </div>
                                 </div>
+                                <div className="mt-3 flex flex-col gap-2">
+                                  <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">PLANO:</label>
+                                  <div className="flex gap-2 flex-wrap items-center">
+                                    {(['free', 'premium'] as const).map((plan) => (
+                                      <button key={plan} onClick={() => setSelectedPlans(prev => ({ ...prev, [u.id]: plan }))}
+                                        className={cn("px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all border",
+                                          selectedPlans[u.id] === plan ? "bg-secondary text-background border-secondary" : "bg-surface-container-highest text-on-surface-variant border-outline-variant/20")}>
+                                        {plan === 'premium' ? '⭐ PREMIUM' : 'GRÁTIS'}
+                                      </button>
+                                    ))}
+                                    {selectedPlans[u.id] === 'premium' && (
+                                      <input
+                                        type="date"
+                                        value={planExpiryInputs[u.id] ?? ''}
+                                        onChange={e => setPlanExpiryInputs(prev => ({ ...prev, [u.id]: e.target.value }))}
+                                        title="Validade (opcional — em branco não expira)"
+                                        className="bg-surface-container-highest border-none rounded-lg px-2 py-1 text-[9px] font-bold text-on-surface"
+                                      />
+                                    )}
+                                    {(selectedPlans[u.id] || 'free') !== (u.plan || 'free') && (
+                                      <button
+                                        onClick={() => handlePlanUpdate(u.id)}
+                                        disabled={grantingPlanId === u.id}
+                                        className="px-3 py-1 bg-secondary text-background rounded-lg text-[8px] font-black uppercase tracking-widest animate-pulse disabled:opacity-50"
+                                      >
+                                        {grantingPlanId === u.id ? '...' : 'SALVAR'}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-2">
                               <span className={cn("text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest", u.role === 'visitor' ? "bg-secondary/20 text-secondary" : "bg-primary/20 text-primary")}>
                                 {u.role === 'visitor' ? 'VISITANTE' : u.role === 'admin' ? 'ADMIN' : u.role === 'coach' ? 'COACH' : 'ATIVO'}
                               </span>
+                              {u.plan === 'premium' && (
+                                <span className="text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest bg-secondary/20 text-secondary">⭐ PREMIUM</span>
+                              )}
                               <button onClick={() => handleDeleteUser(u.id)} className="p-1.5 rounded-xl bg-error-container/30 text-error hover:bg-error hover:text-on-error transition-all"><Trash2 className="w-4 h-4" /></button>
                             </div>
                           </div>
@@ -1479,6 +1557,48 @@ export default function Admin() {
                         <div className="space-y-2">
                           <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">BrazaCoins por WOD</label>
                           <input type="number" value={(settings.rewards as any).wod_coins ?? 5} onChange={e => { const val = e.target.value === '' ? 0 : parseInt(e.target.value); setSettings(s => ({...s, rewards: {...s.rewards, wod_coins: val}})); }} className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* ── Premium (Atleta Individual) ── */}
+              <div className="space-y-4 border-t border-outline-variant/10 pt-6">
+                <button onClick={() => toggleSection('premium')} className="w-full flex justify-between items-center p-4 bg-surface-container-low rounded-2xl border border-outline-variant/10">
+                  <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic">PREMIUM (ATLETA INDIVIDUAL)</h3>
+                  {openSections.includes('premium') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </button>
+                <AnimatePresence>
+                  {openSections.includes('premium') && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden px-2 space-y-4">
+                      <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest opacity-60">
+                        Exibidos nas telas "Quero ser Premium" — a concessão em si ainda é manual, em GERENCIAR USUÁRIOS
+                      </p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Preço mensal (R$)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={((settings.premium_info?.price_cents ?? 1990) / 100).toFixed(2)}
+                            onChange={e => {
+                              const reais = parseFloat(e.target.value.replace(',', '.')) || 0;
+                              setSettings(s => ({ ...s, premium_info: { ...(s.premium_info || { contact: '' }), price_cents: Math.round(reais * 100) } }));
+                            }}
+                            className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Contato (WhatsApp/e-mail)</label>
+                          <input
+                            type="text"
+                            placeholder="(00) 00000-0000"
+                            value={settings.premium_info?.contact ?? ''}
+                            onChange={e => setSettings(s => ({ ...s, premium_info: { price_cents: s.premium_info?.price_cents ?? 1990, contact: e.target.value } }))}
+                            className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface"
+                          />
                         </div>
                       </div>
                     </motion.div>

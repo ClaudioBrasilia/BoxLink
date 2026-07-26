@@ -248,6 +248,11 @@ export interface BoxSettings {
     excludeSunday: boolean;
     showOnTV: boolean;
   };
+  /** Preço e contato exibidos nas telas de "Quero ser Premium" (concessão ainda é manual) */
+  premium_info?: {
+    price_cents: number;
+    contact: string;
+  };
 }
 
 export interface Announcement {

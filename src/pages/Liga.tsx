@@ -8,6 +8,7 @@ import AvatarPreview from '../components/AvatarPreview';
 import AthletePhoto from '../components/AthletePhoto';
 import { AvatarSlot } from '../types';
 import { isPremium } from '../lib/plan';
+import PremiumCTA from '../components/PremiumCTA';
 
 interface LigaAthlete {
   id: string;
@@ -217,6 +218,7 @@ export default function Liga() {
           <div className="bg-secondary/10 border border-secondary/20 text-secondary text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full">
             🔒 Disponível no plano Premium
           </div>
+          <PremiumCTA />
         </div>
       ) : ranked.length === 0 ? (
         <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-12 flex flex-col items-center text-center gap-4">

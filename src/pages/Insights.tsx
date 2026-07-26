@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { isPremium } from '../lib/plan';
 import { TrainingLog, TrainingFeeling } from '../types';
+import PremiumCTA from '../components/PremiumCTA';
 
 const FEELINGS: { value: TrainingFeeling; label: string; emoji: string }[] = [
   { value: 'otimo',   label: 'Ótimo',   emoji: '🔥' },
@@ -109,6 +110,7 @@ export default function Insights() {
           <div className="bg-secondary/10 border border-secondary/20 text-secondary text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full">
             🔒 Disponível no plano Premium
           </div>
+          <PremiumCTA />
         </div>
       </div>
     );
