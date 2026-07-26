@@ -864,18 +864,22 @@ export default function Diario() {
 
       <AnimatePresence>
         {showForm && !editingLogId && (
+          /* Tela cheia — mesma razão do "Detalhes do Treino": um card no meio
+             do fluxo da página, abaixo do Placar, ficava fora da vista. */
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mx-6 mb-4 bg-surface-container rounded-3xl border border-outline-variant/10 p-6 flex flex-col gap-5"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[65] bg-background flex flex-col"
           >
-            <div className="flex justify-between items-center">
+            <div className="flex items-center justify-between p-6 pt-12">
               <h2 className="font-headline font-black text-lg text-on-surface uppercase italic">Novo Registro</h2>
-              <button onClick={closeForm}>
+              <button onClick={closeForm} className="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center">
                 <X className="w-5 h-5 text-on-surface-variant" />
               </button>
             </div>
+
+            <div className="flex-1 overflow-y-auto px-6 pb-8 flex flex-col gap-5">
 
             <div className="grid grid-cols-4 gap-2">
               {CATEGORIES.map(cat => (
@@ -1029,6 +1033,7 @@ export default function Diario() {
                 : <Check className="w-5 h-5" />}
               SALVAR NO DIÁRIO
             </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
