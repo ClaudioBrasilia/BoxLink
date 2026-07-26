@@ -48,6 +48,15 @@ export interface PieceSpec {
   /** true quando a peça é composta por duas unidades simétricas (par) */
   isPair?: boolean;
   /**
+   * true para peças que ABRAÇAM o corpo (short, calça): depois do encaixe na
+   * caixa, cada linha da peça é ajustada à largura real do corpo naquela
+   * altura (ver bodyProfile.ts). Sem isso, a mesma caixa que acerta a
+   * panturrilha aberta deixa a peça larga demais no quadril e na coxa.
+   * Não usar em camiseta/jaqueta: as mangas saem do tronco e seriam
+   * espremidas contra ele.
+   */
+  conformToBody?: boolean;
+  /**
    * Caixas-alvo de CADA unidade do par (esquerda/direita), medidas nos
    * membros reais da base. Quando presente, o encaixe separa a arte no vão
    * central e posiciona cada unidade no seu membro — independente de como a
@@ -136,22 +145,26 @@ const MASCULINO: PieceSpec[] = [
     id: 'M-04',
     name: 'Short',
     avatarBase: 'masculina',
-    box: { x1: 355, x2: 670, y1: 770, y2: 1020 },
+    box: { x1: 367, x2: 657, y1: 770, y2: 1020 },
     anchor: 'Cós alinhado ao cós do short da base (y ≈ 775); barra das pernas no meio da coxa (y ≈ 1015, mesma barra do short da base).',
-    sizeRelative: 'Largura = largura do quadril (x ≈ 367–656); Altura = cós até meio da coxa.',
+    sizeRelative: 'Largura = quadril/coxa REAIS da base nessa faixa (x 367–657, medidos na silhueta); Altura = cós até meio da coxa.',
     cutouts: ['Cintura (abertura superior)', '2 barras de perna (saídas inferiores, esquerda e direita)'],
+    conformToBody: true,
   },
   {
     id: 'M-05',
     name: 'Calça',
     avatarBase: 'masculina',
-    // Largura estendida até o vão dos PÉS (x 337–685): as pernas da base
-    // abrem em direção aos pés, então uma caixa só da largura do quadril
-    // deixa as panturrilhas escaparem. Ver F-05.
-    box: { x1: 330, x2: 695, y1: 765, y2: 1445 },
-    anchor: 'Cós cobrindo o cós do short da base (y ≈ 765); barra das pernas no tornozelo (y ≈ 1440), acompanhando a pose de pernas abertas.',
-    sizeRelative: 'Largura = vão dos pés da base (≈ 365 px); Altura = cós até tornozelo.',
+    // Largura = envelope REAL das pernas entre o cós e o tornozelo
+    // (x 367–657, medido na silhueta). A caixa antiga ia até o vão dos PÉS
+    // (x 330–695) para não deixar a panturrilha escapar, mas isso deixava a
+    // calça ~25% mais larga que o corpo no quadril e na coxa. Quem cuida da
+    // variação de largura ao longo da perna agora é `conformToBody`.
+    box: { x1: 367, x2: 657, y1: 765, y2: 1435 },
+    anchor: 'Cós cobrindo o cós do short da base (y ≈ 765); barra das pernas no tornozelo (y ≈ 1435, logo acima de onde os pés se abrem).',
+    sizeRelative: 'Largura = pernas reais da base (≈ 290 px); Altura = cós até tornozelo.',
     cutouts: ['Cintura (abertura superior)', '2 barras de perna nos tornozelos (esquerda e direita)'],
+    conformToBody: true,
   },
   {
     id: 'M-06',
@@ -252,23 +265,27 @@ const FEMININO: PieceSpec[] = [
     id: 'F-04',
     name: 'Short',
     avatarBase: 'feminina',
-    box: { x1: 340, x2: 685, y1: 715, y2: 1000 },
+    box: { x1: 344, x2: 680, y1: 715, y2: 1000 },
     anchor: 'Cós de cintura alta alinhado ao cós do short da base (y ≈ 725); barra das pernas no meio da coxa (y ≈ 1000).',
-    sizeRelative: 'Largura = largura do quadril (x ≈ 350–674); Altura = cós até meio da coxa.',
+    sizeRelative: 'Largura = quadril/coxa REAIS da base nessa faixa (x 344–680, medidos na silhueta); Altura = cós até meio da coxa.',
     cutouts: ['Cintura (abertura superior)', '2 barras de perna (esquerda e direita)'],
+    conformToBody: true,
   },
   {
     id: 'F-05',
     name: 'Calça / Legging',
     avatarBase: 'feminina',
-    // Largura estendida até o vão dos PÉS (x 303–721), não só do quadril: a
-    // base feminina fica em "A" (pernas abertas) e as panturrilhas/pés
-    // escapam de uma caixa estreita — a arte da legging (pernas afunilando)
-    // esticada nesta caixa cobre as pernas inteiras até o tornozelo.
-    box: { x1: 305, x2: 720, y1: 705, y2: 1445 },
-    anchor: 'Cós de cintura alta cobrindo o cós do short da base (y ≈ 705); barra das pernas no tornozelo (y ≈ 1440), acompanhando a pose de pernas abertas.',
-    sizeRelative: 'Largura = vão dos pés da base (≈ 415 px); Altura = cós até tornozelo.',
+    // Largura = envelope REAL das pernas entre o cós e o tornozelo
+    // (x 331–694, medido na silhueta). A caixa antiga ia até o vão dos PÉS
+    // (x 305–720) para não deixar a panturrilha escapar; o efeito colateral
+    // era a legging sobrar ~40 px de cada lado no quadril e na coxa — mais
+    // larga que o próprio corpo. Quem acompanha o afunilamento da perna
+    // agora é `conformToBody`, linha a linha.
+    box: { x1: 331, x2: 694, y1: 705, y2: 1445 },
+    anchor: 'Cós de cintura alta cobrindo o cós do short da base (y ≈ 705); barra das pernas no tornozelo (y ≈ 1445, logo acima de onde os pés se abrem).',
+    sizeRelative: 'Largura = pernas reais da base (≈ 363 px); Altura = cós até tornozelo.',
     cutouts: ['Cintura (abertura superior)', '2 barras de perna nos tornozelos (esquerda e direita)'],
+    conformToBody: true,
   },
   {
     id: 'F-06',

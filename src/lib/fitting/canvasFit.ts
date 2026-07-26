@@ -8,6 +8,7 @@
 
 import { CANVAS, PieceSpec } from './pieceSpecs';
 import { computeFitTransform, detectContentBBox, validateFit, removeBorderConnectedBackground, FitMode, FitTransform, Box } from './geometry';
+import { computeConformMaps, invertRowMap, mapRowX, RowSpan } from './bodyProfile';
 
 /** Imagem de peça aceita pelas funções de encaixe (foto ou canvas processado) */
 export type PieceImageSource = HTMLImageElement | HTMLCanvasElement;
@@ -178,6 +179,93 @@ function drawPairUnit(
   return t;
 }
 
+/** Ruído abaixo desta largura não conta como perna nem como vão entre pernas. */
+const MIN_ROW_FEATURE = 4;
+
+/**
+ * O que a peça ocupa em cada linha: as bordas externas e, quando a linha se
+ * divide em duas pernas, o maior vão interno. Linhas vazias viram null.
+ */
+function rowSpans(data: ImageData, alphaThreshold = 40): Array<RowSpan | null> {
+  const { width, height, data: rgba } = data;
+  const spans: Array<RowSpan | null> = [];
+
+  for (let y = 0; y < height; y++) {
+    const row = y * width * 4;
+    const runs: Array<{ x1: number; x2: number }> = [];
+    let start = -1;
+    for (let x = 0; x <= width; x++) {
+      const opaque = x < width && rgba[row + x * 4 + 3] > alphaThreshold;
+      if (opaque && start < 0) start = x;
+      if (!opaque && start >= 0) {
+        if (x - start >= MIN_ROW_FEATURE) runs.push({ x1: start, x2: x });
+        start = -1;
+      }
+    }
+
+    if (runs.length === 0) {
+      spans.push(null);
+      continue;
+    }
+
+    let gap: { x1: number; x2: number } | null = null;
+    for (let i = 1; i < runs.length; i++) {
+      const candidate = { x1: runs[i - 1].x2, x2: runs[i].x1 };
+      if (candidate.x2 - candidate.x1 < MIN_ROW_FEATURE) continue;
+      if (!gap || candidate.x2 - candidate.x1 > gap.x2 - gap.x1) gap = candidate;
+    }
+
+    spans.push({ x1: runs[0].x1, x2: runs[runs.length - 1].x2, gap });
+  }
+  return spans;
+}
+
+/**
+ * Molda uma peça já encaixada à silhueta real da base: em cada linha, as
+ * bordas da peça são levadas às bordas do corpo naquela altura — as externas
+ * e, abaixo da virilha, também as internas de cada perna (ver bodyProfile).
+ * É o que faz uma calça VESTIR a perna em vez de apenas preencher o
+ * retângulo da caixa: a mesma caixa que cobre a panturrilha aberta sobraria
+ * no quadril e na coxa.
+ *
+ * A reamostragem é bilinear e só em x: linhas continuam sendo linhas, então
+ * a barra, o cós e as costuras horizontais da arte não entortam.
+ */
+export function conformCanvasToBody(canvas: HTMLCanvasElement, spec: PieceSpec): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const src = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const maps = computeConformMaps(rowSpans(src), spec.avatarBase);
+  const { width, height } = src;
+  const out = ctx.createImageData(width, height);
+
+  for (let y = 0; y < height; y++) {
+    const row = y * width * 4;
+    const map = maps[y];
+    if (!map) {
+      out.data.set(src.data.subarray(row, row + width * 4), row);
+      continue;
+    }
+    const inverse = invertRowMap(map);
+    for (let x = 0; x < width; x++) {
+      const sample = mapRowX(inverse, x); // de onde na peça veio este pixel
+      if (sample < -0.5 || sample > width - 0.5) continue; // fora da arte → transparente
+      const i0 = Math.min(width - 1, Math.max(0, Math.floor(sample)));
+      const i1 = Math.min(width - 1, i0 + 1);
+      const frac = Math.min(1, Math.max(0, sample - i0));
+      const a = row + i0 * 4;
+      const b = row + i1 * 4;
+      const dst = row + x * 4;
+      for (let c = 0; c < 4; c++) {
+        out.data[dst + c] = src.data[a + c] * (1 - frac) + src.data[b + c] * frac;
+      }
+    }
+  }
+
+  ctx.putImageData(out, 0, 0);
+}
+
 /**
  * Reposiciona/escala a imagem de uma peça (PNG transparente 1024x1536,
  * ou um recorte apertado da peça) para que ocupe exatamente a CAIXA EXATA
@@ -254,6 +342,8 @@ export function fitPieceToCanvas(
     sourceWidth(img) * transform.scaleX,
     sourceHeight(img) * transform.scaleY
   );
+
+  if (spec.conformToBody) conformCanvasToBody(canvas, spec);
 
   return { canvas, spec, transform, detectedContentBox, wasAlreadyWellPositioned, warnings };
 }

@@ -22,8 +22,10 @@
 import { getPieceSpec, listPieceSpecs, PIECE_SPECS, PieceSpec, AvatarBaseId, CANVAS, ANATOMY_ZONES, BASE_WIDTHS } from './pieceSpecs';
 import { computeFitTransform, detectContentBBox, validateFit, applyTransformToBox, chooseFitMode, STRETCH_MAX_DISTORTION, STRETCH_MAX_DISTORTION_BODY } from './geometry';
 import type { Box, FitTransform, FitMode, FitValidation } from './geometry';
-import { loadImage, fitPieceToCanvas, composeAvatar, detectImageContentBox, getImageData, ensureTransparentBackground } from './canvasFit';
+import { loadImage, fitPieceToCanvas, composeAvatar, detectImageContentBox, getImageData, ensureTransparentBackground, conformCanvasToBody } from './canvasFit';
 import type { FitPieceResult, AvatarLayerInput, ComposeAvatarResult, PieceImageSource } from './canvasFit';
+import { BODY_PROFILE, bodySpanAt, bodyEnvelope, computeConformMaps, mapRowX, invertRowMap } from './bodyProfile';
+import type { BodyProfileSample, RowSpan, RowMap, ConformOptions } from './bodyProfile';
 
 export {
   getPieceSpec,
@@ -45,8 +47,15 @@ export {
   detectImageContentBox,
   getImageData,
   ensureTransparentBackground,
+  conformCanvasToBody,
+  BODY_PROFILE,
+  bodySpanAt,
+  bodyEnvelope,
+  computeConformMaps,
+  mapRowX,
+  invertRowMap,
 };
-export type { PieceSpec, AvatarBaseId, Box, FitTransform, FitMode, FitValidation, FitPieceResult, AvatarLayerInput, ComposeAvatarResult, PieceImageSource };
+export type { PieceSpec, AvatarBaseId, Box, FitTransform, FitMode, FitValidation, FitPieceResult, AvatarLayerInput, ComposeAvatarResult, PieceImageSource, BodyProfileSample, RowSpan, RowMap, ConformOptions };
 
 export interface FitClothingPieceParams {
   /** Base do avatar de destino */
