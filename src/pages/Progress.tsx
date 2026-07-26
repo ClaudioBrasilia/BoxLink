@@ -15,17 +15,16 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '../lib/utils';
 
-interface WodResult {
+// Normaliza duas fontes diferentes de histórico de WOD:
+//  • Box: wod_results + wods (RX/Scaled/Beginner)
+//  • Individual: training_logs (categoria 'wod', sem box) — não tem
+//    wod_results/wods, então cai nesta mesma lista pelo diário.
+interface WodHistoryItem {
   id: string;
-  wod_id: string;
+  name: string;
+  date: string | null;
   result: string;
-  type: 'RX' | 'Scaled' | 'Beginner';
-  created_at: string;
-  wods: {
-    name: string;
-    date: string;
-    type: string;
-  };
+  badge: string;
 }
 
 interface RewardHistory {
@@ -46,7 +45,7 @@ interface PR {
 
 export default function Progress() {
   const { user } = useAuth();
-  const [wodHistory, setWodHistory] = useState<WodResult[]>([]);
+  const [wodHistory, setWodHistory] = useState<WodHistoryItem[]>([]);
   const [rewardHistory, setRewardHistory] = useState<RewardHistory[]>([]);
   const [prs, setPrs] = useState<PR[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,12 +56,23 @@ export default function Progress() {
 
     const fetchData = async () => {
       try {
+        const wodQuery = user.accountType === 'individual'
+          ? supabase
+              .from('training_logs')
+              .select('id, title, date, result, wod_type')
+              .eq('user_id', user.id)
+              .eq('category', 'wod')
+              .not('result', 'is', null)
+              .order('date', { ascending: false })
+              .order('created_at', { ascending: false })
+          : supabase
+              .from('wod_results')
+              .select('*, wods(*)')
+              .eq('user_id', user.id)
+              .order('created_at', { ascending: false });
+
         const [wodRes, rewardRes, prRes] = await Promise.all([
-          supabase
-            .from('wod_results')
-            .select('*, wods(*)')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: false }),
+          wodQuery,
           supabase
             .from('reward_history')
             .select('*')
@@ -75,7 +85,24 @@ export default function Progress() {
             .order('date', { ascending: false })
         ]);
 
-        if (wodRes.data) setWodHistory(wodRes.data);
+        if (wodRes.data) {
+          const normalized: WodHistoryItem[] = user.accountType === 'individual'
+            ? (wodRes.data as any[]).map(r => ({
+                id: r.id,
+                name: r.title || 'WOD',
+                date: r.date,
+                result: r.result || '—',
+                badge: r.wod_type || 'WOD',
+              }))
+            : (wodRes.data as any[]).map(r => ({
+                id: r.id,
+                name: r.wods?.name ?? 'WOD',
+                date: r.wods?.date ?? null,
+                result: r.result,
+                badge: r.type ?? '—',
+              }));
+          setWodHistory(normalized);
+        }
         if (rewardRes.data) setRewardHistory(rewardRes.data);
         if (prRes.data) setPrs(prRes.data);
       } catch (error) {
@@ -86,7 +113,7 @@ export default function Progress() {
     };
 
     fetchData();
-  }, [user?.id]);
+  }, [user?.id, user?.accountType]);
 
   const challengeHistory = rewardHistory.filter(h => h.type === 'challenge');
   
@@ -165,28 +192,28 @@ export default function Progress() {
               </div>
             ) : (
               wodHistory.map((result) => (
-                <div 
+                <div
                   key={result.id}
                   className="bg-surface-container-low p-5 rounded-3xl border border-outline-variant/10 flex items-center gap-4 group hover:border-primary/50 transition-all"
                 >
                   <div className={cn(
                     "w-12 h-12 rounded-2xl flex items-center justify-center font-headline font-black italic",
-                    result.type === 'RX' ? "bg-primary/20 text-primary" :
-                    result.type === 'Scaled' ? "bg-secondary-container text-on-secondary-container" :
+                    result.badge === 'RX' ? "bg-primary/20 text-primary" :
+                    result.badge === 'Scaled' ? "bg-secondary-container text-on-secondary-container" :
                     "bg-surface-container-highest text-on-surface-variant"
                   )}>
-                    {result.type?.[0] ?? '?'}
+                    {result.badge?.[0] ?? '?'}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-headline font-bold text-on-surface truncate uppercase italic">{result.wods?.name ?? 'WOD'}</h3>
+                    <h3 className="font-headline font-bold text-on-surface truncate uppercase italic">{result.name}</h3>
                     <div className="flex items-center gap-2 text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
                       <Calendar className="w-3 h-3" />
-                      {result.wods?.date ? format(new Date(result.wods.date), 'dd MMM yyyy', { locale: ptBR }) : '—'}
+                      {result.date ? format(new Date(result.date), 'dd MMM yyyy', { locale: ptBR }) : '—'}
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-headline font-black text-primary italic text-lg">{result.result}</div>
-                    <div className="text-[8px] font-black text-on-surface-variant uppercase tracking-tighter">{result.type ?? '—'}</div>
+                    <div className="text-[8px] font-black text-on-surface-variant uppercase tracking-tighter">{result.badge ?? '—'}</div>
                   </div>
                 </div>
               ))
