@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Sparkles, Lock, TrendingUp, Activity, Dumbbell, Gauge, Crown, Moon } from 'lucide-react';
+import { Sparkles, Lock, TrendingUp, Activity, Dumbbell, Gauge, Crown, Moon, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -17,6 +17,10 @@ const FEELINGS: { value: TrainingFeeling; label: string; emoji: string }[] = [
 ];
 
 const parseLoad = (v?: number | null) => (typeof v === 'number' && v > 0 ? v : 0);
+
+const HEATMAP_WEEKS = 18;
+const DAY_MS = 86400000;
+const dateKey = (d: Date) => d.toLocaleDateString('en-CA');
 
 const SLEEP_BUCKETS: { key: string; label: string; test: (h: number) => boolean }[] = [
   { key: '<6h',  label: '< 6h',  test: h => h < 6 },
@@ -74,6 +78,52 @@ export default function Insights() {
       rpeBySleep[bucket.key].n += 1;
     });
 
+    // Streak (dias seguidos) e heatmap de consistência
+    const activityDates = Array.from(new Set(logs.map(l => l.date))).sort();
+    let currentStreak = 0;
+    let longestStreak = 0;
+    if (activityDates.length) {
+      const todayStr = dateKey(new Date());
+      const yesterdayStr = dateKey(new Date(Date.now() - DAY_MS));
+      const desc = [...activityDates].reverse();
+      if (desc[0] === todayStr || desc[0] === yesterdayStr) {
+        currentStreak = 1;
+        for (let i = 1; i < desc.length; i++) {
+          const prev = new Date(desc[i - 1] + 'T00:00:00').getTime();
+          const curr = new Date(desc[i] + 'T00:00:00').getTime();
+          if (prev - curr === DAY_MS) currentStreak++; else break;
+        }
+      }
+      let run = 1;
+      longestStreak = 1;
+      for (let i = 1; i < activityDates.length; i++) {
+        const prev = new Date(activityDates[i - 1] + 'T00:00:00').getTime();
+        const curr = new Date(activityDates[i] + 'T00:00:00').getTime();
+        if (curr - prev === DAY_MS) { run++; longestStreak = Math.max(longestStreak, run); }
+        else run = 1;
+      }
+    }
+
+    const countByDate: Record<string, number> = {};
+    logs.forEach(l => { countByDate[l.date] = (countByDate[l.date] || 0) + 1; });
+    const today = new Date();
+    const endOfWeek = new Date(today);
+    endOfWeek.setDate(endOfWeek.getDate() + (6 - endOfWeek.getDay())); // sábado da semana atual
+    const totalDays = HEATMAP_WEEKS * 7;
+    const start = new Date(endOfWeek);
+    start.setDate(start.getDate() - totalDays + 1); // domingo, início da 1ª semana
+    const heatmapCols: { date: string; count: number }[][] = [];
+    for (let w = 0; w < HEATMAP_WEEKS; w++) {
+      const col: { date: string; count: number }[] = [];
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(start);
+        day.setDate(day.getDate() + w * 7 + d);
+        const key = dateKey(day);
+        col.push({ date: key, count: countByDate[key] || 0 });
+      }
+      heatmapCols.push(col);
+    }
+
     // Evolução de carga por exercício
     const byExercise: Record<string, { first: number; last: number; firstDate: string; lastDate: string; name: string }> = {};
     logs.filter(l => l.category === 'forca' && l.exercise && parseLoad(l.load_kg))
@@ -101,7 +151,10 @@ export default function Insights() {
     const trainingLogs = logs.filter(l => l.category !== 'nota').length;
     const perWeek = weeks.size ? trainingLogs / weeks.size : 0;
 
-    return { total: trainingLogs, avgRpe, feelingCount, rpeByFeeling, rpeBySleep, loadEvolution, perWeek };
+    return {
+      total: trainingLogs, avgRpe, feelingCount, rpeByFeeling, rpeBySleep, loadEvolution, perWeek,
+      currentStreak, longestStreak, heatmapCols,
+    };
   }, [logs]);
 
   // ── Bloqueio premium ────────────────────────────────────────────────────────
@@ -119,7 +172,7 @@ export default function Insights() {
             evolução de carga por exercício.
           </p>
           <div className="w-full flex flex-col gap-2 mt-2 opacity-60">
-            {['RPE médio por sensação', 'Sono x desempenho', 'Evolução de carga (PRs)', 'Frequência semanal'].map(t => (
+            {['RPE médio por sensação', 'Sono x desempenho', 'Evolução de carga (PRs)', 'Consistência (heatmap)'].map(t => (
               <div key={t} className="bg-surface-container-highest/40 rounded-2xl px-4 py-3 flex items-center gap-2 blur-[1px]">
                 <Lock className="w-3.5 h-3.5 text-on-surface-variant" />
                 <span className="text-[11px] font-black uppercase tracking-widest text-on-surface-variant">{t}</span>
@@ -141,6 +194,7 @@ export default function Insights() {
 
   const hasData = stats.total > 0;
   const maxFeeling = Math.max(1, ...Object.values(stats.feelingCount));
+  const todayStr = dateKey(new Date());
 
   return (
     <div className="min-h-screen bg-background p-4 pt-8 pb-32 flex flex-col gap-6">
@@ -162,6 +216,44 @@ export default function Insights() {
             <Tile icon={Gauge} value={stats.avgRpe ? stats.avgRpe.toFixed(1) : '—'} label="RPE médio" hint="Esforço percebido (0–10)" />
             <Tile icon={TrendingUp} value={stats.perWeek ? stats.perWeek.toFixed(1) : '—'} label="Por semana" hint="Média nas semanas ativas" />
           </div>
+
+          {/* Streak e heatmap de consistência */}
+          <Card title="Consistência" icon={Flame} subtitle="Seus treinos nas últimas semanas">
+            <div className="flex items-center gap-5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-base leading-none">🔥</span>
+                <span className="text-lg font-headline font-black text-on-surface italic leading-none">{stats.currentStreak}</span>
+                <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">seguidos</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-lg font-headline font-black text-secondary italic leading-none">{stats.longestStreak}</span>
+                <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">recorde</span>
+              </div>
+            </div>
+            <div className="overflow-x-auto -mx-1 px-1">
+              <div className="flex gap-[3px] w-max">
+                {stats.heatmapCols.map((col, i) => (
+                  <div key={i} className="flex flex-col gap-[3px]">
+                    {col.map(day => {
+                      const isFuture = day.date > todayStr;
+                      return (
+                        <div
+                          key={day.date}
+                          title={isFuture ? undefined : `${day.date}${day.count ? ` • ${day.count} registro(s)` : ' • sem treino'}`}
+                          className={cn(
+                            'w-2.5 h-2.5 rounded-[3px]',
+                            isFuture
+                              ? 'opacity-0'
+                              : day.count >= 2 ? 'bg-primary' : day.count === 1 ? 'bg-primary/40' : 'bg-surface-container-highest/40'
+                          )}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
 
           {/* Distribuição de sensação */}
           <Card title="Como você se sente" icon={Activity} subtitle="Quantas vezes você registrou cada sensação após o treino">
