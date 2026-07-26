@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Sparkles, Lock, TrendingUp, Activity, Dumbbell, Gauge, Crown } from 'lucide-react';
+import { Sparkles, Lock, TrendingUp, Activity, Dumbbell, Gauge, Crown, Moon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -17,6 +17,13 @@ const FEELINGS: { value: TrainingFeeling; label: string; emoji: string }[] = [
 ];
 
 const parseLoad = (v?: number | null) => (typeof v === 'number' && v > 0 ? v : 0);
+
+const SLEEP_BUCKETS: { key: string; label: string; test: (h: number) => boolean }[] = [
+  { key: '<6h',  label: '< 6h',  test: h => h < 6 },
+  { key: '6-7h', label: '6–7h',  test: h => h >= 6 && h < 7 },
+  { key: '7-8h', label: '7–8h',  test: h => h >= 7 && h < 8 },
+  { key: '8h+',  label: '8h+',   test: h => h >= 8 },
+];
 
 export default function Insights() {
   const { user } = useAuth();
@@ -55,6 +62,18 @@ export default function Insights() {
       rpeByFeeling[l.feeling].n += 1;
     });
 
+    // RPE médio por faixa de horas de sono — sono x desempenho
+    const rpeBySleep: Record<string, { sum: number; n: number }> = {};
+    logs.forEach(l => {
+      if (typeof l.sleep_hours !== 'number' || l.sleep_hours <= 0) return;
+      if (typeof l.rpe !== 'number' || l.rpe <= 0) return;
+      const bucket = SLEEP_BUCKETS.find(b => b.test(l.sleep_hours!));
+      if (!bucket) return;
+      (rpeBySleep[bucket.key] ||= { sum: 0, n: 0 });
+      rpeBySleep[bucket.key].sum += l.rpe;
+      rpeBySleep[bucket.key].n += 1;
+    });
+
     // Evolução de carga por exercício
     const byExercise: Record<string, { first: number; last: number; firstDate: string; lastDate: string; name: string }> = {};
     logs.filter(l => l.category === 'forca' && l.exercise && parseLoad(l.load_kg))
@@ -82,7 +101,7 @@ export default function Insights() {
     const trainingLogs = logs.filter(l => l.category !== 'nota').length;
     const perWeek = weeks.size ? trainingLogs / weeks.size : 0;
 
-    return { total: trainingLogs, avgRpe, feelingCount, rpeByFeeling, loadEvolution, perWeek };
+    return { total: trainingLogs, avgRpe, feelingCount, rpeByFeeling, rpeBySleep, loadEvolution, perWeek };
   }, [logs]);
 
   // ── Bloqueio premium ────────────────────────────────────────────────────────
@@ -100,7 +119,7 @@ export default function Insights() {
             evolução de carga por exercício.
           </p>
           <div className="w-full flex flex-col gap-2 mt-2 opacity-60">
-            {['RPE médio por sensação', 'Evolução de carga (PRs)', 'Frequência semanal'].map(t => (
+            {['RPE médio por sensação', 'Sono x desempenho', 'Evolução de carga (PRs)', 'Frequência semanal'].map(t => (
               <div key={t} className="bg-surface-container-highest/40 rounded-2xl px-4 py-3 flex items-center gap-2 blur-[1px]">
                 <Lock className="w-3.5 h-3.5 text-on-surface-variant" />
                 <span className="text-[11px] font-black uppercase tracking-widest text-on-surface-variant">{t}</span>
@@ -175,6 +194,24 @@ export default function Insights() {
                   return (
                     <div key={f.value} className="flex items-center justify-between bg-surface-container-highest/30 rounded-xl px-4 py-2.5">
                       <span className="text-[11px] font-bold text-on-surface uppercase italic">{f.emoji} {f.label}</span>
+                      <span className="text-sm font-headline font-black text-primary italic">RPE {avg.toFixed(1)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
+          {/* Sono x desempenho */}
+          {Object.keys(stats.rpeBySleep).length > 0 && (
+            <Card title="Sono x desempenho" icon={Moon} subtitle="RPE médio conforme quantas horas você dormiu na noite anterior">
+              <div className="flex flex-col gap-2">
+                {SLEEP_BUCKETS.filter(b => stats.rpeBySleep[b.key]).map(b => {
+                  const r = stats.rpeBySleep[b.key];
+                  const avg = r.sum / r.n;
+                  return (
+                    <div key={b.key} className="flex items-center justify-between bg-surface-container-highest/30 rounded-xl px-4 py-2.5">
+                      <span className="text-[11px] font-bold text-on-surface uppercase italic">{b.label}</span>
                       <span className="text-sm font-headline font-black text-primary italic">RPE {avg.toFixed(1)}</span>
                     </div>
                   );

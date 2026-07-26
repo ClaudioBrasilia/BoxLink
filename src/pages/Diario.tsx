@@ -112,6 +112,7 @@ export default function Diario() {
   const [loadKg, setLoadKg] = useState('');
   const [rpe, setRpe] = useState(0);
   const [feeling, setFeeling] = useState<TrainingFeeling | null>(null);
+  const [sleepHours, setSleepHours] = useState('');
   const [notes, setNotes] = useState('');
   const [postToPlacar, setPostToPlacar] = useState(true);
   const [placarScaling, setPlacarScaling] = useState<'rx' | 'scaled'>('rx');
@@ -323,7 +324,7 @@ export default function Diario() {
   const resetForm = () => {
     setTitle(''); setDescription(''); setResult('');
     setExercise(''); setLoadKg(''); setRpe(0);
-    setFeeling(null); setNotes(''); setWodType('FOR TIME');
+    setFeeling(null); setSleepHours(''); setNotes(''); setWodType('FOR TIME');
     setEffortData(null); setPostToPlacar(true); setPlacarScaling('rx');
     setEditingLogId(null);
   };
@@ -348,6 +349,7 @@ export default function Diario() {
           result: result.trim() || null,
           rpe: rpe > 0 ? rpe : null,
           feeling,
+          sleep_hours: sleepHours ? parseLoad(sleepHours) : null,
           notes: notes.trim() || null,
         }).eq('id', editingLogId);
         if (error) throw error;
@@ -398,6 +400,7 @@ export default function Diario() {
         load_kg: category === 'forca' && loadKg ? parseFloat(loadKg.replace(',', '.')) : null,
         rpe: rpe > 0 ? rpe : null,
         feeling,
+        sleep_hours: sleepHours ? parseLoad(sleepHours) : null,
         notes: notes.trim() || null,
         hr_avg: eff?.avgBpm ?? null,
         hr_max: eff?.maxBpm ?? null,
@@ -695,6 +698,22 @@ export default function Diario() {
     </div>
   );
 
+  const sleepSection = (
+    <div className="flex flex-col gap-2">
+      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">
+        Horas de sono (noite anterior)
+      </label>
+      <input
+        type="text"
+        inputMode="decimal"
+        placeholder="Ex: 7.5"
+        value={sleepHours}
+        onChange={e => setSleepHours(e.target.value)}
+        className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+      />
+    </div>
+  );
+
   const notesSection = (
     <textarea
       placeholder="Anotações (sono, dieta, dores, observações...)"
@@ -846,6 +865,7 @@ export default function Diario() {
 
               {rpeSection}
               {feelingSection}
+              {sleepSection}
               {notesSection}
 
               <button
@@ -1022,6 +1042,7 @@ export default function Diario() {
 
             {rpeSection}
             {feelingSection}
+            {sleepSection}
             {notesSection}
 
             <button
