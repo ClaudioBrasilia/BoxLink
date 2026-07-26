@@ -134,6 +134,10 @@ export default function Diario() {
 
   const [joinRequest, setJoinRequest] = useState<{ id: string; status: string } | null>(null);
   const [sendingJoin, setSendingJoin] = useState(false);
+  const [showBoxPicker, setShowBoxPicker] = useState(false);
+  const [boxes, setBoxes] = useState<{ id: string; name: string; logo?: string | null }[]>([]);
+  const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
+  const [loadingBoxes, setLoadingBoxes] = useState(false);
 
   const premium = isPremium(user);
   const maxDuelFriends = planLimits(user).maxDuelFriends;
@@ -185,17 +189,39 @@ export default function Diario() {
       .then(({ data }) => { if (data) setJoinRequest(data); });
   }, [user]);
 
+  // Boxes cadastrados (hoje só existe um, mas a tela já é um seletor,
+  // preparada para quando houver mais).
+  const loadBoxes = async () => {
+    setLoadingBoxes(true);
+    try {
+      const { data } = await supabase.from('box_settings').select('id, name, logo');
+      const list = data || [];
+      setBoxes(list);
+      if (list.length === 1) setSelectedBoxId(list[0].id);
+    } catch (err) {
+      console.error('Error loading boxes:', err);
+    } finally {
+      setLoadingBoxes(false);
+    }
+  };
+
+  const openBoxPicker = () => {
+    setShowBoxPicker(true);
+    if (boxes.length === 0) loadBoxes();
+  };
+
   const handleJoinBox = async () => {
-    if (!user) return;
+    if (!user || !selectedBoxId) return;
     setSendingJoin(true);
     try {
       const { data, error } = await supabase
         .from('box_join_requests')
-        .insert({ user_id: user.id })
+        .insert({ user_id: user.id, box_id: selectedBoxId })
         .select('id, status')
         .single();
       if (error) throw error;
       setJoinRequest(data);
+      setShowBoxPicker(false);
       toast.success('Pedido enviado! O admin do box vai analisar. 🤝');
     } catch (err: any) {
       console.error('Error requesting box join:', err);
@@ -1170,16 +1196,73 @@ export default function Diario() {
                   Seu último pedido foi recusado — você pode tentar novamente
                 </p>
               )}
-              <button
-                onClick={handleJoinBox}
-                disabled={sendingJoin}
-                className="w-full bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-black text-sm uppercase italic border border-outline-variant/10 flex items-center justify-center gap-2 disabled:opacity-40 hover:border-primary/40 transition-all"
-              >
-                {sendingJoin
-                  ? <div className="w-4 h-4 border-2 border-on-surface border-t-transparent rounded-full animate-spin" />
-                  : <Building2 className="w-5 h-5" />}
-                QUERO ENTRAR NO BOX
-              </button>
+
+              {!showBoxPicker ? (
+                <button
+                  onClick={openBoxPicker}
+                  className="w-full bg-surface-container-highest text-on-surface py-4 rounded-2xl font-headline font-black text-sm uppercase italic border border-outline-variant/10 flex items-center justify-center gap-2 hover:border-primary/40 transition-all"
+                >
+                  <Building2 className="w-5 h-5" />
+                  QUERO ENTRAR NO BOX
+                </button>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <p className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">
+                    Escolha o box
+                  </p>
+                  {loadingBoxes ? (
+                    <div className="flex justify-center py-6">
+                      <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : boxes.length === 0 ? (
+                    <p className="text-center text-on-surface-variant text-xs font-bold uppercase py-4">
+                      Nenhum box cadastrado ainda
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {boxes.map(box => (
+                        <button
+                          key={box.id}
+                          onClick={() => setSelectedBoxId(box.id)}
+                          className={cn(
+                            'flex items-center gap-3 px-4 py-3 rounded-2xl border transition-all text-left',
+                            selectedBoxId === box.id
+                              ? 'bg-primary/10 border-primary/40'
+                              : 'bg-surface-container-highest border-transparent'
+                          )}
+                        >
+                          {box.logo ? (
+                            <img src={box.logo} alt={box.name} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <Building2 className="w-4 h-4 text-primary" />
+                            </div>
+                          )}
+                          <span className="text-sm font-bold text-on-surface uppercase italic truncate">{box.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowBoxPicker(false)}
+                      className="flex-1 py-3 rounded-2xl border border-outline-variant/20 text-on-surface-variant font-headline font-black text-xs uppercase italic hover:border-primary/30 transition-all"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleJoinBox}
+                      disabled={sendingJoin || !selectedBoxId}
+                      className="flex-1 bg-primary text-background py-3 rounded-2xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
+                    >
+                      {sendingJoin
+                        ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
+                        : <Building2 className="w-4 h-4" />}
+                      Confirmar Pedido
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </section>

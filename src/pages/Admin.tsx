@@ -395,7 +395,7 @@ export default function Admin() {
         // Conta vira aluno do box mantendo histórico, pontos, PRs e diário
         const { error: profileError } = await supabase
           .from('profiles')
-          .update({ account_type: 'box', status: 'approved' })
+          .update({ account_type: 'box', status: 'approved', box_id: request.box_id ?? null })
           .eq('id', request.user_id);
         if (profileError) throw profileError;
       }
