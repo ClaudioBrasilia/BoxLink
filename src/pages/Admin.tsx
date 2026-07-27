@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  LayoutDashboard, Users, MapPin, Calendar, Megaphone, Plus, Settings, 
-  ChevronRight, ChevronDown, Activity, Check, X, Shield, UserPlus, 
+import {
+  LayoutDashboard, Users, MapPin, Calendar, Megaphone, Plus, Settings,
+  ChevronRight, ChevronDown, Activity, Check, X, Shield, UserPlus,
   ImageIcon, ShoppingBag, Tv, Trophy, History, Search, Filter,
-  Clock, ToggleLeft, ToggleRight, Trash2, Edit2, Save, Camera, Upload, Loader2
+  Clock, ToggleLeft, ToggleRight, Trash2, Edit2, Save, Camera, Upload, Loader2,
+  Building2
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User, BoxSettings, Schedule, Item, Duel, Wod, VisitorPermissions } from '../types';
@@ -114,6 +115,7 @@ export default function Admin() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [accountTypeFilter, setAccountTypeFilter] = useState<string>('all');
   const [uploading, setUploading] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
@@ -221,6 +223,7 @@ export default function Admin() {
         createdAt: u.created_at,
         plan: u.plan || 'free',
         planExpiresAt: u.plan_expires_at || null,
+        accountType: u.account_type || 'box',
       }));
       setUsers(mappedUsers);
       const roles: Record<string, string> = {};
@@ -764,17 +767,21 @@ export default function Admin() {
     const matchesSearch = (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (u.email || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || u.status === statusFilter;
     const matchesRole = roleFilter === 'all' || u.role === roleFilter;
-    return matchesSearch && matchesStatus && matchesRole;
+    const matchesAccountType = accountTypeFilter === 'all' || (u.accountType || 'box') === accountTypeFilter;
+    return matchesSearch && matchesStatus && matchesRole && matchesAccountType;
   });
 
   const pendingUsers = users.filter(u => {
     const matchesSearch = (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (u.email || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRole = roleFilter === 'all' || u.role === roleFilter;
-    return matchesSearch && matchesRole && u.status === 'pending';
+    const matchesAccountType = accountTypeFilter === 'all' || (u.accountType || 'box') === accountTypeFilter;
+    return matchesSearch && matchesRole && matchesAccountType && u.status === 'pending';
   });
 
   const approvedUsers = filteredUsers.filter(u => u.status === 'approved');
   const rejectedUsers = filteredUsers.filter(u => u.status === 'rejected');
+  const individualCount = users.filter(u => u.accountType === 'individual').length;
+  const boxCount = users.length - individualCount;
 
   const historicalFrequencyRanking = approvedUsers.map(u => {
     const periodCheckins = u.checkins.filter(c => {
@@ -809,6 +816,36 @@ export default function Admin() {
         {/* ── USUÁRIOS ── */}
         {activeTab === 'users' && (
           <motion.div key="users" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="flex flex-col gap-4">
+            {/* Contagem separada: útil pra medir conversão de campanhas (ex: TikTok) do modo individual */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setAccountTypeFilter(f => f === 'individual' ? 'all' : 'individual')}
+                className={cn("p-4 rounded-3xl border flex items-center gap-3 transition-all",
+                  accountTypeFilter === 'individual' ? "bg-primary/10 border-primary/40" : "bg-surface-container-low border-outline-variant/10")}
+              >
+                <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <UserPlus className="w-5 h-5 text-primary" />
+                </div>
+                <div className="text-left">
+                  <p className="font-headline font-black text-xl text-on-surface italic leading-none">{individualCount}</p>
+                  <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">Individuais</p>
+                </div>
+              </button>
+              <button
+                onClick={() => setAccountTypeFilter(f => f === 'box' ? 'all' : 'box')}
+                className={cn("p-4 rounded-3xl border flex items-center gap-3 transition-all",
+                  accountTypeFilter === 'box' ? "bg-secondary/10 border-secondary/40" : "bg-surface-container-low border-outline-variant/10")}
+              >
+                <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center flex-shrink-0">
+                  <Building2 className="w-5 h-5 text-secondary" />
+                </div>
+                <div className="text-left">
+                  <p className="font-headline font-black text-xl text-on-surface italic leading-none">{boxCount}</p>
+                  <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">Do Box</p>
+                </div>
+              </button>
+            </div>
+
             <div className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 space-y-4">
               <div className="relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-on-surface-variant" />
@@ -835,6 +872,14 @@ export default function Admin() {
                     <option value="visitor">VISITANTES</option>
                   </select>
                 </div>
+                <div className="flex items-center gap-2 bg-surface-container-highest px-3 py-2 rounded-xl border border-outline-variant/10">
+                  <Building2 className="w-3 h-3 text-primary" />
+                  <select value={accountTypeFilter} onChange={(e) => setAccountTypeFilter(e.target.value)} className="bg-transparent border-none text-[10px] font-black uppercase tracking-widest focus:ring-0 p-0">
+                    <option value="all">TODAS AS CONTAS</option>
+                    <option value="individual">SÓ INDIVIDUAIS</option>
+                    <option value="box">SÓ DO BOX</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -855,6 +900,9 @@ export default function Admin() {
                         <div className="flex gap-2 mt-1">
                           <span className="bg-secondary/20 text-secondary text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">PENDENTE</span>
                           <span className="bg-surface-container-highest text-on-surface-variant text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">{u.role === 'admin' ? 'ADMIN' : u.role === 'coach' ? 'COACH' : 'ALUNO'}</span>
+                          <span className={cn("text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest", u.accountType === 'individual' ? "bg-primary/20 text-primary" : "bg-outline-variant/20 text-on-surface-variant")}>
+                            {u.accountType === 'individual' ? 'INDIVIDUAL' : 'BOX'}
+                          </span>
                         </div>
                         <div className="mt-3 flex flex-col gap-2">
                           <label className="text-[8px] text-on-surface-variant font-bold uppercase tracking-widest">DEFINIR CARGO:</label>
@@ -1019,6 +1067,9 @@ export default function Admin() {
                             <div className="flex flex-col items-end gap-2">
                               <span className={cn("text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest", u.role === 'visitor' ? "bg-secondary/20 text-secondary" : "bg-primary/20 text-primary")}>
                                 {u.role === 'visitor' ? 'VISITANTE' : u.role === 'admin' ? 'ADMIN' : u.role === 'coach' ? 'COACH' : 'ATIVO'}
+                              </span>
+                              <span className={cn("text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest", u.accountType === 'individual' ? "bg-primary/20 text-primary" : "bg-outline-variant/20 text-on-surface-variant")}>
+                                {u.accountType === 'individual' ? 'INDIVIDUAL' : 'BOX'}
                               </span>
                               {u.plan === 'premium' && (
                                 <span className="text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest bg-secondary/20 text-secondary">⭐ PREMIUM</span>
