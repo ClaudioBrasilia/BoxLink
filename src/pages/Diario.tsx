@@ -96,6 +96,12 @@ export default function Diario() {
   const toast = useToast();
   const navigate = useNavigate();
 
+  // Alunos de box também acessam o Diário (registro pessoal de treino), mas o
+  // Placar de WODs e o duelo por código de amigo são exclusivos do individual
+  // — sem isso, um aluno de box poluiria o placar/duelo que é só da comunidade
+  // individual.
+  const isIndividual = user?.accountType === 'individual';
+
   const [logs, setLogs] = useState<TrainingLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -166,7 +172,7 @@ export default function Diario() {
   useEffect(() => { if (user) loadLogs(); }, [user]);
 
   const loadMyPlacarWod = async () => {
-    if (!user) return;
+    if (!user || !isIndividual) return;
     const { data } = await supabase
       .from('daily_wod_results')
       .select('wod_name, wod_type, description, result, scaling')
@@ -352,7 +358,7 @@ export default function Diario() {
         }).eq('id', editingLogId);
         if (error) throw error;
 
-        if (result.trim()) {
+        if (isIndividual && result.trim()) {
           try {
             await postDailyWodResult({
               userId: user.id, wodName: title.trim(), wodType, result: result.trim(),
@@ -414,7 +420,7 @@ export default function Diario() {
       // nome/tipo/resultado que acabou de ser salvo no diário. Se o WOD já
       // tinha sido postado (definição), esta chamada grava o resultado na
       // MESMA linha — não cria uma segunda entrada.
-      if (category === 'wod' && postToPlacar && title.trim() && result.trim()) {
+      if (isIndividual && category === 'wod' && postToPlacar && title.trim() && result.trim()) {
         try {
           const outcome = await postDailyWodResult({
             userId: user.id, wodName: title.trim(), wodType, result: result.trim(), scaling: placarScaling,
@@ -481,7 +487,7 @@ export default function Diario() {
       await soloCheckin();
 
       let placarOutcome: Awaited<ReturnType<typeof postDailyWodResult>> | null = null;
-      if (wodResult) {
+      if (isIndividual && wodResult) {
         try {
           placarOutcome = await postDailyWodResult({
             userId: user.id, wodName, wodType: data.wodType, result: wodResult, scaling,
@@ -783,10 +789,14 @@ export default function Diario() {
         <Play className="w-5 h-5 text-primary flex-shrink-0" />
       </button>
 
-      <DailyWodPanel
-        onChange={loadMyPlacarWod}
-        refreshSignal={placarRefreshKey}
-      />
+      {/* Placar de WODs é a comunidade do individual — atleta de box já tem
+          Feed/Ranking/WOD do dia próprios do box, não deve poluir nem ver este. */}
+      {isIndividual && (
+        <DailyWodPanel
+          onChange={loadMyPlacarWod}
+          refreshSignal={placarRefreshKey}
+        />
+      )}
 
       <AnimatePresence>
         {showForm && editingLogId && (
@@ -957,7 +967,7 @@ export default function Diario() {
                     />
                   </div>
                 )}
-                {category === 'wod' && (
+                {isIndividual && category === 'wod' && (
                   <div className="bg-surface-container-highest/50 rounded-2xl p-4 flex flex-col gap-3 border border-outline-variant/10">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-2">
@@ -1039,6 +1049,9 @@ export default function Diario() {
         )}
       </AnimatePresence>
 
+      {/* Duelo por código é a forma do individual desafiar (sem roster de box).
+          Box já cria duelo em Duelos (busca entre atletas do próprio box). */}
+      {isIndividual && (
       <section className="mx-6 mb-6 bg-surface-container rounded-3xl border border-outline-variant/10 p-6 flex flex-col gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center">
@@ -1171,8 +1184,9 @@ export default function Diario() {
           )}
         </AnimatePresence>
       </section>
+      )}
 
-      {user?.accountType === 'individual' && (
+      {isIndividual && (
         <section className="mx-6 mb-6 bg-surface-container rounded-3xl border border-outline-variant/10 p-6 flex flex-col gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
