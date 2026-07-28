@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShoppingBag, ChevronRight } from 'lucide-react';
+import { ShoppingBag, Plus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
+import { cn } from '../lib/utils';
 
 // ─── Tipo do produto da loja ────────────────────────────────────────────────
 export interface ShopProduct {
@@ -93,81 +95,91 @@ export function useShopProducts(includeInactive = false) {
   return { products, loading, refetch: fetchProducts };
 }
 
-// ─── Banner do Dashboard ────────────────────────────────────────────────────
+// ─── Card da loja no Dashboard ──────────────────────────────────────────────
 
 interface ShopBannerProps {
   className?: string;
 }
 
 /**
- * Vitrine compacta no Dashboard: mostra os destaques em um scroller
- * horizontal e leva para a loja completa. Some quando não há produtos.
+ * Card estreito que fica ao lado do banner de patrocinadores.
+ * Mostra um único produto — o marcado como destaque, ou o primeiro da ordem.
+ * Toque abre a oferta direto. Some quando a loja está vazia (exceto p/ admin).
  */
 export default function ShopBanner({ className = '' }: ShopBannerProps) {
-  const { products } = useShopProducts();
+  const { products, loading } = useShopProducts();
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const isAdmin = user?.role === 'admin';
 
-  if (products.length === 0) return null;
+  // Enquanto carrega, não pisca nada na tela.
+  if (loading) return null;
 
-  // Destaques primeiro, depois o restante — no máximo 6 no banner.
-  const showcase = [...products]
-    .sort((a, b) => Number(b.featured) - Number(a.featured))
-    .slice(0, 6);
+  // Loja vazia: o atleta não vê nada; o admin vê o atalho para cadastrar.
+  if (products.length === 0) {
+    if (!isAdmin) return null;
+    return (
+      <button
+        onClick={() => navigate('/shop')}
+        aria-label="Cadastrar o primeiro produto da loja"
+        className={cn(
+          'w-[104px] shrink-0 rounded-2xl border border-dashed border-primary/30',
+          'bg-surface-container-low flex flex-col items-center justify-center gap-1.5 py-5',
+          'hover:border-primary/60 transition-all',
+          className
+        )}
+      >
+        <Plus className="w-5 h-5 text-primary" />
+        <span className="text-[8px] font-black text-on-surface-variant uppercase tracking-widest text-center leading-tight px-2">
+          Loja vazia
+        </span>
+      </button>
+    );
+  }
+
+  // Um produto só: o destaque, ou o primeiro da ordem de exibição.
+  const product = products.find(p => p.featured) || products[0];
+  const price = formatPrice(product.price);
 
   return (
-    <section
-      className={`bg-surface-container-low rounded-3xl border border-outline-variant/10 p-4 ${className}`}
+    <button
+      onClick={() => openProduct(product)}
+      aria-label={`${productCta(product)}: ${product.name}`}
+      className={cn(
+        'w-[104px] shrink-0 rounded-2xl overflow-hidden bg-surface-container-low',
+        'border border-outline-variant/20 text-left group',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+        'active:scale-[0.97] transition-transform',
+        className
+      )}
     >
-      <div
-        onClick={() => navigate('/shop')}
-        className="flex items-center justify-between mb-3 cursor-pointer group"
-      >
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-primary/20 rounded-xl flex items-center justify-center">
-            <ShoppingBag className="w-4 h-4 text-primary" />
-          </div>
-          <h3 className="text-[10px] font-black text-on-surface uppercase tracking-widest italic">
-            LOJA
-          </h3>
-        </div>
-        <div className="flex items-center gap-1 text-on-surface-variant group-hover:text-primary transition-colors">
-          <span className="text-[9px] font-black uppercase tracking-widest">VER TUDO</span>
-          <ChevronRight className="w-4 h-4" />
-        </div>
+      <div className="relative h-[68px] bg-surface-container-highest flex items-center justify-center overflow-hidden">
+        {product.image_url ? (
+          <img
+            src={product.image_url}
+            alt={product.name}
+            loading="lazy"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+        ) : (
+          <ShoppingBag className="w-6 h-6 text-on-surface-variant/30" />
+        )}
+        <span className="absolute top-1.5 left-1.5 bg-background/75 backdrop-blur-sm text-primary text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full">
+          Loja
+        </span>
       </div>
 
-      <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1">
-        {showcase.map((p) => {
-          const price = formatPrice(p.price);
-          return (
-            <button
-              key={p.id}
-              onClick={() => openProduct(p)}
-              className="shrink-0 w-28 text-left group/item focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-2xl"
-            >
-              <div className="w-28 h-28 rounded-2xl bg-surface-container-highest overflow-hidden flex items-center justify-center border border-outline-variant/10">
-                {p.image_url ? (
-                  <img
-                    src={p.image_url}
-                    alt={p.name}
-                    loading="lazy"
-                    className="w-full h-full object-cover group-hover/item:scale-105 transition-transform duration-500"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
-                ) : (
-                  <ShoppingBag className="w-7 h-7 text-on-surface-variant/30" />
-                )}
-              </div>
-              <p className="mt-2 text-[10px] font-bold text-on-surface uppercase italic leading-tight line-clamp-2">
-                {p.name}
-              </p>
-              {price && (
-                <p className="text-[10px] font-black text-primary mt-0.5">{price}</p>
-              )}
-            </button>
-          );
-        })}
+      <div className="px-2 py-2">
+        <p className="text-[8px] font-bold text-on-surface uppercase italic leading-tight line-clamp-2">
+          {product.name}
+        </p>
+        {price && (
+          <p className="text-[10px] font-headline font-black text-primary leading-none mt-1">
+            {price}
+          </p>
+        )}
       </div>
-    </section>
+    </button>
   );
 }
