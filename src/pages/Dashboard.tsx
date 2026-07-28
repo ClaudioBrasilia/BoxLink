@@ -13,6 +13,7 @@ import { addReward, checkAndPayWeeklyBonus, getRewardSettings } from '../utils/r
 import { useInactivity } from '../hooks/useInactivity';
 import HeartRateWidget from '../components/HeartRateWidget';
 import { AppSponsorBanner, useSponsors } from '../components/SponsorBanner';
+import ShopBanner from '../components/ShopBanner';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 
@@ -325,6 +326,8 @@ export default function Dashboard() {
       )}
 
       <AppSponsorBanner sponsors={sponsors} />
+
+      <ShopBanner />
 
       {activeChallenges.length > 0 && (
         <section className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-4 cursor-pointer hover:border-primary/30 transition-all"
