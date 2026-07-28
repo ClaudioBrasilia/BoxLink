@@ -28,6 +28,7 @@ import Insights from './pages/Insights';
 import Frequencia from './pages/Frequencia';
 import Install from './pages/Install';
 import Feed from './pages/Feed';
+import Shop from './pages/Shop';
 import { Shield, Lock } from 'lucide-react';
 import Onboarding from './components/Onboarding';
 import { ToastProvider } from './context/ToastContext';
@@ -148,6 +149,7 @@ function AppRoutes() {
           <Route path="avatar"      element={<VisitorGuard page="avatar"><AvatarCustomization /></VisitorGuard>} />
           <Route path="benchmarks"  element={<VisitorGuard page="benchmarks"><Benchmarks /></VisitorGuard>} />
           <Route path="feed"        element={<BoxOnlyGuard><VisitorGuard page="feed"><Feed /></VisitorGuard></BoxOnlyGuard>} />
+          <Route path="shop"        element={<Shop />} />
           <Route path="admin"       element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
           <Route path="coach"       element={<ProtectedRoute roles={['coach', 'admin']}><Coach /></ProtectedRoute>} />
         </Route>
