@@ -28,6 +28,7 @@ import { createNotification } from '../hooks/useNotifications';
 import { TrainingLog, TrainingLogCategory, TrainingFeeling, AvatarSlot } from '../types';
 import { isPremium, planLimits, PLAN_LIMITS } from '../lib/plan';
 import WodTimer, { WodTimerResult, WodTimerType } from '../components/WodTimer';
+import PostWorkoutFeedback from '../components/PostWorkoutFeedback';
 import AvatarPreview from '../components/AvatarPreview';
 import DailyWodPanel from '../components/DailyWodPanel';
 import PremiumCTA from '../components/PremiumCTA';
@@ -646,81 +647,15 @@ export default function Diario() {
     }
   };
 
-  // Blocos reaproveitados tanto no "Novo Registro" (manual) quanto em
+  // Bloco reaproveitado tanto no "Novo Registro" (manual) quanto em
   // "Detalhes do Treino" (após o cronômetro) — mesmo estado, duas telas.
-  const rpeSection = category !== 'nota' && (
-    <div className="flex flex-col gap-2">
-      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">
-        Esforço percebido (RPE) {rpe > 0 ? `— ${rpe}/10` : ''}
-      </label>
-      <div className="flex gap-1">
-        {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
-          <button
-            key={n}
-            onClick={() => setRpe(n === rpe ? 0 : n)}
-            className={cn(
-              'flex-1 py-2 rounded-lg text-[10px] font-black transition-all',
-              n <= rpe ? 'bg-primary text-background' : 'bg-surface-container-highest text-on-surface-variant'
-            )}
-          >
-            {n}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-
-  const feelingSection = (
-    <div className="flex flex-col gap-2">
-      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Como você está?</label>
-      <div className="flex gap-2">
-        {FEELINGS.map(f => (
-          <button
-            key={f.value}
-            onClick={() => setFeeling(feeling === f.value ? null : f.value)}
-            className={cn(
-              'flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border transition-all',
-              feeling === f.value
-                ? 'bg-primary/10 border-primary/40'
-                : 'bg-surface-container-highest border-transparent'
-            )}
-          >
-            <span className="text-base leading-none">{f.emoji}</span>
-            <span className={cn(
-              'text-[8px] font-black uppercase tracking-wider',
-              feeling === f.value ? 'text-primary' : 'text-on-surface-variant'
-            )}>
-              {f.label}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-
-  const sleepSection = (
-    <div className="flex flex-col gap-2">
-      <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">
-        Horas de sono (noite anterior)
-      </label>
-      <input
-        type="text"
-        inputMode="decimal"
-        placeholder="Ex: 7.5"
-        value={sleepHours}
-        onChange={e => setSleepHours(e.target.value)}
-        className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
-      />
-    </div>
-  );
-
-  const notesSection = (
-    <textarea
-      placeholder="Anotações (sono, dieta, dores, observações...)"
-      value={notes}
-      onChange={e => setNotes(e.target.value)}
-      rows={2}
-      className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
+  const postWorkoutFeedback = (
+    <PostWorkoutFeedback
+      showRpe={category !== 'nota'}
+      rpe={rpe} onRpeChange={setRpe}
+      feeling={feeling} onFeelingChange={setFeeling}
+      sleepHours={sleepHours} onSleepHoursChange={setSleepHours}
+      notes={notes} onNotesChange={setNotes}
     />
   );
 
@@ -863,10 +798,7 @@ export default function Diario() {
                 className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
               />
 
-              {rpeSection}
-              {feelingSection}
-              {sleepSection}
-              {notesSection}
+              {postWorkoutFeedback}
 
               <button
                 onClick={handleSave}
@@ -1040,10 +972,7 @@ export default function Diario() {
               </div>
             )}
 
-            {rpeSection}
-            {feelingSection}
-            {sleepSection}
-            {notesSection}
+            {postWorkoutFeedback}
 
             <button
               onClick={handleSave}
