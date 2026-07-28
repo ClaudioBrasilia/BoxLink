@@ -325,9 +325,10 @@ export default function Dashboard() {
         </section>
       )}
 
-      <AppSponsorBanner sponsors={sponsors} />
-
-      <ShopBanner />
+      <div className="flex gap-3 items-start">
+        <AppSponsorBanner sponsors={sponsors} className="flex-1 min-w-0" />
+        <ShopBanner />
+      </div>
 
       {activeChallenges.length > 0 && (
         <section className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-4 cursor-pointer hover:border-primary/30 transition-all"
