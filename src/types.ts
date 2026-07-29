@@ -117,6 +117,10 @@ export interface Wod {
   rx: string;
   scaled: string;
   beginner: string;
+  // Números usados para calcular o ritmo (reps/min) — opcionais.
+  reps_per_round?: number | null;  // AMRAP: reps de um round completo
+  total_reps?: number | null;      // FOR TIME: total de reps prescritas
+  time_cap_minutes?: number | null; // AMRAP: duração do WOD
 }
 
 export interface Challenge {
