@@ -1,10 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
-import { BarChart3, Trophy, TrendingUp, Plus, X, Save, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { BarChart3, Trophy, TrendingUp, Plus, X, Save, ChevronDown, ChevronUp, Search, Users } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useUserBiometrics } from '../hooks/useUserBiometrics';
+import { buildCompareRows, BenchmarkEntry } from '../lib/benchmarkCompare';
+import AthleteCompareCard from '../components/AthleteCompareCard';
+
+const BOX_AVERAGE_ID = '__box_average__';
 
 interface Benchmark {
   id: string;
@@ -28,7 +33,9 @@ export default function Benchmarks() {
   const { user } = useAuth();
   const [benchmarks, setBenchmarks] = useState<Benchmark[]>([]);
   const [allBenchmarks, setAllBenchmarks] = useState<Benchmark[]>([]);
-  const [activeTab, setActiveTab] = useState<'meus' | 'ranking'>('meus');
+  const [activeTab, setActiveTab] = useState<'meus' | 'ranking' | 'comparar'>('meus');
+  const [compareTargetId, setCompareTargetId] = useState<string>('');
+  const [compareSearch, setCompareSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState('');
   const [exerciseInput, setExerciseInput] = useState('');
@@ -39,6 +46,9 @@ export default function Benchmarks() {
   const [saving, setSaving] = useState(false);
   const [rankingExercise, setRankingExercise] = useState('');
   const [expandedExercise, setExpandedExercise] = useState<string | null>(null);
+
+  const myBio = useUserBiometrics(user?.id);
+  const otherBio = useUserBiometrics(compareTargetId && compareTargetId !== BOX_AVERAGE_ID ? compareTargetId : undefined);
 
   const filteredSuggestions = COMMON_EXERCISES.filter(e =>
     e.toLowerCase().includes(exerciseInput.toLowerCase()) && exerciseInput.length > 0
@@ -112,6 +122,64 @@ export default function Benchmarks() {
       return isTime ? numA - numB : numB - numA;
     });
 
+  // Atletas com pelo menos um benchmark registrado (candidatos à comparação)
+  const compareCandidates = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; level: number }>();
+    allBenchmarks.forEach(b => {
+      if (b.user_id !== user?.id && b.profiles) {
+        map.set(b.user_id, { id: b.user_id, name: b.profiles.name, level: b.profiles.level });
+      }
+    });
+    return [...map.values()]
+      .filter(a => a.name.toLowerCase().includes(compareSearch.toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allBenchmarks, user, compareSearch]);
+
+  const compareTargetName = compareTargetId === BOX_AVERAGE_ID
+    ? 'Média do Box'
+    : compareCandidates.find(a => a.id === compareTargetId)?.name
+      || allBenchmarks.find(b => b.user_id === compareTargetId)?.profiles?.name
+      || 'Atleta';
+
+  // Média do box: valor médio por exercício (última marca de cada atleta)
+  const boxAverages = useMemo(() => {
+    const latestPerUser: Record<string, Record<string, Benchmark>> = {};
+    allBenchmarks.forEach(b => {
+      if (!latestPerUser[b.exercise]) latestPerUser[b.exercise] = {};
+      if (!latestPerUser[b.exercise][b.user_id]) latestPerUser[b.exercise][b.user_id] = b;
+    });
+    const out: Record<string, BenchmarkEntry> = {};
+    Object.entries(latestPerUser).forEach(([exercise, byUser]) => {
+      const entries = Object.values(byUser);
+      if (entries.length === 0) return;
+      const nums = entries.map(e => parseFloat(e.value.replace(/[^0-9.]/g, '')) || 0);
+      const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+      out[exercise] = { value: (Math.round(avg * 100) / 100).toString(), unit: entries[0].unit };
+    });
+    return out;
+  }, [allBenchmarks]);
+
+  const compareRows = useMemo(() => {
+    if (!compareTargetId) return [];
+    const mine: Record<string, BenchmarkEntry> = {};
+    Object.entries(myPRs).forEach(([ex, b]) => { mine[ex] = { value: b.value, unit: b.unit }; });
+
+    let theirs: Record<string, BenchmarkEntry>;
+    let otherWeight: number | null;
+    if (compareTargetId === BOX_AVERAGE_ID) {
+      theirs = boxAverages;
+      otherWeight = null; // sem peso corporal único para a média do box
+    } else {
+      theirs = {};
+      allBenchmarks
+        .filter(b => b.user_id === compareTargetId)
+        .forEach(b => { if (!theirs[b.exercise]) theirs[b.exercise] = { value: b.value, unit: b.unit }; });
+      otherWeight = otherBio.weightKg ?? null;
+    }
+
+    return buildCompareRows(mine, theirs, myBio.weightKg ?? null, otherWeight);
+  }, [compareTargetId, myPRs, allBenchmarks, boxAverages, myBio.weightKg, otherBio.weightKg]);
+
   if (loading) return (
     <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">
       CARREGANDO...
@@ -135,6 +203,7 @@ export default function Benchmarks() {
         {([
           { key: 'meus', label: 'MEUS PRs' },
           { key: 'ranking', label: 'RANKING' },
+          { key: 'comparar', label: 'COMPARAR' },
         ] as const).map(({ key, label }) => (
           <button key={key} onClick={() => setActiveTab(key)}
             className={cn("flex-1 py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all",
@@ -280,6 +349,71 @@ export default function Benchmarks() {
                 </motion.div>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* COMPARAR */}
+      {activeTab === 'comparar' && (
+        <div className="flex flex-col gap-4">
+          <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-4 flex flex-col gap-3">
+            <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Comparar com</label>
+
+            <button
+              onClick={() => setCompareTargetId(BOX_AVERAGE_ID)}
+              className={cn(
+                'w-full flex items-center gap-3 px-4 py-3 rounded-2xl border transition-all',
+                compareTargetId === BOX_AVERAGE_ID
+                  ? 'bg-primary/10 border-primary/30 text-primary'
+                  : 'bg-surface-container-highest border-outline-variant/10 text-on-surface-variant'
+              )}
+            >
+              <Users className="w-4 h-4" />
+              <span className="text-xs font-black uppercase italic">Média do Box</span>
+            </button>
+
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant/50" />
+              <input
+                type="text"
+                placeholder="Buscar atleta pelo nome..."
+                value={compareSearch}
+                onChange={e => setCompareSearch(e.target.value)}
+                className="w-full bg-surface-container-highest rounded-2xl pl-9 pr-4 py-3 text-sm font-medium text-on-surface placeholder:text-on-surface-variant/40 outline-none"
+              />
+            </div>
+
+            {compareCandidates.length === 0 ? (
+              <p className="text-center text-on-surface-variant text-xs py-2 font-bold uppercase italic">
+                Nenhum atleta com benchmarks registrados ainda
+              </p>
+            ) : (
+              <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+                {compareCandidates.map(a => (
+                  <button
+                    key={a.id}
+                    onClick={() => setCompareTargetId(a.id)}
+                    className={cn(
+                      'w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-all text-left',
+                      compareTargetId === a.id
+                        ? 'bg-primary/10 border-primary/30 text-primary'
+                        : 'bg-surface-container-highest border-outline-variant/10 text-on-surface'
+                    )}
+                  >
+                    <span className="text-xs font-bold uppercase italic">{a.name}</span>
+                    <span className="text-[9px] font-bold text-on-surface-variant">Nível {a.level}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {compareTargetId && (
+            <AthleteCompareCard
+              meName={user?.name || 'Você'}
+              otherName={compareTargetName}
+              rows={compareRows}
+            />
           )}
         </div>
       )}
