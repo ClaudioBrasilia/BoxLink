@@ -8,6 +8,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useUserBiometrics } from '../hooks/useUserBiometrics';
 import { buildCompareRows, BenchmarkEntry } from '../lib/benchmarkCompare';
 import AthleteCompareCard from '../components/AthleteCompareCard';
+import PremiumCTA from '../components/PremiumCTA';
+import { isPremium } from '../lib/plan';
 
 const BOX_AVERAGE_ID = '__box_average__';
 
@@ -31,6 +33,8 @@ const COMMON_EXERCISES = [
 
 export default function Benchmarks() {
   const { user } = useAuth();
+  // Comparar entre atletas é Premium no individual — conta de box sempre vê.
+  const canCompare = user?.accountType !== 'individual' || isPremium(user);
   const [benchmarks, setBenchmarks] = useState<Benchmark[]>([]);
   const [allBenchmarks, setAllBenchmarks] = useState<Benchmark[]>([]);
   const [activeTab, setActiveTab] = useState<'meus' | 'ranking' | 'comparar'>('meus');
@@ -354,7 +358,24 @@ export default function Benchmarks() {
       )}
 
       {/* COMPARAR */}
-      {activeTab === 'comparar' && (
+      {activeTab === 'comparar' && !canCompare && (
+        <div className="flex flex-col gap-3">
+          <div className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-8 flex flex-col items-center text-center gap-4">
+            <span className="text-3xl">🔒</span>
+            <div className="flex flex-col gap-1">
+              <p className="text-on-surface font-headline font-black uppercase italic">Comparação é Premium</p>
+              <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest leading-relaxed">
+                Compare seus PRs com outro atleta ou com a média do box
+              </p>
+            </div>
+            <div className="w-full max-w-xs">
+              <PremiumCTA />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'comparar' && canCompare && (
         <div className="flex flex-col gap-4">
           <div className="bg-surface-container-low rounded-2xl border border-outline-variant/10 p-4 flex flex-col gap-3">
             <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Comparar com</label>
