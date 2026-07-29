@@ -81,3 +81,68 @@ export function computeDuelScore(
   }
   return { winnerId: winners.length === 1 ? winners[0] : null, usedIntensity: allHaveIntensity, entries };
 }
+
+// ─── Recap pós-duelo ──────────────────────────────────────────────────────
+// Explica em linguagem simples POR QUE o vencedor levou a melhor: se foi
+// desempenho puro, ou se ele venceu sendo mais "eficiente" (mesmo resultado
+// com esforço/FC relativo menor que os oponentes) — o mesmo tipo de leitura
+// dos relatórios "Winning the Margins" do CrossFit Games.
+
+export interface DuelEdgeInsight {
+  kind: 'performance' | 'effort' | 'efficiency';
+  text: string;
+}
+
+export interface DuelEdge {
+  insights: DuelEdgeInsight[];
+  summary: string;
+}
+
+export function computeDuelEdge(
+  outcome: DuelScoreOutcome,
+  participantIds: string[],
+): DuelEdge | null {
+  const { winnerId, usedIntensity, entries } = outcome;
+  if (!winnerId) return null;
+
+  const winner = entries[winnerId];
+  const others = participantIds
+    .filter(id => id !== winnerId)
+    .map(id => entries[id])
+    .filter(Boolean) as DuelScoreEntry[];
+  if (!winner || others.length === 0) return null;
+
+  const avg = (nums: number[]) => nums.reduce((a, b) => a + b, 0) / nums.length;
+  const perfGap = round1(winner.perf - avg(others.map(o => o.perf)));
+
+  const insights: DuelEdgeInsight[] = [{
+    kind: 'performance',
+    text: perfGap >= 0
+      ? `Desempenho ${perfGap.toFixed(1)} pts acima da média dos oponentes`
+      : `Ficou ${Math.abs(perfGap).toFixed(1)} pts atrás no desempenho`,
+  }];
+
+  let summary = 'Venceu no desempenho puro (sem FC registrada por todos).';
+
+  if (usedIntensity) {
+    const effortGap = round1((winner.effort as number) - avg(others.map(o => o.effort as number)));
+    const moreEfficient = effortGap <= 0;
+
+    insights.push({
+      kind: moreEfficient ? 'efficiency' : 'effort',
+      text: moreEfficient
+        ? `Venceu com esforço ${Math.abs(effortGap).toFixed(1)}pp menor — mais eficiente`
+        : `Esforço ${effortGap.toFixed(1)}pp acima da média dos oponentes`,
+    });
+
+    const perfContribution = PERF_WEIGHT * perfGap;
+    const effortContribution = EFFORT_WEIGHT * effortGap;
+    summary = perfContribution >= effortContribution
+      ? 'A vantagem veio do desempenho.'
+      : moreEfficient
+        ? 'A vantagem veio da eficiência — mesmo resultado, menos esforço.'
+        : 'A vantagem veio do esforço extra.';
+  }
+
+  return { insights, summary };
+}
