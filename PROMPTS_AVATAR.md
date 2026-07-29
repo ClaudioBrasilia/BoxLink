@@ -1063,7 +1063,7 @@ Saída: PNG 1024x1536 transparente, peça posicionada DENTRO da caixa acima.
 |----|------|-------|-------|-------|-------|------|
 | M-01 | Camiseta | 270 | 755 | 330 | 800 | masculina |
 | M-02 | Regata | 300 | 725 | 340 | 800 | masculina |
-| M-03 | Jaqueta | 240 | 785 | 330 | 945 | masculina |
+| M-03 | Jaqueta | 244 | 781 | 345 | 922 | masculina |
 | M-04 | Short | 355 | 670 | 770 | 1020 | masculina |
 | M-05 | Calça | 330 | 695 | 765 | 1445 | masculina |
 | M-06 | Boné | 390 | 630 | 60 | 210 | masculina |
@@ -1073,7 +1073,7 @@ Saída: PNG 1024x1536 transparente, peça posicionada DENTRO da caixa acima.
 | M-10 | Tênis | 330 | 692 | 1400 | 1532 | masculina |
 | F-01 | Camiseta | 330 | 700 | 400 | 780 | feminina |
 | F-02 | Top | 340 | 685 | 450 | 640 | feminina |
-| F-03 | Jaqueta | 232 | 792 | 400 | 895 | feminina |
+| F-03 | Jaqueta | 236 | 788 | 415 | 872 | feminina |
 | F-04 | Short | 340 | 685 | 715 | 1000 | feminina |
 | F-05 | Legging | 305 | 720 | 705 | 1445 | feminina |
 | F-06 | Boné | 370 | 655 | 60 | 225 | feminina |
