@@ -57,6 +57,10 @@ interface Duel {
   wodType?: string;
   wodRx?: string;
   wodCustom?: boolean;
+  // Ritmo (reps/min) de WOD personalizado (individual, Premium) — wod_id é
+  // sempre null nesse caso, então os números vivem direto no duelo.
+  totalReps?: number | null;
+  timeCapMinutes?: number | null;
   category: string;
   results: DuelResult;
   intensity: DuelIntensity;
@@ -207,6 +211,8 @@ export default function Duels() {
           wodType: d.wod_type,
           wodRx: d.wod_rx,
           wodCustom: d.wod_custom,
+          totalReps: d.total_reps,
+          timeCapMinutes: d.time_cap_minutes,
           category: d.category ?? 'RX',
           results: d.results ?? {},
           intensity: d.intensity ?? {},
@@ -277,6 +283,16 @@ export default function Duels() {
   }, [user]);
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  // Números para o ritmo (reps/min): duelo de box referencia um WOD real
+  // (busca em wodPaceMeta); duelo de WOD personalizado (individual, Premium)
+  // guarda os números direto na própria linha do duelo, já que wod_id é null.
+  const getPaceMeta = (duel: Duel) =>
+    duel.wodId
+      ? wodPaceMeta[duel.wodId]
+      : (duel.totalReps != null || duel.timeCapMinutes != null)
+        ? { type: duel.wodType, totalReps: duel.totalReps, timeCapMinutes: duel.timeCapMinutes }
+        : undefined;
 
   const getUserName = (id: string) => {
     if (id === user?.id) return 'Você';
@@ -1185,7 +1201,7 @@ export default function Duels() {
                       outcome={outcome}
                       participants={allParticipants.map(pid => ({ id: pid, name: getUserName(pid) }))}
                       results={duel.results}
-                      paceMeta={duel.wodId ? wodPaceMeta[duel.wodId] : undefined}
+                      paceMeta={getPaceMeta(duel)}
                     />
                     <div className="flex justify-end">
                       <ShareDuelButton
@@ -1194,7 +1210,7 @@ export default function Duels() {
                         outcome={outcome}
                         participants={allParticipants.map(pid => ({ id: pid, name: getUserName(pid) }))}
                         results={duel.results}
-                        paceMeta={duel.wodId ? wodPaceMeta[duel.wodId] : undefined}
+                        paceMeta={getPaceMeta(duel)}
                       />
                     </div>
                   </div>
