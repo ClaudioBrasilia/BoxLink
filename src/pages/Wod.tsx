@@ -275,30 +275,42 @@ export default function Wod() {
     setSubmitting(true);
     try {
       if (existingResultId) {
-        await supabase.from('wod_results').update({ result, type: category }).eq('id', existingResultId);
+        const { error } = await supabase.from('wod_results').update({ result, type: category }).eq('id', existingResultId);
+        if (error) throw error;
         addToast('Resultado atualizado!', 'success');
       } else {
-        const { data } = await supabase.from('wod_results')
+        const { data, error } = await supabase.from('wod_results')
           .insert({ wod_id: wod.id, user_id: user.id, result, type: category }).select().single();
-        setExistingResultId(data?.id ?? null);
+        if (error) throw error;
+        setExistingResultId(data.id);
 
-        const rewards = await getRewardSettings();
-        const wodXp    = rewards.wod_xp    ?? 10;
-        const wodCoins = rewards.wod_coins  ?? 5;
-
-        const rewardResult = await addReward(user.id, 'wod_complete', wodXp, wodCoins, 'WOD concluído', wod.id);
+        // Resultado já está salvo — mostra a percepção de esforço mesmo que a
+        // recompensa (XP/coins) falhe abaixo. Eram a mesma tentativa/catch
+        // antes, então uma falha ao calcular XP jogava um "erro ao salvar"
+        // enganoso (o resultado tinha salvo!) e nunca abria esse card.
         confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-
-        let msg = `WOD concluído! +${wodXp} XP e +${wodCoins} BrazaCoins 🎉`;
-        if (rewardResult?.levelUp) {
-          msg += ` ⬆️ LEVEL UP! Nível ${rewardResult.newLevel}!`;
-          setTimeout(() => confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }), 400);
-        }
-        addToast(msg, 'success');
         setShowFeedback(true);
+
+        try {
+          const rewards = await getRewardSettings();
+          const wodXp    = rewards.wod_xp    ?? 10;
+          const wodCoins = rewards.wod_coins  ?? 5;
+
+          const rewardResult = await addReward(user.id, 'wod_complete', wodXp, wodCoins, 'WOD concluído', wod.id);
+          let msg = `WOD concluído! +${wodXp} XP e +${wodCoins} BrazaCoins 🎉`;
+          if (rewardResult?.levelUp) {
+            msg += ` ⬆️ LEVEL UP! Nível ${rewardResult.newLevel}!`;
+            setTimeout(() => confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }), 400);
+          }
+          addToast(msg, 'success');
+        } catch (rewardErr) {
+          console.error('Error granting WOD reward:', rewardErr);
+          addToast('Resultado salvo!', 'success');
+        }
       }
       setSubmitted(true); setEditing(false);
-    } catch {
+    } catch (err) {
+      console.error('Error saving WOD result:', err);
       addToast('Erro ao salvar resultado.', 'error');
     } finally {
       setSubmitting(false);
