@@ -25,6 +25,8 @@ import { addReward } from '../utils/rewards';
 import { useToast } from '../context/ToastContext';
 import { createNotification } from '../hooks/useNotifications';
 import { computeDuelScore, DuelScoreOutcome } from '../lib/duelScore';
+import DuelRecapCard from '../components/DuelRecapCard';
+import ShareDuelButton from '../components/ShareDuelButton';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1147,6 +1149,28 @@ export default function Duels() {
                         Empate — apostas devolvidas
                       </p>
                     )}
+                  </div>
+                )}
+
+                {/* Recap pós-duelo: por que o vencedor levou a melhor */}
+                {duel.status === 'finished' && outcome && outcome.winnerId && (
+                  <div className="flex flex-col gap-2">
+                    <DuelRecapCard
+                      wodName={duel.wodName}
+                      wodType={duel.wodType}
+                      outcome={outcome}
+                      participants={allParticipants.map(pid => ({ id: pid, name: getUserName(pid) }))}
+                      results={duel.results}
+                    />
+                    <div className="flex justify-end">
+                      <ShareDuelButton
+                        wodName={duel.wodName}
+                        wodType={duel.wodType}
+                        outcome={outcome}
+                        participants={allParticipants.map(pid => ({ id: pid, name: getUserName(pid) }))}
+                        results={duel.results}
+                      />
+                    </div>
                   </div>
                 )}
 
