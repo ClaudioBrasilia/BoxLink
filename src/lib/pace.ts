@@ -46,14 +46,29 @@ export function parseAmrapTotalReps(result: string, repsPerRound?: number | null
 }
 
 /**
+ * Total de reps digitadas direto, sem formato "rounds+reps" (ex.: duelo em
+ * que o atleta digitou "150 reps" ou "150"). null se parecer outra coisa
+ * (contém ":" → é tempo) ou não sobrar nenhum dígito.
+ */
+function parsePlainReps(result: string): number | null {
+  const str = (result || '').trim();
+  if (!str || str.includes(':')) return null;
+  const n = parseFloat(str.replace(/[^0-9.]/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
  * Ritmo em repetições por minuto. null quando não há dados suficientes.
  * Arredonda em 1 casa — "8.4 reps/min" é preciso o bastante para comparar.
  */
 export function computeRepsPerMinute(result: string, wod: WodPaceMeta): number | null {
   if (!result) return null;
 
-  // AMRAP: reps completadas ÷ duração do WOD
-  const amrapReps = parseAmrapTotalReps(result, wod.repsPerRound);
+  // AMRAP: reps completadas ÷ duração do WOD.
+  // O resultado pode vir como "rounds+reps" (input estruturado do WOD do dia)
+  // ou como um número solto de reps totais (campo livre de duelo, ex: "150
+  // reps") — tenta os dois formatos antes de desistir.
+  const amrapReps = parseAmrapTotalReps(result, wod.repsPerRound) ?? parsePlainReps(result);
   if (amrapReps != null) {
     const cap = wod.timeCapMinutes;
     if (!cap || cap <= 0) return null;

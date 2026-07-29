@@ -27,6 +27,7 @@ import { addReward, getRewardSettings, checkAndPayWeeklyBonus } from '../utils/r
 import { createNotification } from '../hooks/useNotifications';
 import { TrainingLog, TrainingLogCategory, TrainingFeeling, AvatarSlot } from '../types';
 import { isPremium, planLimits, PLAN_LIMITS } from '../lib/plan';
+import { isTimeBasedType, isAmrapType } from '../lib/pace';
 import WodTimer, { WodTimerResult, WodTimerType } from '../components/WodTimer';
 import PostWorkoutFeedback from '../components/PostWorkoutFeedback';
 import AvatarPreview from '../components/AvatarPreview';
@@ -139,6 +140,9 @@ export default function Diario() {
   const [duelName, setDuelName] = useState('');
   const [duelType, setDuelType] = useState<'FOR TIME' | 'AMRAP' | 'EMOM'>('FOR TIME');
   const [duelDesc, setDuelDesc] = useState('');
+  // Premium: números do WOD para calcular o ritmo (reps/min) no recap do duelo
+  const [duelTotalReps, setDuelTotalReps] = useState('');
+  const [duelTimeCapMinutes, setDuelTimeCapMinutes] = useState('');
   const [creatingDuel, setCreatingDuel] = useState(false);
 
   const [joinRequest, setJoinRequest] = useState<{ id: string; status: string } | null>(null);
@@ -610,6 +614,14 @@ export default function Diario() {
       const results: Record<string, null> = { [user.id]: null };
       opponentIds.forEach(id => { results[id] = null; });
 
+      // Ritmo (reps/min) é Premium — números só são salvos com a assinatura ativa
+      const totalReps = premium && isTimeBasedType(duelType) && duelTotalReps.trim()
+        ? parseInt(duelTotalReps, 10) || null
+        : null;
+      const timeCapMinutes = premium && isAmrapType(duelType) && duelTimeCapMinutes.trim()
+        ? parseInt(duelTimeCapMinutes, 10) || null
+        : null;
+
       const { error } = await supabase.from('duels').insert({
         challenger_id: user.id,
         opponent_ids: opponentIds,
@@ -625,6 +637,8 @@ export default function Diario() {
         wod_custom: true,
         category: 'RX',
         results,
+        total_reps: totalReps,
+        time_cap_minutes: timeCapMinutes,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
@@ -645,6 +659,7 @@ export default function Diario() {
         ? `Duelo enviado para ${friends[0].name}! Acompanhe na aba Duelos. ⚔️`
         : `Duelo enviado para ${friends.length} amigos! Acompanhe na aba Duelos. ⚔️`);
       setFriends([]); setCodeInput(''); setDuelName(''); setDuelDesc('');
+      setDuelTotalReps(''); setDuelTimeCapMinutes('');
     } catch (err: any) {
       console.error('Error creating friend duel:', err);
       toast.error('Erro ao criar duelo: ' + err.message);
@@ -1120,6 +1135,33 @@ export default function Diario() {
                 rows={2}
                 className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
               />
+
+              {/* Ritmo (reps/min) no recap — Premium */}
+              {(duelType === 'FOR TIME' || duelType === 'AMRAP') && (
+                premium ? (
+                  <div className="flex flex-col gap-1">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      placeholder={duelType === 'FOR TIME' ? 'Total de reps do desafio (ex: 150)' : 'Duração em minutos (ex: 20)'}
+                      value={duelType === 'FOR TIME' ? duelTotalReps : duelTimeCapMinutes}
+                      onChange={e => duelType === 'FOR TIME' ? setDuelTotalReps(e.target.value) : setDuelTimeCapMinutes(e.target.value)}
+                      className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+                    />
+                    <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
+                      Opcional — mostra o ritmo (reps/min) de cada um no resumo do duelo
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
+                    <span className="text-sm">🔒</span>
+                    <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest leading-snug">
+                      <span className="text-secondary">Premium:</span> ritmo (reps/min) de cada atleta no resumo do duelo
+                    </p>
+                  </div>
+                )
+              )}
+
               <button
                 onClick={handleCreateDuel}
                 disabled={creatingDuel || !duelName.trim() || !duelDesc.trim()}

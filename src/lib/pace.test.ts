@@ -60,6 +60,17 @@ describe('computeRepsPerMinute', () => {
     expect(pace).toBe(8.1);
   });
 
+  it('AMRAP: reps totais digitadas direto (duelo em texto livre) também funciona', () => {
+    // Duelos pedem o resultado em texto livre — o placeholder sugere "150
+    // reps" em vez do formato estruturado "rounds+reps".
+    const pace = computeRepsPerMinute('150 reps', { type: 'AMRAP', timeCapMinutes: 20 });
+    expect(pace).toBe(7.5);
+  });
+
+  it('AMRAP: reps digitadas sem unidade também funciona', () => {
+    expect(computeRepsPerMinute('150', { type: 'AMRAP', timeCapMinutes: 20 })).toBe(7.5);
+  });
+
   it('FOR TIME sem total de reps cadastrado → null', () => {
     expect(computeRepsPerMinute('12:30', { type: 'FOR TIME' })).toBeNull();
   });
