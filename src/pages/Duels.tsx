@@ -28,7 +28,7 @@ import { computeDuelScore, DuelScoreOutcome } from '../lib/duelScore';
 import DuelRecapCard from '../components/DuelRecapCard';
 import ShareDuelButton from '../components/ShareDuelButton';
 import PremiumCTA from '../components/PremiumCTA';
-import { WodPaceMeta } from '../lib/pace';
+import { WodPaceMeta, parseTimeToSeconds } from '../lib/pace';
 import { isPremium } from '../lib/plan';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -539,6 +539,12 @@ export default function Duels() {
     const result = submission[duel.id]?.trim();
     if (!result) {
       toast.warning('Preencha seu resultado.'); return;
+    }
+    // WOD por tempo: exige "mm:ss" — sem isso "333" vira um número solto e o
+    // placar (menor vence) compara tempo com o que na real são reps, dando
+    // um resultado sem sentido (ex: 12 "esmagando" 333).
+    if (isTimeBased(duel.wodType) && parseTimeToSeconds(result) == null) {
+      toast.warning('Resultado por tempo precisa ser "mm:ss", ex: 12:45.'); return;
     }
 
     // Esforço (% da FC máx) opcional — só entra no cálculo se TODOS registrarem.
@@ -1298,12 +1304,17 @@ export default function Duels() {
                       />
                       <button
                         onClick={() => handleSubmitResult(duel)}
-                        disabled={saving || !submission[duel.id]?.trim()}
+                        disabled={saving || !submission[duel.id]?.trim() || (timeBased && parseTimeToSeconds(submission[duel.id]?.trim() || '') == null)}
                         className="bg-primary text-background px-5 rounded-2xl font-headline font-black text-sm uppercase italic flex items-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
                       >
                         {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
                       </button>
                     </div>
+                    {timeBased && submission[duel.id]?.trim() && parseTimeToSeconds(submission[duel.id].trim()) == null && (
+                      <p className="text-[9px] text-error font-bold uppercase tracking-widest px-1">
+                        Formato inválido — use mm:ss (ex: 12:45)
+                      </p>
+                    )}
                     {/* Esforço opcional: % da FC máx */}
                     <div className="flex items-center gap-2 bg-surface-container-highest/40 rounded-2xl px-4 py-2.5 border border-outline-variant/10">
                       <span className="text-secondary text-sm">❤️</span>
