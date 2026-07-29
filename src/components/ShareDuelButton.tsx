@@ -1,5 +1,6 @@
 import { Share2 } from 'lucide-react';
 import { computeDuelEdge, DuelScoreOutcome } from '../lib/duelScore';
+import { computeRepsPerMinute, formatPace, WodPaceMeta } from '../lib/pace';
 
 interface ShareDuelParticipant {
   id: string;
@@ -12,6 +13,7 @@ interface ShareDuelButtonProps {
   outcome: DuelScoreOutcome;
   participants: ShareDuelParticipant[];
   results: Record<string, string | null>;
+  paceMeta?: WodPaceMeta;
 }
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
@@ -37,6 +39,7 @@ async function generateDuelRecapImage(
   outcome: DuelScoreOutcome,
   participants: ShareDuelParticipant[],
   results: Record<string, string | null>,
+  paceMeta?: WodPaceMeta,
 ): Promise<Blob> {
   const { winnerId, usedIntensity, entries } = outcome;
   const edge = computeDuelEdge(outcome, participants.map(p => p.id));
@@ -141,6 +144,17 @@ async function generateDuelRecapImage(
       ctx.fillStyle = isWinner ? (ci === values.length - 1 ? '#cafd00' : '#ffffff') : 'rgba(255,255,255,0.7)';
       ctx.fillText(v, colX[ci], y);
     });
+
+    // Ritmo (reps/min) como sub-linha do resultado, quando disponível
+    const paceLabel = paceMeta
+      ? formatPace(computeRepsPerMinute(results[p.id] || '', paceMeta))
+      : null;
+    if (paceLabel) {
+      ctx.textAlign = 'center';
+      ctx.font = '24px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillText(paceLabel, colX[1], y + 34);
+    }
   });
 
   // Rodapé — por que venceu
@@ -179,11 +193,11 @@ async function generateDuelRecapImage(
   return new Promise(resolve => canvas.toBlob(b => resolve(b!), 'image/png', 1));
 }
 
-export default function ShareDuelButton({ wodName, wodType, outcome, participants, results }: ShareDuelButtonProps) {
+export default function ShareDuelButton({ wodName, wodType, outcome, participants, results, paceMeta }: ShareDuelButtonProps) {
   const handleShare = async () => {
     let blob: Blob;
     try {
-      blob = await generateDuelRecapImage(wodName || 'Duelo', wodType || '', outcome, participants, results);
+      blob = await generateDuelRecapImage(wodName || 'Duelo', wodType || '', outcome, participants, results, paceMeta);
     } catch (err) {
       console.error('Erro ao gerar imagem do duelo:', err);
       return;
