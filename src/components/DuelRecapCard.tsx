@@ -1,4 +1,5 @@
 import { computeDuelEdge, DuelScoreOutcome } from '../lib/duelScore';
+import { computeRepsPerMinute, formatPace, WodPaceMeta } from '../lib/pace';
 import { cn } from '../lib/utils';
 
 interface RecapParticipant {
@@ -12,12 +13,21 @@ interface DuelRecapCardProps {
   outcome: DuelScoreOutcome;
   participants: RecapParticipant[];
   results: Record<string, string | null>;
+  /** Números do WOD para calcular o ritmo. Ausente em WOD personalizado. */
+  paceMeta?: WodPaceMeta;
 }
 
-export default function DuelRecapCard({ wodName, wodType, outcome, participants, results }: DuelRecapCardProps) {
+export default function DuelRecapCard({ wodName, wodType, outcome, participants, results, paceMeta }: DuelRecapCardProps) {
   const { winnerId, usedIntensity, entries } = outcome;
   const edge = computeDuelEdge(outcome, participants.map(p => p.id));
   const winnerName = winnerId ? participants.find(p => p.id === winnerId)?.name.split(' ')[0] : null;
+
+  // Ritmo só entra se o coach cadastrou os números do WOD (reps totais / duração)
+  const paceById: Record<string, number | null> = {};
+  participants.forEach(p => {
+    paceById[p.id] = paceMeta ? computeRepsPerMinute(results[p.id] || '', paceMeta) : null;
+  });
+  const hasPace = participants.some(p => paceById[p.id] != null);
 
   return (
     <div className="bg-surface-container-highest/40 rounded-2xl border border-outline-variant/10 overflow-hidden">
@@ -61,6 +71,14 @@ export default function DuelRecapCard({ wodName, wodType, outcome, participants,
           winnerId={winnerId}
           getValue={p => entries[p.id] ? String(entries[p.id].perf) : '—'}
         />
+        {hasPace && (
+          <RecapRow
+            label="Ritmo"
+            participants={participants}
+            winnerId={winnerId}
+            getValue={p => formatPace(paceById[p.id]) ?? '—'}
+          />
+        )}
         {usedIntensity && (
           <RecapRow
             label="Esforço (%FC)"

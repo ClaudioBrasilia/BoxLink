@@ -27,6 +27,7 @@ import { createNotification } from '../hooks/useNotifications';
 import { computeDuelScore, DuelScoreOutcome } from '../lib/duelScore';
 import DuelRecapCard from '../components/DuelRecapCard';
 import ShareDuelButton from '../components/ShareDuelButton';
+import { WodPaceMeta } from '../lib/pace';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -142,6 +143,8 @@ export default function Duels() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [wods, setWods] = useState<WodOption[]>([]);
   const [boxSettings, setBoxSettings] = useState<any>(null);
+  // Números do WOD (reps totais / duração) por wod_id — usados para o ritmo
+  const [wodPaceMeta, setWodPaceMeta] = useState<Record<string, WodPaceMeta>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -211,9 +214,30 @@ export default function Duels() {
         }));
         // Individual não faz parte de um box: só vê os próprios duelos, nunca
         // o "social feed" de duelos entre atletas do box.
-        setDuels(isIndividual
+        const visible = isIndividual
           ? mapped.filter(d => d.challengerId === user.id || d.opponentIds.includes(user.id))
-          : mapped);
+          : mapped;
+        setDuels(visible);
+
+        // Ritmo (reps/min): busca os números dos WODs usados nos duelos.
+        // WOD personalizado (sem wod_id) não tem esses números — fica sem ritmo.
+        const wodIds = [...new Set(visible.map(d => d.wodId).filter(Boolean))] as string[];
+        if (wodIds.length > 0) {
+          const { data: metaRows } = await supabase
+            .from('wods')
+            .select('id, type, reps_per_round, total_reps, time_cap_minutes')
+            .in('id', wodIds);
+          const metaMap: Record<string, WodPaceMeta> = {};
+          (metaRows || []).forEach((w: any) => {
+            metaMap[w.id] = {
+              type: w.type,
+              repsPerRound: w.reps_per_round,
+              totalReps: w.total_reps,
+              timeCapMinutes: w.time_cap_minutes,
+            };
+          });
+          setWodPaceMeta(metaMap);
+        }
       }
       if (usersRes.data) setUsers(usersRes.data);
       if (wodsRes.data) setWods(wodsRes.data);
@@ -1161,6 +1185,7 @@ export default function Duels() {
                       outcome={outcome}
                       participants={allParticipants.map(pid => ({ id: pid, name: getUserName(pid) }))}
                       results={duel.results}
+                      paceMeta={duel.wodId ? wodPaceMeta[duel.wodId] : undefined}
                     />
                     <div className="flex justify-end">
                       <ShareDuelButton
@@ -1169,6 +1194,7 @@ export default function Duels() {
                         outcome={outcome}
                         participants={allParticipants.map(pid => ({ id: pid, name: getUserName(pid) }))}
                         results={duel.results}
+                        paceMeta={duel.wodId ? wodPaceMeta[duel.wodId] : undefined}
                       />
                     </div>
                   </div>

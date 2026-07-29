@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { getWodByDate, getLatestWod } from '../lib/wods';
 import { formatInTimeZone } from 'date-fns-tz';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
+import { computeRepsPerMinute, formatPace } from '../lib/pace';
 
 interface RankedUser extends UserType {
   monthXp?: number;
@@ -25,6 +26,7 @@ interface WodRankEntry {
   gender: string;     // 'M' | 'F'
   level: number;
   scoreNum: number;   // número puro para ordenação
+  pace: number | null; // reps/min — null quando o coach não cadastrou os números
 }
 
 type WodFilter = 'todos' | 'RX' | 'Scaled';
@@ -235,6 +237,12 @@ export default function Leaderboard() {
               gender,
               level: profile?.level || 1,
               scoreNum: r.scoreNum,
+              pace: computeRepsPerMinute(r.result, {
+                type: wod?.type,
+                repsPerRound,
+                totalReps: wod?.total_reps,
+                timeCapMinutes: wod?.time_cap_minutes,
+              }),
             };
           });
       };
@@ -325,6 +333,15 @@ export default function Leaderboard() {
       {entry.type} {entry.gender === 'F' ? '♀' : '♂'}
     </span>
   );
+
+  // Ritmo (reps/min) — só aparece quando o coach cadastrou os números do WOD
+  const PaceLabel = ({ entry }: { entry: WodRankEntry }) => {
+    const label = formatPace(entry.pace);
+    if (!label) return null;
+    return (
+      <span className="text-[9px] font-bold text-on-surface-variant/70 tracking-widest">{label}</span>
+    );
+  };
 
   if (error) return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center text-error font-headline font-black text-xl italic p-4 text-center">
@@ -455,6 +472,7 @@ export default function Leaderboard() {
                     {isClans ? top3[1].name : top3[1].name.split(' ')[0]}
                   </p>
                   <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[1])}</p>
+                  {isWod && <PaceLabel entry={top3[1] as WodRankEntry} />}
                   {isWod && <WodBadge entry={top3[1] as WodRankEntry} />}
                 </div>
                 <div className="w-16 h-20 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex items-center justify-center">
@@ -481,6 +499,7 @@ export default function Leaderboard() {
                     {isClans ? top3[0].name : top3[0].name.split(' ')[0]}
                   </p>
                   <p className="text-xs text-on-surface font-bold">{getScore(top3[0])}</p>
+                  {isWod && <PaceLabel entry={top3[0] as WodRankEntry} />}
                   {isWod && <WodBadge entry={top3[0] as WodRankEntry} />}
                 </div>
                 <div className="w-24 h-32 bg-primary/10 rounded-t-3xl border-x border-t border-primary/20 flex items-center justify-center">
@@ -507,6 +526,7 @@ export default function Leaderboard() {
                     {isClans ? top3[2].name : top3[2].name.split(' ')[0]}
                   </p>
                   <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[2])}</p>
+                  {isWod && <PaceLabel entry={top3[2] as WodRankEntry} />}
                   {isWod && <WodBadge entry={top3[2] as WodRankEntry} />}
                 </div>
                 <div className="w-16 h-16 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex items-center justify-center">
@@ -561,6 +581,7 @@ export default function Leaderboard() {
                   </div>
                   <div className="text-right">
                     <p className="text-on-surface font-headline font-black text-sm italic">{getScore(u)}</p>
+                    {isWod && <PaceLabel entry={u as WodRankEntry} />}
                     {activeTab === 'xp_mes' && <p className="text-on-surface-variant text-[9px] font-bold">Total: {u.xp} XP</p>}
                   </div>
                 </motion.div>
