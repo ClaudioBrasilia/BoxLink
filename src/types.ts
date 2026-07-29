@@ -71,6 +71,8 @@ export interface TrainingLog {
   hr_avg_pct?: number | null;
   effort_index?: number | null;
   hr_zone?: string | null;
+  /** Horas de sono da noite anterior, informadas junto ao treino */
+  sleep_hours?: number | null;
 }
 
 export interface PersonalRecord {

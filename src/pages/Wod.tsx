@@ -12,6 +12,8 @@ import { getWodByDate, getLatestWod } from '../lib/wods';
 import { addReward, getRewardSettings } from '../utils/rewards';
 import { calcInactivity, InactivitySettings, InactivityState } from '../utils/inactivity';
 import HeartRateDisplay from '../components/HeartRateDisplay';
+import PostWorkoutFeedback from '../components/PostWorkoutFeedback';
+import { TrainingFeeling } from '../types';
 
 const TIMEZONE = 'America/Sao_Paulo';
 
@@ -193,6 +195,15 @@ export default function Wod() {
   const [inactivity, setInactivity] = useState<InactivityState | null>(null);
   const [inactivityLoading, setInactivityLoading] = useState(true);
 
+  // Percepção de esforço — aparece uma vez, logo após registrar o resultado
+  // (mesmo padrão do Diário no modo Individual).
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [savingFeedback, setSavingFeedback] = useState(false);
+  const [fbRpe, setFbRpe] = useState(0);
+  const [fbFeeling, setFbFeeling] = useState<TrainingFeeling | null>(null);
+  const [fbSleepHours, setFbSleepHours] = useState('');
+  const [fbNotes, setFbNotes] = useState('');
+
   const addToast = (message: string, type: ToastType = 'info') => {
     const id = Date.now();
     setToasts((prev) => [...prev, { id, message, type }]);
@@ -284,12 +295,37 @@ export default function Wod() {
           setTimeout(() => confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }), 400);
         }
         addToast(msg, 'success');
+        setShowFeedback(true);
       }
       setSubmitted(true); setEditing(false);
     } catch {
       addToast('Erro ao salvar resultado.', 'error');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const closeFeedback = () => {
+    setShowFeedback(false);
+    setFbRpe(0); setFbFeeling(null); setFbSleepHours(''); setFbNotes('');
+  };
+
+  const saveFeedback = async () => {
+    if (!existingResultId) { closeFeedback(); return; }
+    setSavingFeedback(true);
+    try {
+      await supabase.from('wod_results').update({
+        rpe: fbRpe > 0 ? fbRpe : null,
+        feeling: fbFeeling,
+        sleep_hours: fbSleepHours ? parseFloat(fbSleepHours.replace(',', '.')) : null,
+        notes: fbNotes.trim() || null,
+      }).eq('id', existingResultId);
+      addToast('Detalhes salvos!', 'success');
+    } catch {
+      addToast('Erro ao salvar detalhes.', 'error');
+    } finally {
+      setSavingFeedback(false);
+      closeFeedback();
     }
   };
 
@@ -328,6 +364,49 @@ export default function Wod() {
   return (
     <div className="flex flex-col gap-5 pb-24">
       <ToastContainer toasts={toasts} onRemove={(id) => setToasts((p) => p.filter((t) => t.id !== id))} />
+
+      <AnimatePresence>
+        {showFeedback && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[65] bg-background flex flex-col"
+          >
+            <div className="flex items-center justify-between p-6 pt-12">
+              <h2 className="font-headline font-black text-lg text-on-surface uppercase italic">Percepção de Esforço</h2>
+              <button onClick={closeFeedback} className="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center">
+                <X className="w-5 h-5 text-on-surface-variant" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 pb-8 flex flex-col gap-5">
+              <div className="bg-primary/10 border border-primary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
+                <p className="text-[11px] text-on-surface font-bold leading-snug">
+                  Resultado registrado! Como foi o treino pra você?
+                </p>
+              </div>
+
+              <PostWorkoutFeedback
+                rpe={fbRpe} onRpeChange={setFbRpe}
+                feeling={fbFeeling} onFeelingChange={setFbFeeling}
+                sleepHours={fbSleepHours} onSleepHoursChange={setFbSleepHours}
+                notes={fbNotes} onNotesChange={setFbNotes}
+              />
+
+              <button
+                onClick={saveFeedback}
+                disabled={savingFeedback}
+                className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic shadow-lg flex items-center justify-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
+              >
+                {savingFeedback
+                  ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
+                  : <CheckCircle2 className="w-5 h-5" />}
+                SALVAR
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
         <button onClick={() => setSelectedDate((d) => subDays(d, 7))} className="shrink-0 p-1 text-on-surface-variant">

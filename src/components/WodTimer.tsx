@@ -7,6 +7,7 @@ import { useHeartRateSession } from '../hooks/useHeartRateSession';
 import { useUserBiometrics } from '../hooks/useUserBiometrics';
 import { getHeartRateZone } from '../lib/heartRate';
 import { computeEffort, EffortResult } from '../lib/effort';
+import HeartRateSummary from './HeartRateSummary';
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 export type WodTimerType = 'FOR TIME' | 'AMRAP' | 'EMOM' | 'TABATA';
@@ -39,31 +40,6 @@ const fmt = (totalSec: number) => {
 const TABATA_WORK = 20;
 const TABATA_REST = 10;
 
-function EffortCard({ effort }: { effort: EffortResult }) {
-  return (
-    <div className="bg-surface-container rounded-2xl px-4 py-3 border border-secondary/20 flex items-center justify-around gap-2">
-      <div className="flex flex-col items-center">
-        <span className="text-lg font-headline font-black text-secondary italic tabular-nums">
-          {effort.avgPctMax != null ? `${effort.avgPctMax}%` : effort.avgBpm}
-        </span>
-        <span className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant">
-          {effort.avgPctMax != null ? 'FC máx' : 'FC média'}
-        </span>
-      </div>
-      <div className="w-px h-8 bg-outline-variant/20" />
-      <div className="flex flex-col items-center">
-        <span className="text-lg font-headline font-black text-on-surface italic tabular-nums">{effort.effortIndex}</span>
-        <span className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant">Esforço</span>
-      </div>
-      <div className="w-px h-8 bg-outline-variant/20" />
-      <div className="flex flex-col items-center">
-        <span className="text-sm font-headline font-black text-on-surface italic uppercase">{effort.dominantZone}</span>
-        <span className="text-[8px] font-black uppercase tracking-widest text-on-surface-variant">Zona</span>
-      </div>
-    </div>
-  );
-}
-
 export default function WodTimer({ onClose, onFinish, userId, initialTitle, initialType, initialDescription }: Props) {
   // Setup
   const [phase, setPhase] = useState<'setup' | 'run' | 'amrapScore'>('setup');
@@ -81,6 +57,8 @@ export default function WodTimer({ onClose, onFinish, userId, initialTitle, init
   const baseRef = useRef(0);
   const startedRef = useRef(0);
   const lastWholeRef = useRef(-1);
+  // Instante (epoch) do 1º "play" do treino — usado para o resumo de FC.
+  const wodStartedAtRef = useRef<number | null>(null);
 
   // AMRAP score
   const [rounds, setRounds] = useState('');
@@ -193,6 +171,7 @@ export default function WodTimer({ onClose, onFinish, userId, initialTitle, init
       audioRef.current!.resume?.();
     } catch { /* noop */ }
     lastWholeRef.current = Math.floor(elapsed);
+    if (!wodStartedAtRef.current) wodStartedAtRef.current = Date.now();
     setRunning(true);
   };
   const pause = () => setRunning(false);
@@ -327,7 +306,7 @@ export default function WodTimer({ onClose, onFinish, userId, initialTitle, init
 
       {/* RUN */}
       {phase === 'run' && (
-        <div className="flex-1 flex flex-col items-center justify-center px-6 gap-8">
+        <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center px-6 py-6 gap-8">
           <p className="text-[11px] font-black uppercase tracking-[0.3em] text-on-surface-variant">{subLabel}</p>
           <div className={cn('font-headline font-black italic tabular-nums leading-none text-center transition-colors',
             type === 'TABATA' ? (tabataWork ? 'text-primary' : 'text-secondary') : 'text-primary',
@@ -405,11 +384,24 @@ export default function WodTimer({ onClose, onFinish, userId, initialTitle, init
                   <span className="text-[11px] font-black text-on-surface-variant uppercase tracking-widest">Resultado</span>
                   <span className="text-xl font-headline font-black text-primary italic">{buildResult()}</span>
                 </div>
-                {effort && <EffortCard effort={effort} />}
-                <button onClick={confirm}
-                  className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic hover:opacity-90 transition-all">
-                  Salvar no Diário
-                </button>
+                {effort ? (
+                  <HeartRateSummary
+                    samples={hrSamples}
+                    bio={bio}
+                    startedAt={wodStartedAtRef.current}
+                    persist
+                    userId={userId}
+                    source="ble"
+                    deviceName={connectedDevice?.name}
+                    closeLabel="Salvar no Diário"
+                    onClose={confirm}
+                  />
+                ) : (
+                  <button onClick={confirm}
+                    className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic hover:opacity-90 transition-all">
+                    Salvar no Diário
+                  </button>
+                )}
                 <button onClick={reset} className="w-full text-on-surface-variant font-headline font-black text-xs uppercase italic py-2">
                   Refazer
                 </button>
@@ -421,7 +413,7 @@ export default function WodTimer({ onClose, onFinish, userId, initialTitle, init
 
       {/* AMRAP score */}
       {phase === 'amrapScore' && (
-        <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6">
+        <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center px-6 py-6 gap-6">
           <p className="text-secondary font-black uppercase tracking-widest text-sm">Tempo! Quanto você fez?</p>
           <div className="flex items-end gap-3">
             <div className="flex flex-col items-center gap-1">
@@ -436,11 +428,24 @@ export default function WodTimer({ onClose, onFinish, userId, initialTitle, init
               <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Reps</span>
             </div>
           </div>
-          {effort && <div className="w-full"><EffortCard effort={effort} /></div>}
-          <button onClick={confirm}
-            className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic hover:opacity-90 transition-all">
-            Salvar no Diário
-          </button>
+          {effort ? (
+            <HeartRateSummary
+              samples={hrSamples}
+              bio={bio}
+              startedAt={wodStartedAtRef.current}
+              persist
+              userId={userId}
+              source="ble"
+              deviceName={connectedDevice?.name}
+              closeLabel="Salvar no Diário"
+              onClose={confirm}
+            />
+          ) : (
+            <button onClick={confirm}
+              className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic hover:opacity-90 transition-all">
+              Salvar no Diário
+            </button>
+          )}
         </div>
       )}
     </div>
