@@ -27,7 +27,9 @@ import { createNotification } from '../hooks/useNotifications';
 import { computeDuelScore, DuelScoreOutcome } from '../lib/duelScore';
 import DuelRecapCard from '../components/DuelRecapCard';
 import ShareDuelButton from '../components/ShareDuelButton';
+import PremiumCTA from '../components/PremiumCTA';
 import { WodPaceMeta } from '../lib/pace';
+import { isPremium } from '../lib/plan';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -141,6 +143,9 @@ export default function Duels() {
   // Conta individual cria duelo só pelo código de amigo (no Diário) — não vê o
   // formulário de busca que listaria os atletas do box.
   const isIndividual = user?.accountType === 'individual';
+  // Recap comparativo do duelo (desempenho/esforço/ritmo/"por que venceu") é
+  // Premium no individual. Conta de box sempre vê — comparação é core ali.
+  const canSeeComparison = !isIndividual || isPremium(user);
 
   // Data
   const [duels, setDuels] = useState<Duel[]>([]);
@@ -1192,19 +1197,11 @@ export default function Duels() {
                   </div>
                 )}
 
-                {/* Recap pós-duelo: por que o vencedor levou a melhor */}
+                {/* Recap pós-duelo: por que o vencedor levou a melhor — Premium no individual */}
                 {duel.status === 'finished' && outcome && outcome.winnerId && (
-                  <div className="flex flex-col gap-2">
-                    <DuelRecapCard
-                      wodName={duel.wodName}
-                      wodType={duel.wodType}
-                      outcome={outcome}
-                      participants={allParticipants.map(pid => ({ id: pid, name: getUserName(pid) }))}
-                      results={duel.results}
-                      paceMeta={getPaceMeta(duel)}
-                    />
-                    <div className="flex justify-end">
-                      <ShareDuelButton
+                  canSeeComparison ? (
+                    <div className="flex flex-col gap-2">
+                      <DuelRecapCard
                         wodName={duel.wodName}
                         wodType={duel.wodType}
                         outcome={outcome}
@@ -1212,8 +1209,28 @@ export default function Duels() {
                         results={duel.results}
                         paceMeta={getPaceMeta(duel)}
                       />
+                      <div className="flex justify-end">
+                        <ShareDuelButton
+                          wodName={duel.wodName}
+                          wodType={duel.wodType}
+                          outcome={outcome}
+                          participants={allParticipants.map(pid => ({ id: pid, name: getUserName(pid) }))}
+                          results={duel.results}
+                          paceMeta={getPaceMeta(duel)}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      <div className="bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
+                        <span className="text-sm">🔒</span>
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest leading-snug">
+                          <span className="text-secondary">Premium:</span> veja o resumo completo — desempenho, esforço, ritmo e por que {duel.winnerId === user?.id ? 'você' : 'ele'} venceu
+                        </p>
+                      </div>
+                      <PremiumCTA />
+                    </div>
+                  )
                 )}
 
                 {/* Aposta */}
