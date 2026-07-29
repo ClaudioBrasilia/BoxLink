@@ -195,8 +195,8 @@ export default function Wod() {
   const [inactivity, setInactivity] = useState<InactivityState | null>(null);
   const [inactivityLoading, setInactivityLoading] = useState(true);
 
-  // Percepção de esforço — aparece uma vez, logo após registrar o resultado
-  // (mesmo padrão do Diário no modo Individual).
+  // Percepção de esforço — aparece a cada vez que o resultado é salvo
+  // (registrado ou editado), mesmo padrão do Diário no modo Individual.
   const [showFeedback, setShowFeedback] = useState(false);
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [fbRpe, setFbRpe] = useState(0);
@@ -275,9 +275,22 @@ export default function Wod() {
     setSubmitting(true);
     try {
       if (existingResultId) {
-        const { error } = await supabase.from('wod_results').update({ result, type: category }).eq('id', existingResultId);
+        const { data, error } = await supabase.from('wod_results')
+          .update({ result, type: category })
+          .eq('id', existingResultId)
+          .select('rpe, feeling, sleep_hours, notes')
+          .single();
         if (error) throw error;
         addToast('Resultado atualizado!', 'success');
+        // Editar também pode mudar como o treino foi — mesmo comportamento
+        // do Diário no Individual, onde o card aparece a cada registro. Vem
+        // pré-preenchido com o que já tinha sido respondido, pra não sumir
+        // com RPE/sensação salvos antes só por reabrir o card em branco.
+        setFbRpe(data?.rpe ?? 0);
+        setFbFeeling(data?.feeling ?? null);
+        setFbSleepHours(data?.sleep_hours != null ? String(data.sleep_hours) : '');
+        setFbNotes(data?.notes ?? '');
+        setShowFeedback(true);
       } else {
         const { data, error } = await supabase.from('wod_results')
           .insert({ wod_id: wod.id, user_id: user.id, result, type: category }).select().single();
