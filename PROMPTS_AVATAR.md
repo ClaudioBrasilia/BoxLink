@@ -141,22 +141,26 @@ NÃO desenhar o corpo no resultado.
 
 FORMATO DA ARTE (crítico):
 Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
-em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
+em perspectiva 3D, NÃO manequim invisível/"ghost mannequin". As mangas
+DEVEM seguir o ângulo natural do braço da base (caindo para baixo e
+levemente para fora), NUNCA retas na horizontal como uma cruz — isso é o
+erro mais comum de geradores de imagem e faz o ombro da peça ficar
+"achatado" contra o pescoço quando encaixado. Silhueta IGUAL à da peça
 vestida no corpo da base anexada: ombros e mangas acompanhando os ombros
 da base, gola no pescoço, laterais acompanhando o tronco. Pense em
 "adesivo da peça vestida", recortado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 270 → 755   (largura 485 px)
-- y: 330 → 800   (altura 470 px)
+- y: 310 → 850   (altura 540 px)
 - A peça DEVE ocupar exatamente esta caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
 
 ÂNCORA ANATÔMICA:
-Gola alinhada ao pescoço da base (y 330); ombros da peça nos ombros da
+Gola alinhada ao pescoço da base (y ≈ 310); ombros da peça nos ombros da
 base (y 400–480); mangas curtas cobrindo o topo dos braços; barra reta
-na altura do cós do short da base (y ≈ 780–800).
+na altura do cós do short da base (y ≈ 830–850).
 
 TAMANHO RELATIVO À BASE:
 Largura = ombro-a-ombro + mangas (≈ 485 px); Altura = pescoço até o cós.
@@ -1076,7 +1080,7 @@ Saída: PNG 1024x1536 transparente, peça posicionada DENTRO da caixa acima.
 
 | ID | Peça | x_min | x_max | y_min | y_max | Base |
 |----|------|-------|-------|-------|-------|------|
-| M-01 | Camiseta | 270 | 755 | 330 | 800 | masculina |
+| M-01 | Camiseta | 270 | 755 | 310 | 850 | masculina |
 | M-02 | Regata | 300 | 725 | 340 | 800 | masculina |
 | M-03 | Jaqueta | 244 | 781 | 345 | 922 | masculina |
 | M-04 | Short | 355 | 670 | 770 | 1020 | masculina |
