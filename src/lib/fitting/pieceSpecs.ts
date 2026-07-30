@@ -109,8 +109,13 @@ const MASCULINO: PieceSpec[] = [
     id: 'M-01',
     name: 'Camiseta',
     avatarBase: 'masculina',
-    box: { x1: 270, x2: 755, y1: 330, y2: 800 },
-    anchor: 'Gola alinhada ao pescoço da base (y ≈ 330); ombros da peça nos ombros da base (y ≈ 400–480); barra cobrindo o cós do short da base (y ≈ 780).',
+    // Caixa um pouco mais alta que a largura (y1 310, y2 850): artes de
+    // camiseta em foto de produto (mangas retas "manequim fantasma", sem
+    // seguir o ângulo do braço) têm proporção mais alta que larga; uma
+    // caixa mais "quadrada" força compressão vertical forte no encaixe
+    // (stretch), achatando a região do ombro contra o pescoço.
+    box: { x1: 270, x2: 755, y1: 310, y2: 850 },
+    anchor: 'Gola alinhada ao pescoço da base (y ≈ 310); ombros da peça nos ombros da base (y ≈ 400–480); barra cobrindo o cós do short da base (y ≈ 830).',
     sizeRelative: 'Largura = ombro-a-ombro da base + mangas curtas (≈ 485 px); Altura = pescoço até o cós.',
     cutouts: ['Gola redonda (centro superior)', '2 bocas de manga (esquerda e direita)'],
   },
