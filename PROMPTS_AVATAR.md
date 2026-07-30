@@ -239,19 +239,21 @@ da base, gola no pescoço, laterais acompanhando o tronco. Pense em
 "adesivo da peça vestida", recortado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 250 → 775   (largura 525 px)
-- y: 320 → 860   (altura 540 px)
-- A peça DEVE ocupar exatamente esta caixa.
+- x: 244 → 781   (largura 537 px)
+- y: 345 → 922   (altura 577 px)
+- A peça DEVE ocupar exatamente esta caixa (engloba tronco + braços).
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
 
 ÂNCORA ANATÔMICA:
 Gola alinhada ao pescoço da base; ombros da jaqueta nos ombros da base
-(y 400–480); mangas compridas acompanhando os braços; barra abaixo do
-cós, no quadril alto (y ≈ 860).
+(y 400–480); mangas compridas descendo pelos braços, punho terminando
+no pulso (y ≈ 922); barra do tronco no quadril alto.
 
 TAMANHO RELATIVO À BASE:
-Largura = ombro-a-ombro + 5% cada lado; Altura = pescoço até quadril alto.
+Largura = vão dos braços da base (≈ 537 px), não só ombro-a-ombro — a
+jaqueta tem mangas longas que se abrem para os lados; Altura = pescoço
+até o pulso.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Gola (centro superior)
@@ -333,19 +335,24 @@ pernas acompanhando as pernas da base. Pense em "adesivo da peça
 vestida", recortado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 355 → 670   (largura 315 px)
-- y: 770 → 1440  (altura 670 px)
-- A peça DEVE ocupar exatamente esta caixa.
+- x: 330 → 695   (largura 365 px)
+- y: 765 → 1445  (altura 680 px)
+- A peça DEVE ocupar exatamente esta caixa. Largura estendida até o VÃO
+  DOS PÉS da base (não só do quadril) — a base fica em pose de pernas
+  abertas e a arte da calça (que afunila nos tornozelos), esticada
+  nesta caixa mais larga, cobre as pernas inteiras até o pé.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
 
 ÂNCORA ANATÔMICA:
-Cós alinhado ao cós do short da base (y ≈ 775); duas pernas separadas
+Cós cobrindo o cós do short da base (y ≈ 765); duas pernas separadas
 acompanhando as pernas da base (vão entre as pernas com alpha=0);
-barra das pernas nos tornozelos (y ≈ 1420).
+barra das pernas no tornozelo (y ≈ 1440), acompanhando a pose de
+pernas abertas.
 
 TAMANHO RELATIVO À BASE:
-Largura = largura do quadril; Altura = cós até tornozelo.
+Largura = vão dos pés da base (≈ 365 px), maior que a largura do
+quadril; Altura = cós até tornozelo.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Cintura (abertura superior)
@@ -707,18 +714,21 @@ da base, gola no pescoço, laterais acompanhando o tronco. Pense em
 "adesivo da peça vestida", recortado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 310 → 720   (largura 410 px)
-- y: 390 → 840   (altura 450 px)
-- A peça DEVE ocupar exatamente esta caixa.
+- x: 236 → 788   (largura 552 px)
+- y: 415 → 872   (altura 457 px)
+- A peça DEVE ocupar exatamente esta caixa (engloba tronco + braços).
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
 
 ÂNCORA ANATÔMICA:
 Gola alinhada ao pescoço da base; ombros nos ombros da base (y 440–500);
-mangas compridas acompanhando os braços; barra no quadril alto (y ≈ 840).
+mangas compridas descendo pelos braços, punho terminando no pulso
+(y ≈ 872); barra do tronco no quadril alto.
 
 TAMANHO RELATIVO À BASE:
-Largura = ombro-a-ombro + 5% cada lado; Altura = pescoço até quadril.
+Largura = vão dos braços da base (≈ 552 px), não só ombro-a-ombro — a
+jaqueta tem mangas longas que se abrem para os lados; Altura = pescoço
+até o pulso.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Gola (centro superior)
@@ -800,19 +810,24 @@ pernas acompanhando as pernas da base. Pense em "adesivo da peça
 vestida", recortado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
-- x: 335 → 690   (largura 355 px)
-- y: 715 → 1430  (altura 715 px)
-- A peça DEVE ocupar exatamente esta caixa.
+- x: 305 → 720   (largura 415 px)
+- y: 705 → 1445  (altura 740 px)
+- A peça DEVE ocupar exatamente esta caixa. Largura estendida até o VÃO
+  DOS PÉS da base (não só do quadril) — a base fica em pose de pernas
+  abertas e a arte da legging (que afunila nos tornozelos), esticada
+  nesta caixa mais larga, cobre as pernas inteiras até o pé.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
 
 ÂNCORA ANATÔMICA:
-Cós de cintura alta alinhado ao cós do short da base (y ≈ 725);
-duas pernas separadas acompanhando as pernas da base (vão entre as
-pernas com alpha=0); barra das pernas nos tornozelos (y ≈ 1400).
+Cós de cintura alta cobrindo o cós do short da base (y ≈ 705); duas
+pernas separadas acompanhando as pernas da base (vão entre as pernas
+com alpha=0); barra das pernas no tornozelo (y ≈ 1440), acompanhando a
+pose de pernas abertas.
 
 TAMANHO RELATIVO À BASE:
-Largura = largura do quadril; Altura = cós até tornozelo.
+Largura = vão dos pés da base (≈ 415 px), maior que a largura do
+quadril; Altura = cós até tornozelo.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Cintura (abertura superior)
