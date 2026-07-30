@@ -638,6 +638,24 @@ export default function Leaderboard() {
                 const tie = myWodEntry.scoreNum === compareTarget.scoreNum;
                 const meBetter = wodIsTimeBased ? myWodEntry.scoreNum < compareTarget.scoreNum : myWodEntry.scoreNum > compareTarget.scoreNum;
                 const bestId = tie ? null : (meBetter ? myWodEntry.userId : compareTarget.userId);
+
+                // Desempenho relativo (0-100), mesmo cálculo usado no placar do Duelo:
+                // o melhor dos dois fica em 100, o outro proporcional.
+                const round1 = (n: number) => Math.round(n * 10) / 10;
+                const best = wodIsTimeBased
+                  ? Math.min(myWodEntry.scoreNum, compareTarget.scoreNum)
+                  : Math.max(myWodEntry.scoreNum, compareTarget.scoreNum);
+                const perfOf = (scoreNum: number) => {
+                  const perf = wodIsTimeBased
+                    ? (scoreNum > 0 ? (best / scoreNum) * 100 : 0)
+                    : (best > 0 ? (scoreNum / best) * 100 : 0);
+                  return round1(Math.max(0, Math.min(100, perf)));
+                };
+
+                const myRank = wodRanking.findIndex(e => e.userId === myWodEntry.userId) + 1;
+                const targetRank = wodRanking.findIndex(e => e.userId === compareTarget.userId) + 1;
+                const totalRanked = wodRanking.length;
+
                 const rows: ComparisonRow[] = [
                   {
                     key: 'result',
@@ -647,11 +665,39 @@ export default function Leaderboard() {
                     bestParticipantId: bestId,
                   },
                   {
-                    key: 'category',
+                    key: 'performance',
+                    icon: Zap,
+                    label: 'Desempenho',
+                    values: {
+                      [myWodEntry.userId]: `${perfOf(myWodEntry.scoreNum)}`,
+                      [compareTarget.userId]: `${perfOf(compareTarget.scoreNum)}`,
+                    },
+                    bestParticipantId: bestId,
+                  },
+                  {
+                    key: 'rank',
                     icon: Trophy,
+                    label: 'Posição',
+                    values: {
+                      [myWodEntry.userId]: myRank > 0 ? `#${myRank} de ${totalRanked}` : '—',
+                      [compareTarget.userId]: targetRank > 0 ? `#${targetRank} de ${totalRanked}` : '—',
+                    },
+                    bestParticipantId: myRank > 0 && targetRank > 0 ? (myRank < targetRank ? myWodEntry.userId : targetRank < myRank ? compareTarget.userId : null) : null,
+                  },
+                  {
+                    key: 'category',
+                    icon: Hash,
                     label: 'Categoria',
                     values: { [myWodEntry.userId]: myWodEntry.type, [compareTarget.userId]: compareTarget.type },
                     bestParticipantId: null,
+                  },
+                  {
+                    key: 'level',
+                    icon: Users,
+                    label: 'Nível',
+                    values: { [myWodEntry.userId]: String(myWodEntry.level), [compareTarget.userId]: String(compareTarget.level) },
+                    bestParticipantId: myWodEntry.level === compareTarget.level ? null
+                      : myWodEntry.level > compareTarget.level ? myWodEntry.userId : compareTarget.userId,
                   },
                 ];
                 return (
