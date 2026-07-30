@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Sparkles, Lock, TrendingUp, Activity, Dumbbell, Gauge, Crown } from 'lucide-react';
+import { Sparkles, Lock, TrendingUp, Activity, Dumbbell, Gauge, Crown, Moon, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -17,6 +17,17 @@ const FEELINGS: { value: TrainingFeeling; label: string; emoji: string }[] = [
 ];
 
 const parseLoad = (v?: number | null) => (typeof v === 'number' && v > 0 ? v : 0);
+
+const HEATMAP_WEEKS = 18;
+const DAY_MS = 86400000;
+const dateKey = (d: Date) => d.toLocaleDateString('en-CA');
+
+const SLEEP_BUCKETS: { key: string; label: string; test: (h: number) => boolean }[] = [
+  { key: '<6h',  label: '< 6h',  test: h => h < 6 },
+  { key: '6-7h', label: '6–7h',  test: h => h >= 6 && h < 7 },
+  { key: '7-8h', label: '7–8h',  test: h => h >= 7 && h < 8 },
+  { key: '8h+',  label: '8h+',   test: h => h >= 8 },
+];
 
 export default function Insights() {
   const { user } = useAuth();
@@ -55,6 +66,64 @@ export default function Insights() {
       rpeByFeeling[l.feeling].n += 1;
     });
 
+    // RPE médio por faixa de horas de sono — sono x desempenho
+    const rpeBySleep: Record<string, { sum: number; n: number }> = {};
+    logs.forEach(l => {
+      if (typeof l.sleep_hours !== 'number' || l.sleep_hours <= 0) return;
+      if (typeof l.rpe !== 'number' || l.rpe <= 0) return;
+      const bucket = SLEEP_BUCKETS.find(b => b.test(l.sleep_hours!));
+      if (!bucket) return;
+      (rpeBySleep[bucket.key] ||= { sum: 0, n: 0 });
+      rpeBySleep[bucket.key].sum += l.rpe;
+      rpeBySleep[bucket.key].n += 1;
+    });
+
+    // Streak (dias seguidos) e heatmap de consistência
+    const activityDates = Array.from(new Set(logs.map(l => l.date))).sort();
+    let currentStreak = 0;
+    let longestStreak = 0;
+    if (activityDates.length) {
+      const todayStr = dateKey(new Date());
+      const yesterdayStr = dateKey(new Date(Date.now() - DAY_MS));
+      const desc = [...activityDates].reverse();
+      if (desc[0] === todayStr || desc[0] === yesterdayStr) {
+        currentStreak = 1;
+        for (let i = 1; i < desc.length; i++) {
+          const prev = new Date(desc[i - 1] + 'T00:00:00').getTime();
+          const curr = new Date(desc[i] + 'T00:00:00').getTime();
+          if (prev - curr === DAY_MS) currentStreak++; else break;
+        }
+      }
+      let run = 1;
+      longestStreak = 1;
+      for (let i = 1; i < activityDates.length; i++) {
+        const prev = new Date(activityDates[i - 1] + 'T00:00:00').getTime();
+        const curr = new Date(activityDates[i] + 'T00:00:00').getTime();
+        if (curr - prev === DAY_MS) { run++; longestStreak = Math.max(longestStreak, run); }
+        else run = 1;
+      }
+    }
+
+    const countByDate: Record<string, number> = {};
+    logs.forEach(l => { countByDate[l.date] = (countByDate[l.date] || 0) + 1; });
+    const today = new Date();
+    const endOfWeek = new Date(today);
+    endOfWeek.setDate(endOfWeek.getDate() + (6 - endOfWeek.getDay())); // sábado da semana atual
+    const totalDays = HEATMAP_WEEKS * 7;
+    const start = new Date(endOfWeek);
+    start.setDate(start.getDate() - totalDays + 1); // domingo, início da 1ª semana
+    const heatmapCols: { date: string; count: number }[][] = [];
+    for (let w = 0; w < HEATMAP_WEEKS; w++) {
+      const col: { date: string; count: number }[] = [];
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(start);
+        day.setDate(day.getDate() + w * 7 + d);
+        const key = dateKey(day);
+        col.push({ date: key, count: countByDate[key] || 0 });
+      }
+      heatmapCols.push(col);
+    }
+
     // Evolução de carga por exercício
     const byExercise: Record<string, { first: number; last: number; firstDate: string; lastDate: string; name: string }> = {};
     logs.filter(l => l.category === 'forca' && l.exercise && parseLoad(l.load_kg))
@@ -82,7 +151,10 @@ export default function Insights() {
     const trainingLogs = logs.filter(l => l.category !== 'nota').length;
     const perWeek = weeks.size ? trainingLogs / weeks.size : 0;
 
-    return { total: trainingLogs, avgRpe, feelingCount, rpeByFeeling, loadEvolution, perWeek };
+    return {
+      total: trainingLogs, avgRpe, feelingCount, rpeByFeeling, rpeBySleep, loadEvolution, perWeek,
+      currentStreak, longestStreak, heatmapCols,
+    };
   }, [logs]);
 
   // ── Bloqueio premium ────────────────────────────────────────────────────────
@@ -100,7 +172,7 @@ export default function Insights() {
             evolução de carga por exercício.
           </p>
           <div className="w-full flex flex-col gap-2 mt-2 opacity-60">
-            {['RPE médio por sensação', 'Evolução de carga (PRs)', 'Frequência semanal'].map(t => (
+            {['RPE médio por sensação', 'Sono x desempenho', 'Evolução de carga (PRs)', 'Consistência (heatmap)'].map(t => (
               <div key={t} className="bg-surface-container-highest/40 rounded-2xl px-4 py-3 flex items-center gap-2 blur-[1px]">
                 <Lock className="w-3.5 h-3.5 text-on-surface-variant" />
                 <span className="text-[11px] font-black uppercase tracking-widest text-on-surface-variant">{t}</span>
@@ -122,6 +194,7 @@ export default function Insights() {
 
   const hasData = stats.total > 0;
   const maxFeeling = Math.max(1, ...Object.values(stats.feelingCount));
+  const todayStr = dateKey(new Date());
 
   return (
     <div className="min-h-screen bg-background p-4 pt-8 pb-32 flex flex-col gap-6">
@@ -139,13 +212,51 @@ export default function Insights() {
         <>
           {/* Stat tiles */}
           <div className="grid grid-cols-3 gap-3">
-            <Tile icon={Activity} value={String(stats.total)} label="Treinos" />
-            <Tile icon={Gauge} value={stats.avgRpe ? stats.avgRpe.toFixed(1) : '—'} label="RPE médio" />
-            <Tile icon={TrendingUp} value={stats.perWeek ? stats.perWeek.toFixed(1) : '—'} label="Por semana" />
+            <Tile icon={Activity} value={String(stats.total)} label="Treinos" hint="Total registrado" />
+            <Tile icon={Gauge} value={stats.avgRpe ? stats.avgRpe.toFixed(1) : '—'} label="RPE médio" hint="Esforço percebido (0–10)" />
+            <Tile icon={TrendingUp} value={stats.perWeek ? stats.perWeek.toFixed(1) : '—'} label="Por semana" hint="Média nas semanas ativas" />
           </div>
 
+          {/* Streak e heatmap de consistência */}
+          <Card title="Consistência" icon={Flame} subtitle="Seus treinos nas últimas semanas">
+            <div className="flex items-center gap-5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-base leading-none">🔥</span>
+                <span className="text-lg font-headline font-black text-on-surface italic leading-none">{stats.currentStreak}</span>
+                <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">seguidos</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-lg font-headline font-black text-secondary italic leading-none">{stats.longestStreak}</span>
+                <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">recorde</span>
+              </div>
+            </div>
+            <div className="overflow-x-auto -mx-1 px-1">
+              <div className="flex gap-[3px] w-max">
+                {stats.heatmapCols.map((col, i) => (
+                  <div key={i} className="flex flex-col gap-[3px]">
+                    {col.map(day => {
+                      const isFuture = day.date > todayStr;
+                      return (
+                        <div
+                          key={day.date}
+                          title={isFuture ? undefined : `${day.date}${day.count ? ` • ${day.count} registro(s)` : ' • sem treino'}`}
+                          className={cn(
+                            'w-2.5 h-2.5 rounded-[3px]',
+                            isFuture
+                              ? 'opacity-0'
+                              : day.count >= 2 ? 'bg-primary' : day.count === 1 ? 'bg-primary/40' : 'bg-surface-container-highest/40'
+                          )}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+
           {/* Distribuição de sensação */}
-          <Card title="Como você se sente" icon={Activity}>
+          <Card title="Como você se sente" icon={Activity} subtitle="Quantas vezes você registrou cada sensação após o treino">
             <div className="flex flex-col gap-2">
               {FEELINGS.filter(f => stats.feelingCount[f.value]).map(f => {
                 const n = stats.feelingCount[f.value] || 0;
@@ -167,10 +278,7 @@ export default function Insights() {
 
           {/* RPE por sensação — insight cruzado */}
           {Object.keys(stats.rpeByFeeling).length > 0 && (
-            <Card title="Esforço x sensação" icon={Gauge}>
-              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-3 italic">
-                RPE médio conforme como você chegou ao treino
-              </p>
+            <Card title="Esforço x sensação" icon={Gauge} subtitle="RPE médio conforme como você chegou ao treino">
               <div className="flex flex-col gap-2">
                 {FEELINGS.filter(f => stats.rpeByFeeling[f.value]).map(f => {
                   const r = stats.rpeByFeeling[f.value];
@@ -186,9 +294,27 @@ export default function Insights() {
             </Card>
           )}
 
+          {/* Sono x desempenho */}
+          {Object.keys(stats.rpeBySleep).length > 0 && (
+            <Card title="Sono x desempenho" icon={Moon} subtitle="RPE médio conforme quantas horas você dormiu na noite anterior">
+              <div className="flex flex-col gap-2">
+                {SLEEP_BUCKETS.filter(b => stats.rpeBySleep[b.key]).map(b => {
+                  const r = stats.rpeBySleep[b.key];
+                  const avg = r.sum / r.n;
+                  return (
+                    <div key={b.key} className="flex items-center justify-between bg-surface-container-highest/30 rounded-xl px-4 py-2.5">
+                      <span className="text-[11px] font-bold text-on-surface uppercase italic">{b.label}</span>
+                      <span className="text-sm font-headline font-black text-primary italic">RPE {avg.toFixed(1)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
           {/* Evolução de carga */}
           {stats.loadEvolution.length > 0 && (
-            <Card title="Evolução de carga" icon={Dumbbell}>
+            <Card title="Evolução de carga" icon={Dumbbell} subtitle="Comparação entre a primeira e a última carga registrada em cada exercício">
               <div className="flex flex-col gap-2">
                 {stats.loadEvolution.slice(0, 6).map(e => (
                   <div key={e.name} className="flex items-center justify-between bg-surface-container-highest/30 rounded-xl px-4 py-2.5">
@@ -225,20 +351,28 @@ const Header = () => (
   </header>
 );
 
-const Tile = ({ icon: Icon, value, label }: { icon: typeof Activity; value: string; label: string }) => (
+const Tile = ({ icon: Icon, value, label, hint }: { icon: typeof Activity; value: string; label: string; hint?: string }) => (
   <div className="bg-surface-container rounded-3xl p-4 border border-outline-variant/10 flex flex-col items-center gap-1">
     <Icon className="w-4 h-4 text-primary mb-1" />
     <p className="text-2xl font-headline font-black text-on-surface italic leading-none">{value}</p>
     <p className="text-[8px] text-on-surface-variant font-black uppercase tracking-widest">{label}</p>
+    {hint && <p className="text-[7px] text-on-surface-variant/60 font-bold uppercase tracking-widest text-center leading-tight">{hint}</p>}
   </div>
 );
 
-const Card = ({ title, icon: Icon, children }: { title: string; icon: typeof Activity; children: React.ReactNode }) => (
+const Card = ({ title, icon: Icon, subtitle, children }: { title: string; icon: typeof Activity; subtitle?: string; children: React.ReactNode }) => (
   <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
     className="bg-surface-container rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-3">
-    <h2 className="font-headline font-black text-sm text-on-surface uppercase italic flex items-center gap-2">
-      <Icon className="w-4 h-4 text-primary" /> {title}
-    </h2>
+    <div>
+      <h2 className="font-headline font-black text-sm text-on-surface uppercase italic flex items-center gap-2">
+        <Icon className="w-4 h-4 text-primary" /> {title}
+      </h2>
+      {subtitle && (
+        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest italic mt-1 opacity-70">
+          {subtitle}
+        </p>
+      )}
+    </div>
     {children}
   </motion.section>
 );

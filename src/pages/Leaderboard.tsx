@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Trophy, Zap, Calendar, ChevronDown, ChevronUp, Users, ArrowLeftRight, Timer, Hash, X } from 'lucide-react';
+import { Trophy, Zap, Calendar, ChevronDown, ChevronUp, Users, ArrowLeftRight, X } from 'lucide-react';
 import { cn, compareBy } from '../lib/utils';
 import { User as UserType } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 import ShareRankingButton from '../components/ShareRankingButton';
 import AthletePhoto from '../components/AthletePhoto';
-import AthleteComparisonCard, { ComparisonRow } from '../components/AthleteComparisonCard';
 import { supabase } from '../lib/supabase';
 import { getWodByDate, getLatestWod } from '../lib/wods';
 import { formatInTimeZone } from 'date-fns-tz';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
 import { useAuth } from '../context/AuthContext';
+import { computeRepsPerMinute, formatPace } from '../lib/pace';
+import { DuelScoreOutcome } from '../lib/duelScore';
+import DuelRecapCard from '../components/DuelRecapCard';
 
 interface RankedUser extends UserType {
   monthXp?: number;
@@ -29,6 +31,7 @@ interface WodRankEntry {
   gender: string;     // 'M' | 'F'
   level: number;
   scoreNum: number;   // número puro para ordenação
+  pace: number | null; // reps/min — null quando o coach não cadastrou os números
 }
 
 type WodFilter = 'todos' | 'RX' | 'Scaled';
@@ -243,6 +246,12 @@ export default function Leaderboard() {
               gender,
               level: profile?.level || 1,
               scoreNum: r.scoreNum,
+              pace: computeRepsPerMinute(r.result, {
+                type: wod?.type,
+                repsPerRound,
+                totalReps: wod?.total_reps,
+                timeCapMinutes: wod?.time_cap_minutes,
+              }),
             };
           });
       };
@@ -333,6 +342,15 @@ export default function Leaderboard() {
       {entry.type} {entry.gender === 'F' ? '♀' : '♂'}
     </span>
   );
+
+  // Ritmo (reps/min) — só aparece quando o coach cadastrou os números do WOD
+  const PaceLabel = ({ entry }: { entry: WodRankEntry }) => {
+    const label = formatPace(entry.pace);
+    if (!label) return null;
+    return (
+      <span className="text-[9px] font-bold text-on-surface-variant/70 tracking-widest">{label}</span>
+    );
+  };
 
   // ── Comparar resultado do WOD com outro atleta ──────────────────────────────
   const myWodEntry = wodRanking.find(e => e.userId === user?.id) || null;
@@ -479,6 +497,7 @@ export default function Leaderboard() {
                     {isClans ? top3[1].name : top3[1].name.split(' ')[0]}
                   </p>
                   <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[1])}</p>
+                  {isWod && <PaceLabel entry={top3[1] as WodRankEntry} />}
                   {isWod && (
                     <div className="flex items-center justify-center gap-1 mt-1">
                       <WodBadge entry={top3[1] as WodRankEntry} />
@@ -510,6 +529,7 @@ export default function Leaderboard() {
                     {isClans ? top3[0].name : top3[0].name.split(' ')[0]}
                   </p>
                   <p className="text-xs text-on-surface font-bold">{getScore(top3[0])}</p>
+                  {isWod && <PaceLabel entry={top3[0] as WodRankEntry} />}
                   {isWod && (
                     <div className="flex items-center justify-center gap-1 mt-1">
                       <WodBadge entry={top3[0] as WodRankEntry} />
@@ -541,6 +561,7 @@ export default function Leaderboard() {
                     {isClans ? top3[2].name : top3[2].name.split(' ')[0]}
                   </p>
                   <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[2])}</p>
+                  {isWod && <PaceLabel entry={top3[2] as WodRankEntry} />}
                   {isWod && (
                     <div className="flex items-center justify-center gap-1 mt-1">
                       <WodBadge entry={top3[2] as WodRankEntry} />
@@ -601,6 +622,7 @@ export default function Leaderboard() {
                   <div className="text-right flex items-center gap-2">
                     <div>
                       <p className="text-on-surface font-headline font-black text-sm italic">{getScore(u)}</p>
+                      {isWod && <PaceLabel entry={u as WodRankEntry} />}
                       {activeTab === 'xp_mes' && <p className="text-on-surface-variant text-[9px] font-bold">Total: {u.xp} XP</p>}
                     </div>
                     {isWod && <CompareButton entry={u as WodRankEntry} />}
@@ -635,11 +657,12 @@ export default function Leaderboard() {
                 {wodInfo?.name} • {wodInfo?.type}
               </p>
               {(() => {
+                const myId = myWodEntry.userId;
+                const targetId = compareTarget.userId;
                 const tie = myWodEntry.scoreNum === compareTarget.scoreNum;
                 const meBetter = wodIsTimeBased ? myWodEntry.scoreNum < compareTarget.scoreNum : myWodEntry.scoreNum > compareTarget.scoreNum;
-                const bestId = tie ? null : (meBetter ? myWodEntry.userId : compareTarget.userId);
 
-                // Desempenho relativo (0-100), mesmo cálculo usado no placar do Duelo:
+                // Desempenho relativo (0-100) — mesmo cálculo do placar do Duelo:
                 // o melhor dos dois fica em 100, o outro proporcional.
                 const round1 = (n: number) => Math.round(n * 10) / 10;
                 const best = wodIsTimeBased
@@ -651,64 +674,71 @@ export default function Leaderboard() {
                     : (best > 0 ? (scoreNum / best) * 100 : 0);
                   return round1(Math.max(0, Math.min(100, perf)));
                 };
+                const myPerf = perfOf(myWodEntry.scoreNum);
+                const targetPerf = perfOf(compareTarget.scoreNum);
 
-                const myRank = wodRanking.findIndex(e => e.userId === myWodEntry.userId) + 1;
-                const targetRank = wodRanking.findIndex(e => e.userId === compareTarget.userId) + 1;
+                // Mesmo formato de DuelScoreOutcome usado no recap do Duelo, para
+                // reaproveitar o DuelRecapCard (resultado, desempenho, ritmo e a
+                // explicação de "por que venceu") também na comparação avulsa.
+                const outcome: DuelScoreOutcome = {
+                  winnerId: tie ? null : (meBetter ? myId : targetId),
+                  usedIntensity: false,
+                  entries: {
+                    [myId]: { id: myId, perf: myPerf, effort: null, total: myPerf },
+                    [targetId]: { id: targetId, perf: targetPerf, effort: null, total: targetPerf },
+                  },
+                };
+
+                const repsPerRound = wodInfo?.reps_per_round as number | undefined;
+                const myRank = wodRanking.findIndex(e => e.userId === myId) + 1;
+                const targetRank = wodRanking.findIndex(e => e.userId === targetId) + 1;
                 const totalRanked = wodRanking.length;
 
-                const rows: ComparisonRow[] = [
-                  {
-                    key: 'result',
-                    icon: wodIsTimeBased ? Timer : Hash,
-                    label: 'Resultado',
-                    values: { [myWodEntry.userId]: myWodEntry.result, [compareTarget.userId]: compareTarget.result },
-                    bestParticipantId: bestId,
-                  },
-                  {
-                    key: 'performance',
-                    icon: Zap,
-                    label: 'Desempenho',
-                    values: {
-                      [myWodEntry.userId]: `${perfOf(myWodEntry.scoreNum)}`,
-                      [compareTarget.userId]: `${perfOf(compareTarget.scoreNum)}`,
-                    },
-                    bestParticipantId: bestId,
-                  },
-                  {
-                    key: 'rank',
-                    icon: Trophy,
-                    label: 'Posição',
-                    values: {
-                      [myWodEntry.userId]: myRank > 0 ? `#${myRank} de ${totalRanked}` : '—',
-                      [compareTarget.userId]: targetRank > 0 ? `#${targetRank} de ${totalRanked}` : '—',
-                    },
-                    bestParticipantId: myRank > 0 && targetRank > 0 ? (myRank < targetRank ? myWodEntry.userId : targetRank < myRank ? compareTarget.userId : null) : null,
-                  },
-                  {
-                    key: 'category',
-                    icon: Hash,
-                    label: 'Categoria',
-                    values: { [myWodEntry.userId]: myWodEntry.type, [compareTarget.userId]: compareTarget.type },
-                    bestParticipantId: null,
-                  },
-                  {
-                    key: 'level',
-                    icon: Users,
-                    label: 'Nível',
-                    values: { [myWodEntry.userId]: String(myWodEntry.level), [compareTarget.userId]: String(compareTarget.level) },
-                    bestParticipantId: myWodEntry.level === compareTarget.level ? null
-                      : myWodEntry.level > compareTarget.level ? myWodEntry.userId : compareTarget.userId,
-                  },
-                ];
                 return (
-                  <AthleteComparisonCard
-                    participants={[
-                      { id: myWodEntry.userId, name: 'Você', photoUrl: (user as any)?.photo_url, isWinner: bestId === myWodEntry.userId },
-                      { id: compareTarget.userId, name: compareTarget.name, photoUrl: compareTarget.photoUrl, isWinner: bestId === compareTarget.userId },
-                    ]}
-                    rows={rows}
-                    edge={tie ? undefined : `${bestId === myWodEntry.userId ? 'Você está' : compareTarget.name.split(' ')[0] + ' está'} na frente neste WOD`}
-                  />
+                  <div className="flex flex-col gap-3">
+                    <DuelRecapCard
+                      wodName={wodInfo?.name}
+                      wodType={wodInfo?.type}
+                      outcome={outcome}
+                      participants={[
+                        { id: myId, name: 'Você' },
+                        { id: targetId, name: compareTarget.name },
+                      ]}
+                      results={{ [myId]: myWodEntry.result, [targetId]: compareTarget.result }}
+                      paceMeta={{
+                        type: wodInfo?.type,
+                        repsPerRound,
+                        totalReps: wodInfo?.total_reps,
+                        timeCapMinutes: wodInfo?.time_cap_minutes,
+                      }}
+                    />
+                    {/* Extras específicos do ranking do box: posição no dia e nível */}
+                    <div className="bg-surface-container-highest/30 rounded-2xl border border-outline-variant/10 divide-y divide-outline-variant/5">
+                      <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 items-center">
+                        <span className="text-[9px] font-black text-on-surface-variant/70 uppercase tracking-widest">Posição no ranking</span>
+                        <span className={cn('text-xs font-bold text-center', myRank > 0 && targetRank > 0 && myRank < targetRank ? 'text-primary' : 'text-on-surface')}>
+                          {myRank > 0 ? `#${myRank} de ${totalRanked}` : '—'}
+                        </span>
+                        <span className={cn('text-xs font-bold text-center', myRank > 0 && targetRank > 0 && targetRank < myRank ? 'text-primary' : 'text-on-surface')}>
+                          {targetRank > 0 ? `#${targetRank} de ${totalRanked}` : '—'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 items-center">
+                        <span className="text-[9px] font-black text-on-surface-variant/70 uppercase tracking-widest">Categoria</span>
+                        <span className="text-xs font-bold text-center text-on-surface">{myWodEntry.type}</span>
+                        <span className="text-xs font-bold text-center text-on-surface">{compareTarget.type}</span>
+                      </div>
+                      <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 items-center">
+                        <span className="text-[9px] font-black text-on-surface-variant/70 uppercase tracking-widest">Nível</span>
+                        <span className={cn('text-xs font-bold text-center', myWodEntry.level > compareTarget.level ? 'text-primary' : 'text-on-surface')}>
+                          {myWodEntry.level}
+                        </span>
+                        <span className={cn('text-xs font-bold text-center', compareTarget.level > myWodEntry.level ? 'text-primary' : 'text-on-surface')}>
+                          {compareTarget.level}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 );
               })()}
             </motion.div>

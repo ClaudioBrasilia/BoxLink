@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../context/ToastContext';
+import { isTimeBasedType } from '../lib/pace';
 
 import { formatInTimeZone } from 'date-fns-tz';
 
@@ -20,7 +21,7 @@ export default function Coach() {
   const [selectedResultsDate, setSelectedResultsDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [editingWod, setEditingWod] = useState<Partial<Wod> | null>(null);
   const toast = useToast();
-  const [newWod, setNewWod] = useState<Partial<Wod> & { reps_per_round?: number }>({
+  const [newWod, setNewWod] = useState<Partial<Wod>>({
     date: formatInTimeZone(new Date(), TIMEZONE, 'yyyy-MM-dd'),
     name: '',
     type: 'AMRAP',
@@ -29,6 +30,8 @@ export default function Coach() {
     rx: '',
     scaled: '',
     reps_per_round: undefined,
+    total_reps: undefined,
+    time_cap_minutes: undefined,
   });
 
   const fetchData = async () => {
@@ -72,6 +75,8 @@ export default function Coach() {
   }, []);
 
   const isAmrap = (type: string) => (type || '').toUpperCase() === 'AMRAP';
+  // FOR TIME e afins: o ritmo (reps/min) vem do total de reps ÷ tempo do atleta
+  const isForTime = (type: string) => isTimeBasedType(type);
 
   const handleSaveWod = async () => {
     const missing = [];
@@ -91,6 +96,8 @@ export default function Coach() {
       rx: newWod.rx,
       scaled: newWod.scaled,
       reps_per_round: isAmrap(newWod.type || '') ? (newWod.reps_per_round || null) : null,
+      time_cap_minutes: isAmrap(newWod.type || '') ? (newWod.time_cap_minutes || null) : null,
+      total_reps: isForTime(newWod.type || '') ? (newWod.total_reps || null) : null,
     };
 
     // Se já existe WOD nesta data, atualiza em vez de inserir — duplicar a
@@ -122,6 +129,8 @@ export default function Coach() {
         rx: '',
         scaled: '',
         reps_per_round: undefined,
+        total_reps: undefined,
+        time_cap_minutes: undefined,
       });
     } else {
       toast.error('Erro ao postar WOD: ' + (error?.message || 'Erro desconhecido'));
@@ -199,7 +208,9 @@ export default function Coach() {
         skill: editingWod.skill ?? '',
         rx: editingWod.rx ?? '',
         scaled: editingWod.scaled ?? '',
-        reps_per_round: isAmrap(editingWod.type || '') ? ((editingWod as any).reps_per_round || null) : null,
+        reps_per_round: isAmrap(editingWod.type || '') ? (editingWod.reps_per_round || null) : null,
+        time_cap_minutes: isAmrap(editingWod.type || '') ? (editingWod.time_cap_minutes || null) : null,
+        total_reps: isForTime(editingWod.type || '') ? (editingWod.total_reps || null) : null,
       })
       .eq('id', editingWod.id);
     if (!error) {
@@ -295,19 +306,49 @@ export default function Coach() {
                 <input type="text" value={newWod.name} onChange={e => setNewWod({...newWod, name: e.target.value})} placeholder="ex: MURPH" className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface" />
               </div>
 
-              {/* Campo reps_per_round — só aparece para AMRAP */}
+              {/* Números do AMRAP: reps por round + duração → ranking e ritmo */}
               {isAmrap(newWod.type || '') && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-primary font-bold uppercase tracking-widest">Reps por round completo</label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={newWod.reps_per_round ?? ''}
+                      onChange={e => setNewWod({...newWod, reps_per_round: e.target.value ? parseInt(e.target.value) : undefined})}
+                      placeholder="ex: 30"
+                      className="w-full bg-primary/5 border border-primary/20 rounded-2xl p-4 font-headline font-bold text-on-surface"
+                    />
+                    <p className="text-[10px] text-on-surface-variant">Usado para calcular o ranking (rounds × reps + reps extras)</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-primary font-bold uppercase tracking-widest">Duração (min)</label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={newWod.time_cap_minutes ?? ''}
+                      onChange={e => setNewWod({...newWod, time_cap_minutes: e.target.value ? parseInt(e.target.value) : undefined})}
+                      placeholder="ex: 20"
+                      className="w-full bg-primary/5 border border-primary/20 rounded-2xl p-4 font-headline font-bold text-on-surface"
+                    />
+                    <p className="text-[10px] text-on-surface-variant">Opcional — mostra o ritmo (reps/min) de cada atleta</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Total de reps do FOR TIME → ritmo (reps/min) */}
+              {isForTime(newWod.type || '') && (
                 <div className="space-y-2">
-                  <label className="text-[10px] text-primary font-bold uppercase tracking-widest">Reps por round completo</label>
+                  <label className="text-[10px] text-primary font-bold uppercase tracking-widest">Total de repetições do WOD</label>
                   <input
                     type="number"
                     inputMode="numeric"
-                    value={newWod.reps_per_round ?? ''}
-                    onChange={e => setNewWod({...newWod, reps_per_round: e.target.value ? parseInt(e.target.value) : undefined})}
-                    placeholder="ex: 30"
+                    value={newWod.total_reps ?? ''}
+                    onChange={e => setNewWod({...newWod, total_reps: e.target.value ? parseInt(e.target.value) : undefined})}
+                    placeholder="ex: 150"
                     className="w-full bg-primary/5 border border-primary/20 rounded-2xl p-4 font-headline font-bold text-on-surface"
                   />
-                  <p className="text-[10px] text-on-surface-variant">Usado para calcular o ranking (rounds × reps + reps extras)</p>
+                  <p className="text-[10px] text-on-surface-variant">Opcional — mostra o ritmo (reps/min) de cada atleta</p>
                 </div>
               )}
 
@@ -568,14 +609,41 @@ export default function Coach() {
                 </div>
 
                 {isAmrap(editingWod.type || '') && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-primary font-bold uppercase tracking-widest">Reps por round completo</label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={editingWod.reps_per_round ?? ''}
+                        onChange={e => setEditingWod({...editingWod, reps_per_round: e.target.value ? parseInt(e.target.value) : undefined})}
+                        placeholder="ex: 30"
+                        className="w-full bg-primary/5 border border-primary/20 rounded-2xl p-3 font-headline font-bold text-on-surface text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-primary font-bold uppercase tracking-widest">Duração (min)</label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={editingWod.time_cap_minutes ?? ''}
+                        onChange={e => setEditingWod({...editingWod, time_cap_minutes: e.target.value ? parseInt(e.target.value) : undefined})}
+                        placeholder="ex: 20"
+                        className="w-full bg-primary/5 border border-primary/20 rounded-2xl p-3 font-headline font-bold text-on-surface text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {isForTime(editingWod.type || '') && (
                   <div className="space-y-1">
-                    <label className="text-[10px] text-primary font-bold uppercase tracking-widest">Reps por round completo</label>
+                    <label className="text-[10px] text-primary font-bold uppercase tracking-widest">Total de repetições do WOD</label>
                     <input
                       type="number"
                       inputMode="numeric"
-                      value={(editingWod as any).reps_per_round ?? ''}
-                      onChange={e => setEditingWod({...editingWod, reps_per_round: e.target.value ? parseInt(e.target.value) : undefined} as any)}
-                      placeholder="ex: 30"
+                      value={editingWod.total_reps ?? ''}
+                      onChange={e => setEditingWod({...editingWod, total_reps: e.target.value ? parseInt(e.target.value) : undefined})}
+                      placeholder="ex: 150"
                       className="w-full bg-primary/5 border border-primary/20 rounded-2xl p-3 font-headline font-bold text-on-surface text-sm"
                     />
                   </div>

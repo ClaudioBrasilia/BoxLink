@@ -25,7 +25,11 @@ import { addReward } from '../utils/rewards';
 import { useToast } from '../context/ToastContext';
 import { createNotification } from '../hooks/useNotifications';
 import { computeDuelScore, DuelScoreOutcome } from '../lib/duelScore';
-import AthleteComparisonCard, { ComparisonParticipant, ComparisonRow } from '../components/AthleteComparisonCard';
+import DuelRecapCard from '../components/DuelRecapCard';
+import ShareDuelButton from '../components/ShareDuelButton';
+import PremiumCTA from '../components/PremiumCTA';
+import { WodPaceMeta, parseTimeToSeconds } from '../lib/pace';
+import { isPremium } from '../lib/plan';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +59,10 @@ interface Duel {
   wodType?: string;
   wodRx?: string;
   wodCustom?: boolean;
+  // Ritmo (reps/min) de WOD personalizado (individual, Premium) — wod_id é
+  // sempre null nesse caso, então os números vivem direto no duelo.
+  totalReps?: number | null;
+  timeCapMinutes?: number | null;
   category: string;
   results: DuelResult;
   intensity: DuelIntensity;
@@ -135,12 +143,17 @@ export default function Duels() {
   // Conta individual cria duelo só pelo código de amigo (no Diário) — não vê o
   // formulário de busca que listaria os atletas do box.
   const isIndividual = user?.accountType === 'individual';
+  // Recap comparativo do duelo (desempenho/esforço/ritmo/"por que venceu") é
+  // Premium no individual. Conta de box sempre vê — comparação é core ali.
+  const canSeeComparison = !isIndividual || isPremium(user);
 
   // Data
   const [duels, setDuels] = useState<Duel[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [wods, setWods] = useState<WodOption[]>([]);
   const [boxSettings, setBoxSettings] = useState<any>(null);
+  // Números do WOD (reps totais / duração) por wod_id — usados para o ritmo
+  const [wodPaceMeta, setWodPaceMeta] = useState<Record<string, WodPaceMeta>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -203,6 +216,8 @@ export default function Duels() {
           wodType: d.wod_type,
           wodRx: d.wod_rx,
           wodCustom: d.wod_custom,
+          totalReps: d.total_reps,
+          timeCapMinutes: d.time_cap_minutes,
           category: d.category ?? 'RX',
           results: d.results ?? {},
           intensity: d.intensity ?? {},
@@ -210,9 +225,30 @@ export default function Duels() {
         }));
         // Individual não faz parte de um box: só vê os próprios duelos, nunca
         // o "social feed" de duelos entre atletas do box.
-        setDuels(isIndividual
+        const visible = isIndividual
           ? mapped.filter(d => d.challengerId === user.id || d.opponentIds.includes(user.id))
-          : mapped);
+          : mapped;
+        setDuels(visible);
+
+        // Ritmo (reps/min): busca os números dos WODs usados nos duelos.
+        // WOD personalizado (sem wod_id) não tem esses números — fica sem ritmo.
+        const wodIds = [...new Set(visible.map(d => d.wodId).filter(Boolean))] as string[];
+        if (wodIds.length > 0) {
+          const { data: metaRows } = await supabase
+            .from('wods')
+            .select('id, type, reps_per_round, total_reps, time_cap_minutes')
+            .in('id', wodIds);
+          const metaMap: Record<string, WodPaceMeta> = {};
+          (metaRows || []).forEach((w: any) => {
+            metaMap[w.id] = {
+              type: w.type,
+              repsPerRound: w.reps_per_round,
+              totalReps: w.total_reps,
+              timeCapMinutes: w.time_cap_minutes,
+            };
+          });
+          setWodPaceMeta(metaMap);
+        }
       }
       if (usersRes.data) setUsers(usersRes.data);
       if (wodsRes.data) setWods(wodsRes.data);
@@ -252,6 +288,16 @@ export default function Duels() {
   }, [user]);
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  // Números para o ritmo (reps/min): duelo de box referencia um WOD real
+  // (busca em wodPaceMeta); duelo de WOD personalizado (individual, Premium)
+  // guarda os números direto na própria linha do duelo, já que wod_id é null.
+  const getPaceMeta = (duel: Duel) =>
+    duel.wodId
+      ? wodPaceMeta[duel.wodId]
+      : (duel.totalReps != null || duel.timeCapMinutes != null)
+        ? { type: duel.wodType, totalReps: duel.totalReps, timeCapMinutes: duel.timeCapMinutes }
+        : undefined;
 
   const getUserName = (id: string) => {
     if (id === user?.id) return 'Você';
@@ -493,6 +539,12 @@ export default function Duels() {
     const result = submission[duel.id]?.trim();
     if (!result) {
       toast.warning('Preencha seu resultado.'); return;
+    }
+    // WOD por tempo: exige "mm:ss" — sem isso "333" vira um número solto e o
+    // placar (menor vence) compara tempo com o que na real são reps, dando
+    // um resultado sem sentido (ex: 12 "esmagando" 333).
+    if (isTimeBased(duel.wodType) && parseTimeToSeconds(result) == null) {
+      toast.warning('Resultado por tempo precisa ser "mm:ss", ex: 12:45.'); return;
     }
 
     // Esforço (% da FC máx) opcional — só entra no cálculo se TODOS registrarem.
@@ -1097,92 +1149,92 @@ export default function Duels() {
 
                 {/* Resultados */}
                 {(duel.status === 'active' || duel.status === 'finished') && (
-                  allSubmitted ? (() => {
-                    const comparisonParticipants: ComparisonParticipant[] = allParticipants.map(pid => ({
-                      id: pid,
-                      name: pid === user?.id ? 'Você' : getUserName(pid),
-                      photoUrl: pid === user?.id ? (user as any).photo_url : users.find(u => u.id === pid)?.photo_url,
-                      isWinner: duel.winnerId === pid,
-                    }));
-
-                    // Melhor desempenho bruto (perf 0-100), independente do peso do esforço
-                    const perfBestId = outcome
-                      ? Object.entries(outcome.entries).reduce<string | null>(
-                          (best, [id, e]) => (!best || e.perf > outcome.entries[best].perf) ? id : best, null)
-                      : null;
-
-                    const comparisonRows: ComparisonRow[] = [
-                      {
-                        key: 'result',
-                        icon: timeBased ? Timer : Hash,
-                        label: 'Resultado',
-                        values: Object.fromEntries(allParticipants.map(pid => [pid, getVisibleResult(duel, pid)])),
-                        bestParticipantId: perfBestId,
-                      },
-                      ...(outcome?.usedIntensity ? [
-                        {
-                          key: 'effort',
-                          icon: Zap,
-                          label: 'Esforço (FC)',
-                          values: Object.fromEntries(allParticipants.map(pid => [pid, outcome.entries[pid] ? `${outcome.entries[pid].effort}%` : '—'])),
-                          bestParticipantId: null,
-                        },
-                        {
-                          key: 'total',
-                          icon: Trophy,
-                          label: 'Placar Final',
-                          values: Object.fromEntries(allParticipants.map(pid => [pid, outcome.entries[pid] ? String(outcome.entries[pid].total) : '—'])),
-                          bestParticipantId: duel.winnerId ?? null,
-                        },
-                      ] : []),
-                    ];
-
-                    return (
-                      <div className="flex flex-col gap-1">
-                        <AthleteComparisonCard
-                          participants={comparisonParticipants}
-                          rows={comparisonRows}
-                          edge={
-                            duel.status === 'finished' && duel.winnerId
-                              ? `Vencedor: ${getUserName(duel.winnerId)}`
-                              : undefined
-                          }
-                        />
-                        {outcome?.usedIntensity && (
-                          <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest text-center mt-1 italic">
-                            Placar = 70% desempenho + 30% esforço
-                          </p>
-                        )}
-                        {duel.status === 'finished' && duel.winnerId === null && (
-                          <p className="text-[10px] text-secondary font-bold uppercase tracking-widest text-center mt-1 italic">
-                            Empate — apostas devolvidas
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })() : (
-                    <div className="flex flex-col gap-1">
-                      {allParticipants.map(pid => {
-                        const visible = getVisibleResult(duel, pid);
-                        return (
-                          <div key={pid} className="px-3 py-2 rounded-xl bg-surface-container-highest/30">
-                            <div className="flex justify-between items-center">
-                              <span className="text-[11px] font-bold text-on-surface uppercase italic">
-                                {getUserName(pid)}
-                              </span>
-                              <span className={cn(
-                                'text-[11px] font-black italic',
-                                visible === 'Aguardando' ? 'text-on-surface-variant' : 'text-primary'
-                              )}>
-                                {visible}
-                              </span>
-                            </div>
+                  <div className="flex flex-col gap-1">
+                    {allParticipants.map(pid => {
+                      const visible = getVisibleResult(duel, pid);
+                      const isWinner = duel.status === 'finished' && duel.winnerId === pid;
+                      const isTieFinished = duel.status === 'finished' && duel.winnerId === null;
+                      const entry = outcome?.usedIntensity ? outcome.entries[pid] : null;
+                      return (
+                        <div key={pid} className={cn(
+                          'px-3 py-2 rounded-xl',
+                          isWinner ? 'bg-primary/10 border border-primary/20'
+                            : isTieFinished ? 'bg-secondary/10 border border-secondary/20'
+                            : 'bg-surface-container-highest/30'
+                        )}>
+                          <div className="flex justify-between items-center">
+                            <span className="text-[11px] font-bold text-on-surface uppercase italic">
+                              {getUserName(pid)}
+                              {isWinner && ' 🏆'}
+                              {isTieFinished && ' 🤝'}
+                            </span>
+                            <span className={cn(
+                              'text-[11px] font-black italic',
+                              visible === 'Aguardando' ? 'text-on-surface-variant' : 'text-primary'
+                            )}>
+                              {visible}
+                            </span>
                           </div>
-                        );
-                      })}
+                          {entry && (
+                            <div className="flex items-center gap-2 mt-1 text-[9px] font-black uppercase tracking-widest text-on-surface-variant/80">
+                              <span>Desemp. {entry.perf}</span>
+                              <span className="text-secondary">❤️ {entry.effort}%</span>
+                              <span className="ml-auto text-on-surface">Placar {entry.total}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {outcome?.usedIntensity && (
+                      <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest text-center mt-1 italic">
+                        Placar = 70% desempenho + 30% esforço
+                      </p>
+                    )}
+                    {duel.status === 'active' && !allSubmitted && (
                       <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest text-center mt-1 italic">
                         Resultados revelados quando todos enviarem
                       </p>
+                    )}
+                    {duel.status === 'finished' && duel.winnerId === null && (
+                      <p className="text-[10px] text-secondary font-bold uppercase tracking-widest text-center mt-1 italic">
+                        Empate — apostas devolvidas
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Recap pós-duelo: por que o vencedor levou a melhor — Premium no individual */}
+                {duel.status === 'finished' && outcome && outcome.winnerId && (
+                  canSeeComparison ? (
+                    <div className="flex flex-col gap-2">
+                      <DuelRecapCard
+                        wodName={duel.wodName}
+                        wodType={duel.wodType}
+                        outcome={outcome}
+                        participants={allParticipants.map(pid => ({ id: pid, name: getUserName(pid) }))}
+                        results={duel.results}
+                        paceMeta={getPaceMeta(duel)}
+                      />
+                      <div className="flex justify-end">
+                        <ShareDuelButton
+                          wodName={duel.wodName}
+                          wodType={duel.wodType}
+                          outcome={outcome}
+                          participants={allParticipants.map(pid => ({ id: pid, name: getUserName(pid) }))}
+                          results={duel.results}
+                          paceMeta={getPaceMeta(duel)}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      <div className="bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
+                        <span className="text-sm">🔒</span>
+                        <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest leading-snug">
+                          <span className="text-secondary">Premium:</span> veja o resumo completo — desempenho, esforço, ritmo e por que {duel.winnerId === user?.id ? 'você' : 'ele'} venceu
+                        </p>
+                      </div>
+                      <PremiumCTA />
                     </div>
                   )
                 )}
@@ -1252,12 +1304,17 @@ export default function Duels() {
                       />
                       <button
                         onClick={() => handleSubmitResult(duel)}
-                        disabled={saving || !submission[duel.id]?.trim()}
+                        disabled={saving || !submission[duel.id]?.trim() || (timeBased && parseTimeToSeconds(submission[duel.id]?.trim() || '') == null)}
                         className="bg-primary text-background px-5 rounded-2xl font-headline font-black text-sm uppercase italic flex items-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
                       >
                         {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
                       </button>
                     </div>
+                    {timeBased && submission[duel.id]?.trim() && parseTimeToSeconds(submission[duel.id].trim()) == null && (
+                      <p className="text-[9px] text-error font-bold uppercase tracking-widest px-1">
+                        Formato inválido — use mm:ss (ex: 12:45)
+                      </p>
+                    )}
                     {/* Esforço opcional: % da FC máx */}
                     <div className="flex items-center gap-2 bg-surface-container-highest/40 rounded-2xl px-4 py-2.5 border border-outline-variant/10">
                       <span className="text-secondary text-sm">❤️</span>

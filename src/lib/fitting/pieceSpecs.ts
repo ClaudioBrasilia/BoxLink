@@ -109,8 +109,13 @@ const MASCULINO: PieceSpec[] = [
     id: 'M-01',
     name: 'Camiseta',
     avatarBase: 'masculina',
-    box: { x1: 270, x2: 755, y1: 330, y2: 800 },
-    anchor: 'Gola alinhada ao pescoço da base (y ≈ 330); ombros da peça nos ombros da base (y ≈ 400–480); barra cobrindo o cós do short da base (y ≈ 780).',
+    // Caixa um pouco mais alta que a largura (y1 310, y2 850): artes de
+    // camiseta em foto de produto (mangas retas "manequim fantasma", sem
+    // seguir o ângulo do braço) têm proporção mais alta que larga; uma
+    // caixa mais "quadrada" força compressão vertical forte no encaixe
+    // (stretch), achatando a região do ombro contra o pescoço.
+    box: { x1: 270, x2: 755, y1: 310, y2: 850 },
+    anchor: 'Gola alinhada ao pescoço da base (y ≈ 310); ombros da peça nos ombros da base (y ≈ 400–480); barra cobrindo o cós do short da base (y ≈ 830).',
     sizeRelative: 'Largura = ombro-a-ombro da base + mangas curtas (≈ 485 px); Altura = pescoço até o cós.',
     cutouts: ['Gola redonda (centro superior)', '2 bocas de manga (esquerda e direita)'],
   },
@@ -127,9 +132,12 @@ const MASCULINO: PieceSpec[] = [
     id: 'M-03',
     name: 'Jaqueta',
     avatarBase: 'masculina',
-    box: { x1: 250, x2: 775, y1: 320, y2: 860 },
-    anchor: 'Gola alinhada ao pescoço da base; ombros da jaqueta nos ombros da base; barra abaixo do cós (nível quadril alto, y ≈ 860).',
-    sizeRelative: 'Largura = ombro-a-ombro + 5% cada lado; Altura = pescoço até quadril alto.',
+    // Caixa engloba tronco + BRAÇOS: a jaqueta tem mangas longas que descem
+    // pelos braços da base (punhos ≈ x 242/782, y 940). Uma caixa só do
+    // tronco comprimia as mangas e as deixava paradas no quadril.
+    box: { x1: 244, x2: 781, y1: 345, y2: 922 },
+    anchor: 'Gola no pescoço da base; ombros nos ombros; mangas longas descendo pelos braços, punho terminando no pulso (y ≈ 922); barra do tronco no quadril alto.',
+    sizeRelative: 'Largura = vão dos braços da base (≈ 545 px); Altura = pescoço até os punhos.',
     cutouts: ['Gola (centro superior)', '2 punhos de manga (extremidades das mangas)', 'Barra inferior aberta'],
   },
   {
@@ -243,9 +251,12 @@ const FEMININO: PieceSpec[] = [
     id: 'F-03',
     name: 'Jaqueta',
     avatarBase: 'feminina',
-    box: { x1: 310, x2: 720, y1: 390, y2: 840 },
-    anchor: 'Gola alinhada ao pescoço da base; ombros nos ombros da base; barra no quadril alto (y ≈ 840).',
-    sizeRelative: 'Largura = ombro-a-ombro + 5% cada lado; Altura = pescoço até quadril.',
+    // Caixa engloba tronco + BRAÇOS: a jaqueta tem mangas longas que descem
+    // pelos braços da base (punhos ≈ x 225/803, y 890). Uma caixa só do
+    // tronco comprimia as mangas e as deixava paradas no quadril. Ver M-03.
+    box: { x1: 236, x2: 788, y1: 415, y2: 872 },
+    anchor: 'Gola no pescoço da base; ombros nos ombros; mangas longas descendo pelos braços, punho terminando no pulso (y ≈ 872); barra do tronco no quadril alto.',
+    sizeRelative: 'Largura = vão dos braços da base (≈ 560 px); Altura = pescoço até os punhos.',
     cutouts: ['Gola (centro superior)', '2 punhos de manga (extremidades das mangas)', 'Barra inferior aberta'],
   },
   {

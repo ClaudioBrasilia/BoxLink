@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity, Users, BookOpen, Flame, Heart, ShoppingBag } from 'lucide-react';
+import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Sparkles, LineChart, Activity, Users, BookOpen, Flame, Heart, ShoppingBag, BarChart3 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { useState, useEffect } from 'react';
@@ -57,13 +57,14 @@ export default function Layout() {
         { icon: ShoppingBag, label: 'Loja',     path: '/shop' },
       ]
     : [
-        { icon: BookOpen,  label: 'Diário',   path: '/diario' },
-        { icon: Zap,       label: 'Desafios', path: '/challenges' },
-        { icon: LineChart, label: 'Evolução', path: '/progress' },
-        { icon: Box,       label: 'Meu Box',  path: '/mybox' },
-        { icon: Users,     label: 'Times',    path: '/clans' },
-        { icon: Sparkles,  label: 'Avatar',   path: '/avatar' },
-        { icon: ShoppingBag, label: 'Loja',   path: '/shop' },
+        { icon: BookOpen,  label: 'Diário',     path: '/diario' },
+        { icon: Zap,       label: 'Desafios',   path: '/challenges' },
+        { icon: LineChart, label: 'Evolução',   path: '/progress' },
+        { icon: BarChart3, label: 'Benchmarks', path: '/benchmarks' },
+        { icon: Box,       label: 'Meu Box',    path: '/mybox' },
+        { icon: Users,     label: 'Times',      path: '/clans' },
+        { icon: Sparkles,  label: 'Avatar',     path: '/avatar' },
+        { icon: ShoppingBag, label: 'Loja',     path: '/shop' },
         ...(user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Admin', path: '/admin' }] : []),
         ...(user?.role === 'coach' || user?.role === 'admin' ? [{ icon: LayoutDashboard, label: 'Coach', path: '/coach' }] : []),
       ];

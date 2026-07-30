@@ -12,6 +12,8 @@ import { getWodByDate, getLatestWod } from '../lib/wods';
 import { addReward, getRewardSettings } from '../utils/rewards';
 import { calcInactivity, InactivitySettings, InactivityState } from '../utils/inactivity';
 import HeartRateDisplay from '../components/HeartRateDisplay';
+import PostWorkoutFeedback from '../components/PostWorkoutFeedback';
+import { TrainingFeeling } from '../types';
 
 const TIMEZONE = 'America/Sao_Paulo';
 
@@ -193,6 +195,15 @@ export default function Wod() {
   const [inactivity, setInactivity] = useState<InactivityState | null>(null);
   const [inactivityLoading, setInactivityLoading] = useState(true);
 
+  // Percepção de esforço — aparece a cada vez que o resultado é salvo
+  // (registrado ou editado), mesmo padrão do Diário no modo Individual.
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [savingFeedback, setSavingFeedback] = useState(false);
+  const [fbRpe, setFbRpe] = useState(0);
+  const [fbFeeling, setFbFeeling] = useState<TrainingFeeling | null>(null);
+  const [fbSleepHours, setFbSleepHours] = useState('');
+  const [fbNotes, setFbNotes] = useState('');
+
   const addToast = (message: string, type: ToastType = 'info') => {
     const id = Date.now();
     setToasts((prev) => [...prev, { id, message, type }]);
@@ -264,32 +275,82 @@ export default function Wod() {
     setSubmitting(true);
     try {
       if (existingResultId) {
-        await supabase.from('wod_results').update({ result, type: category }).eq('id', existingResultId);
+        const { data, error } = await supabase.from('wod_results')
+          .update({ result, type: category })
+          .eq('id', existingResultId)
+          .select('rpe, feeling, sleep_hours, notes')
+          .single();
+        if (error) throw error;
         addToast('Resultado atualizado!', 'success');
+        // Editar também pode mudar como o treino foi — mesmo comportamento
+        // do Diário no Individual, onde o card aparece a cada registro. Vem
+        // pré-preenchido com o que já tinha sido respondido, pra não sumir
+        // com RPE/sensação salvos antes só por reabrir o card em branco.
+        setFbRpe(data?.rpe ?? 0);
+        setFbFeeling(data?.feeling ?? null);
+        setFbSleepHours(data?.sleep_hours != null ? String(data.sleep_hours) : '');
+        setFbNotes(data?.notes ?? '');
+        setShowFeedback(true);
       } else {
-        const { data } = await supabase.from('wod_results')
+        const { data, error } = await supabase.from('wod_results')
           .insert({ wod_id: wod.id, user_id: user.id, result, type: category }).select().single();
-        setExistingResultId(data?.id ?? null);
+        if (error) throw error;
+        setExistingResultId(data.id);
 
-        const rewards = await getRewardSettings();
-        const wodXp    = rewards.wod_xp    ?? 10;
-        const wodCoins = rewards.wod_coins  ?? 5;
-
-        const rewardResult = await addReward(user.id, 'wod_complete', wodXp, wodCoins, 'WOD concluído', wod.id);
+        // Resultado já está salvo — mostra a percepção de esforço mesmo que a
+        // recompensa (XP/coins) falhe abaixo. Eram a mesma tentativa/catch
+        // antes, então uma falha ao calcular XP jogava um "erro ao salvar"
+        // enganoso (o resultado tinha salvo!) e nunca abria esse card.
         confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+        setShowFeedback(true);
 
-        let msg = `WOD concluído! +${wodXp} XP e +${wodCoins} BrazaCoins 🎉`;
-        if (rewardResult?.levelUp) {
-          msg += ` ⬆️ LEVEL UP! Nível ${rewardResult.newLevel}!`;
-          setTimeout(() => confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }), 400);
+        try {
+          const rewards = await getRewardSettings();
+          const wodXp    = rewards.wod_xp    ?? 10;
+          const wodCoins = rewards.wod_coins  ?? 5;
+
+          const rewardResult = await addReward(user.id, 'wod_complete', wodXp, wodCoins, 'WOD concluído', wod.id);
+          let msg = `WOD concluído! +${wodXp} XP e +${wodCoins} BrazaCoins 🎉`;
+          if (rewardResult?.levelUp) {
+            msg += ` ⬆️ LEVEL UP! Nível ${rewardResult.newLevel}!`;
+            setTimeout(() => confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#CAFD00', '#FFFFFF'] }), 400);
+          }
+          addToast(msg, 'success');
+        } catch (rewardErr) {
+          console.error('Error granting WOD reward:', rewardErr);
+          addToast('Resultado salvo!', 'success');
         }
-        addToast(msg, 'success');
       }
       setSubmitted(true); setEditing(false);
-    } catch {
+    } catch (err) {
+      console.error('Error saving WOD result:', err);
       addToast('Erro ao salvar resultado.', 'error');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const closeFeedback = () => {
+    setShowFeedback(false);
+    setFbRpe(0); setFbFeeling(null); setFbSleepHours(''); setFbNotes('');
+  };
+
+  const saveFeedback = async () => {
+    if (!existingResultId) { closeFeedback(); return; }
+    setSavingFeedback(true);
+    try {
+      await supabase.from('wod_results').update({
+        rpe: fbRpe > 0 ? fbRpe : null,
+        feeling: fbFeeling,
+        sleep_hours: fbSleepHours ? parseFloat(fbSleepHours.replace(',', '.')) : null,
+        notes: fbNotes.trim() || null,
+      }).eq('id', existingResultId);
+      addToast('Detalhes salvos!', 'success');
+    } catch {
+      addToast('Erro ao salvar detalhes.', 'error');
+    } finally {
+      setSavingFeedback(false);
+      closeFeedback();
     }
   };
 
@@ -328,6 +389,49 @@ export default function Wod() {
   return (
     <div className="flex flex-col gap-5 pb-24">
       <ToastContainer toasts={toasts} onRemove={(id) => setToasts((p) => p.filter((t) => t.id !== id))} />
+
+      <AnimatePresence>
+        {showFeedback && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[65] bg-background flex flex-col"
+          >
+            <div className="flex items-center justify-between p-6 pt-12">
+              <h2 className="font-headline font-black text-lg text-on-surface uppercase italic">Percepção de Esforço</h2>
+              <button onClick={closeFeedback} className="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center">
+                <X className="w-5 h-5 text-on-surface-variant" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 pb-8 flex flex-col gap-5">
+              <div className="bg-primary/10 border border-primary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
+                <p className="text-[11px] text-on-surface font-bold leading-snug">
+                  Resultado registrado! Como foi o treino pra você?
+                </p>
+              </div>
+
+              <PostWorkoutFeedback
+                rpe={fbRpe} onRpeChange={setFbRpe}
+                feeling={fbFeeling} onFeelingChange={setFbFeeling}
+                sleepHours={fbSleepHours} onSleepHoursChange={setFbSleepHours}
+                notes={fbNotes} onNotesChange={setFbNotes}
+              />
+
+              <button
+                onClick={saveFeedback}
+                disabled={savingFeedback}
+                className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic shadow-lg flex items-center justify-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
+              >
+                {savingFeedback
+                  ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
+                  : <CheckCircle2 className="w-5 h-5" />}
+                SALVAR
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
         <button onClick={() => setSelectedDate((d) => subDays(d, 7))} className="shrink-0 p-1 text-on-surface-variant">

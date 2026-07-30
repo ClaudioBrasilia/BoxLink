@@ -20,6 +20,15 @@ export interface PlanLimits {
   maxActiveDuels: number;
   /** Insights (sono/RPE × desempenho, evolução de carga avançada) */
   advancedInsights: boolean;
+  /** Cadastrar total de reps / duração ao criar duelo → ritmo (reps/min) no recap */
+  wodPace: boolean;
+  /**
+   * Comparação entre atletas: recap detalhado do duelo (desempenho, esforço,
+   * ritmo, "por que venceu") e a aba Comparar dos Benchmarks. Sem isso, o
+   * individual grátis só vê o resultado bruto — a leitura comparativa é
+   * Premium.
+   */
+  athleteComparisons: boolean;
 }
 
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
@@ -30,6 +39,8 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     customFriendCode: false,
     maxActiveDuels: 1,
     advancedInsights: false,
+    wodPace: false,
+    athleteComparisons: false,
   },
   premium: {
     maxDuelFriends: 8,
@@ -38,6 +49,8 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     customFriendCode: true,
     maxActiveDuels: Infinity,
     advancedInsights: true,
+    wodPace: true,
+    athleteComparisons: true,
   },
 };
 
