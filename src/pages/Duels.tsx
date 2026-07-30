@@ -25,6 +25,7 @@ import { addReward } from '../utils/rewards';
 import { useToast } from '../context/ToastContext';
 import { createNotification } from '../hooks/useNotifications';
 import { computeDuelScore, DuelScoreOutcome } from '../lib/duelScore';
+import AthleteComparisonCard, { ComparisonParticipant, ComparisonRow } from '../components/AthleteComparisonCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1096,58 +1097,94 @@ export default function Duels() {
 
                 {/* Resultados */}
                 {(duel.status === 'active' || duel.status === 'finished') && (
-                  <div className="flex flex-col gap-1">
-                    {allParticipants.map(pid => {
-                      const visible = getVisibleResult(duel, pid);
-                      const isWinner = duel.status === 'finished' && duel.winnerId === pid;
-                      const isTieFinished = duel.status === 'finished' && duel.winnerId === null;
-                      const entry = outcome?.usedIntensity ? outcome.entries[pid] : null;
-                      return (
-                        <div key={pid} className={cn(
-                          'px-3 py-2 rounded-xl',
-                          isWinner ? 'bg-primary/10 border border-primary/20'
-                            : isTieFinished ? 'bg-secondary/10 border border-secondary/20'
-                            : 'bg-surface-container-highest/30'
-                        )}>
-                          <div className="flex justify-between items-center">
-                            <span className="text-[11px] font-bold text-on-surface uppercase italic">
-                              {getUserName(pid)}
-                              {isWinner && ' 🏆'}
-                              {isTieFinished && ' 🤝'}
-                            </span>
-                            <span className={cn(
-                              'text-[11px] font-black italic',
-                              visible === 'Aguardando' ? 'text-on-surface-variant' : 'text-primary'
-                            )}>
-                              {visible}
-                            </span>
-                          </div>
-                          {entry && (
-                            <div className="flex items-center gap-2 mt-1 text-[9px] font-black uppercase tracking-widest text-on-surface-variant/80">
-                              <span>Desemp. {entry.perf}</span>
-                              <span className="text-secondary">❤️ {entry.effort}%</span>
-                              <span className="ml-auto text-on-surface">Placar {entry.total}</span>
+                  allSubmitted ? (() => {
+                    const comparisonParticipants: ComparisonParticipant[] = allParticipants.map(pid => ({
+                      id: pid,
+                      name: pid === user?.id ? 'Você' : getUserName(pid),
+                      photoUrl: pid === user?.id ? (user as any).photo_url : users.find(u => u.id === pid)?.photo_url,
+                      isWinner: duel.winnerId === pid,
+                    }));
+
+                    // Melhor desempenho bruto (perf 0-100), independente do peso do esforço
+                    const perfBestId = outcome
+                      ? Object.entries(outcome.entries).reduce<string | null>(
+                          (best, [id, e]) => (!best || e.perf > outcome.entries[best].perf) ? id : best, null)
+                      : null;
+
+                    const comparisonRows: ComparisonRow[] = [
+                      {
+                        key: 'result',
+                        icon: timeBased ? Timer : Hash,
+                        label: 'Resultado',
+                        values: Object.fromEntries(allParticipants.map(pid => [pid, getVisibleResult(duel, pid)])),
+                        bestParticipantId: perfBestId,
+                      },
+                      ...(outcome?.usedIntensity ? [
+                        {
+                          key: 'effort',
+                          icon: Zap,
+                          label: 'Esforço (FC)',
+                          values: Object.fromEntries(allParticipants.map(pid => [pid, outcome.entries[pid] ? `${outcome.entries[pid].effort}%` : '—'])),
+                          bestParticipantId: null,
+                        },
+                        {
+                          key: 'total',
+                          icon: Trophy,
+                          label: 'Placar Final',
+                          values: Object.fromEntries(allParticipants.map(pid => [pid, outcome.entries[pid] ? String(outcome.entries[pid].total) : '—'])),
+                          bestParticipantId: duel.winnerId ?? null,
+                        },
+                      ] : []),
+                    ];
+
+                    return (
+                      <div className="flex flex-col gap-1">
+                        <AthleteComparisonCard
+                          participants={comparisonParticipants}
+                          rows={comparisonRows}
+                          edge={
+                            duel.status === 'finished' && duel.winnerId
+                              ? `Vencedor: ${getUserName(duel.winnerId)}`
+                              : undefined
+                          }
+                        />
+                        {outcome?.usedIntensity && (
+                          <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest text-center mt-1 italic">
+                            Placar = 70% desempenho + 30% esforço
+                          </p>
+                        )}
+                        {duel.status === 'finished' && duel.winnerId === null && (
+                          <p className="text-[10px] text-secondary font-bold uppercase tracking-widest text-center mt-1 italic">
+                            Empate — apostas devolvidas
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })() : (
+                    <div className="flex flex-col gap-1">
+                      {allParticipants.map(pid => {
+                        const visible = getVisibleResult(duel, pid);
+                        return (
+                          <div key={pid} className="px-3 py-2 rounded-xl bg-surface-container-highest/30">
+                            <div className="flex justify-between items-center">
+                              <span className="text-[11px] font-bold text-on-surface uppercase italic">
+                                {getUserName(pid)}
+                              </span>
+                              <span className={cn(
+                                'text-[11px] font-black italic',
+                                visible === 'Aguardando' ? 'text-on-surface-variant' : 'text-primary'
+                              )}>
+                                {visible}
+                              </span>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {outcome?.usedIntensity && (
-                      <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest text-center mt-1 italic">
-                        Placar = 70% desempenho + 30% esforço
-                      </p>
-                    )}
-                    {duel.status === 'active' && !allSubmitted && (
+                          </div>
+                        );
+                      })}
                       <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest text-center mt-1 italic">
                         Resultados revelados quando todos enviarem
                       </p>
-                    )}
-                    {duel.status === 'finished' && duel.winnerId === null && (
-                      <p className="text-[10px] text-secondary font-bold uppercase tracking-widest text-center mt-1 italic">
-                        Empate — apostas devolvidas
-                      </p>
-                    )}
-                  </div>
+                    </div>
+                  )
                 )}
 
                 {/* Aposta */}

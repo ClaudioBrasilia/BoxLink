@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Trophy, Zap, Calendar, ChevronDown, ChevronUp, Users } from 'lucide-react';
+import { Trophy, Zap, Calendar, ChevronDown, ChevronUp, Users, ArrowLeftRight, Timer, Hash, X } from 'lucide-react';
 import { cn, compareBy } from '../lib/utils';
 import { User as UserType } from '../types';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import ShareRankingButton from '../components/ShareRankingButton';
 import AthletePhoto from '../components/AthletePhoto';
+import AthleteComparisonCard, { ComparisonRow } from '../components/AthleteComparisonCard';
 import { supabase } from '../lib/supabase';
 import { getWodByDate, getLatestWod } from '../lib/wods';
 import { formatInTimeZone } from 'date-fns-tz';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
+import { useAuth } from '../context/AuthContext';
 
 interface RankedUser extends UserType {
   monthXp?: number;
@@ -19,7 +21,9 @@ interface RankedUser extends UserType {
 
 interface WodRankEntry {
   id: string;
+  userId: string;
   name: string;
+  photoUrl?: string | null;
   result: string;
   type: string;       // 'RX' | 'Scaled'
   gender: string;     // 'M' | 'F'
@@ -31,6 +35,8 @@ type WodFilter = 'todos' | 'RX' | 'Scaled';
 type GenderFilter = 'todos' | 'M' | 'F';
 
 export default function Leaderboard() {
+  const { user } = useAuth();
+  const [compareTarget, setCompareTarget] = useState<WodRankEntry | null>(null);
   const [xpAllTime, setXpAllTime]       = useState<RankedUser[]>([]);
   const [xpMonthly, setXpMonthly]       = useState<RankedUser[]>([]);
   const [freqRank, setFreqRank]         = useState<RankedUser[]>([]);
@@ -199,7 +205,7 @@ export default function Leaderboard() {
         if (!rawResults.length) return [];
         const userIds = [...new Set(rawResults.map((r: any) => r.user_id))];
         const { data: profilesData } = await supabase
-          .from('profiles').select('id, name, level, gender, avatar_equipped').in('id', userIds);
+          .from('profiles').select('id, name, level, gender, avatar_equipped, photo_url').in('id', userIds);
         const profileMap: Record<string, any> = {};
         (profilesData || []).forEach((p: any) => { profileMap[p.id] = p; });
         return rawResults.map((r: any) => ({ ...r, profiles: profileMap[r.user_id] ?? null }));
@@ -229,7 +235,9 @@ export default function Leaderboard() {
               (profile?.avatar_equipped?.base_outfit === 'base_feminina' ? 'F' : 'M');
             return {
               id: r.id,
+              userId: r.user_id,
               name: profile?.name || 'Atleta',
+              photoUrl: profile?.photo_url ?? null,
               result: r.result,
               type: r.type || 'RX',
               gender,
@@ -324,6 +332,22 @@ export default function Leaderboard() {
     )}>
       {entry.type} {entry.gender === 'F' ? '♀' : '♂'}
     </span>
+  );
+
+  // ── Comparar resultado do WOD com outro atleta ──────────────────────────────
+  const myWodEntry = wodRanking.find(e => e.userId === user?.id) || null;
+  const wodIsTimeBased = ['FOR TIME', 'TIME', 'TEMPO'].some(t => (wodInfo?.type || '').toUpperCase().includes(t));
+
+  const CompareButton = ({ entry }: { entry: WodRankEntry }) => (
+    myWodEntry && entry.userId !== user?.id ? (
+      <button
+        onClick={() => setCompareTarget(entry)}
+        className="p-1.5 rounded-full bg-surface-container-highest text-on-surface-variant hover:text-primary hover:bg-primary/10 transition-all"
+        aria-label={`Comparar com ${entry.name}`}
+      >
+        <ArrowLeftRight className="w-3 h-3" />
+      </button>
+    ) : null
   );
 
   if (error) return (
@@ -455,7 +479,12 @@ export default function Leaderboard() {
                     {isClans ? top3[1].name : top3[1].name.split(' ')[0]}
                   </p>
                   <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[1])}</p>
-                  {isWod && <WodBadge entry={top3[1] as WodRankEntry} />}
+                  {isWod && (
+                    <div className="flex items-center justify-center gap-1 mt-1">
+                      <WodBadge entry={top3[1] as WodRankEntry} />
+                      <CompareButton entry={top3[1] as WodRankEntry} />
+                    </div>
+                  )}
                 </div>
                 <div className="w-16 h-20 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex items-center justify-center">
                   <span className="text-[10px] font-black text-on-surface-variant italic">
@@ -481,7 +510,12 @@ export default function Leaderboard() {
                     {isClans ? top3[0].name : top3[0].name.split(' ')[0]}
                   </p>
                   <p className="text-xs text-on-surface font-bold">{getScore(top3[0])}</p>
-                  {isWod && <WodBadge entry={top3[0] as WodRankEntry} />}
+                  {isWod && (
+                    <div className="flex items-center justify-center gap-1 mt-1">
+                      <WodBadge entry={top3[0] as WodRankEntry} />
+                      <CompareButton entry={top3[0] as WodRankEntry} />
+                    </div>
+                  )}
                 </div>
                 <div className="w-24 h-32 bg-primary/10 rounded-t-3xl border-x border-t border-primary/20 flex items-center justify-center">
                   <span className="text-xs font-black text-primary italic">
@@ -507,7 +541,12 @@ export default function Leaderboard() {
                     {isClans ? top3[2].name : top3[2].name.split(' ')[0]}
                   </p>
                   <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[2])}</p>
-                  {isWod && <WodBadge entry={top3[2] as WodRankEntry} />}
+                  {isWod && (
+                    <div className="flex items-center justify-center gap-1 mt-1">
+                      <WodBadge entry={top3[2] as WodRankEntry} />
+                      <CompareButton entry={top3[2] as WodRankEntry} />
+                    </div>
+                  )}
                 </div>
                 <div className="w-16 h-16 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex items-center justify-center">
                   <span className="text-[10px] font-black text-on-surface-variant italic">
@@ -559,9 +598,12 @@ export default function Leaderboard() {
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-on-surface font-headline font-black text-sm italic">{getScore(u)}</p>
-                    {activeTab === 'xp_mes' && <p className="text-on-surface-variant text-[9px] font-bold">Total: {u.xp} XP</p>}
+                  <div className="text-right flex items-center gap-2">
+                    <div>
+                      <p className="text-on-surface font-headline font-black text-sm italic">{getScore(u)}</p>
+                      {activeTab === 'xp_mes' && <p className="text-on-surface-variant text-[9px] font-bold">Total: {u.xp} XP</p>}
+                    </div>
+                    {isWod && <CompareButton entry={u as WodRankEntry} />}
                   </div>
                 </motion.div>
               );
@@ -569,6 +611,64 @@ export default function Leaderboard() {
           </div>
         </section>
       )}
+
+      {/* Comparação avulsa com outro atleta no resultado do WOD do dia */}
+      <AnimatePresence>
+        {compareTarget && myWodEntry && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-4"
+            onClick={() => setCompareTarget(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 30 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-5 w-full max-w-sm flex flex-col gap-4"
+            >
+              <div className="flex justify-between items-center">
+                <h3 className="font-headline font-black text-on-surface uppercase italic text-sm">Comparar Resultado</h3>
+                <button onClick={() => setCompareTarget(null)} aria-label="Fechar">
+                  <X className="w-5 h-5 text-on-surface-variant" />
+                </button>
+              </div>
+              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest -mt-2">
+                {wodInfo?.name} • {wodInfo?.type}
+              </p>
+              {(() => {
+                const tie = myWodEntry.scoreNum === compareTarget.scoreNum;
+                const meBetter = wodIsTimeBased ? myWodEntry.scoreNum < compareTarget.scoreNum : myWodEntry.scoreNum > compareTarget.scoreNum;
+                const bestId = tie ? null : (meBetter ? myWodEntry.userId : compareTarget.userId);
+                const rows: ComparisonRow[] = [
+                  {
+                    key: 'result',
+                    icon: wodIsTimeBased ? Timer : Hash,
+                    label: 'Resultado',
+                    values: { [myWodEntry.userId]: myWodEntry.result, [compareTarget.userId]: compareTarget.result },
+                    bestParticipantId: bestId,
+                  },
+                  {
+                    key: 'category',
+                    icon: Trophy,
+                    label: 'Categoria',
+                    values: { [myWodEntry.userId]: myWodEntry.type, [compareTarget.userId]: compareTarget.type },
+                    bestParticipantId: null,
+                  },
+                ];
+                return (
+                  <AthleteComparisonCard
+                    participants={[
+                      { id: myWodEntry.userId, name: 'Você', photoUrl: (user as any)?.photo_url, isWinner: bestId === myWodEntry.userId },
+                      { id: compareTarget.userId, name: compareTarget.name, photoUrl: compareTarget.photoUrl, isWinner: bestId === compareTarget.userId },
+                    ]}
+                    rows={rows}
+                    edge={tie ? undefined : `${bestId === myWodEntry.userId ? 'Você está' : compareTarget.name.split(' ')[0] + ' está'} na frente neste WOD`}
+                  />
+                );
+              })()}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
