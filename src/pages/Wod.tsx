@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Flame, Star, Edit2, CheckCircle2, X, Lock } from 'lucide-react';
+import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Flame, Star, Edit2, CheckCircle2, X, Lock, Dumbbell } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { Wod as WodType } from '../types';
@@ -185,6 +185,7 @@ export default function Wod() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [result, setResult] = useState('');
   const [category, setCategory] = useState<'RX' | 'Scaled'>('RX');
+  const [loadKg, setLoadKg] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -250,7 +251,7 @@ export default function Wod() {
 
   const fetchWod = async () => {
     if (!user) return;
-    setLoading(true); setSubmitted(false); setExistingResultId(null); setResult('');
+    setLoading(true); setSubmitted(false); setExistingResultId(null); setResult(''); setLoadKg('');
     const dateStr = formatInTimeZone(selectedDate, TIMEZONE, 'yyyy-MM-dd');
     let wodData = await getWodByDate(dateStr);
     if (!wodData && isSameDay(selectedDate, new Date())) {
@@ -265,6 +266,7 @@ export default function Wod() {
         setExistingResultId(resultData.id);
         setResult(resultData.result ?? '');
         setCategory((resultData.type as 'RX' | 'Scaled') || 'RX');
+        setLoadKg(resultData.load_kg != null ? String(resultData.load_kg) : '');
       }
     }
     setLoading(false);
@@ -272,11 +274,14 @@ export default function Wod() {
 
   const handleSubmit = async () => {
     if (!user || !wod || !result.trim()) return;
+    // Carga é opcional: campo vazio (ou inválido) grava null, não zero.
+    const parsedLoad = loadKg.trim() ? parseFloat(loadKg.replace(',', '.')) : NaN;
+    const parsedLoadKg = Number.isFinite(parsedLoad) && parsedLoad > 0 ? parsedLoad : null;
     setSubmitting(true);
     try {
       if (existingResultId) {
         const { data, error } = await supabase.from('wod_results')
-          .update({ result, type: category })
+          .update({ result, type: category, load_kg: parsedLoadKg })
           .eq('id', existingResultId)
           .select('rpe, feeling, sleep_hours, notes')
           .single();
@@ -293,7 +298,7 @@ export default function Wod() {
         setShowFeedback(true);
       } else {
         const { data, error } = await supabase.from('wod_results')
-          .insert({ wod_id: wod.id, user_id: user.id, result, type: category }).select().single();
+          .insert({ wod_id: wod.id, user_id: user.id, result, type: category, load_kg: parsedLoadKg }).select().single();
         if (error) throw error;
         setExistingResultId(data.id);
 
@@ -552,6 +557,27 @@ export default function Wod() {
                       className="w-full bg-surface-container-highest rounded-2xl p-4 text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none"
                     />
                   )}
+                </div>
+
+                {/* Carga usada (opcional) — vira força relativa (carga ÷ peso
+                    corporal) no ranking e nas comparações. Fica de fora quando
+                    o WOD não tem carga (corrida, burpee). */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">
+                    Carga usada <span className="opacity-50">(opcional)</span>
+                  </label>
+                  <div className="flex items-center gap-2 bg-surface-container-highest rounded-2xl px-4 py-3">
+                    <Dumbbell className="w-4 h-4 text-secondary shrink-0" />
+                    <input type="number" inputMode="decimal" min={0} step="0.5" value={loadKg}
+                      onChange={(e) => setLoadKg(e.target.value)}
+                      placeholder="Ex: 43" disabled={submitting}
+                      className="flex-1 bg-transparent font-bold text-on-surface outline-none appearance-none placeholder:text-on-surface-variant/40 placeholder:font-medium"
+                    />
+                    <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">kg</span>
+                  </div>
+                  <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest leading-snug">
+                    Com seu peso no perfil, mostra quanto do próprio corpo você moveu
+                  </p>
                 </div>
 
                 <button onClick={handleSubmit} disabled={submitting || !result.trim()}

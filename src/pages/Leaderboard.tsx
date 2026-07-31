@@ -11,6 +11,7 @@ import { formatInTimeZone } from 'date-fns-tz';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
 import { useAuth } from '../context/AuthContext';
 import { computeRepsPerMinute, formatPace } from '../lib/pace';
+import { computeRelativeStrength } from '../lib/relativeStrength';
 import { DuelScoreOutcome } from '../lib/duelScore';
 import DuelRecapCard from '../components/DuelRecapCard';
 
@@ -32,6 +33,7 @@ interface WodRankEntry {
   level: number;
   scoreNum: number;   // número puro para ordenação
   pace: number | null; // reps/min — null quando o coach não cadastrou os números
+  relStrength: number | null; // carga ÷ peso corporal — null sem carga ou sem peso no perfil
 }
 
 type WodFilter = 'todos' | 'RX' | 'Scaled';
@@ -208,7 +210,7 @@ export default function Leaderboard() {
         if (!rawResults.length) return [];
         const userIds = [...new Set(rawResults.map((r: any) => r.user_id))];
         const { data: profilesData } = await supabase
-          .from('profiles').select('id, name, level, gender, avatar_equipped, photo_url').in('id', userIds);
+          .from('profiles').select('id, name, level, gender, avatar_equipped, photo_url, weight_kg').in('id', userIds);
         const profileMap: Record<string, any> = {};
         (profilesData || []).forEach((p: any) => { profileMap[p.id] = p; });
         return rawResults.map((r: any) => ({ ...r, profiles: profileMap[r.user_id] ?? null }));
@@ -252,6 +254,7 @@ export default function Leaderboard() {
                 totalReps: wod?.total_reps,
                 timeCapMinutes: wod?.time_cap_minutes,
               }),
+              relStrength: computeRelativeStrength(r.load_kg, profile?.weight_kg),
             };
           });
       };
@@ -728,6 +731,23 @@ export default function Leaderboard() {
                         <span className="text-xs font-bold text-center text-on-surface">{myWodEntry.type}</span>
                         <span className="text-xs font-bold text-center text-on-surface">{compareTarget.type}</span>
                       </div>
+                      {(myWodEntry.relStrength != null || compareTarget.relStrength != null) && (
+                        <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 items-center">
+                          <span className="text-[9px] font-black text-on-surface-variant/70 uppercase tracking-widest">
+                            Força relativa <span className="opacity-60">(carga ÷ peso)</span>
+                          </span>
+                          <span className={cn('text-xs font-bold text-center',
+                            myWodEntry.relStrength != null && compareTarget.relStrength != null && myWodEntry.relStrength > compareTarget.relStrength
+                              ? 'text-primary' : 'text-on-surface')}>
+                            {myWodEntry.relStrength != null ? `${myWodEntry.relStrength.toFixed(2)}x` : '—'}
+                          </span>
+                          <span className={cn('text-xs font-bold text-center',
+                            myWodEntry.relStrength != null && compareTarget.relStrength != null && compareTarget.relStrength > myWodEntry.relStrength
+                              ? 'text-primary' : 'text-on-surface')}>
+                            {compareTarget.relStrength != null ? `${compareTarget.relStrength.toFixed(2)}x` : '—'}
+                          </span>
+                        </div>
+                      )}
                       <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 items-center">
                         <span className="text-[9px] font-black text-on-surface-variant/70 uppercase tracking-widest">Nível</span>
                         <span className={cn('text-xs font-bold text-center', myWodEntry.level > compareTarget.level ? 'text-primary' : 'text-on-surface')}>
