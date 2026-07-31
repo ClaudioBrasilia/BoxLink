@@ -30,6 +30,7 @@ import ShareDuelButton from '../components/ShareDuelButton';
 import PremiumCTA from '../components/PremiumCTA';
 import { WodPaceMeta, parseTimeToSeconds } from '../lib/pace';
 import { isPremium } from '../lib/plan';
+import { computeRelativeStrength } from '../lib/relativeStrength';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,11 @@ interface DuelResult {
 }
 
 interface DuelIntensity {
+  [userId: string]: number | null;
+}
+
+/** Carga (kg) usada por cada participante — vira força relativa no recap. */
+interface DuelLoads {
   [userId: string]: number | null;
 }
 
@@ -66,6 +72,7 @@ interface Duel {
   category: string;
   results: DuelResult;
   intensity: DuelIntensity;
+  loads: DuelLoads;
   createdAt: string;
 }
 
@@ -77,6 +84,7 @@ interface UserProfile {
   level: number;
   avatar_equipped?: any;
   photo_url?: string | null;
+  weight_kg?: number | null;
 }
 
 interface WodOption {
@@ -167,8 +175,12 @@ export default function Duels() {
   const [submission, setSubmission] = useState<Record<string, string>>({});
   // % da FC máx registrada junto do resultado (opcional, por duelo)
   const [submissionIntensity, setSubmissionIntensity] = useState<Record<string, string>>({});
+  // Carga (kg) informada junto do resultado (opcional, por duelo)
+  const [submissionLoad, setSubmissionLoad] = useState<Record<string, string>>({});
   // % da FC máx do treino de hoje (usado para pré-preencher o esforço)
   const [todayPct, setTodayPct] = useState<number | null>(null);
+  // Meu peso corporal — divide a carga para chegar na força relativa
+  const [myWeightKg, setMyWeightKg] = useState<number | null>(null);
 
   // Criação de duelo
   const [opponentSearch, setOpponentSearch] = useState('');
@@ -192,7 +204,7 @@ export default function Duels() {
     try {
       const [duelsRes, usersRes, wodsRes, settingsRes] = await Promise.all([
         supabase.from('duels').select('*').order('created_at', { ascending: false }),
-        supabase.from('profiles').select('id, name, xp, coins, level, avatar_equipped, photo_url').eq('status', 'approved').neq('id', user.id),
+        supabase.from('profiles').select('id, name, xp, coins, level, avatar_equipped, photo_url, weight_kg').eq('status', 'approved').neq('id', user.id),
         supabase.from('wods').select('id, name, type, date, rx').order('date', { ascending: false }).limit(30),
         supabase.from('box_settings').select('*').maybeSingle(),
       ]);
@@ -221,6 +233,7 @@ export default function Duels() {
           category: d.category ?? 'RX',
           results: d.results ?? {},
           intensity: d.intensity ?? {},
+          loads: d.loads ?? {},
           createdAt: d.created_at,
         }));
         // Individual não faz parte de um box: só vê os próprios duelos, nunca
@@ -266,6 +279,10 @@ export default function Duels() {
         .limit(1)
         .maybeSingle();
       setTodayPct(todayLog?.hr_avg_pct ?? null);
+
+      const { data: me } = await supabase
+        .from('profiles').select('weight_kg').eq('id', user.id).maybeSingle();
+      setMyWeightKg(me?.weight_kg ?? null);
     } catch (err) {
       console.error('Error loading duels:', err);
     } finally {
@@ -298,6 +315,17 @@ export default function Duels() {
       : (duel.totalReps != null || duel.timeCapMinutes != null)
         ? { type: duel.wodType, totalReps: duel.totalReps, timeCapMinutes: duel.timeCapMinutes }
         : undefined;
+
+  // Força relativa (carga ÷ peso corporal) de cada participante do duelo.
+  // Só existe para quem registrou a carga E tem peso no perfil.
+  const getStrengthById = (duel: Duel): Record<string, number | null> => {
+    const out: Record<string, number | null> = {};
+    [duel.challengerId, ...duel.opponentIds].forEach(pid => {
+      const weight = pid === user?.id ? myWeightKg : users.find(u => u.id === pid)?.weight_kg ?? null;
+      out[pid] = computeRelativeStrength(duel.loads?.[pid], weight);
+    });
+    return out;
+  };
 
   const getUserName = (id: string) => {
     if (id === user?.id) return 'Você';
@@ -555,10 +583,16 @@ export default function Duels() {
       ? Math.max(0, Math.min(100, parsedPct))
       : null;
 
+    // Carga (kg) opcional — com o peso corporal do perfil vira força relativa.
+    const rawLoad = submissionLoad[duel.id]?.trim();
+    const parsedLoad = rawLoad ? parseFloat(rawLoad.replace(',', '.')) : NaN;
+    const myLoad = Number.isFinite(parsedLoad) && parsedLoad > 0 ? parsedLoad : null;
+
     setSaving(true);
     try {
       const newResults: DuelResult = { ...duel.results, [user.id]: result };
       const newIntensity: DuelIntensity = { ...duel.intensity, [user.id]: myPct && myPct > 0 ? myPct : null };
+      const newLoads: DuelLoads = { ...duel.loads, [user.id]: myLoad };
       const allParticipants = [duel.challengerId, ...duel.opponentIds];
       const allSubmitted = allParticipants.every(id => newResults[id]);
 
@@ -591,6 +625,7 @@ export default function Duels() {
         const updates: any = {
           results: newResults,
           intensity: newIntensity,
+          loads: newLoads,
           status: 'finished',
           winner_id: winnerId,   // null = empate ou sem resultado válido
           updated_at: new Date().toISOString(),
@@ -684,6 +719,7 @@ export default function Duels() {
         await supabase.from('duels').update({
           results: newResults,
           intensity: newIntensity,
+          loads: newLoads,
           updated_at: new Date().toISOString(),
         }).eq('id', duel.id);
 
@@ -701,6 +737,7 @@ export default function Duels() {
 
       setSubmission(prev => ({ ...prev, [duel.id]: '' }));
       setSubmissionIntensity(prev => ({ ...prev, [duel.id]: '' }));
+      setSubmissionLoad(prev => ({ ...prev, [duel.id]: '' }));
       await loadData();
     } catch (err: any) {
       console.error('Error submitting result:', err);
@@ -1214,6 +1251,7 @@ export default function Duels() {
                         participants={allParticipants.map(pid => ({ id: pid, name: getUserName(pid) }))}
                         results={duel.results}
                         paceMeta={getPaceMeta(duel)}
+                        strengthById={getStrengthById(duel)}
                       />
                       <div className="flex justify-end">
                         <ShareDuelButton
@@ -1329,8 +1367,23 @@ export default function Duels() {
                       />
                       <span className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest">% FC máx</span>
                     </div>
+                    {/* Carga opcional: vira força relativa (carga ÷ peso corporal) */}
+                    <div className="flex items-center gap-2 bg-surface-container-highest/40 rounded-2xl px-4 py-2.5 border border-outline-variant/10">
+                      <span className="text-secondary text-sm">🏋️</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.5"
+                        placeholder="Carga usada (opcional)"
+                        value={submissionLoad[duel.id] ?? ''}
+                        onChange={e => setSubmissionLoad(prev => ({ ...prev, [duel.id]: e.target.value }))}
+                        className="flex-1 bg-transparent text-sm font-bold text-on-surface outline-none placeholder:text-on-surface-variant/40 placeholder:font-medium placeholder:normal-case"
+                      />
+                      <span className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest">kg</span>
+                    </div>
                     <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest leading-snug px-1">
                       O esforço pesa 30% no resultado — mas só entra se todos registrarem a FC.
+                      A carga não entra no placar: mostra quanto do próprio peso cada um moveu.
                     </p>
                   </div>
                 )}

@@ -15,9 +15,11 @@ interface DuelRecapCardProps {
   results: Record<string, string | null>;
   /** Números do WOD para calcular o ritmo. Ausente em WOD personalizado. */
   paceMeta?: WodPaceMeta;
+  /** Força relativa (carga ÷ peso corporal) por participante. Ausente quando ninguém registrou carga. */
+  strengthById?: Record<string, number | null>;
 }
 
-export default function DuelRecapCard({ wodName, wodType, outcome, participants, results, paceMeta }: DuelRecapCardProps) {
+export default function DuelRecapCard({ wodName, wodType, outcome, participants, results, paceMeta, strengthById }: DuelRecapCardProps) {
   const { winnerId, usedIntensity, entries } = outcome;
   const edge = computeDuelEdge(outcome, participants.map(p => p.id));
   const winnerName = winnerId ? participants.find(p => p.id === winnerId)?.name.split(' ')[0] : null;
@@ -28,6 +30,7 @@ export default function DuelRecapCard({ wodName, wodType, outcome, participants,
     paceById[p.id] = paceMeta ? computeRepsPerMinute(results[p.id] || '', paceMeta) : null;
   });
   const hasPace = participants.some(p => paceById[p.id] != null);
+  const hasStrength = !!strengthById && participants.some(p => strengthById[p.id] != null);
 
   return (
     <div className="bg-surface-container-highest/40 rounded-2xl border border-outline-variant/10 overflow-hidden">
@@ -77,6 +80,14 @@ export default function DuelRecapCard({ wodName, wodType, outcome, participants,
             participants={participants}
             winnerId={winnerId}
             getValue={p => formatPace(paceById[p.id]) ?? '—'}
+          />
+        )}
+        {hasStrength && (
+          <RecapRow
+            label="Força relativa"
+            participants={participants}
+            winnerId={winnerId}
+            getValue={p => strengthById?.[p.id] != null ? `${strengthById[p.id]!.toFixed(2)}x` : '—'}
           />
         )}
         {usedIntensity && (

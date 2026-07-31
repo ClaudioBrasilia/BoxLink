@@ -12,6 +12,7 @@ import { calcInactivity, InactivitySettings } from '../utils/inactivity';
 import AthletePhoto from '../components/AthletePhoto';
 import { TVSponsorBanner, useSponsors } from '../components/SponsorBanner';
 import { computeRepsPerMinute, parseTimeToSeconds, isTimeBasedType, WodPaceMeta } from '../lib/pace';
+import { computeRelativeStrength } from '../lib/relativeStrength';
 
 const TIMEZONE = "America/Sao_Paulo";
 
@@ -117,6 +118,8 @@ interface WodSpotlight {
   avgScore: number;
   leaderPace: number | null;
   avgPace: number | null;
+  leaderStrength: number | null;   // carga ÷ peso corporal
+  avgStrength: number | null;
 }
 
 /** "5:48" a partir de segundos; para reps, o número puro. */
@@ -133,7 +136,7 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
   if (!activeWod?.id) return null;
 
   const { data: rows } = await supabase
-    .from('wod_results').select('user_id, result').eq('wod_id', activeWod.id);
+    .from('wod_results').select('user_id, result, load_kg').eq('wod_id', activeWod.id);
   if (!rows || rows.length === 0) return null;
 
   const timeBased = isTimeBasedType(activeWod.type);
@@ -157,13 +160,13 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
   };
 
   // Melhor resultado de cada atleta
-  const bestByUser: Record<string, { result: string; score: number }> = {};
+  const bestByUser: Record<string, { result: string; score: number; loadKg: number | null }> = {};
   rows.forEach((r: any) => {
     const score = parseScore(r.result);
     if (score == null) return;
     const prev = bestByUser[r.user_id];
     if (!prev || (timeBased ? score < prev.score : score > prev.score)) {
-      bestByUser[r.user_id] = { result: r.result, score };
+      bestByUser[r.user_id] = { result: r.result, score, loadKg: r.load_kg ?? null };
     }
   });
 
@@ -176,6 +179,11 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
   const paces = sorted
     .map(([, v]) => computeRepsPerMinute(v.result, paceMeta))
     .filter((p): p is number => p != null);
+  // Força relativa: carga ÷ peso corporal. Só entra quem registrou a carga E
+  // tem o peso no perfil — sem isso a métrica some da tela em vez de mentir.
+  const strengths = sorted
+    .map(([id, v]) => computeRelativeStrength(v.loadKg, profileMap[id]?.weight_kg))
+    .filter((v): v is number => v != null);
   const avg = (nums: number[]) => nums.reduce((a, b) => a + b, 0) / nums.length;
 
   return {
@@ -193,6 +201,8 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
     avgScore: avg(scores),
     leaderPace: computeRepsPerMinute(leader.result, paceMeta),
     avgPace: paces.length ? avg(paces) : null,
+    leaderStrength: computeRelativeStrength(leader.loadKg, profileMap[leaderId]?.weight_kg),
+    avgStrength: strengths.length ? avg(strengths) : null,
   };
 }
 
@@ -264,6 +274,21 @@ function TVSpotlightPanel({ spotlight }: { spotlight: WodSpotlight | null }) {
       lowerIsBetter: false,
       betterWord: 'mais ritmo',
       worseWord: 'menos ritmo',
+    });
+  }
+
+  if (spotlight.leaderStrength != null && spotlight.avgStrength != null) {
+    metrics.push({
+      key: 'strength',
+      label: 'Força relativa',
+      unit: 'x peso corporal',
+      mine: spotlight.leaderStrength,
+      avg: spotlight.avgStrength,
+      mineLabel: `${spotlight.leaderStrength.toFixed(2)}x`,
+      avgLabel: `${spotlight.avgStrength.toFixed(2)}x`,
+      lowerIsBetter: false,
+      betterWord: 'mais carga/peso',
+      worseWord: 'menos carga/peso',
     });
   }
 
@@ -437,7 +462,7 @@ export default function TV() {
       const nowStr = formatInTimeZone(new Date(), TIMEZONE, 'HH:mm');
       const currentClass = (scheduleData || []).find((s: any) => nowStr >= s.time && nowStr <= (s.end_time || s.endTime || '23:59'));
       const { data: checkinsRaw } = await supabase.from('checkins').select('*').gte('date', today).order('timestamp', { ascending: false }).limit(20);
-      const { data: profilesRaw } = await supabase.from('profiles').select('id, name, avatar_equipped, xp, level, role, photo_url');
+      const { data: profilesRaw } = await supabase.from('profiles').select('id, name, avatar_equipped, xp, level, role, photo_url, weight_kg');
       const profileMap = Object.fromEntries((profilesRaw || []).map((p: any) => [p.id, p]));
 
       const inactivitySettings: InactivitySettings = settings?.inactivity ||
