@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Sparkles, Lock, TrendingUp, Activity, Dumbbell, Gauge, Crown, Moon, Flame } from 'lucide-react';
+import { Sparkles, Lock, TrendingUp, Activity, Dumbbell, Gauge, Crown, Moon, Flame, Heart } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -29,6 +29,29 @@ const SLEEP_BUCKETS: { key: string; label: string; test: (h: number) => boolean 
   { key: '8h+',  label: '8h+',   test: h => h >= 8 },
 ];
 
+// Zonas alinhadas ao HeartRateSummary — mesma ordem do dominant_zone/zone_secs salvos.
+const HR_ZONES = [
+  { label: 'Repouso',     tw: 'bg-blue-400' },
+  { label: 'Aquecimento', tw: 'bg-green-400' },
+  { label: 'Aeróbico',    tw: 'bg-yellow-400' },
+  { label: 'Anaeróbico',  tw: 'bg-orange-400' },
+  { label: 'Máximo',      tw: 'bg-red-400' },
+];
+
+const fmtDuration = (totalSec: number): string => {
+  const m = Math.floor(totalSec / 60);
+  const s = Math.floor(totalSec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+};
+
+interface HrSessionRow {
+  id: string;
+  started_at: string | null;
+  created_at: string;
+  avg_bpm: number | null;
+  zone_secs: number[] | null;
+}
+
 export default function Insights() {
   const { user } = useAuth();
   const isIndividual = user?.accountType === 'individual';
@@ -37,7 +60,21 @@ export default function Insights() {
   const premium = isIndividual ? isPremium(user) : true;
 
   const [logs, setLogs] = useState<TrainingLog[]>([]);
+  const [hrSessions, setHrSessions] = useState<HrSessionRow[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Sessões de FC (monitor conectado) — mesma tabela usada pela Frequência e
+  // pelo resumo ao terminar o "Meu WOD". Independe do tipo de conta.
+  useEffect(() => {
+    if (!user || !premium) return;
+    supabase
+      .from('heart_rate_sessions')
+      .select('id, started_at, created_at, avg_bpm, zone_secs')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(200)
+      .then(({ data }) => setHrSessions((data as HrSessionRow[]) || []));
+  }, [user, premium]);
 
   useEffect(() => {
     if (!user || !premium) { setLoading(false); return; }
@@ -202,6 +239,35 @@ export default function Insights() {
     };
   }, [logs]);
 
+  const hrStats = useMemo(() => {
+    const withAvg = hrSessions.filter(s => typeof s.avg_bpm === 'number' && s.avg_bpm! > 0);
+    const avgBpm = withAvg.length
+      ? Math.round(withAvg.reduce((sum, s) => sum + s.avg_bpm!, 0) / withAvg.length)
+      : 0;
+
+    const zoneSecs = new Array(HR_ZONES.length).fill(0);
+    hrSessions.forEach(s => {
+      (s.zone_secs || []).forEach((sec, i) => { if (i < zoneSecs.length) zoneSecs[i] += sec || 0; });
+    });
+    const totalZoneSec = zoneSecs.reduce((a, b) => a + b, 0);
+
+    // FC média por sensação — cruza a data da sessão de FC com a sensação
+    // registrada naquele dia (treino/resultado do WOD).
+    const feelingByDate: Record<string, TrainingFeeling> = {};
+    logs.forEach(l => { if (l.feeling) feelingByDate[l.date] = l.feeling; });
+    const bpmByFeeling: Record<string, { sum: number; n: number }> = {};
+    withAvg.forEach(s => {
+      const date = (s.started_at || s.created_at || '').slice(0, 10);
+      const feeling = feelingByDate[date];
+      if (!feeling) return;
+      (bpmByFeeling[feeling] ||= { sum: 0, n: 0 });
+      bpmByFeeling[feeling].sum += s.avg_bpm!;
+      bpmByFeeling[feeling].n += 1;
+    });
+
+    return { sessions: hrSessions.length, avgBpm, zoneSecs, totalZoneSec, bpmByFeeling };
+  }, [hrSessions, logs]);
+
   // ── Bloqueio premium ────────────────────────────────────────────────────────
   if (!premium) {
     return (
@@ -237,7 +303,7 @@ export default function Insights() {
     <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO...</div>
   );
 
-  const hasData = stats.total > 0;
+  const hasData = stats.total > 0 || hrStats.sessions > 0;
   const maxFeeling = Math.max(1, ...Object.values(stats.feelingCount));
   const todayStr = dateKey(new Date());
 
@@ -376,6 +442,59 @@ export default function Insights() {
                   </div>
                 ))}
               </div>
+            </Card>
+          )}
+
+          {/* Frequência cardíaca */}
+          {hrStats.sessions > 0 && (
+            <Card title="Frequência Cardíaca" icon={Heart} subtitle="Média e zonas de esforço nas sessões com monitor conectado">
+              <div className="flex items-center gap-5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-lg font-headline font-black text-on-surface italic leading-none">{hrStats.avgBpm}</span>
+                  <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">bpm médio</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-lg font-headline font-black text-secondary italic leading-none">{hrStats.sessions}</span>
+                  <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">sessões</span>
+                </div>
+              </div>
+
+              {hrStats.totalZoneSec > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-surface-container-highest/40">
+                    {HR_ZONES.map((z, i) => hrStats.zoneSecs[i] > 0 && (
+                      <div key={z.label} className={z.tw} style={{ width: `${(hrStats.zoneSecs[i] / hrStats.totalZoneSec) * 100}%` }} />
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                    {HR_ZONES.map((z, i) => hrStats.zoneSecs[i] > 0 && (
+                      <div key={z.label} className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn('w-2 h-2 rounded-full', z.tw)} />
+                          <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-wider">{z.label}</span>
+                        </div>
+                        <span className="text-[9px] text-on-surface-variant/70 font-black tabular-nums">{fmtDuration(hrStats.zoneSecs[i])}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {Object.keys(hrStats.bpmByFeeling).length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">FC média conforme como você se sentiu</p>
+                  {FEELINGS.filter(f => hrStats.bpmByFeeling[f.value]).map(f => {
+                    const r = hrStats.bpmByFeeling[f.value];
+                    const avg = Math.round(r.sum / r.n);
+                    return (
+                      <div key={f.value} className="flex items-center justify-between bg-surface-container-highest/30 rounded-xl px-4 py-2.5">
+                        <span className="text-[11px] font-bold text-on-surface uppercase italic">{f.emoji} {f.label}</span>
+                        <span className="text-sm font-headline font-black text-primary italic">{avg} bpm</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </Card>
           )}
         </>
