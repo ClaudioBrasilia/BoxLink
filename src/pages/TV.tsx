@@ -100,6 +100,126 @@ function TVHeartRatePanel() {
   );
 }
 
+// ─── Painel "Destaque do Mês" — atleta líder vs média do box ────────────────
+// Inspirado nos gráficos de análise de desempenho do CrossFit Games (URQ Analytics):
+// coluna com os motivos do destaque + comparação lado a lado com a média do box.
+interface SpotlightAthlete { id?: string; name?: string; xp: number; checkins: number; photo_url?: string | null; }
+interface BoxAverages { avgMonthlyXp: number; avgFrequency: number; }
+
+function TVSpotlightPanel({ athlete, boxAverages }: { athlete: SpotlightAthlete | null; boxAverages: BoxAverages }) {
+  const [hr, setHr] = useState<{ mine: number | null; avg: number | null }>({ mine: null, avg: null });
+
+  useEffect(() => {
+    if (!athlete?.id) { setHr({ mine: null, avg: null }); return; }
+    const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    supabase.from('heart_rate_live').select('user_id, bpm').gte('updated_at', cutoff).then(({ data }) => {
+      if (!data || data.length === 0) { setHr({ mine: null, avg: null }); return; }
+      const mine = data.find((r: any) => r.user_id === athlete.id)?.bpm ?? null;
+      const avg = data.reduce((s: number, r: any) => s + r.bpm, 0) / data.length;
+      setHr({ mine, avg });
+    });
+  }, [athlete?.id]);
+
+  if (!athlete) {
+    return (
+      <motion.section key="spotlight-empty" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
+        className="absolute inset-0 bg-[#111] rounded-[3rem] border border-white/5 flex flex-col items-center justify-center gap-4">
+        <Trophy className="w-20 h-20 text-primary/20" />
+        <h2 className="text-3xl font-headline font-black text-white uppercase italic tracking-tighter">SEM DESTAQUE AINDA</h2>
+        <p className="text-white/30 text-sm font-black uppercase tracking-[0.3em] italic">Nenhum XP registrado no mês</p>
+      </motion.section>
+    );
+  }
+
+  const firstName = (athlete.name || 'Atleta').split(' ')[0].toUpperCase();
+  const xpAhead = boxAverages.avgMonthlyXp > 0 && athlete.xp > boxAverages.avgMonthlyXp;
+  const freqAhead = boxAverages.avgFrequency > 0 && athlete.checkins > boxAverages.avgFrequency;
+  const hrControlled = hr.mine != null && hr.avg != null && hr.mine < hr.avg;
+
+  const reasons: string[] = [];
+  if (xpAhead) reasons.push('Mais XP conquistado que a média do box');
+  if (freqAhead) reasons.push('Mais presente nos treinos que a média');
+  if (hrControlled) reasons.push('Mantém a FC mais controlada em treino');
+  if (reasons.length === 0) reasons.push('Constância nos treinos do mês', 'Presença no topo do ranking');
+
+  return (
+    <motion.section key="spotlight" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
+      className="absolute inset-0 bg-[#111] rounded-[3rem] p-10 border border-white/5 flex flex-col gap-6">
+      <div className="flex items-start justify-between shrink-0">
+        <div>
+          <h2 className="text-4xl font-headline font-black uppercase italic tracking-tighter leading-none"
+            style={{ background: 'linear-gradient(90deg,#facc15,#4ade80,#22d3ee)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            LIDERANDO O PELOTÃO
+          </h2>
+          <p className="text-white/50 text-sm font-black uppercase tracking-[0.2em] italic mt-1">Por que {firstName} lidera o mês</p>
+        </div>
+        <div className="bg-primary/10 border border-primary/20 rounded-2xl px-4 py-2 flex items-center gap-2 shrink-0">
+          <Trophy className="w-5 h-5 text-primary" />
+          <span className="text-primary text-xs font-black uppercase italic">Destaque do Box</span>
+        </div>
+      </div>
+
+      <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
+        <div className="col-span-4 bg-white/5 rounded-[2rem] border border-white/10 p-6 flex flex-col gap-5">
+          <h3 className="text-yellow-400 text-xs font-black uppercase tracking-widest border-b border-white/10 pb-3">Por que ele lidera</h3>
+          {reasons.slice(0, 3).map((r, i) => (
+            <div key={r} className="flex items-start gap-3">
+              <span className="text-2xl font-headline font-black italic text-primary leading-none">{i + 1}</span>
+              <span className="text-white text-sm font-bold uppercase italic leading-snug">{r}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="col-span-8 bg-white/5 rounded-[2rem] border border-white/10 flex flex-col overflow-hidden">
+          <div className="grid grid-cols-2 px-6 pt-5 pb-3 border-b border-white/10 shrink-0">
+            <span className="text-yellow-400 text-sm font-black uppercase italic tracking-tight">{firstName}</span>
+            <span className="text-cyan-400 text-sm font-black uppercase italic tracking-tight">Média do Box</span>
+          </div>
+          <div className="flex-1 flex flex-col divide-y divide-white/5">
+            <SpotlightRow icon={Zap} label="XP no mês" mine={athlete.xp} avg={boxAverages.avgMonthlyXp} suffix=" XP" />
+            <SpotlightRow icon={Users} label="Check-ins no mês" mine={athlete.checkins} avg={boxAverages.avgFrequency} suffix="" />
+            {hr.mine != null && hr.avg != null && (
+              <SpotlightRow icon={Heart} label="FC média ao vivo" mine={hr.mine} avg={hr.avg} suffix=" bpm" invert />
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-primary/10 border border-primary/20 rounded-2xl px-6 py-3 text-center shrink-0">
+        <span className="text-primary text-sm font-black uppercase italic tracking-wide">
+          Destaque de {firstName}: {reasons.slice(0, 2).join(' • ').toLowerCase()}
+        </span>
+      </div>
+    </motion.section>
+  );
+}
+
+function SpotlightRow({ icon: Icon, label, mine, avg, suffix, invert }: {
+  icon: typeof Zap; label: string; mine: number; avg: number; suffix: string; invert?: boolean;
+}) {
+  const better = invert ? mine < avg : mine > avg;
+  const diffPct = avg > 0 ? Math.round((Math.abs(mine - avg) / avg) * 100) : 0;
+  return (
+    <div className="grid grid-cols-2 items-center px-6 py-4">
+      <div className="flex items-center gap-3">
+        <Icon className="w-5 h-5 text-yellow-400 shrink-0" />
+        <div>
+          <p className="text-white text-2xl font-headline font-black italic tabular-nums leading-none">{Math.round(mine)}{suffix}</p>
+          <p className="text-white/30 text-[9px] font-black uppercase tracking-widest mt-1">{label}</p>
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <p className="text-cyan-400 text-2xl font-headline font-black italic tabular-nums leading-none">{Math.round(avg)}{suffix}</p>
+        {diffPct > 0 && (
+          <span className={cn('text-[10px] font-black uppercase italic px-2 py-1 rounded-full', better ? 'bg-primary/20 text-primary' : 'bg-white/10 text-white/40')}>
+            {better ? '+' : '-'}{diffPct}%
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── TV Principal ─────────────────────────────────────────────────────────────
 export default function TV() {
   const sponsors = useSponsors();
@@ -172,10 +292,6 @@ export default function TV() {
       (monthlyXpRaw || []).forEach((r: any) => {
         if (r.xp > 0) xpMonthMap[r.user_id] = (xpMonthMap[r.user_id] || 0) + r.xp;
       });
-      const rankings = Object.entries(xpMonthMap)
-        .map(([userId, monthXp]) => ({ ...(profileMap[userId] || { name: 'Atleta' }), xp: monthXp }))
-        .sort((a, b) => b.xp - a.xp)
-        .slice(0, 10);
 
       const { data: monthlyCheckins } = await supabase.from('checkins').select('user_id').gte('date', startOfMonth);
       const freqMap: Record<string, number> = {};
@@ -183,6 +299,19 @@ export default function TV() {
       const frequencyRanking = Object.entries(freqMap)
         .map(([userId, count]) => ({ ...(profileMap[userId] || { name: 'Atleta' }), count }))
         .sort((a, b) => b.count - a.count).slice(0, 5);
+
+      const rankings = Object.entries(xpMonthMap)
+        .map(([userId, monthXp]) => ({ ...(profileMap[userId] || { name: 'Atleta' }), xp: monthXp, checkins: freqMap[userId] || 0 }))
+        .sort((a, b) => b.xp - a.xp)
+        .slice(0, 10);
+
+      // Médias do box (mês) — usadas no painel "Destaque" (atleta líder vs média do box)
+      const xpValues = Object.values(xpMonthMap);
+      const freqValues = Object.values(freqMap);
+      const boxAverages = {
+        avgMonthlyXp: xpValues.length ? xpValues.reduce((a, b) => a + b, 0) / xpValues.length : 0,
+        avgFrequency: freqValues.length ? freqValues.reduce((a, b) => a + b, 0) / freqValues.length : 0,
+      };
 
       const allCheckins = (checkinsRaw || []).map((c: any) => ({
         ...c,
@@ -238,7 +367,7 @@ export default function TV() {
         tvConfig, rewards: economy, wod: activeWod || null, checkins: checkins || [],
         challenges: challenges || [],
         duels: mappedDuels,
-        rankings: rankings || [], stats, frequencyRanking,
+        rankings: rankings || [], stats, frequencyRanking, boxAverages,
         announcements: settings?.announcements || [],
       });
       setError(null);
@@ -286,7 +415,7 @@ export default function TV() {
 
   useEffect(() => {
     if (!isWodAutoRotationActive) return;
-    const wodInterval = setInterval(() => { setWodTabIndex(prev => (prev + 1) % 3); }, 15000);
+    const wodInterval = setInterval(() => { setWodTabIndex(prev => (prev + 1) % 4); }, 15000);
     return () => clearInterval(wodInterval);
   }, [isWodAutoRotationActive]);
 
@@ -311,7 +440,8 @@ export default function TV() {
     </div>
   );
 
-  const { wod, checkins, settings, rankings, stats, duels, challenges, frequencyRanking, tvConfig, announcements } = data;
+  const { wod, checkins, settings, rankings, stats, duels, challenges, frequencyRanking, tvConfig, announcements, boxAverages } = data;
+  const spotlightAthlete = rankings?.[0] || null;
   const tickerItems = {
     duels: tvConfig?.tickerItems?.duels ?? true,
     checkins: tvConfig?.tickerItems?.checkins ?? true,
@@ -413,7 +543,7 @@ export default function TV() {
           {wod && (
             <div className="flex items-center justify-between bg-[#111] rounded-3xl p-3 border border-white/5">
               <div className="flex gap-3">
-                {['WARM-UP', 'SKILL', 'THE WOD'].map((label, i) => (
+                {['WARM-UP', 'SKILL', 'THE WOD', 'DESTAQUE'].map((label, i) => (
                   <button key={label} onClick={() => setWodTabIndex(i)}
                     className={cn(
                       "px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-[0.2em] italic transition-all border relative overflow-hidden",
@@ -522,6 +652,10 @@ export default function TV() {
                     </div>
                   )}
                 </motion.section>
+              )}
+
+              {wodTabIndex === 3 && (
+                <TVSpotlightPanel athlete={spotlightAthlete} boxAverages={boxAverages} />
               )}
             </AnimatePresence>
           </div>

@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Trophy, Zap, Calendar, ChevronDown, ChevronUp, Users } from 'lucide-react';
+import { Trophy, Zap, Calendar, ChevronDown, ChevronUp, Users, ArrowLeftRight, X } from 'lucide-react';
 import { cn, compareBy } from '../lib/utils';
 import { User as UserType } from '../types';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import ShareRankingButton from '../components/ShareRankingButton';
 import AthletePhoto from '../components/AthletePhoto';
 import { supabase } from '../lib/supabase';
 import { getWodByDate, getLatestWod } from '../lib/wods';
 import { formatInTimeZone } from 'date-fns-tz';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
+import { useAuth } from '../context/AuthContext';
 import { computeRepsPerMinute, formatPace } from '../lib/pace';
+import { DuelScoreOutcome } from '../lib/duelScore';
+import DuelRecapCard from '../components/DuelRecapCard';
 
 interface RankedUser extends UserType {
   monthXp?: number;
@@ -20,7 +23,9 @@ interface RankedUser extends UserType {
 
 interface WodRankEntry {
   id: string;
+  userId: string;
   name: string;
+  photoUrl?: string | null;
   result: string;
   type: string;       // 'RX' | 'Scaled'
   gender: string;     // 'M' | 'F'
@@ -33,6 +38,8 @@ type WodFilter = 'todos' | 'RX' | 'Scaled';
 type GenderFilter = 'todos' | 'M' | 'F';
 
 export default function Leaderboard() {
+  const { user } = useAuth();
+  const [compareTarget, setCompareTarget] = useState<WodRankEntry | null>(null);
   const [xpAllTime, setXpAllTime]       = useState<RankedUser[]>([]);
   const [xpMonthly, setXpMonthly]       = useState<RankedUser[]>([]);
   const [freqRank, setFreqRank]         = useState<RankedUser[]>([]);
@@ -201,7 +208,7 @@ export default function Leaderboard() {
         if (!rawResults.length) return [];
         const userIds = [...new Set(rawResults.map((r: any) => r.user_id))];
         const { data: profilesData } = await supabase
-          .from('profiles').select('id, name, level, gender, avatar_equipped').in('id', userIds);
+          .from('profiles').select('id, name, level, gender, avatar_equipped, photo_url').in('id', userIds);
         const profileMap: Record<string, any> = {};
         (profilesData || []).forEach((p: any) => { profileMap[p.id] = p; });
         return rawResults.map((r: any) => ({ ...r, profiles: profileMap[r.user_id] ?? null }));
@@ -231,7 +238,9 @@ export default function Leaderboard() {
               (profile?.avatar_equipped?.base_outfit === 'base_feminina' ? 'F' : 'M');
             return {
               id: r.id,
+              userId: r.user_id,
               name: profile?.name || 'Atleta',
+              photoUrl: profile?.photo_url ?? null,
               result: r.result,
               type: r.type || 'RX',
               gender,
@@ -342,6 +351,22 @@ export default function Leaderboard() {
       <span className="text-[9px] font-bold text-on-surface-variant/70 tracking-widest">{label}</span>
     );
   };
+
+  // ── Comparar resultado do WOD com outro atleta ──────────────────────────────
+  const myWodEntry = wodRanking.find(e => e.userId === user?.id) || null;
+  const wodIsTimeBased = ['FOR TIME', 'TIME', 'TEMPO'].some(t => (wodInfo?.type || '').toUpperCase().includes(t));
+
+  const CompareButton = ({ entry }: { entry: WodRankEntry }) => (
+    myWodEntry && entry.userId !== user?.id ? (
+      <button
+        onClick={() => setCompareTarget(entry)}
+        className="p-1.5 rounded-full bg-surface-container-highest text-on-surface-variant hover:text-primary hover:bg-primary/10 transition-all"
+        aria-label={`Comparar com ${entry.name}`}
+      >
+        <ArrowLeftRight className="w-3 h-3" />
+      </button>
+    ) : null
+  );
 
   if (error) return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center text-error font-headline font-black text-xl italic p-4 text-center">
@@ -473,7 +498,12 @@ export default function Leaderboard() {
                   </p>
                   <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[1])}</p>
                   {isWod && <PaceLabel entry={top3[1] as WodRankEntry} />}
-                  {isWod && <WodBadge entry={top3[1] as WodRankEntry} />}
+                  {isWod && (
+                    <div className="flex items-center justify-center gap-1 mt-1">
+                      <WodBadge entry={top3[1] as WodRankEntry} />
+                      <CompareButton entry={top3[1] as WodRankEntry} />
+                    </div>
+                  )}
                 </div>
                 <div className="w-16 h-20 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex items-center justify-center">
                   <span className="text-[10px] font-black text-on-surface-variant italic">
@@ -500,7 +530,12 @@ export default function Leaderboard() {
                   </p>
                   <p className="text-xs text-on-surface font-bold">{getScore(top3[0])}</p>
                   {isWod && <PaceLabel entry={top3[0] as WodRankEntry} />}
-                  {isWod && <WodBadge entry={top3[0] as WodRankEntry} />}
+                  {isWod && (
+                    <div className="flex items-center justify-center gap-1 mt-1">
+                      <WodBadge entry={top3[0] as WodRankEntry} />
+                      <CompareButton entry={top3[0] as WodRankEntry} />
+                    </div>
+                  )}
                 </div>
                 <div className="w-24 h-32 bg-primary/10 rounded-t-3xl border-x border-t border-primary/20 flex items-center justify-center">
                   <span className="text-xs font-black text-primary italic">
@@ -527,7 +562,12 @@ export default function Leaderboard() {
                   </p>
                   <p className="text-[10px] text-on-surface-variant font-bold">{getScore(top3[2])}</p>
                   {isWod && <PaceLabel entry={top3[2] as WodRankEntry} />}
-                  {isWod && <WodBadge entry={top3[2] as WodRankEntry} />}
+                  {isWod && (
+                    <div className="flex items-center justify-center gap-1 mt-1">
+                      <WodBadge entry={top3[2] as WodRankEntry} />
+                      <CompareButton entry={top3[2] as WodRankEntry} />
+                    </div>
+                  )}
                 </div>
                 <div className="w-16 h-16 bg-surface-container-low rounded-t-2xl border-x border-t border-outline-variant/10 flex items-center justify-center">
                   <span className="text-[10px] font-black text-on-surface-variant italic">
@@ -579,10 +619,13 @@ export default function Leaderboard() {
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-on-surface font-headline font-black text-sm italic">{getScore(u)}</p>
-                    {isWod && <PaceLabel entry={u as WodRankEntry} />}
-                    {activeTab === 'xp_mes' && <p className="text-on-surface-variant text-[9px] font-bold">Total: {u.xp} XP</p>}
+                  <div className="text-right flex items-center gap-2">
+                    <div>
+                      <p className="text-on-surface font-headline font-black text-sm italic">{getScore(u)}</p>
+                      {isWod && <PaceLabel entry={u as WodRankEntry} />}
+                      {activeTab === 'xp_mes' && <p className="text-on-surface-variant text-[9px] font-bold">Total: {u.xp} XP</p>}
+                    </div>
+                    {isWod && <CompareButton entry={u as WodRankEntry} />}
                   </div>
                 </motion.div>
               );
@@ -590,6 +633,118 @@ export default function Leaderboard() {
           </div>
         </section>
       )}
+
+      {/* Comparação avulsa com outro atleta no resultado do WOD do dia */}
+      <AnimatePresence>
+        {compareTarget && myWodEntry && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-4"
+            onClick={() => setCompareTarget(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 30 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-5 w-full max-w-sm flex flex-col gap-4"
+            >
+              <div className="flex justify-between items-center">
+                <h3 className="font-headline font-black text-on-surface uppercase italic text-sm">Comparar Resultado</h3>
+                <button onClick={() => setCompareTarget(null)} aria-label="Fechar">
+                  <X className="w-5 h-5 text-on-surface-variant" />
+                </button>
+              </div>
+              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest -mt-2">
+                {wodInfo?.name} • {wodInfo?.type}
+              </p>
+              {(() => {
+                const myId = myWodEntry.userId;
+                const targetId = compareTarget.userId;
+                const tie = myWodEntry.scoreNum === compareTarget.scoreNum;
+                const meBetter = wodIsTimeBased ? myWodEntry.scoreNum < compareTarget.scoreNum : myWodEntry.scoreNum > compareTarget.scoreNum;
+
+                // Desempenho relativo (0-100) — mesmo cálculo do placar do Duelo:
+                // o melhor dos dois fica em 100, o outro proporcional.
+                const round1 = (n: number) => Math.round(n * 10) / 10;
+                const best = wodIsTimeBased
+                  ? Math.min(myWodEntry.scoreNum, compareTarget.scoreNum)
+                  : Math.max(myWodEntry.scoreNum, compareTarget.scoreNum);
+                const perfOf = (scoreNum: number) => {
+                  const perf = wodIsTimeBased
+                    ? (scoreNum > 0 ? (best / scoreNum) * 100 : 0)
+                    : (best > 0 ? (scoreNum / best) * 100 : 0);
+                  return round1(Math.max(0, Math.min(100, perf)));
+                };
+                const myPerf = perfOf(myWodEntry.scoreNum);
+                const targetPerf = perfOf(compareTarget.scoreNum);
+
+                // Mesmo formato de DuelScoreOutcome usado no recap do Duelo, para
+                // reaproveitar o DuelRecapCard (resultado, desempenho, ritmo e a
+                // explicação de "por que venceu") também na comparação avulsa.
+                const outcome: DuelScoreOutcome = {
+                  winnerId: tie ? null : (meBetter ? myId : targetId),
+                  usedIntensity: false,
+                  entries: {
+                    [myId]: { id: myId, perf: myPerf, effort: null, total: myPerf },
+                    [targetId]: { id: targetId, perf: targetPerf, effort: null, total: targetPerf },
+                  },
+                };
+
+                const repsPerRound = wodInfo?.reps_per_round as number | undefined;
+                const myRank = wodRanking.findIndex(e => e.userId === myId) + 1;
+                const targetRank = wodRanking.findIndex(e => e.userId === targetId) + 1;
+                const totalRanked = wodRanking.length;
+
+                return (
+                  <div className="flex flex-col gap-3">
+                    <DuelRecapCard
+                      wodName={wodInfo?.name}
+                      wodType={wodInfo?.type}
+                      outcome={outcome}
+                      participants={[
+                        { id: myId, name: 'Você' },
+                        { id: targetId, name: compareTarget.name },
+                      ]}
+                      results={{ [myId]: myWodEntry.result, [targetId]: compareTarget.result }}
+                      paceMeta={{
+                        type: wodInfo?.type,
+                        repsPerRound,
+                        totalReps: wodInfo?.total_reps,
+                        timeCapMinutes: wodInfo?.time_cap_minutes,
+                      }}
+                    />
+                    {/* Extras específicos do ranking do box: posição no dia e nível */}
+                    <div className="bg-surface-container-highest/30 rounded-2xl border border-outline-variant/10 divide-y divide-outline-variant/5">
+                      <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 items-center">
+                        <span className="text-[9px] font-black text-on-surface-variant/70 uppercase tracking-widest">Posição no ranking</span>
+                        <span className={cn('text-xs font-bold text-center', myRank > 0 && targetRank > 0 && myRank < targetRank ? 'text-primary' : 'text-on-surface')}>
+                          {myRank > 0 ? `#${myRank} de ${totalRanked}` : '—'}
+                        </span>
+                        <span className={cn('text-xs font-bold text-center', myRank > 0 && targetRank > 0 && targetRank < myRank ? 'text-primary' : 'text-on-surface')}>
+                          {targetRank > 0 ? `#${targetRank} de ${totalRanked}` : '—'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 items-center">
+                        <span className="text-[9px] font-black text-on-surface-variant/70 uppercase tracking-widest">Categoria</span>
+                        <span className="text-xs font-bold text-center text-on-surface">{myWodEntry.type}</span>
+                        <span className="text-xs font-bold text-center text-on-surface">{compareTarget.type}</span>
+                      </div>
+                      <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 items-center">
+                        <span className="text-[9px] font-black text-on-surface-variant/70 uppercase tracking-widest">Nível</span>
+                        <span className={cn('text-xs font-bold text-center', myWodEntry.level > compareTarget.level ? 'text-primary' : 'text-on-surface')}>
+                          {myWodEntry.level}
+                        </span>
+                        <span className={cn('text-xs font-bold text-center', compareTarget.level > myWodEntry.level ? 'text-primary' : 'text-on-surface')}>
+                          {compareTarget.level}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
