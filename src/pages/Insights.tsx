@@ -31,21 +31,66 @@ const SLEEP_BUCKETS: { key: string; label: string; test: (h: number) => boolean 
 
 export default function Insights() {
   const { user } = useAuth();
-  const premium = isPremium(user);
+  const isIndividual = user?.accountType === 'individual';
+  // No Box, Insights é liberado pra todo mundo — o conceito de assinatura
+  // premium é do BoxLink Individual (quem já paga a academia não paga de novo).
+  const premium = isIndividual ? isPremium(user) : true;
 
   const [logs, setLogs] = useState<TrainingLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user || !premium) { setLoading(false); return; }
-    supabase
-      .from('training_logs')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('date', { ascending: true })
-      .limit(500)
-      .then(({ data }) => { setLogs(data || []); setLoading(false); });
-  }, [user, premium]);
+    let cancelled = false;
+    setLoading(true);
+
+    if (isIndividual) {
+      supabase
+        .from('training_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date', { ascending: true })
+        .limit(500)
+        .then(({ data }) => { if (!cancelled) { setLogs(data || []); setLoading(false); } });
+    } else {
+      // Box: não tem diário próprio — deriva os "logs" a partir dos
+      // resultados de WOD (rpe/feeling/sleep_hours vêm da tela de Percepção
+      // de Esforço), cruzando com a data do WOD na tabela `wods`.
+      (async () => {
+        const { data: results } = await supabase
+          .from('wod_results')
+          .select('id, wod_id, rpe, feeling, sleep_hours, created_at')
+          .eq('user_id', user.id)
+          .limit(500);
+
+        const wodIds = Array.from(new Set((results || []).map(r => r.wod_id).filter(Boolean)));
+        const dateById: Record<string, string> = {};
+        if (wodIds.length) {
+          const { data: wods } = await supabase.from('wods').select('id, date').in('id', wodIds);
+          (wods || []).forEach((w: any) => { dateById[w.id] = w.date; });
+        }
+
+        const mapped: TrainingLog[] = (results || [])
+          .map((r: any): TrainingLog => ({
+            id: r.id,
+            user_id: user.id,
+            date: dateById[r.wod_id] || (r.created_at ? String(r.created_at).slice(0, 10) : ''),
+            title: '',
+            category: 'wod',
+            rpe: r.rpe,
+            feeling: r.feeling,
+            sleep_hours: r.sleep_hours,
+            created_at: r.created_at,
+          }))
+          .filter(l => l.date)
+          .sort((a, b) => a.date.localeCompare(b.date));
+
+        if (!cancelled) { setLogs(mapped); setLoading(false); }
+      })();
+    }
+
+    return () => { cancelled = true; };
+  }, [user, premium, isIndividual]);
 
   const stats = useMemo(() => {
     const withRpe = logs.filter(l => typeof l.rpe === 'number' && l.rpe! > 0);
@@ -205,7 +250,9 @@ export default function Insights() {
           <Activity className="w-14 h-14 text-on-surface-variant/20" />
           <p className="text-on-surface-variant font-headline font-black uppercase italic">Sem dados ainda</p>
           <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest opacity-60">
-            Registre treinos com RPE e sensação no Diário
+            {isIndividual
+              ? 'Registre treinos com RPE e sensação no Diário'
+              : 'Registre resultados de WOD com RPE e sensação na Percepção de Esforço'}
           </p>
         </div>
       ) : (
