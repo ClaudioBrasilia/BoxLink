@@ -13,6 +13,8 @@ import AthletePhoto from '../components/AthletePhoto';
 import { TVSponsorBanner, useSponsors } from '../components/SponsorBanner';
 import { computeRepsPerMinute, parseTimeToSeconds, isTimeBasedType, WodPaceMeta } from '../lib/pace';
 import { computeRelativeStrength } from '../lib/relativeStrength';
+import { WodSpotlightData } from '../lib/wodSpotlight';
+import WodSpotlightChart from '../components/WodSpotlightChart';
 
 const TIMEZONE = "America/Sao_Paulo";
 
@@ -107,32 +109,9 @@ function TVHeartRatePanel() {
 // barras indexadas lado a lado (atleta x campo) com a vantagem em % à direita —
 // muito mais legível de longe na TV do que uma tabela de números.
 
-interface WodSpotlight {
-  athlete: { id: string; name: string; photo_url: string | null };
-  wodName: string;
-  wodType: string;
-  athleteCount: number;
-  timeBased: boolean;
-  leaderResult: string;
-  leaderScore: number;
-  avgScore: number;
-  leaderPace: number | null;
-  avgPace: number | null;
-  leaderStrength: number | null;   // carga ÷ peso corporal
-  avgStrength: number | null;
-}
-
-/** "5:48" a partir de segundos; para reps, o número puro. */
-const formatScore = (value: number, timeBased: boolean) => {
-  if (!timeBased) return String(Math.round(value));
-  const total = Math.round(value);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-};
-
+// O gráfico em si vive em WodSpotlightChart, compartilhado com o celular.
 /** Monta o destaque do WOD do dia a partir do placar já registrado. */
-async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>): Promise<WodSpotlight | null> {
+async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>): Promise<WodSpotlightData | null> {
   if (!activeWod?.id) return null;
 
   const { data: rows } = await supabase
@@ -190,7 +169,7 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
     athlete: {
       id: leaderId,
       name: profileMap[leaderId]?.name || 'Atleta',
-      photo_url: profileMap[leaderId]?.photo_url ?? null,
+      photoUrl: profileMap[leaderId]?.photo_url ?? null,
     },
     wodName: activeWod.name,
     wodType: activeWod.type,
@@ -208,20 +187,7 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
   };
 }
 
-interface SpotlightMetric {
-  key: string;
-  label: string;
-  unit: string;
-  mine: number;
-  avg: number;
-  mineLabel: string;
-  avgLabel: string;
-  lowerIsBetter: boolean;
-  betterWord: string;
-  worseWord: string;
-}
-
-function TVSpotlightPanel({ spotlight }: { spotlight: WodSpotlight | null }) {
+function TVSpotlightPanel({ spotlight }: { spotlight: WodSpotlightData | null }) {
   const [hr, setHr] = useState<{ mine: number | null; avg: number | null }>({ mine: null, avg: null });
   const athleteId = spotlight?.athlete.id;
 
@@ -247,184 +213,11 @@ function TVSpotlightPanel({ spotlight }: { spotlight: WodSpotlight | null }) {
     );
   }
 
-  const firstName = spotlight.athlete.name.split(' ')[0].toUpperCase();
-
-  const metrics: SpotlightMetric[] = [
-    {
-      key: 'result',
-      label: 'Resultado do WOD',
-      unit: spotlight.timeBased ? 'tempo' : 'repetições',
-      mine: spotlight.leaderScore,
-      avg: spotlight.avgScore,
-      mineLabel: formatScore(spotlight.leaderScore, spotlight.timeBased),
-      avgLabel: formatScore(spotlight.avgScore, spotlight.timeBased),
-      lowerIsBetter: spotlight.timeBased,
-      betterWord: spotlight.timeBased ? 'mais rápido' : 'a mais',
-      worseWord: spotlight.timeBased ? 'mais lento' : 'a menos',
-    },
-  ];
-
-  if (spotlight.leaderPace != null && spotlight.avgPace != null) {
-    metrics.push({
-      key: 'pace',
-      label: 'Ritmo',
-      unit: 'reps/min',
-      mine: spotlight.leaderPace,
-      avg: spotlight.avgPace,
-      mineLabel: `${spotlight.leaderPace.toFixed(1)}`,
-      avgLabel: `${spotlight.avgPace.toFixed(1)}`,
-      lowerIsBetter: false,
-      betterWord: 'mais ritmo',
-      worseWord: 'menos ritmo',
-    });
-  }
-
-  if (spotlight.leaderStrength != null && spotlight.avgStrength != null) {
-    metrics.push({
-      key: 'strength',
-      label: 'Força relativa',
-      unit: 'x peso corporal',
-      mine: spotlight.leaderStrength,
-      avg: spotlight.avgStrength,
-      mineLabel: `${spotlight.leaderStrength.toFixed(2)}x`,
-      avgLabel: `${spotlight.avgStrength.toFixed(2)}x`,
-      lowerIsBetter: false,
-      betterWord: 'mais carga/peso',
-      worseWord: 'menos carga/peso',
-    });
-  }
-
-  if (hr.mine != null && hr.avg != null) {
-    metrics.push({
-      key: 'hr',
-      label: 'FC ao vivo',
-      unit: 'bpm',
-      mine: hr.mine,
-      avg: hr.avg,
-      mineLabel: String(Math.round(hr.mine)),
-      avgLabel: String(Math.round(hr.avg)),
-      lowerIsBetter: true,
-      betterWord: 'FC mais baixa',
-      worseWord: 'FC mais alta',
-    });
-  }
-
-  // Frase final: as duas maiores vantagens reais do atleta
-  const edges = metrics
-    .map(m => {
-      const better = m.lowerIsBetter ? m.mine < m.avg : m.mine > m.avg;
-      const pct = m.avg > 0 ? (Math.abs(m.mine - m.avg) / m.avg) * 100 : 0;
-      return { better, pct, word: m.betterWord };
-    })
-    .filter(e => e.better && e.pct >= 1)
-    .sort((a, b) => b.pct - a.pct)
-    .slice(0, 2);
-
   return (
     <motion.section key="spotlight" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
-      className="absolute inset-0 bg-[#111] rounded-[3rem] p-8 border border-white/5 flex flex-col gap-5">
-      <div className="flex items-start justify-between shrink-0">
-        <div className="min-w-0">
-          <h2 className="text-[2.75rem] font-headline font-black uppercase italic tracking-tighter leading-none truncate"
-            style={{ background: 'linear-gradient(90deg,#facc15,#4ade80,#22d3ee)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            ONDE {firstName} SE SEPARA
-          </h2>
-          <p className="text-white/50 text-sm font-black uppercase tracking-[0.2em] italic mt-1">
-            {spotlight.wodName} • {spotlight.wodType} — {spotlight.athleteCount} atleta{spotlight.athleteCount !== 1 ? 's' : ''} no placar
-          </p>
-        </div>
-        <div className="bg-primary/10 border border-primary/20 rounded-2xl px-4 py-2 flex items-center gap-2 shrink-0">
-          <Trophy className="w-5 h-5 text-primary" />
-          <span className="text-primary text-xs font-black uppercase italic">Líder do WOD</span>
-        </div>
-      </div>
-
-      <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
-        {/* Atleta em destaque */}
-        <div className="col-span-3 bg-white/5 rounded-[2rem] border border-white/10 p-6 flex flex-col items-center justify-center gap-4">
-          <AthletePhoto photoUrl={spotlight.athlete.photo_url} name={spotlight.athlete.name}
-            size="xl" ringColor="border-primary" className="shadow-[0_0_40px_rgba(202,253,0,0.25)]" />
-          <div className="text-center">
-            <p className="text-white text-2xl font-headline font-black uppercase italic leading-none">{firstName}</p>
-            <p className="text-primary text-3xl font-headline font-black italic tabular-nums mt-2 leading-none">{spotlight.leaderResult}</p>
-            <p className="text-white/30 text-[9px] font-black uppercase tracking-widest mt-1">Melhor do dia</p>
-          </div>
-        </div>
-
-        {/* Barras comparativas */}
-        <div className="col-span-9 bg-white/5 rounded-[2rem] border border-white/10 p-6 flex flex-col">
-          <div className="flex items-center justify-between border-b border-white/10 pb-3 shrink-0">
-            <span className="text-yellow-400 text-xs font-black uppercase tracking-widest">{firstName} vs Média do Box</span>
-            <span className="text-white/30 text-[9px] font-black uppercase tracking-widest text-right leading-tight">
-              Comparação indexada<br />Valores reais exibidos
-            </span>
-          </div>
-          <div className="flex-1 flex flex-col justify-around py-2">
-            {metrics.map(m => <SpotlightBar key={m.key} metric={m} name={firstName} />)}
-          </div>
-        </div>
-      </div>
-
-      {edges.length > 0 && (
-        <div className="bg-primary/10 border border-primary/20 rounded-2xl px-6 py-3 text-center shrink-0">
-          <span className="text-primary text-base font-black uppercase italic tracking-wide">
-            A vantagem de {firstName}: {edges.map(e => `${e.pct.toFixed(1)}% ${e.word}`).join(' • ')}
-          </span>
-        </div>
-      )}
+      className="absolute inset-0 bg-[#111] rounded-[3rem] p-8 border border-white/5">
+      <WodSpotlightChart variant="tv" data={{ ...spotlight, leaderHr: hr.mine, avgHr: hr.avg }} />
     </motion.section>
-  );
-}
-
-/** Uma métrica = duas barras (atleta x média do box) + vantagem em %. */
-function SpotlightBar({ metric, name }: { metric: SpotlightMetric; name: string }) {
-  const max = Math.max(metric.mine, metric.avg) || 1;
-  const minePct = Math.max(8, (metric.mine / max) * 100);
-  const avgPct = Math.max(8, (metric.avg / max) * 100);
-  const better = metric.lowerIsBetter ? metric.mine < metric.avg : metric.mine > metric.avg;
-  const diffPct = metric.avg > 0 ? (Math.abs(metric.mine - metric.avg) / metric.avg) * 100 : 0;
-
-  return (
-    <div className="grid grid-cols-12 gap-4 items-center">
-      <div className="col-span-3 min-w-0">
-        <p className="text-white text-sm font-black uppercase tracking-tight leading-tight truncate">{metric.label}</p>
-        <p className="text-white/30 text-[9px] font-black uppercase tracking-widest">{metric.unit}</p>
-      </div>
-
-      <div className="col-span-7 flex flex-col gap-1.5">
-        <div className="flex items-center gap-2">
-          <span className="text-yellow-400 text-[8px] font-black uppercase tracking-widest w-14 shrink-0 truncate">{name}</span>
-          <div className="flex-1 h-7 bg-white/5 rounded-full overflow-hidden">
-            <motion.div className="h-full rounded-full flex items-center justify-end pr-3"
-              style={{ background: 'linear-gradient(90deg,#facc15,#4ade80)' }}
-              initial={{ width: 0 }} animate={{ width: `${minePct}%` }} transition={{ duration: 0.7, ease: 'easeOut' }}>
-              <span className="text-black text-xs font-black tabular-nums whitespace-nowrap">{metric.mineLabel}</span>
-            </motion.div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-cyan-400 text-[8px] font-black uppercase tracking-widest w-14 shrink-0">Box</span>
-          <div className="flex-1 h-7 bg-white/5 rounded-full overflow-hidden">
-            <motion.div className="h-full rounded-full flex items-center justify-end pr-3"
-              style={{ background: 'linear-gradient(90deg,#38bdf8,#7dd3fc)' }}
-              initial={{ width: 0 }} animate={{ width: `${avgPct}%` }} transition={{ duration: 0.7, ease: 'easeOut', delay: 0.1 }}>
-              <span className="text-black text-xs font-black tabular-nums whitespace-nowrap">{metric.avgLabel}</span>
-            </motion.div>
-          </div>
-        </div>
-      </div>
-
-      <div className="col-span-2 text-center">
-        <p className={cn('text-3xl font-headline font-black italic tabular-nums leading-none',
-          better ? 'text-primary' : 'text-white/40')}>
-          {diffPct.toFixed(1)}%
-        </p>
-        <p className={cn('text-[8px] font-black uppercase tracking-widest mt-1',
-          better ? 'text-primary/70' : 'text-white/30')}>
-          {better ? metric.betterWord : metric.worseWord}
-        </p>
-      </div>
-    </div>
   );
 }
 
