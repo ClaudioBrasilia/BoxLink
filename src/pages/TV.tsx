@@ -202,7 +202,9 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
     leaderPace: computeRepsPerMinute(leader.result, paceMeta),
     avgPace: paces.length ? avg(paces) : null,
     leaderStrength: computeRelativeStrength(leader.loadKg, profileMap[leaderId]?.weight_kg),
-    avgStrength: strengths.length ? avg(strengths) : null,
+    // Com um único atleta a "média do box" seria ele mesmo — comparação vazia
+    // (0% de diferença). Só compara quando há pelo menos dois registros.
+    avgStrength: strengths.length >= 2 ? avg(strengths) : null,
   };
 }
 
