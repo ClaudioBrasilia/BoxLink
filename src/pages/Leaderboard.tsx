@@ -732,8 +732,37 @@ export default function Leaderboard() {
                 const targetRank = wodRanking.findIndex(e => e.userId === targetId) + 1;
                 const totalRanked = wodRanking.length;
 
+                // Mesmo gráfico de barras da TV, agora atleta x atleta em vez de
+                // atleta x média do box: quem está na frente vira o "destaque" e
+                // o outro vira o lado da comparação.
+                const winnerIsMe = !tie && meBetter;
+                const winnerEntry = winnerIsMe ? myWodEntry : compareTarget;
+                const otherEntry = winnerIsMe ? compareTarget : myWodEntry;
+                const winnerName = winnerIsMe ? 'Você' : compareTarget.name;
+                const otherName = winnerIsMe ? compareTarget.name : 'Você';
+                const pairSpotlight: WodSpotlightData = {
+                  athlete: { id: winnerEntry.userId, name: winnerName, photoUrl: winnerEntry.photoUrl ?? null },
+                  wodName: wodInfo?.name,
+                  wodType: wodInfo?.type,
+                  athleteCount: 2,
+                  timeBased: wodIsTimeBased,
+                  leaderResult: winnerEntry.result,
+                  leaderScore: winnerEntry.scoreNum,
+                  avgScore: otherEntry.scoreNum,
+                  leaderPace: winnerEntry.pace,
+                  avgPace: otherEntry.pace,
+                  leaderStrength: winnerEntry.relStrength,
+                  avgStrength: otherEntry.relStrength,
+                };
+
                 return (
                   <div className="flex flex-col gap-3">
+                    <WodSpotlightChart
+                      variant="mobile"
+                      data={pairSpotlight}
+                      comparisonName={otherName}
+                      comparisonShortName={otherName.split(' ')[0].toUpperCase()}
+                    />
                     <DuelRecapCard
                       wodName={wodInfo?.name}
                       wodType={wodInfo?.type}

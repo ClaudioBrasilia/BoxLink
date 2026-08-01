@@ -27,9 +27,15 @@ const TITLE_GRADIENT = 'linear-gradient(90deg,#facc15,#4ade80,#22d3ee)';
 interface WodSpotlightChartProps {
   data: WodSpotlightData;
   variant?: 'tv' | 'mobile';
+  /** Nome de exibição do outro lado da comparação (cabeçalho). Padrão: "Média do Box". */
+  comparisonName?: string;
+  /** Rótulo curto pras barras (ex.: "BOX" ou o primeiro nome de um atleta). */
+  comparisonShortName?: string;
 }
 
-export default function WodSpotlightChart({ data, variant = 'tv' }: WodSpotlightChartProps) {
+export default function WodSpotlightChart({
+  data, variant = 'tv', comparisonName = 'Média do Box', comparisonShortName = 'BOX',
+}: WodSpotlightChartProps) {
   const isTv = variant === 'tv';
   const firstName = data.athlete.name.split(' ')[0].toUpperCase();
   const metrics = buildSpotlightMetrics(data);
@@ -61,7 +67,7 @@ export default function WodSpotlightChart({ data, variant = 'tv' }: WodSpotlight
               </span>
             </div>
             <div className="flex-1 flex flex-col justify-around py-2">
-              {metrics.map(m => <TvBar key={m.key} metric={m} name={firstName} />)}
+              {metrics.map(m => <TvBar key={m.key} metric={m} name={firstName} comparisonShortName={comparisonShortName} />)}
             </div>
           </div>
         </div>
@@ -87,7 +93,7 @@ export default function WodSpotlightChart({ data, variant = 'tv' }: WodSpotlight
       </div>
 
       <div className="flex flex-col gap-4">
-        {metrics.map(m => <MobileBar key={m.key} metric={m} name={firstName} />)}
+        {metrics.map(m => <MobileBar key={m.key} metric={m} name={firstName} comparisonShortName={comparisonShortName} />)}
       </div>
 
       {edges.length > 0 && <EdgeBanner firstName={firstName} edges={edges} />}
@@ -161,7 +167,7 @@ function Bar({ gradient, widthPct, label, delay }: {
   );
 }
 
-function TvBar({ metric, name }: { metric: SpotlightMetric; name: string }) {
+function TvBar({ metric, name, comparisonShortName }: { metric: SpotlightMetric; name: string; comparisonShortName: string }) {
   const { minePct, avgPct } = barWidths(metric);
   const { better, diffPct } = metricAdvantage(metric);
 
@@ -178,7 +184,7 @@ function TvBar({ metric, name }: { metric: SpotlightMetric; name: string }) {
           <Bar gradient={ATHLETE_GRADIENT} widthPct={minePct} label={metric.mineLabel} />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-cyan-400 text-[8px] font-black uppercase tracking-widest w-14 shrink-0">Box</span>
+          <span className="text-cyan-400 text-[8px] font-black uppercase tracking-widest w-14 shrink-0 truncate">{comparisonShortName}</span>
           <Bar gradient={BOX_GRADIENT} widthPct={avgPct} label={metric.avgLabel} delay={0.1} />
         </div>
       </div>
@@ -198,7 +204,7 @@ function TvBar({ metric, name }: { metric: SpotlightMetric; name: string }) {
 }
 
 /** No celular o rótulo sobe para o topo e as barras usam a largura toda. */
-function MobileBar({ metric, name }: { metric: SpotlightMetric; name: string }) {
+function MobileBar({ metric, name, comparisonShortName }: { metric: SpotlightMetric; name: string; comparisonShortName: string }) {
   const { minePct, avgPct } = barWidths(metric);
   const { better, diffPct } = metricAdvantage(metric);
 
@@ -226,7 +232,7 @@ function MobileBar({ metric, name }: { metric: SpotlightMetric; name: string }) 
         <Bar gradient={ATHLETE_GRADIENT} widthPct={minePct} label={metric.mineLabel} />
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-cyan-400 text-[8px] font-black uppercase tracking-widest w-12 shrink-0">Box</span>
+        <span className="text-cyan-400 text-[8px] font-black uppercase tracking-widest w-12 shrink-0 truncate">{comparisonShortName}</span>
         <Bar gradient={BOX_GRADIENT} widthPct={avgPct} label={metric.avgLabel} delay={0.1} />
       </div>
     </div>
