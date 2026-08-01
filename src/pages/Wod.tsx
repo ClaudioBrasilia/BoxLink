@@ -508,8 +508,21 @@ export default function Wod() {
                   <CheckCircle2 className="w-5 h-5" />
                   <span className="font-black text-sm">
                     {category} — {result}
+                    {loadKg && <span className="text-on-surface-variant font-bold"> · {loadKg}kg</span>}
                   </span>
                 </div>
+                {/* Sem a carga o atleta fica de fora da força relativa. Como o
+                    campo vive no formulário, quem já registrou o resultado não
+                    o veria — este atalho abre a edição já apontando o que falta. */}
+                {!loadKg && (
+                  <button onClick={() => setEditing(true)}
+                    className="flex items-center gap-2 bg-secondary/10 border border-secondary/20 rounded-2xl px-4 py-2.5 text-left">
+                    <Dumbbell className="w-4 h-4 text-secondary shrink-0" />
+                    <span className="text-[10px] font-black text-secondary uppercase tracking-widest leading-snug">
+                      Usou carga? Registre para entrar na força relativa
+                    </span>
+                  </button>
+                )}
                 <button onClick={() => setEditing(true)} className="flex items-center gap-2 text-xs text-on-surface-variant underline">
                   <Edit2 className="w-3.5 h-3.5" /> Editar resultado
                 </button>
