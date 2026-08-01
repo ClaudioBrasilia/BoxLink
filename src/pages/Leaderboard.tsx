@@ -10,10 +10,12 @@ import { getWodByDate, getLatestWod } from '../lib/wods';
 import { formatInTimeZone } from 'date-fns-tz';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
 import { useAuth } from '../context/AuthContext';
-import { computeRepsPerMinute, formatPace } from '../lib/pace';
+import { computeRepsPerMinute, formatPace, isTimeBasedType } from '../lib/pace';
 import { computeRelativeStrength } from '../lib/relativeStrength';
 import { DuelScoreOutcome } from '../lib/duelScore';
 import DuelRecapCard from '../components/DuelRecapCard';
+import WodSpotlightChart from '../components/WodSpotlightChart';
+import { WodSpotlightData } from '../lib/wodSpotlight';
 
 interface RankedUser extends UserType {
   monthXp?: number;
@@ -355,6 +357,35 @@ export default function Leaderboard() {
     );
   };
 
+  // ── Destaque do WOD: o MESMO gráfico da TV, montado a partir do ranking já
+  // carregado (líder do dia x média do box). Sem consulta extra: resultado,
+  // ritmo e força relativa de cada atleta já vêm em wodRanking.
+  const wodSpotlight: WodSpotlightData | null = (() => {
+    if (!wodInfo || wodRanking.length === 0) return null;
+    const leader = wodRanking[0];
+    const avg = (nums: number[]) => nums.reduce((a, b) => a + b, 0) / nums.length;
+
+    const paces = wodRanking.map(e => e.pace).filter((v): v is number => v != null);
+    const strengths = wodRanking.map(e => e.relStrength).filter((v): v is number => v != null);
+
+    return {
+      athlete: { id: leader.userId, name: leader.name, photoUrl: leader.photoUrl ?? null },
+      wodName: wodInfo.name,
+      wodType: wodInfo.type,
+      athleteCount: wodRanking.length,
+      timeBased: isTimeBasedType(wodInfo.type),
+      leaderResult: leader.result,
+      leaderScore: leader.scoreNum,
+      avgScore: avg(wodRanking.map(e => e.scoreNum)),
+      leaderPace: leader.pace,
+      avgPace: paces.length ? avg(paces) : null,
+      leaderStrength: leader.relStrength,
+      // Com um único registro a "média do box" seria o próprio líder — 0% de
+      // diferença. Mesma regra da TV.
+      avgStrength: strengths.length >= 2 ? avg(strengths) : null,
+    };
+  })();
+
   // ── Comparar resultado do WOD com outro atleta ──────────────────────────────
   const myWodEntry = wodRanking.find(e => e.userId === user?.id) || null;
   const wodIsTimeBased = ['FOR TIME', 'TIME', 'TEMPO'].some(t => (wodInfo?.type || '').toUpperCase().includes(t));
@@ -481,6 +512,10 @@ export default function Leaderboard() {
             <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-1">Nenhum WOD cadastrado para hoje</p>
           )}
         </div>
+      )}
+
+      {isWod && wodSpotlight && (
+        <WodSpotlightChart variant="mobile" data={wodSpotlight} />
       )}
 
       {top3.length > 0 && (
@@ -697,8 +732,37 @@ export default function Leaderboard() {
                 const targetRank = wodRanking.findIndex(e => e.userId === targetId) + 1;
                 const totalRanked = wodRanking.length;
 
+                // Mesmo gráfico de barras da TV, agora atleta x atleta em vez de
+                // atleta x média do box: quem está na frente vira o "destaque" e
+                // o outro vira o lado da comparação.
+                const winnerIsMe = !tie && meBetter;
+                const winnerEntry = winnerIsMe ? myWodEntry : compareTarget;
+                const otherEntry = winnerIsMe ? compareTarget : myWodEntry;
+                const winnerName = winnerIsMe ? 'Você' : compareTarget.name;
+                const otherName = winnerIsMe ? compareTarget.name : 'Você';
+                const pairSpotlight: WodSpotlightData = {
+                  athlete: { id: winnerEntry.userId, name: winnerName, photoUrl: winnerEntry.photoUrl ?? null },
+                  wodName: wodInfo?.name,
+                  wodType: wodInfo?.type,
+                  athleteCount: 2,
+                  timeBased: wodIsTimeBased,
+                  leaderResult: winnerEntry.result,
+                  leaderScore: winnerEntry.scoreNum,
+                  avgScore: otherEntry.scoreNum,
+                  leaderPace: winnerEntry.pace,
+                  avgPace: otherEntry.pace,
+                  leaderStrength: winnerEntry.relStrength,
+                  avgStrength: otherEntry.relStrength,
+                };
+
                 return (
                   <div className="flex flex-col gap-3">
+                    <WodSpotlightChart
+                      variant="mobile"
+                      data={pairSpotlight}
+                      comparisonName={otherName}
+                      comparisonShortName={otherName.split(' ')[0].toUpperCase()}
+                    />
                     <DuelRecapCard
                       wodName={wodInfo?.name}
                       wodType={wodInfo?.type}
