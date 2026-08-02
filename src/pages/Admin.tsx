@@ -16,8 +16,8 @@ import { supabase } from '../lib/supabase';
 import { uploadImage } from '../utils/image';
 import { createNotification } from '../hooks/useNotifications';
 import { uploadAvatarItem } from '../utils/avatarUpload';
-import type { AvatarSlotKey } from '../lib/avatarLayers';
-import { listPieceSpecs } from '../lib/fitting';
+import { SLOT_LABELS, type AvatarSlotKey } from '../lib/avatarLayers';
+import { listPieceSpecs, getSpecSlot, isSlotMismatched } from '../lib/fitting';
 import { type Rarity, RARITIES, RARITY_LABELS, RARITY_EMOJI, getSlotPrice, normalizeRarity } from '../lib/rarity';
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -663,8 +663,11 @@ export default function Admin() {
 
   const handleAddItem = async () => {
     if (!newItem.id || !newItem.name || !newItem.price) return;
+    // O slot da spec vence: garante que a peça seja encaixada e exibida na
+    // região do corpo a que ela pertence, mesmo se o slot ficou desatualizado.
+    const slot = getSpecSlot(newItem.piece_spec_id) ?? newItem.slot;
     const { data, error } = await supabase.from('items').insert({
-      id: newItem.id, name: newItem.name, slot: newItem.slot, price: newItem.price, image: newItem.image,
+      id: newItem.id, name: newItem.name, slot, price: newItem.price, image: newItem.image,
       piece_spec_id: newItem.piece_spec_id || null, rarity: itemRarity
     }).select();
     if (!error && data) {
@@ -684,12 +687,13 @@ export default function Admin() {
 
   const handleUpdateItem = async () => {
     if (!editingItem) return;
+    const slot = getSpecSlot(editingItem.piece_spec_id) ?? editingItem.slot;
     const { error } = await supabase.from('items').update({
-      name: editingItem.name, slot: editingItem.slot, price: editingItem.price, image: editingItem.image,
+      name: editingItem.name, slot, price: editingItem.price, image: editingItem.image,
       piece_spec_id: editingItem.piece_spec_id || null, rarity: itemRarity
     }).eq('id', editingItem.id);
     if (!error) {
-      const updated = { ...editingItem, rarity: itemRarity };
+      const updated = { ...editingItem, slot, rarity: itemRarity };
       setItems(items.map(i => i.id === editingItem.id ? updated : i));
       setEditingItem(null);
       toast.success('Item atualizado com sucesso!');
@@ -1993,24 +1997,44 @@ export default function Admin() {
                   value={(editingItem ? editingItem.piece_spec_id : newItem.piece_spec_id) || ''}
                   onChange={e => {
                     const value = e.target.value || null;
-                    editingItem ? setEditingItem({ ...editingItem, piece_spec_id: value }) : setNewItem({ ...newItem, piece_spec_id: value });
+                    // O tipo de peça manda no slot: um boné (M-06/F-06) tem que
+                    // ficar em head_accessory. Sem isso, um item deixado no slot
+                    // padrão (top) era encaixado na caixa da camiseta e aparecia
+                    // cobrindo o tronco do avatar.
+                    const specSlot = getSpecSlot(value);
+                    if (editingItem) {
+                      const slot = specSlot ?? editingItem.slot;
+                      setEditingItem({ ...editingItem, piece_spec_id: value, slot, price: getSlotPrice(slot, itemRarity) });
+                    } else {
+                      const slot = specSlot ?? newItem.slot;
+                      setNewItem({ ...newItem, piece_spec_id: value, slot, price: getSlotPrice(slot, itemRarity) });
+                    }
                   }}
                   className="w-full bg-surface-container-highest border-none rounded-2xl p-4 font-headline font-bold text-on-surface appearance-none cursor-pointer"
                 >
                   <option value="">— Nenhum (centralizar manualmente) —</option>
                   <optgroup label="Masculino">
                     {listPieceSpecs('masculina').map(spec => (
-                      <option key={spec.id} value={spec.id}>{spec.id} · {spec.name}</option>
+                      <option key={spec.id} value={spec.id}>{spec.id} · {spec.name} ({SLOT_LABELS[spec.slot]})</option>
                     ))}
                   </optgroup>
                   <optgroup label="Feminino">
                     {listPieceSpecs('feminina').map(spec => (
-                      <option key={spec.id} value={spec.id}>{spec.id} · {spec.name}</option>
+                      <option key={spec.id} value={spec.id}>{spec.id} · {spec.name} ({SLOT_LABELS[spec.slot]})</option>
                     ))}
                   </optgroup>
                 </select>
+                {isSlotMismatched(
+                  (editingItem ? editingItem.slot : newItem.slot) as AvatarSlotKey,
+                  editingItem ? editingItem.piece_spec_id : newItem.piece_spec_id
+                ) && (
+                  <p className="text-[9px] text-on-error-container bg-error-container rounded-xl px-3 py-2 font-bold uppercase tracking-widest">
+                    ⚠ Este tipo de peça pertence ao slot “{SLOT_LABELS[getSpecSlot(editingItem ? editingItem.piece_spec_id : newItem.piece_spec_id)!]}”.
+                    No slot atual a peça é encaixada na caixa errada do corpo.
+                  </p>
+                )}
                 <p className="text-[8px] text-on-surface-variant opacity-50 uppercase tracking-widest">
-                  O ID e o nome do item ficam livres · isso aqui só diz qual caixa de encaixe usar ao enviar a imagem
+                  O ID e o nome do item ficam livres · escolher o tipo já ajusta o slot e a caixa de encaixe
                 </p>
               </div>
 
@@ -2062,6 +2086,17 @@ export default function Admin() {
                       <span className="text-[10px] font-black text-secondary uppercase tracking-widest">{item.price} COINS</span>
                       <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest opacity-50">{item.slot}</span>
                     </div>
+                    {/* Sinaliza itens que vão aparecer na parte errada do corpo:
+                        sem tipo de peça o encaixe cai no fallback do slot. */}
+                    {isSlotMismatched(item.slot as AvatarSlotKey, item.piece_spec_id) ? (
+                      <p className="mt-2 text-[9px] font-black uppercase tracking-widest text-on-error-container bg-error-container rounded-lg px-2 py-1">
+                        ⚠ Slot ≠ {SLOT_LABELS[getSpecSlot(item.piece_spec_id)!]}
+                      </p>
+                    ) : !item.piece_spec_id ? (
+                      <p className="mt-2 text-[9px] font-black uppercase tracking-widest text-on-surface-variant bg-surface-container-highest rounded-lg px-2 py-1 opacity-70">
+                        Sem tipo de peça
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               ))}

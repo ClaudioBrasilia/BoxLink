@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolveRenderSpecId, BOTTOM_PANTS_ASPECT_THRESHOLD } from './slotFallback';
-import { PIECE_SPECS } from './pieceSpecs';
+import { PIECE_SPECS, getSpecSlot, isSlotMismatched, listPieceSpecs } from './pieceSpecs';
 
 describe('resolveRenderSpecId', () => {
   it('prefere sempre a spec explícita do item quando ela existe', () => {
@@ -38,6 +38,21 @@ describe('resolveRenderSpecId', () => {
     expect(resolveRenderSpecId('special', 'feminina')).toBeNull();
   });
 
+  it('o fallback de cada slot aponta para uma spec daquele mesmo slot', () => {
+    const slots = ['top', 'shoes', 'head_accessory', 'wrist_accessory'] as const;
+    for (const base of ['masculina', 'feminina'] as const) {
+      for (const slot of slots) {
+        const id = resolveRenderSpecId(slot, base)!;
+        expect(PIECE_SPECS[id].slot).toBe(slot);
+      }
+      // bottom depende do aspecto (short × calça), mas ambos são do slot bottom
+      for (const aspect of [0.7, 2.0]) {
+        const id = resolveRenderSpecId('bottom', base, null, aspect)!;
+        expect(PIECE_SPECS[id].slot).toBe('bottom');
+      }
+    }
+  });
+
   it('todo id devolvido existe em PIECE_SPECS', () => {
     const slots = ['top', 'bottom', 'shoes', 'accessory', 'wrist_accessory', 'head_accessory', 'special'] as const;
     for (const base of ['masculina', 'feminina'] as const) {
@@ -51,5 +66,33 @@ describe('resolveRenderSpecId', () => {
         }
       }
     }
+  });
+});
+
+describe('slot da peça', () => {
+  it('o boné pertence ao slot da cabeça nas duas bases', () => {
+    expect(getSpecSlot('M-06')).toBe('head_accessory');
+    expect(getSpecSlot('F-06')).toBe('head_accessory');
+  });
+
+  it('acusa o boné cadastrado como camiseta (caso que o punha sobre o tronco)', () => {
+    expect(isSlotMismatched('top', 'M-06')).toBe(true);
+    expect(isSlotMismatched('head_accessory', 'M-06')).toBe(false);
+  });
+
+  it('não acusa nada quando o item não tem tipo de peça definido', () => {
+    expect(getSpecSlot(null)).toBeNull();
+    expect(isSlotMismatched('top', null)).toBe(false);
+    expect(isSlotMismatched('top', 'M-99')).toBe(false);
+  });
+
+  it('toda spec declara um slot, e as duas bases concordam peça a peça', () => {
+    const masc = listPieceSpecs('masculina');
+    const fem = listPieceSpecs('feminina');
+    expect(masc).toHaveLength(fem.length);
+    masc.forEach((spec, i) => {
+      expect(spec.slot).toBeTruthy();
+      expect(fem[i].slot).toBe(spec.slot);
+    });
   });
 });

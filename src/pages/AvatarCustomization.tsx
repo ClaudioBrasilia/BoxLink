@@ -9,6 +9,7 @@ import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
 import { avatarAssetKey } from '../lib/avatarAssetKey';
 import { RARITY_LABELS, RARITY_BADGE_CLASS, normalizeRarity } from '../lib/rarity';
+import { SLOT_LABELS } from '../lib/avatarLayers';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const BUCKET = 'avatar-assets';
@@ -27,11 +28,6 @@ function getItemImageUrl(imageKey: string): string {
 const SLOT_ICONS: Record<string, any> = {
   top: Shirt, bottom: Footprints, shoes: Footprints,
   accessory: Glasses, head_accessory: GraduationCap, wrist_accessory: Watch, special: Sparkles,
-};
-
-const SLOT_LABELS: Record<string, string> = {
-  top: 'Camiseta', bottom: 'Calça/Short', shoes: 'Tênis',
-  accessory: 'Acessório', head_accessory: 'Cabeça', wrist_accessory: 'Pulso', special: 'Especial',
 };
 
 // ─── Página principal ─────────────────────────────────────────────────────────
