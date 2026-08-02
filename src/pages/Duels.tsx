@@ -153,9 +153,12 @@ export default function Duels() {
   // Conta individual cria duelo só pelo código de amigo (no Diário) — não vê o
   // formulário de busca que listaria os atletas do box.
   const isIndividual = user?.accountType === 'individual';
-  // Recap comparativo do duelo (desempenho/esforço/ritmo/"por que venceu") é
-  // Premium no individual. Conta de box sempre vê — comparação é core ali.
-  const canSeeComparison = !isIndividual || isPremium(user);
+  // Recap comparativo do duelo (desempenho/esforço/ritmo/"por que venceu").
+  // LIBERADO PARA TODOS durante o período de testes — para voltar a restringir
+  // ao Premium no individual, basta apagar esta constante e a referência a ela
+  // em canSeeComparison abaixo.
+  const COMPARISON_FREE_FOR_TESTING = true;
+  const canSeeComparison = COMPARISON_FREE_FOR_TESTING || !isIndividual || isPremium(user);
 
   // Data
   const [duels, setDuels] = useState<Duel[]>([]);
@@ -1111,6 +1114,12 @@ export default function Duels() {
                   ? otherIds.map(id => computeRepsPerMinute(duel.results[id] || '', paceMeta)).filter((p): p is number => p != null)
                   : [];
                 const otherStrengths = otherIds.map(id => strengthById[id]).filter((s): s is number => s != null);
+                // Esforço só entra se TODOS registraram a FC — mesma regra do
+                // placar (outcome.usedIntensity), para não comparar quem tem
+                // sensor com quem não tem.
+                const otherEfforts = outcome.usedIntensity
+                  ? otherIds.map(id => outcome.entries[id]?.effort).filter((e): e is number => e != null)
+                  : [];
 
                 duelSpotlightOtherName = isGroup ? 'Média dos Oponentes' : getUserName(otherIds[0]);
                 duelSpotlightOtherShort = isGroup ? 'MÉDIA' : getUserName(otherIds[0]).split(' ')[0].toUpperCase();
@@ -1128,6 +1137,14 @@ export default function Duels() {
                   avgPace: otherPaces.length ? avgOf(otherPaces) : null,
                   leaderStrength: strengthById[winnerId] ?? null,
                   avgStrength: otherStrengths.length ? avgOf(otherStrengths) : null,
+                  leaderHr: outcome.usedIntensity ? outcome.entries[winnerId]?.effort ?? null : null,
+                  avgHr: otherEfforts.length ? avgOf(otherEfforts) : null,
+                  hrMeta: {
+                    label: 'Esforço (FC)',
+                    unit: '% da FC máx',
+                    betterWord: 'menos esforço',
+                    worseWord: 'mais esforço',
+                  },
                 };
               }
             }

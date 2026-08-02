@@ -21,9 +21,19 @@ export interface WodSpotlightData {
   avgPace: number | null;
   leaderStrength: number | null;
   avgStrength: number | null;
-  /** FC ao vivo — só existe enquanto a aula acontece (usado na TV) */
+  /**
+   * Esforço fisiológico. A TV usa a FC ao vivo em bpm; o duelo usa a % da FC
+   * máxima que cada um registrou junto do resultado — daí o rótulo/unidade
+   * serem parametrizáveis via hrMeta.
+   */
   leaderHr?: number | null;
   avgHr?: number | null;
+  hrMeta?: {
+    label: string;
+    unit: string;
+    betterWord: string;
+    worseWord: string;
+  };
 }
 
 export interface SpotlightMetric {
@@ -100,17 +110,24 @@ export function buildSpotlightMetrics(d: WodSpotlightData): SpotlightMetric[] {
   }
 
   if (d.leaderHr != null && d.avgHr != null) {
-    metrics.push({
-      key: 'hr',
+    const hr = d.hrMeta ?? {
       label: 'FC ao vivo',
       unit: 'bpm',
+      betterWord: 'FC mais baixa',
+      worseWord: 'FC mais alta',
+    };
+    metrics.push({
+      key: 'hr',
+      label: hr.label,
+      unit: hr.unit,
       mine: d.leaderHr,
       avg: d.avgHr,
       mineLabel: String(Math.round(d.leaderHr)),
       avgLabel: String(Math.round(d.avgHr)),
+      // Menor esforço para o mesmo resultado = mais eficiente.
       lowerIsBetter: true,
-      betterWord: 'FC mais baixa',
-      worseWord: 'FC mais alta',
+      betterWord: hr.betterWord,
+      worseWord: hr.worseWord,
     });
   }
 
