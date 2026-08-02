@@ -1088,32 +1088,48 @@ export default function Duels() {
                 )
               : null;
 
-            // Mesmo gráfico de barras do Ranking/TV, agora com o vencedor do
-            // duelo x o outro participante — só para duelos 1x1 (o gráfico
-            // compara duas colunas; duelos em grupo seguem só com a tabela).
+            // Mesmo gráfico de barras do Ranking/TV: vencedor do duelo x o
+            // outro lado. Em duelo 1x1, esse outro lado é o oponente; em
+            // duelo de grupo (3+ participantes), é a MÉDIA dos demais — o
+            // gráfico só compara duas colunas, então não dá pra empilhar um
+            // participante por barra.
             const getPhoto = (pid: string) => pid === user?.id ? (user as any).photo_url : users.find(u => u.id === pid)?.photo_url ?? null;
+            const avgOf = (nums: number[]) => nums.reduce((a, b) => a + b, 0) / nums.length;
             let duelSpotlight: WodSpotlightData | null = null;
             let duelSpotlightOtherName = '';
-            if (outcome?.winnerId && allParticipants.length === 2) {
+            let duelSpotlightOtherShort = '';
+            if (outcome?.winnerId) {
               const winnerId = outcome.winnerId;
-              const loserId = allParticipants.find(id => id !== winnerId)!;
-              const paceMeta = getPaceMeta(duel);
-              const strengthById = getStrengthById(duel);
-              duelSpotlightOtherName = getUserName(loserId);
-              duelSpotlight = {
-                athlete: { id: winnerId, name: getUserName(winnerId), photoUrl: getPhoto(winnerId) },
-                wodName: duel.wodName || '',
-                wodType: duel.wodType || '',
-                athleteCount: 2,
-                timeBased: duelTimeBased,
-                leaderResult: duel.results[winnerId] || '',
-                leaderScore: parseResultValue(duel.results[winnerId] || '', duelTimeBased),
-                avgScore: parseResultValue(duel.results[loserId] || '', duelTimeBased),
-                leaderPace: paceMeta ? computeRepsPerMinute(duel.results[winnerId] || '', paceMeta) : null,
-                avgPace: paceMeta ? computeRepsPerMinute(duel.results[loserId] || '', paceMeta) : null,
-                leaderStrength: strengthById[winnerId] ?? null,
-                avgStrength: strengthById[loserId] ?? null,
-              };
+              const otherIds = allParticipants.filter(id => id !== winnerId);
+              if (otherIds.length > 0) {
+                const paceMeta = getPaceMeta(duel);
+                const strengthById = getStrengthById(duel);
+                const isGroup = otherIds.length > 1;
+
+                const otherScores = otherIds.map(id => parseResultValue(duel.results[id] || '', duelTimeBased));
+                const otherPaces = paceMeta
+                  ? otherIds.map(id => computeRepsPerMinute(duel.results[id] || '', paceMeta)).filter((p): p is number => p != null)
+                  : [];
+                const otherStrengths = otherIds.map(id => strengthById[id]).filter((s): s is number => s != null);
+
+                duelSpotlightOtherName = isGroup ? 'Média dos Oponentes' : getUserName(otherIds[0]);
+                duelSpotlightOtherShort = isGroup ? 'MÉDIA' : getUserName(otherIds[0]).split(' ')[0].toUpperCase();
+
+                duelSpotlight = {
+                  athlete: { id: winnerId, name: getUserName(winnerId), photoUrl: getPhoto(winnerId) },
+                  wodName: duel.wodName || '',
+                  wodType: duel.wodType || '',
+                  athleteCount: allParticipants.length,
+                  timeBased: duelTimeBased,
+                  leaderResult: duel.results[winnerId] || '',
+                  leaderScore: parseResultValue(duel.results[winnerId] || '', duelTimeBased),
+                  avgScore: avgOf(otherScores),
+                  leaderPace: paceMeta ? computeRepsPerMinute(duel.results[winnerId] || '', paceMeta) : null,
+                  avgPace: otherPaces.length ? avgOf(otherPaces) : null,
+                  leaderStrength: strengthById[winnerId] ?? null,
+                  avgStrength: otherStrengths.length ? avgOf(otherStrengths) : null,
+                };
+              }
             }
 
             return (
@@ -1280,7 +1296,7 @@ export default function Duels() {
                           variant="mobile"
                           data={duelSpotlight}
                           comparisonName={duelSpotlightOtherName}
-                          comparisonShortName={duelSpotlightOtherName.split(' ')[0].toUpperCase()}
+                          comparisonShortName={duelSpotlightOtherShort}
                           badgeLabel="Vencedor do Duelo"
                         />
                       )}
