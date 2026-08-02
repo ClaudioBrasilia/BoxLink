@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle, Shield, Upload, Scale } from 'lucide-react';
+import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle, Shield, Upload, Scale, BookOpen, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   rankClans,
@@ -75,6 +75,8 @@ export default function Clans() {
   const [memberships, setMemberships] = useState<ClanMembership[]>([]);
   const [memberXp, setMemberXp] = useState<Record<string, number>>({});
   const [memberCheckins, setMemberCheckins] = useState<Record<string, number>>({});
+  const [rewards, setRewards] = useState<Record<string, number>>({});
+  const [showRules, setShowRules] = useState(false);
   const [territory, setTerritory] = useState<Territory | null>(null);
   const [myClan, setMyClan] = useState<Clan | null>(null);
   const [myMembership, setMyMembership] = useState<ClanMembership | null>(null);
@@ -186,6 +188,7 @@ export default function Clans() {
           clan_creation_requires_approval: settings.clan_creation_requires_approval || false,
           is_active: settings.is_active || true,
         });
+        setRewards(settings.rewards || {});
       }
 
       const { data: clansData } = await supabase
@@ -1184,6 +1187,108 @@ export default function Clans() {
           </div>
         );
       })()}
+
+      {/* ── Regras da Temporada (visível para todos os atletas) ── */}
+      <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 overflow-hidden">
+        <button
+          onClick={() => setShowRules((v) => !v)}
+          className="w-full p-5 flex items-center justify-between gap-3 text-left"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <BookOpen className="w-5 h-5 text-primary flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="font-headline font-black text-on-surface text-sm uppercase italic">Como o Ranking Funciona</p>
+              <p className="text-[10px] text-on-surface-variant font-bold truncate">
+                {activeCriteria.icon} {activeCriteria.label} · empate: {tiebreakerOption(rankingConfig.tiebreaker).label.toLowerCase()}
+              </p>
+            </div>
+          </div>
+          <ChevronDown className={`w-5 h-5 text-on-surface-variant flex-shrink-0 transition-transform ${showRules ? 'rotate-180' : ''}`} />
+        </button>
+
+        <AnimatePresence>
+          {showRules && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="px-5 pb-5 flex flex-col gap-4 border-t border-outline-variant/10 pt-4">
+                {/* Critério */}
+                <div>
+                  <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-1">1 · Quem vence a temporada</p>
+                  <p className="font-headline font-black text-on-surface text-sm uppercase italic">
+                    {activeCriteria.icon} {activeCriteria.label}
+                  </p>
+                  <p className="text-[11px] text-on-surface-variant font-bold">{activeCriteria.formula}</p>
+                  <p className="text-[11px] text-on-surface-variant mt-1 leading-relaxed">{activeCriteria.description}</p>
+                </div>
+
+                {/* Desempate */}
+                <div>
+                  <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-1">2 · Em caso de empate</p>
+                  <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                    <span className="font-black text-on-surface uppercase">{tiebreakerOption(rankingConfig.tiebreaker).label}</span>
+                    {' — '}{tiebreakerOption(rankingConfig.tiebreaker).description}
+                    {' '}Se ainda assim empatar, vence o time criado primeiro.
+                  </p>
+                </div>
+
+                {/* O que conta */}
+                <div>
+                  <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-1">3 · O que conta</p>
+                  <ul className="text-[11px] text-on-surface-variant leading-relaxed list-disc pl-4 space-y-0.5">
+                    <li>
+                      Só vale o que for feito
+                      {boxSettings.current_season?.start_date && boxSettings.current_season?.end_date ? (
+                        <> entre <span className="font-black text-on-surface">
+                          {new Date(boxSettings.current_season.start_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                        </span> e <span className="font-black text-on-surface">
+                          {new Date(boxSettings.current_season.end_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                        </span></>
+                      ) : (
+                        <> no mês corrente</>
+                      )}. Pontos de antes não entram.
+                    </li>
+                    <li>Só pontua quem já foi <span className="font-black text-on-surface">aprovado</span> no time — convite pendente não conta.</li>
+                    <li>Cada atleta pontua para um time só, e o XP vale a partir do momento em que é ganho.</li>
+                  </ul>
+                </div>
+
+                {/* Como ganhar XP */}
+                <div>
+                  <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-2">4 · Como somar pontos para o time</p>
+                  <div className="flex flex-col gap-1.5">
+                    {[
+                      { icon: '✅', label: 'Check-in no treino', value: `+${rewards.xp_per_checkin ?? 20} XP` },
+                      { icon: '🏋️', label: 'WOD concluído', value: `+${rewards.wod_xp ?? 10} XP` },
+                      { icon: '📈', label: 'Novo PR no Diário', value: '+30 XP' },
+                      { icon: '⚔️', label: 'Vitória em duelo', value: `+${rewards.duel_win_xp ?? 40} XP` },
+                      { icon: '🎯', label: 'Desafios do box', value: 'XP definido no desafio' },
+                      {
+                        icon: '🔥',
+                        label: 'Bônus semanal (3/4/5/6 treinos)',
+                        value: `+${rewards.weekly_bonus_3_xp ?? 50}/${rewards.weekly_bonus_4_xp ?? 100}/${rewards.weekly_bonus_5_xp ?? 150}/${rewards.weekly_bonus_6_xp ?? 200} XP`,
+                      },
+                    ].map((row) => (
+                      <div key={row.label} className="flex items-center justify-between gap-2 bg-surface-container-highest rounded-xl px-3 py-2 border border-outline-variant/10">
+                        <span className="text-[11px] font-bold text-on-surface">{row.icon} {row.label}</span>
+                        <span className="text-[11px] font-black text-primary text-right flex-shrink-0">{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {rankingConfig.criteria === 'checkins' && (
+                    <p className="text-[10px] text-on-surface-variant mt-2 italic">
+                      Nesta temporada o que decide é a quantidade de check-ins — o XP entra só como informação e no desempate.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* ── Convites Recebidos ── */}
       {invitations.length > 0 && (

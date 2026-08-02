@@ -39,6 +39,10 @@ id) — a ordem nunca fica aleatória.
 
 ## Onde aparece
 
+- **Card "Como o Ranking Funciona"** (na página Times, aberto a todos os
+  atletas): explica o critério em vigor, o desempate, o período que conta e
+  quanto XP cada atividade dá — os valores saem de `box_settings.rewards`, então
+  acompanham o que o box configurou.
 - Banner da temporada e cabeçalho do ranking mostram o critério em vigor.
 - O card de cada time mostra o valor do critério + as métricas secundárias.
 - O modal de detalhes mostra XP total, média e check-ins lado a lado, com o
