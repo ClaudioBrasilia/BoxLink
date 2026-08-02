@@ -153,12 +153,12 @@ export default function Duels() {
   // Conta individual cria duelo só pelo código de amigo (no Diário) — não vê o
   // formulário de busca que listaria os atletas do box.
   const isIndividual = user?.accountType === 'individual';
-  // Recap comparativo do duelo (desempenho/esforço/ritmo/"por que venceu").
-  // LIBERADO PARA TODOS durante o período de testes — para voltar a restringir
-  // ao Premium no individual, basta apagar esta constante e a referência a ela
-  // em canSeeComparison abaixo.
-  const COMPARISON_FREE_FOR_TESTING = true;
-  const canSeeComparison = COMPARISON_FREE_FOR_TESTING || !isIndividual || isPremium(user);
+  // Recap comparativo do duelo (desempenho/esforço/ritmo/"por que venceu") é
+  // Premium no individual. Conta de box sempre vê — comparação é core ali.
+  // Para liberar um teste, conceda Premium com validade pelo painel Admin: o
+  // acesso expira sozinho (isPremium respeita plan_expires_at) e fica
+  // registrado em plan_grants.
+  const canSeeComparison = !isIndividual || isPremium(user);
 
   // Data
   const [duels, setDuels] = useState<Duel[]>([]);
