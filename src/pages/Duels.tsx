@@ -28,9 +28,11 @@ import { computeDuelScore, DuelScoreOutcome } from '../lib/duelScore';
 import DuelRecapCard from '../components/DuelRecapCard';
 import ShareDuelButton from '../components/ShareDuelButton';
 import PremiumCTA from '../components/PremiumCTA';
-import { WodPaceMeta, parseTimeToSeconds } from '../lib/pace';
+import { WodPaceMeta, parseTimeToSeconds, computeRepsPerMinute } from '../lib/pace';
 import { isPremium } from '../lib/plan';
 import { computeRelativeStrength } from '../lib/relativeStrength';
+import WodSpotlightChart from '../components/WodSpotlightChart';
+import { WodSpotlightData } from '../lib/wodSpotlight';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1075,15 +1077,44 @@ export default function Duels() {
             const timeBased = isTimeBased(duel.wodType);
 
             // Detalhamento do placar (desempenho + esforço) quando finalizado
+            const duelTimeBased = isTimeBasedDuel(duel.wodType, duel.results);
             const outcome: DuelScoreOutcome | null = duel.status === 'finished' && allSubmitted
               ? computeDuelScore(
                   duel.results,
                   duel.intensity,
                   allParticipants,
-                  isTimeBasedDuel(duel.wodType, duel.results),
+                  duelTimeBased,
                   parseResultValue,
                 )
               : null;
+
+            // Mesmo gráfico de barras do Ranking/TV, agora com o vencedor do
+            // duelo x o outro participante — só para duelos 1x1 (o gráfico
+            // compara duas colunas; duelos em grupo seguem só com a tabela).
+            const getPhoto = (pid: string) => pid === user?.id ? (user as any).photo_url : users.find(u => u.id === pid)?.photo_url ?? null;
+            let duelSpotlight: WodSpotlightData | null = null;
+            let duelSpotlightOtherName = '';
+            if (outcome?.winnerId && allParticipants.length === 2) {
+              const winnerId = outcome.winnerId;
+              const loserId = allParticipants.find(id => id !== winnerId)!;
+              const paceMeta = getPaceMeta(duel);
+              const strengthById = getStrengthById(duel);
+              duelSpotlightOtherName = getUserName(loserId);
+              duelSpotlight = {
+                athlete: { id: winnerId, name: getUserName(winnerId), photoUrl: getPhoto(winnerId) },
+                wodName: duel.wodName || '',
+                wodType: duel.wodType || '',
+                athleteCount: 2,
+                timeBased: duelTimeBased,
+                leaderResult: duel.results[winnerId] || '',
+                leaderScore: parseResultValue(duel.results[winnerId] || '', duelTimeBased),
+                avgScore: parseResultValue(duel.results[loserId] || '', duelTimeBased),
+                leaderPace: paceMeta ? computeRepsPerMinute(duel.results[winnerId] || '', paceMeta) : null,
+                avgPace: paceMeta ? computeRepsPerMinute(duel.results[loserId] || '', paceMeta) : null,
+                leaderStrength: strengthById[winnerId] ?? null,
+                avgStrength: strengthById[loserId] ?? null,
+              };
+            }
 
             return (
               <motion.div
@@ -1244,6 +1275,15 @@ export default function Duels() {
                 {duel.status === 'finished' && outcome && outcome.winnerId && (
                   canSeeComparison ? (
                     <div className="flex flex-col gap-2">
+                      {duelSpotlight && (
+                        <WodSpotlightChart
+                          variant="mobile"
+                          data={duelSpotlight}
+                          comparisonName={duelSpotlightOtherName}
+                          comparisonShortName={duelSpotlightOtherName.split(' ')[0].toUpperCase()}
+                          badgeLabel="Vencedor do Duelo"
+                        />
+                      )}
                       <DuelRecapCard
                         wodName={duel.wodName}
                         wodType={duel.wodType}
