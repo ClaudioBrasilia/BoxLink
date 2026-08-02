@@ -1,8 +1,21 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle, Shield, Upload } from 'lucide-react';
+import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle, Shield, Upload, Scale } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  rankClans,
+  normalizeRankingConfig,
+  criteriaOption,
+  tiebreakerOption,
+  formatClanScore,
+  CRITERIA_OPTIONS,
+  TIEBREAKER_OPTIONS,
+  DEFAULT_CRITERIA,
+  DEFAULT_TIEBREAKER,
+  type ClanRankingCriteria,
+  type ClanTiebreaker,
+} from '../lib/clanRanking';
 
 interface Clan {
   id: string;
@@ -38,7 +51,13 @@ interface BoxSettings {
   id: string;
   clans_enabled: boolean;
   max_clan_members: number;
-  current_season?: { name: string; start_date: string; end_date: string } | null;
+  current_season?: {
+    name: string;
+    start_date: string;
+    end_date: string;
+    ranking_criteria?: ClanRankingCriteria;
+    tiebreaker?: ClanTiebreaker;
+  } | null;
   competition_mode: 'challenge' | 'season';
   allow_multiple_clans_per_user: boolean;
   auto_approve_members: boolean;
@@ -55,6 +74,7 @@ export default function Clans() {
   const [historicClans, setHistoricClans] = useState<Clan[]>([]);
   const [memberships, setMemberships] = useState<ClanMembership[]>([]);
   const [memberXp, setMemberXp] = useState<Record<string, number>>({});
+  const [memberCheckins, setMemberCheckins] = useState<Record<string, number>>({});
   const [territory, setTerritory] = useState<Territory | null>(null);
   const [myClan, setMyClan] = useState<Clan | null>(null);
   const [myMembership, setMyMembership] = useState<ClanMembership | null>(null);
@@ -90,7 +110,19 @@ export default function Clans() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [showSeasonModal, setShowSeasonModal] = useState(false);
   const [savingSeason, setSavingSeason] = useState(false);
-  const [newSeason, setNewSeason] = useState({ name: '', start_date: '', end_date: '' });
+  const [newSeason, setNewSeason] = useState<{
+    name: string;
+    start_date: string;
+    end_date: string;
+    ranking_criteria: ClanRankingCriteria;
+    tiebreaker: ClanTiebreaker;
+  }>({
+    name: '',
+    start_date: '',
+    end_date: '',
+    ranking_criteria: DEFAULT_CRITERIA,
+    tiebreaker: DEFAULT_TIEBREAKER,
+  });
 
   const colors = ['#CAFD00', '#FF4444', '#4444FF', '#FF8800', '#AA44FF', '#00CCFF', '#FF44AA'];
   const today = new Date().toISOString().split('T')[0];
@@ -173,9 +205,11 @@ export default function Clans() {
       const { data: membershipsData } = await supabase.from('clan_memberships').select('*');
       setMemberships(membershipsData || []);
 
-      // ── Pontuação do time = soma do XP dos membros no período da temporada ──
+      // ── Métricas do time no período da temporada ──
       // Janela: início/fim da temporada atual; se não houver, usa o mês corrente.
-      const season = settings.current_season;
+      // Daqui saem XP e frequência de cada atleta — o critério escolhido pelo
+      // admin decide qual delas ordena o ranking (ver src/lib/clanRanking.ts).
+      const season = settings?.current_season;
       const seasonStart = season?.start_date
         ? season.start_date + 'T00:00:00'
         : new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
@@ -185,17 +219,20 @@ export default function Clans() {
 
       let xpQuery = supabase
         .from('reward_history')
-        .select('user_id, xp')
+        .select('user_id, xp, type')
         .gte('created_at', seasonStart);
       if (seasonEnd) xpQuery = xpQuery.lte('created_at', seasonEnd);
       const { data: xpData } = await xpQuery;
 
       const xpMap: Record<string, number> = {};
+      const checkinMap: Record<string, number> = {};
       (xpData || []).forEach((r: any) => {
         if (!r.user_id) return;
         xpMap[r.user_id] = (xpMap[r.user_id] || 0) + (r.xp || 0);
+        if (r.type === 'checkin') checkinMap[r.user_id] = (checkinMap[r.user_id] || 0) + 1;
       });
       setMemberXp(xpMap);
+      setMemberCheckins(checkinMap);
 
       const { data: territoriesData } = await supabase
         .from('territories')
@@ -341,22 +378,34 @@ export default function Clans() {
     if (!error) setTick((v) => v + 1);
   };
 
-  const leaderboard = useMemo(() => {
-    return clans.map((clan) => {
-      const members = memberships.filter((m) => m.clan_id === clan.id && m.status === 'approved');
-      const energy = members.reduce((sum, m) => sum + (memberXp[m.user_id] || 0), 0);
-      // MVP: membro com maior XP no período
-      let mvpUserId: string | null = null;
-      let mvpXp = -1;
-      members.forEach((m) => {
-        const xp = memberXp[m.user_id] || 0;
-        if (xp > mvpXp) { mvpXp = xp; mvpUserId = m.user_id; }
-      });
-      return { clan, memberCount: members.length, energy, mvpUserId, mvpXp: Math.max(mvpXp, 0) };
-    }).sort((a, b) => b.energy - a.energy);
-  }, [clans, memberships, memberXp]);
+  // Critério de ranking da temporada (temporadas antigas caem no padrão: XP total)
+  const rankingConfig = useMemo(
+    () => normalizeRankingConfig(boxSettings.current_season),
+    [boxSettings.current_season],
+  );
+  const activeCriteria = criteriaOption(rankingConfig.criteria);
 
-  const maxEnergy = Math.max(...leaderboard.map((i) => i.energy), 1);
+  const leaderboard = useMemo(() => {
+    const byId = new Map(clans.map((c) => [c.id, c]));
+    const ranked = rankClans(
+      clans.map((clan) => ({
+        id: clan.id,
+        createdAt: clan.created_at,
+        members: memberships
+          .filter((m) => m.clan_id === clan.id && m.status === 'approved')
+          .map((m) => ({
+            userId: m.user_id,
+            xp: memberXp[m.user_id] || 0,
+            checkins: memberCheckins[m.user_id] || 0,
+          })),
+      })),
+      rankingConfig,
+    );
+    return ranked.map((entry) => ({ ...entry, clan: byId.get(entry.id)! }));
+  }, [clans, memberships, memberXp, memberCheckins, rankingConfig]);
+
+  const maxScore = Math.max(...leaderboard.map((i) => i.score), 1);
+  const myEntry = myClan ? leaderboard.find((l) => l.clan.id === myClan.id) : undefined;
 
   const handleCreateClan = async () => {
     if (!newClanName.trim() || !user) return;
@@ -580,8 +629,16 @@ export default function Clans() {
       if (error) {
         alert('Erro ao criar temporada: ' + error.message);
       } else {
-        alert(`Temporada "${newSeason.name}" aberta! Os atletas já podem criar times.`);
-        setNewSeason({ name: '', start_date: '', end_date: '' });
+        alert(
+          `Temporada "${newSeason.name}" aberta!\n` +
+          `Critério de ranking: ${criteriaOption(newSeason.ranking_criteria).label} ` +
+          `(desempate: ${tiebreakerOption(newSeason.tiebreaker).label.toLowerCase()}).\n` +
+          `Os atletas já podem criar times.`,
+        );
+        setNewSeason({
+          name: '', start_date: '', end_date: '',
+          ranking_criteria: DEFAULT_CRITERIA, tiebreaker: DEFAULT_TIEBREAKER,
+        });
         setShowSeasonModal(false);
         setTick((v) => v + 1);
       }
@@ -797,6 +854,11 @@ export default function Clans() {
                     <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 mb-3">
                       <p className="text-[10px] text-primary font-black uppercase tracking-widest">Temporada em andamento</p>
                       <p className="text-on-surface font-headline font-black italic text-sm">{boxSettings.current_season.name}</p>
+                      <p className="text-on-surface-variant text-[10px] font-bold mt-1">
+                        {activeCriteria.icon} {activeCriteria.label} · {activeCriteria.formula}
+                        <br />
+                        ⚖️ Empate: {tiebreakerOption(rankingConfig.tiebreaker).label.toLowerCase()}
+                      </p>
                     </div>
                   ) : (
                     <div className="bg-surface-container border border-outline-variant/10 rounded-xl p-3 mb-3">
@@ -805,6 +867,11 @@ export default function Clans() {
                           ? `Temporada "${boxSettings.current_season.name}" aberta — aguardando os atletas criarem times.`
                           : 'Nenhuma temporada aberta no momento.'}
                       </p>
+                      {boxSettings.current_season?.name && (
+                        <p className="text-on-surface-variant text-[10px] font-bold mt-1">
+                          {activeCriteria.icon} {activeCriteria.label} · {activeCriteria.formula}
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -949,7 +1016,7 @@ export default function Clans() {
           >
             <motion.div
               initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
-              className="bg-surface-container-low rounded-[2rem] p-6 w-full max-w-md"
+              className="bg-surface-container-low rounded-[2rem] p-6 w-full max-w-md max-h-[85vh] overflow-y-auto no-scrollbar"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-6">
@@ -988,6 +1055,71 @@ export default function Clans() {
                   </div>
                 </div>
 
+                {/* ── Critério de ranking ── */}
+                <div className="space-y-2 pt-2 border-t border-outline-variant/10">
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-1">
+                    <Trophy className="w-3 h-3 text-primary" /> Critério de Ranking
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {CRITERIA_OPTIONS.map((opt) => {
+                      const selected = newSeason.ranking_criteria === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setNewSeason({ ...newSeason, ranking_criteria: opt.id })}
+                          className={`p-3 rounded-2xl border text-left transition-all ${
+                            selected
+                              ? 'bg-primary/15 border-primary'
+                              : 'bg-surface-container-highest border-outline-variant/10 hover:border-outline-variant/30'
+                          }`}
+                        >
+                          <p className={`font-headline font-black text-xs uppercase italic ${selected ? 'text-primary' : 'text-on-surface'}`}>
+                            {opt.icon} {opt.label}
+                          </p>
+                          <p className="text-[10px] text-on-surface-variant mt-0.5">{opt.formula}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10px] text-on-surface-variant leading-relaxed bg-surface-container-highest rounded-xl p-3 border border-outline-variant/10">
+                    {criteriaOption(newSeason.ranking_criteria).description}
+                  </p>
+                </div>
+
+                {/* ── Desempate ── */}
+                <div className="space-y-2">
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-1">
+                    <Scale className="w-3 h-3 text-secondary" /> Em Caso de Empate
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {TIEBREAKER_OPTIONS.map((opt) => {
+                      const selected = newSeason.tiebreaker === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setNewSeason({ ...newSeason, tiebreaker: opt.id })}
+                          className={`px-3 py-2 rounded-xl border text-[10px] font-black uppercase tracking-wide transition-all ${
+                            selected
+                              ? 'bg-secondary/15 border-secondary text-secondary'
+                              : 'bg-surface-container-highest border-outline-variant/10 text-on-surface-variant'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10px] text-on-surface-variant">
+                    {tiebreakerOption(newSeason.tiebreaker).description} Persistindo o empate, vence o time criado primeiro.
+                  </p>
+                </div>
+
+                <p className="text-[10px] text-on-surface-variant bg-surface-container-highest rounded-xl p-3 border border-outline-variant/10">
+                  ⚠️ O critério vale para toda a temporada e não pode ser trocado depois que ela abre — só excluindo a temporada.
+                </p>
+
                 <button
                   onClick={handleCreateSeason}
                   disabled={savingSeason || !newSeason.name.trim() || !newSeason.start_date || !newSeason.end_date}
@@ -1024,6 +1156,9 @@ export default function Clans() {
                       {startDate.toLocaleDateString('pt-BR')} → {endDate.toLocaleDateString('pt-BR')}
                     </p>
                   )}
+                  <p className="text-on-surface-variant text-[10px] font-bold mt-0.5">
+                    {activeCriteria.icon} Vence por: {activeCriteria.formula.toLowerCase()}
+                  </p>
                 </div>
               </div>
               {daysLeft !== null && !ended && (
@@ -1110,15 +1245,23 @@ export default function Clans() {
           {/* Estatísticas do Time */}
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div className="bg-surface-container-highest rounded-xl p-3 border border-outline-variant/10">
-              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">XP da Temporada</p>
+              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">
+                {activeCriteria.label} · {activeCriteria.unit}
+              </p>
               <p className="font-headline font-black text-primary text-lg italic flex items-center gap-1">
-                <Zap className="w-4 h-4" /> {leaderboard.find((l) => l.clan.id === myClan.id)?.energy || 0}
+                <Zap className="w-4 h-4" /> {formatClanScore(myEntry?.score || 0, rankingConfig.criteria)}
+              </p>
+              <p className="text-[10px] text-on-surface-variant font-bold mt-0.5">
+                {myEntry?.totalXp || 0} XP · {myEntry?.checkins || 0} check-ins
               </p>
             </div>
             <div className="bg-surface-container-highest rounded-xl p-3 border border-outline-variant/10">
               <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Membros</p>
               <p className="font-headline font-black text-on-surface text-lg italic">
-                {leaderboard.find((l) => l.clan.id === myClan.id)?.memberCount || 0}/{boxSettings.max_clan_members}
+                {myEntry?.memberCount || 0}/{boxSettings.max_clan_members}
+              </p>
+              <p className="text-[10px] text-on-surface-variant font-bold mt-0.5">
+                {myEntry?.activeCount || 0} ativos na temporada
               </p>
             </div>
           </div>
@@ -1214,9 +1357,16 @@ export default function Clans() {
 
       {/* Ranking de Times */}
       <div>
-        <h2 className="text-xs font-black text-on-surface-variant uppercase tracking-widest mb-3 flex items-center gap-2">
+        <h2 className="text-xs font-black text-on-surface-variant uppercase tracking-widest mb-1 flex items-center gap-2">
           <Trophy className="w-4 h-4 text-primary" /> Ranking da Temporada
         </h2>
+        <p className="text-[10px] text-on-surface-variant mb-3">
+          <span className="font-black uppercase tracking-widest text-primary">
+            {activeCriteria.icon} {activeCriteria.label}
+          </span>
+          {' · '}{activeCriteria.formula}
+          {' · '}empate: {tiebreakerOption(rankingConfig.tiebreaker).label.toLowerCase()}
+        </p>
         <div className="flex flex-col gap-3">
           {leaderboard.map((item, idx) => {
             const isMine = myClan?.id === item.clan.id;
@@ -1244,16 +1394,25 @@ export default function Clans() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="flex items-center gap-1 text-primary font-black text-sm"><Zap className="w-3 h-3" /> {item.energy}</div>
-                    <div className={`flex items-center gap-1 text-[10px] font-bold ${item.memberCount >= boxSettings.max_clan_members ? 'text-secondary' : 'text-on-surface-variant'}`}>
+                    <div className="flex items-center justify-end gap-1 text-primary font-black text-sm">
+                      <Zap className="w-3 h-3" /> {formatClanScore(item.score, rankingConfig.criteria)}
+                      <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">{activeCriteria.unit}</span>
+                    </div>
+                    <div className={`flex items-center justify-end gap-1 text-[10px] font-bold ${item.memberCount >= boxSettings.max_clan_members ? 'text-secondary' : 'text-on-surface-variant'}`}>
                       <Users className="w-3 h-3" /> {item.memberCount}/{boxSettings.max_clan_members}
                       {item.memberCount >= boxSettings.max_clan_members && <span className="uppercase tracking-widest"> · CHEIO</span>}
+                    </div>
+                    {/* Métricas secundárias — as que não são o critério em vigor */}
+                    <div className="text-[10px] text-on-surface-variant font-bold mt-0.5">
+                      {rankingConfig.criteria !== 'total_xp' && <>{item.totalXp} XP · </>}
+                      {rankingConfig.criteria !== 'checkins' && <>{item.checkins} check-ins</>}
+                      {rankingConfig.criteria === 'checkins' && <>{item.avgXp} XP/atleta</>}
                     </div>
                   </div>
                 </div>
 
                 <div className="h-1.5 bg-surface-container-highest rounded-full overflow-hidden mb-3">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${(item.energy / maxEnergy) * 100}%`, backgroundColor: item.clan.color }} />
+                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(0, (item.score / maxScore) * 100)}%`, backgroundColor: item.clan.color }} />
                 </div>
 
                 {!myClan && !alreadyRequested && (
@@ -1413,29 +1572,72 @@ export default function Clans() {
               </div>
 
               <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-surface-container-highest p-4 rounded-2xl border border-outline-variant/10">
-                    <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">XP Total da Temporada</p>
-                    <p className="font-headline font-black text-2xl text-primary italic flex items-center gap-2">
-                      <Zap className="w-5 h-5" /> {leaderboard.find((l) => l.clan.id === showClanDetailModal.id)?.energy || 0}
-                    </p>
-                  </div>
-                  <div className="bg-surface-container-highest p-4 rounded-2xl border border-outline-variant/10">
-                    <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Membros</p>
-                    <p className="font-headline font-black text-2xl text-on-surface italic flex items-center gap-2">
-                      <Users className="w-5 h-5" /> {clanMembers.length}
-                    </p>
-                  </div>
-                </div>
+                {(() => {
+                  const detail = leaderboard.find((l) => l.clan.id === showClanDetailModal.id);
+                  return (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-surface-container-highest p-4 rounded-2xl border border-outline-variant/10">
+                          <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">
+                            {activeCriteria.icon} {activeCriteria.label}
+                          </p>
+                          <p className="font-headline font-black text-2xl text-primary italic flex items-center gap-2">
+                            <Zap className="w-5 h-5" /> {formatClanScore(detail?.score || 0, rankingConfig.criteria)}
+                          </p>
+                          <p className="text-[10px] text-on-surface-variant font-bold mt-1">{activeCriteria.formula}</p>
+                        </div>
+                        <div className="bg-surface-container-highest p-4 rounded-2xl border border-outline-variant/10">
+                          <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-1">Membros</p>
+                          <p className="font-headline font-black text-2xl text-on-surface italic flex items-center gap-2">
+                            <Users className="w-5 h-5" /> {clanMembers.length}
+                          </p>
+                          <p className="text-[10px] text-on-surface-variant font-bold mt-1">
+                            {detail?.activeCount || 0} pontuaram na temporada
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Todas as métricas — o critério em vigor fica destacado */}
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { id: 'total_xp', label: 'XP Total', value: `${detail?.totalXp || 0}` },
+                          { id: 'avg_xp', label: 'Média/Atleta', value: `${detail?.avgXp || 0}` },
+                          { id: 'checkins', label: 'Check-ins', value: `${detail?.checkins || 0}` },
+                        ].map((m) => (
+                          <div
+                            key={m.id}
+                            className={`p-3 rounded-xl border text-center ${
+                              rankingConfig.criteria === m.id
+                                ? 'bg-primary/10 border-primary/30'
+                                : 'bg-surface-container-highest border-outline-variant/10'
+                            }`}
+                          >
+                            <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">{m.label}</p>
+                            <p className={`font-headline font-black italic text-sm ${rankingConfig.criteria === m.id ? 'text-primary' : 'text-on-surface'}`}>
+                              {m.value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
 
                 <div>
                   <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-3">Membros do Time · Contribuição na Temporada</p>
                   <div className="flex flex-col gap-2">
                     {[...clanMembers]
-                      .sort((a, b) => (memberXp[b.id] || 0) - (memberXp[a.id] || 0))
+                      // Ordena pela métrica que decide a temporada
+                      .sort((a, b) =>
+                        rankingConfig.criteria === 'checkins'
+                          ? (memberCheckins[b.id] || 0) - (memberCheckins[a.id] || 0)
+                          : (memberXp[b.id] || 0) - (memberXp[a.id] || 0),
+                      )
                       .map((member, idx) => {
                         const seasonXp = memberXp[member.id] || 0;
-                        const isMvp = idx === 0 && seasonXp > 0;
+                        const seasonCheckins = memberCheckins[member.id] || 0;
+                        const topMetric = rankingConfig.criteria === 'checkins' ? seasonCheckins : seasonXp;
+                        const isMvp = idx === 0 && topMetric > 0;
                         return (
                           <div key={member.id} className={`flex justify-between items-center p-3 rounded-xl border ${isMvp ? 'bg-primary/10 border-primary/30' : 'bg-surface-container-highest border-outline-variant/10'}`}>
                             <div className="flex items-center gap-2">
@@ -1448,7 +1650,10 @@ export default function Clans() {
                                 </p>
                               </div>
                             </div>
-                            <p className={`text-xs font-black ${isMvp ? 'text-primary' : 'text-on-surface-variant'}`}>{seasonXp} XP</p>
+                            <p className={`text-xs font-black text-right ${isMvp ? 'text-primary' : 'text-on-surface-variant'}`}>
+                              {seasonXp} XP
+                              <span className="block text-[10px] font-bold text-on-surface-variant">{seasonCheckins} check-ins</span>
+                            </p>
                           </div>
                         );
                       })}
