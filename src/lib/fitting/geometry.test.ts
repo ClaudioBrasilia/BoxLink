@@ -294,6 +294,29 @@ describe('pieceSpecs', () => {
     expect(() => getPieceSpec('X-99')).toThrow();
   });
 
+  // Regressão: a caixa do boné já foi calibrada pelo vão das ORELHAS (240 px
+  // na base masculina), o que fazia a aba — que fica mais acima, onde o crânio
+  // é bem mais estreito — avançar muito além da cabeça e o boné parecer grande.
+  it('a caixa do boné acompanha o crânio, sem estourar a cabeça', () => {
+    // Crânio medido na silhueta de cada base, na altura da aba.
+    const SKULL = {
+      'M-06': { x1: 413, x2: 609 }, // y ≈ 190
+      'F-06': { x1: 377, x2: 644 }, // y ≈ 200
+    } as const;
+
+    for (const [id, skull] of Object.entries(SKULL)) {
+      const spec = getPieceSpec(id);
+      const overhang = (boxWidth(spec.box) - (skull.x2 - skull.x1)) / 2;
+      // Precisa sobrar aba para fora do crânio, mas pouca.
+      expect(overhang).toBeGreaterThan(0);
+      expect(overhang).toBeLessThanOrEqual(14);
+      // E o boné fica centrado no eixo da cabeça.
+      const boxCenter = (spec.box.x1 + spec.box.x2) / 2;
+      const skullCenter = (skull.x1 + skull.x2) / 2;
+      expect(Math.abs(boxCenter - skullCenter)).toBeLessThanOrEqual(5);
+    }
+  });
+
   it('listPieceSpecs filters by avatarBase', () => {
     expect(listPieceSpecs('masculina')).toHaveLength(10);
     expect(listPieceSpecs('feminina')).toHaveLength(10);
