@@ -143,12 +143,21 @@ FORMATO DA ARTE (crítico):
 Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
 em perspectiva 3D, NÃO manequim invisível/"ghost mannequin". As mangas
 DEVEM seguir o ângulo natural do braço da base (caindo para baixo e
-levemente para fora), NUNCA retas na horizontal como uma cruz — isso é o
-erro mais comum de geradores de imagem e faz o ombro da peça ficar
-"achatado" contra o pescoço quando encaixado. Silhueta IGUAL à da peça
-vestida no corpo da base anexada: ombros e mangas acompanhando os ombros
-da base, gola no pescoço, laterais acompanhando o tronco. Pense em
-"adesivo da peça vestida", recortado.
+levemente para fora), NUNCA retas na horizontal como uma cruz. Silhueta
+IGUAL à da peça vestida no corpo da base anexada: ombros e mangas
+acompanhando os ombros da base, gola no pescoço, laterais acompanhando
+o tronco. Pense em "adesivo da peça vestida", recortado.
+
+DISTÂNCIA GOLA→OMBRO (crítico, erro comum mesmo em desenhos "vestidos"):
+Na base anexada, o pescoço afunila GRADUALMENTE até virar ombro — a
+largura só atinge o máximo bem abaixo da gola, não logo abaixo dela.
+A peça deve refletir essa gradação: a distância vertical entre o TOPO
+da gola e o ponto onde a manga atinge sua largura máxima (largura de
+ombro-a-ombro) deve ser pelo menos 25% da altura total da peça (do
+topo da gola até a barra). Se a manga "abrir" para a largura máxima
+logo abaixo da gola (menos de 15% da altura), o ombro da peça vai
+ficar visualmente "mais alto" que o ombro real do avatar quando
+encaixado — mesmo que o formato geral pareça "vestido" e não "produto".
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 270 → 755   (largura 485 px)
@@ -193,9 +202,19 @@ NÃO desenhar o corpo no resultado.
 FORMATO DA ARTE (crítico):
 Desenho CHAPADO estilo cartoon, vista frontal plana — NÃO foto de produto
 em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
-vestida no corpo da base anexada: ombros e mangas acompanhando os ombros
+vestida no corpo da base anexada: ombros e cavas acompanhando os ombros
 da base, gola no pescoço, laterais acompanhando o tronco. Pense em
 "adesivo da peça vestida", recortado.
+
+DISTÂNCIA GOLA→OMBRO (crítico, erro comum mesmo em desenhos "vestidos"):
+Na base anexada, o pescoço afunila GRADUALMENTE até virar ombro — a
+largura só atinge o máximo bem abaixo da gola, não logo abaixo dela.
+A distância vertical entre o TOPO da gola e o ponto onde a peça atinge
+sua largura máxima (ombro-a-ombro) deve ser pelo menos 25% da altura
+total da peça (do topo da gola até a barra). Se a peça "abrir" para a
+largura máxima logo abaixo da gola (menos de 15% da altura), o ombro
+vai ficar visualmente "mais alto" que o ombro real do avatar quando
+encaixado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 300 → 725   (largura 425 px)
@@ -241,6 +260,15 @@ em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
 vestida no corpo da base anexada: ombros e mangas acompanhando os ombros
 da base, gola no pescoço, laterais acompanhando o tronco. Pense em
 "adesivo da peça vestida", recortado.
+
+DISTÂNCIA GOLA→OMBRO (crítico, erro comum mesmo em desenhos "vestidos"):
+Na base anexada, o pescoço afunila GRADUALMENTE até virar ombro — a
+largura só atinge o máximo bem abaixo da gola, não logo abaixo dela.
+A distância vertical entre o TOPO da gola e o ponto onde a peça atinge
+sua largura máxima (ombro-a-ombro) deve ser pelo menos 20% da altura
+total da peça (do topo da gola até o punho). Se a peça "abrir" para a
+largura máxima logo abaixo da gola, o ombro vai ficar visualmente
+"mais alto" que o ombro real do avatar quando encaixado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 244 → 781   (largura 537 px)
@@ -623,6 +651,16 @@ vestida no corpo da base anexada: ombros e mangas acompanhando os ombros
 da base, gola no pescoço, laterais acompanhando o tronco. Pense em
 "adesivo da peça vestida", recortado.
 
+DISTÂNCIA GOLA→OMBRO (crítico, erro comum mesmo em desenhos "vestidos"):
+Na base anexada, o pescoço afunila GRADUALMENTE até virar ombro — a
+largura só atinge o máximo bem abaixo da gola, não logo abaixo dela.
+A distância vertical entre o TOPO da gola e o ponto onde a peça atinge
+sua largura máxima (ombro-a-ombro) deve ser pelo menos 25% da altura
+total da peça (do topo da gola até a barra). Se a peça "abrir" para a
+largura máxima logo abaixo da gola (menos de 15% da altura), o ombro
+vai ficar visualmente "mais alto" que o ombro real do avatar quando
+encaixado.
+
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 330 → 700   (largura 370 px)
 - y: 400 → 780   (altura 380 px)
@@ -716,6 +754,15 @@ em perspectiva 3D, NÃO manequim invisível. Silhueta IGUAL à da peça
 vestida no corpo da base anexada: ombros e mangas acompanhando os ombros
 da base, gola no pescoço, laterais acompanhando o tronco. Pense em
 "adesivo da peça vestida", recortado.
+
+DISTÂNCIA GOLA→OMBRO (crítico, erro comum mesmo em desenhos "vestidos"):
+Na base anexada, o pescoço afunila GRADUALMENTE até virar ombro — a
+largura só atinge o máximo bem abaixo da gola, não logo abaixo dela.
+A distância vertical entre o TOPO da gola e o ponto onde a peça atinge
+sua largura máxima (ombro-a-ombro) deve ser pelo menos 20% da altura
+total da peça (do topo da gola até o punho). Se a peça "abrir" para a
+largura máxima logo abaixo da gola, o ombro vai ficar visualmente
+"mais alto" que o ombro real do avatar quando encaixado.
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 236 → 788   (largura 552 px)

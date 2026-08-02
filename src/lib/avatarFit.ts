@@ -129,10 +129,14 @@ async function computeFittedLayerUrl(
 
   // 'stretch' preenche a caixa exata (roupa casa com a largura do corpo);
   // se a proporção da arte destoar muito da caixa, usa 'contain'. Peças que
-  // vestem o corpo (top/bottom) toleram deformação maior.
+  // vestem o corpo (top/bottom) toleram deformação maior — o critério é o slot
+  // da SPEC, não o slot em que o item foi cadastrado: um boné com spec M-06
+  // cadastrado por engano como `top` não deve herdar a tolerância de camiseta.
   const boxAspect = (spec.box.y2 - spec.box.y1) / (spec.box.x2 - spec.box.x1);
   const maxDistortion =
-    slot === 'top' || slot === 'bottom' ? STRETCH_MAX_DISTORTION_BODY : STRETCH_MAX_DISTORTION;
+    spec.slot === 'top' || spec.slot === 'bottom'
+      ? STRETCH_MAX_DISTORTION_BODY
+      : STRETCH_MAX_DISTORTION;
   const fitted = fitPieceToCanvas(img, spec, chooseFitMode(contentAspect, boxAspect, maxDistortion));
 
   const out = document.createElement('canvas');

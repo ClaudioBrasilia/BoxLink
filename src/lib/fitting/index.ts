@@ -19,7 +19,7 @@
  * Para várias peças de uma vez (um "look" completo), veja `fitOutfit`.
  */
 
-import { getPieceSpec, listPieceSpecs, PIECE_SPECS, PieceSpec, AvatarBaseId, CANVAS, ANATOMY_ZONES, BASE_WIDTHS } from './pieceSpecs';
+import { getPieceSpec, listPieceSpecs, getSpecSlot, isSlotMismatched, PIECE_SPECS, PieceSpec, AvatarBaseId, RenderSlotKey, CANVAS, ANATOMY_ZONES, BASE_WIDTHS } from './pieceSpecs';
 import { computeFitTransform, detectContentBBox, validateFit, applyTransformToBox, chooseFitMode, STRETCH_MAX_DISTORTION, STRETCH_MAX_DISTORTION_BODY } from './geometry';
 import type { Box, FitTransform, FitMode, FitValidation } from './geometry';
 import { loadImage, fitPieceToCanvas, composeAvatar, detectImageContentBox, getImageData, ensureTransparentBackground } from './canvasFit';
@@ -28,6 +28,8 @@ import type { FitPieceResult, AvatarLayerInput, ComposeAvatarResult, PieceImageS
 export {
   getPieceSpec,
   listPieceSpecs,
+  getSpecSlot,
+  isSlotMismatched,
   PIECE_SPECS,
   CANVAS,
   ANATOMY_ZONES,
@@ -46,7 +48,7 @@ export {
   getImageData,
   ensureTransparentBackground,
 };
-export type { PieceSpec, AvatarBaseId, Box, FitTransform, FitMode, FitValidation, FitPieceResult, AvatarLayerInput, ComposeAvatarResult, PieceImageSource };
+export type { PieceSpec, AvatarBaseId, RenderSlotKey, Box, FitTransform, FitMode, FitValidation, FitPieceResult, AvatarLayerInput, ComposeAvatarResult, PieceImageSource };
 
 export interface FitClothingPieceParams {
   /** Base do avatar de destino */

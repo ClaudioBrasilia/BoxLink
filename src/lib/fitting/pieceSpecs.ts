@@ -15,6 +15,20 @@
 
 export type AvatarBaseId = 'masculina' | 'feminina';
 
+/**
+ * Slots de renderização do avatar (mesmos de `AvatarSlotKey`, declarados aqui
+ * para que `PieceSpec` possa apontar o slot correto sem depender de módulos
+ * com DOM).
+ */
+export type RenderSlotKey =
+  | 'top'
+  | 'bottom'
+  | 'shoes'
+  | 'accessory'
+  | 'wrist_accessory'
+  | 'head_accessory'
+  | 'special';
+
 export interface Box {
   x1: number;
   y1: number;
@@ -37,6 +51,13 @@ export interface PieceSpec {
   name: string;
   /** Base de avatar para a qual esta peça foi projetada */
   avatarBase: AvatarBaseId;
+  /**
+   * Slot em que um item desta peça DEVE ser cadastrado. Um boné (M-06/F-06)
+   * pertence a `head_accessory`; cadastrado como `top`, o fallback por slot o
+   * encaixaria na caixa da camiseta — que foi exatamente o bug que fez um boné
+   * aparecer cobrindo o tronco do avatar.
+   */
+  slot: RenderSlotKey;
   /** Caixa exata no canvas 1024x1536 onde a peça DEVE ocupar */
   box: Box;
   /** Descrição textual do ponto de referência anatômico (documentação) */
@@ -107,6 +128,7 @@ export const BASE_WIDTHS = {
 const MASCULINO: PieceSpec[] = [
   {
     id: 'M-01',
+    slot: 'top',
     name: 'Camiseta',
     avatarBase: 'masculina',
     // Caixa um pouco mais alta que a largura (y1 310, y2 850): artes de
@@ -121,6 +143,7 @@ const MASCULINO: PieceSpec[] = [
   },
   {
     id: 'M-02',
+    slot: 'top',
     name: 'Regata',
     avatarBase: 'masculina',
     box: { x1: 300, x2: 725, y1: 340, y2: 800 },
@@ -130,6 +153,7 @@ const MASCULINO: PieceSpec[] = [
   },
   {
     id: 'M-03',
+    slot: 'top',
     name: 'Jaqueta',
     avatarBase: 'masculina',
     // Caixa engloba tronco + BRAÇOS: a jaqueta tem mangas longas que descem
@@ -142,6 +166,7 @@ const MASCULINO: PieceSpec[] = [
   },
   {
     id: 'M-04',
+    slot: 'bottom',
     name: 'Short',
     avatarBase: 'masculina',
     box: { x1: 355, x2: 670, y1: 770, y2: 1020 },
@@ -151,6 +176,7 @@ const MASCULINO: PieceSpec[] = [
   },
   {
     id: 'M-05',
+    slot: 'bottom',
     name: 'Calça',
     avatarBase: 'masculina',
     // Largura estendida até o vão dos PÉS (x 337–685): as pernas da base
@@ -163,15 +189,24 @@ const MASCULINO: PieceSpec[] = [
   },
   {
     id: 'M-06',
+    slot: 'head_accessory',
     name: 'Boné',
     avatarBase: 'masculina',
-    box: { x1: 390, x2: 630, y1: 60, y2: 210 },
-    anchor: 'Copa cobre o topo da cabeça (y 60); aba termina na testa, acima das sobrancelhas (y ≈ 210). Cabeça da base: x ≈ 405–620.',
-    sizeRelative: 'Largura = largura da cabeça (≈ 240 px); Altura = topo da cabeça até a testa.',
+    // Largura calibrada pelo CRÂNIO, não pelo vão das orelhas: os 240 px
+    // anteriores eram a largura da cabeça medida em y ≈ 240, onde as orelhas
+    // se projetam (x 392–631). A aba fica em y ≈ 190, onde o crânio tem só
+    // 196 px (x 413–609) — com 240 px ela avançava ~21 px além da cabeça de
+    // cada lado e o boné parecia grande demais. 216 px deixa a sobra em 10 px
+    // por lado, e a caixa menos achatada reduz também o esmagamento vertical
+    // da arte no modo 'stretch' (razão 1,31 → 1,18).
+    box: { x1: 403, x2: 619, y1: 60, y2: 210 },
+    anchor: 'Copa cobre o topo da cabeça (y 60); aba termina na testa, acima das sobrancelhas (y ≈ 210). Centrada no eixo da cabeça (x ≈ 511). Crânio da base na altura da aba: x ≈ 413–609.',
+    sizeRelative: 'Largura = crânio da base + ~10 px de sobra por lado (≈ 216 px); Altura = topo da cabeça até a testa.',
     cutouts: ['Abertura inferior circular (encaixe da cabeça)'],
   },
   {
     id: 'M-07',
+    slot: 'wrist_accessory',
     name: 'Munhequeira',
     avatarBase: 'masculina',
     box: { x1: 238, x2: 786, y1: 805, y2: 905 },
@@ -186,6 +221,7 @@ const MASCULINO: PieceSpec[] = [
   },
   {
     id: 'M-08',
+    slot: 'wrist_accessory',
     name: 'Luvas',
     avatarBase: 'masculina',
     box: { x1: 225, x2: 792, y1: 820, y2: 1015 },
@@ -200,6 +236,7 @@ const MASCULINO: PieceSpec[] = [
   },
   {
     id: 'M-09',
+    slot: 'accessory',
     name: 'Joelheira',
     avatarBase: 'masculina',
     box: { x1: 378, x2: 645, y1: 1070, y2: 1180 },
@@ -214,6 +251,7 @@ const MASCULINO: PieceSpec[] = [
   },
   {
     id: 'M-10',
+    slot: 'shoes',
     name: 'Tênis',
     avatarBase: 'masculina',
     box: { x1: 330, x2: 692, y1: 1400, y2: 1532 },
@@ -231,6 +269,7 @@ const MASCULINO: PieceSpec[] = [
 const FEMININO: PieceSpec[] = [
   {
     id: 'F-01',
+    slot: 'top',
     name: 'Camiseta',
     avatarBase: 'feminina',
     box: { x1: 330, x2: 700, y1: 400, y2: 780 },
@@ -240,6 +279,7 @@ const FEMININO: PieceSpec[] = [
   },
   {
     id: 'F-02',
+    slot: 'top',
     name: 'Top (Sports Bra)',
     avatarBase: 'feminina',
     box: { x1: 340, x2: 685, y1: 450, y2: 640 },
@@ -249,6 +289,7 @@ const FEMININO: PieceSpec[] = [
   },
   {
     id: 'F-03',
+    slot: 'top',
     name: 'Jaqueta',
     avatarBase: 'feminina',
     // Caixa engloba tronco + BRAÇOS: a jaqueta tem mangas longas que descem
@@ -261,6 +302,7 @@ const FEMININO: PieceSpec[] = [
   },
   {
     id: 'F-04',
+    slot: 'bottom',
     name: 'Short',
     avatarBase: 'feminina',
     box: { x1: 340, x2: 685, y1: 715, y2: 1000 },
@@ -270,6 +312,7 @@ const FEMININO: PieceSpec[] = [
   },
   {
     id: 'F-05',
+    slot: 'bottom',
     name: 'Calça / Legging',
     avatarBase: 'feminina',
     // Largura estendida até o vão dos PÉS (x 303–721), não só do quadril: a
@@ -283,6 +326,7 @@ const FEMININO: PieceSpec[] = [
   },
   {
     id: 'F-06',
+    slot: 'head_accessory',
     name: 'Boné',
     avatarBase: 'feminina',
     box: { x1: 370, x2: 655, y1: 60, y2: 225 },
@@ -292,6 +336,7 @@ const FEMININO: PieceSpec[] = [
   },
   {
     id: 'F-07',
+    slot: 'wrist_accessory',
     name: 'Munhequeira',
     avatarBase: 'feminina',
     box: { x1: 248, x2: 775, y1: 785, y2: 875 },
@@ -306,6 +351,7 @@ const FEMININO: PieceSpec[] = [
   },
   {
     id: 'F-08',
+    slot: 'wrist_accessory',
     name: 'Luvas',
     avatarBase: 'feminina',
     box: { x1: 218, x2: 805, y1: 800, y2: 945 },
@@ -320,6 +366,7 @@ const FEMININO: PieceSpec[] = [
   },
   {
     id: 'F-09',
+    slot: 'accessory',
     name: 'Joelheira',
     avatarBase: 'feminina',
     box: { x1: 345, x2: 680, y1: 1090, y2: 1190 },
@@ -334,6 +381,7 @@ const FEMININO: PieceSpec[] = [
   },
   {
     id: 'F-10',
+    slot: 'shoes',
     name: 'Tênis',
     avatarBase: 'feminina',
     box: { x1: 295, x2: 725, y1: 1375, y2: 1532 },
@@ -363,4 +411,19 @@ export function getPieceSpec(pecaId: string): PieceSpec {
 export function listPieceSpecs(avatarBase?: AvatarBaseId): PieceSpec[] {
   const all = Object.values(PIECE_SPECS);
   return avatarBase ? all.filter((s) => s.avatarBase === avatarBase) : all;
+}
+
+/** Slot correto para um `piece_spec_id`, ou null se o id não existir. */
+export function getSpecSlot(pecaId?: string | null): RenderSlotKey | null {
+  return (pecaId && PIECE_SPECS[pecaId]?.slot) || null;
+}
+
+/**
+ * true quando o slot cadastrado no item conflita com o slot da peça escolhida
+ * (ex.: item no slot `top` com "Tipo de peça" = Boné). Usado pelo Admin para
+ * avisar antes de salvar um item que apareceria na parte errada do corpo.
+ */
+export function isSlotMismatched(slot: RenderSlotKey, pecaId?: string | null): boolean {
+  const specSlot = getSpecSlot(pecaId);
+  return specSlot !== null && specSlot !== slot;
 }

@@ -10,9 +10,12 @@ import { getWodByDate, getLatestWod } from '../lib/wods';
 import { formatInTimeZone } from 'date-fns-tz';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
 import { useAuth } from '../context/AuthContext';
-import { computeRepsPerMinute, formatPace } from '../lib/pace';
+import { computeRepsPerMinute, formatPace, isTimeBasedType } from '../lib/pace';
+import { computeRelativeStrength } from '../lib/relativeStrength';
 import { DuelScoreOutcome } from '../lib/duelScore';
 import DuelRecapCard from '../components/DuelRecapCard';
+import WodSpotlightChart from '../components/WodSpotlightChart';
+import { WodSpotlightData } from '../lib/wodSpotlight';
 
 interface RankedUser extends UserType {
   monthXp?: number;
@@ -32,6 +35,7 @@ interface WodRankEntry {
   level: number;
   scoreNum: number;   // número puro para ordenação
   pace: number | null; // reps/min — null quando o coach não cadastrou os números
+  relStrength: number | null; // carga ÷ peso corporal — null sem carga ou sem peso no perfil
 }
 
 type WodFilter = 'todos' | 'RX' | 'Scaled';
@@ -208,7 +212,7 @@ export default function Leaderboard() {
         if (!rawResults.length) return [];
         const userIds = [...new Set(rawResults.map((r: any) => r.user_id))];
         const { data: profilesData } = await supabase
-          .from('profiles').select('id, name, level, gender, avatar_equipped, photo_url').in('id', userIds);
+          .from('profiles').select('id, name, level, gender, avatar_equipped, photo_url, weight_kg').in('id', userIds);
         const profileMap: Record<string, any> = {};
         (profilesData || []).forEach((p: any) => { profileMap[p.id] = p; });
         return rawResults.map((r: any) => ({ ...r, profiles: profileMap[r.user_id] ?? null }));
@@ -252,6 +256,7 @@ export default function Leaderboard() {
                 totalReps: wod?.total_reps,
                 timeCapMinutes: wod?.time_cap_minutes,
               }),
+              relStrength: computeRelativeStrength(r.load_kg, profile?.weight_kg),
             };
           });
       };
@@ -351,6 +356,35 @@ export default function Leaderboard() {
       <span className="text-[9px] font-bold text-on-surface-variant/70 tracking-widest">{label}</span>
     );
   };
+
+  // ── Destaque do WOD: o MESMO gráfico da TV, montado a partir do ranking já
+  // carregado (líder do dia x média do box). Sem consulta extra: resultado,
+  // ritmo e força relativa de cada atleta já vêm em wodRanking.
+  const wodSpotlight: WodSpotlightData | null = (() => {
+    if (!wodInfo || wodRanking.length === 0) return null;
+    const leader = wodRanking[0];
+    const avg = (nums: number[]) => nums.reduce((a, b) => a + b, 0) / nums.length;
+
+    const paces = wodRanking.map(e => e.pace).filter((v): v is number => v != null);
+    const strengths = wodRanking.map(e => e.relStrength).filter((v): v is number => v != null);
+
+    return {
+      athlete: { id: leader.userId, name: leader.name, photoUrl: leader.photoUrl ?? null },
+      wodName: wodInfo.name,
+      wodType: wodInfo.type,
+      athleteCount: wodRanking.length,
+      timeBased: isTimeBasedType(wodInfo.type),
+      leaderResult: leader.result,
+      leaderScore: leader.scoreNum,
+      avgScore: avg(wodRanking.map(e => e.scoreNum)),
+      leaderPace: leader.pace,
+      avgPace: paces.length ? avg(paces) : null,
+      leaderStrength: leader.relStrength,
+      // Com um único registro a "média do box" seria o próprio líder — 0% de
+      // diferença. Mesma regra da TV.
+      avgStrength: strengths.length >= 2 ? avg(strengths) : null,
+    };
+  })();
 
   // ── Comparar resultado do WOD com outro atleta ──────────────────────────────
   const myWodEntry = wodRanking.find(e => e.userId === user?.id) || null;
@@ -478,6 +512,10 @@ export default function Leaderboard() {
             <p className="text-center text-on-surface-variant text-xs font-bold uppercase tracking-widest py-1">Nenhum WOD cadastrado para hoje</p>
           )}
         </div>
+      )}
+
+      {isWod && wodSpotlight && (
+        <WodSpotlightChart variant="mobile" data={wodSpotlight} />
       )}
 
       {top3.length > 0 && (
@@ -694,8 +732,37 @@ export default function Leaderboard() {
                 const targetRank = wodRanking.findIndex(e => e.userId === targetId) + 1;
                 const totalRanked = wodRanking.length;
 
+                // Mesmo gráfico de barras da TV, agora atleta x atleta em vez de
+                // atleta x média do box: quem está na frente vira o "destaque" e
+                // o outro vira o lado da comparação.
+                const winnerIsMe = !tie && meBetter;
+                const winnerEntry = winnerIsMe ? myWodEntry : compareTarget;
+                const otherEntry = winnerIsMe ? compareTarget : myWodEntry;
+                const winnerName = winnerIsMe ? 'Você' : compareTarget.name;
+                const otherName = winnerIsMe ? compareTarget.name : 'Você';
+                const pairSpotlight: WodSpotlightData = {
+                  athlete: { id: winnerEntry.userId, name: winnerName, photoUrl: winnerEntry.photoUrl ?? null },
+                  wodName: wodInfo?.name,
+                  wodType: wodInfo?.type,
+                  athleteCount: 2,
+                  timeBased: wodIsTimeBased,
+                  leaderResult: winnerEntry.result,
+                  leaderScore: winnerEntry.scoreNum,
+                  avgScore: otherEntry.scoreNum,
+                  leaderPace: winnerEntry.pace,
+                  avgPace: otherEntry.pace,
+                  leaderStrength: winnerEntry.relStrength,
+                  avgStrength: otherEntry.relStrength,
+                };
+
                 return (
                   <div className="flex flex-col gap-3">
+                    <WodSpotlightChart
+                      variant="mobile"
+                      data={pairSpotlight}
+                      comparisonName={otherName}
+                      comparisonShortName={otherName.split(' ')[0].toUpperCase()}
+                    />
                     <DuelRecapCard
                       wodName={wodInfo?.name}
                       wodType={wodInfo?.type}
@@ -728,6 +795,23 @@ export default function Leaderboard() {
                         <span className="text-xs font-bold text-center text-on-surface">{myWodEntry.type}</span>
                         <span className="text-xs font-bold text-center text-on-surface">{compareTarget.type}</span>
                       </div>
+                      {(myWodEntry.relStrength != null || compareTarget.relStrength != null) && (
+                        <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 items-center">
+                          <span className="text-[9px] font-black text-on-surface-variant/70 uppercase tracking-widest">
+                            Força relativa <span className="opacity-60">(carga ÷ peso)</span>
+                          </span>
+                          <span className={cn('text-xs font-bold text-center',
+                            myWodEntry.relStrength != null && compareTarget.relStrength != null && myWodEntry.relStrength > compareTarget.relStrength
+                              ? 'text-primary' : 'text-on-surface')}>
+                            {myWodEntry.relStrength != null ? `${myWodEntry.relStrength.toFixed(2)}x` : '—'}
+                          </span>
+                          <span className={cn('text-xs font-bold text-center',
+                            myWodEntry.relStrength != null && compareTarget.relStrength != null && compareTarget.relStrength > myWodEntry.relStrength
+                              ? 'text-primary' : 'text-on-surface')}>
+                            {compareTarget.relStrength != null ? `${compareTarget.relStrength.toFixed(2)}x` : '—'}
+                          </span>
+                        </div>
+                      )}
                       <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 items-center">
                         <span className="text-[9px] font-black text-on-surface-variant/70 uppercase tracking-widest">Nível</span>
                         <span className={cn('text-xs font-bold text-center', myWodEntry.level > compareTarget.level ? 'text-primary' : 'text-on-surface')}>
