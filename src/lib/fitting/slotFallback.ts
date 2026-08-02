@@ -17,17 +17,9 @@
  * Módulo puro (sem DOM) para ser testável isoladamente.
  */
 
-import { PIECE_SPECS, AvatarBaseId } from './pieceSpecs';
+import { PIECE_SPECS, AvatarBaseId, RenderSlotKey } from './pieceSpecs';
 
-/** Slots de renderização do avatar (mesmos de AvatarSlotKey, sem dependência circular) */
-export type RenderSlotKey =
-  | 'top'
-  | 'bottom'
-  | 'shoes'
-  | 'accessory'
-  | 'wrist_accessory'
-  | 'head_accessory'
-  | 'special';
+export type { RenderSlotKey };
 
 /**
  * Proporção (altura/largura) do conteúdo acima da qual um item do slot

@@ -9,6 +9,17 @@ import type { AvatarSlot } from '../types';
 
 export type AvatarSlotKey = keyof Omit<AvatarSlot, 'base_outfit'>;
 
+/** Nome legível de cada slot (customização e Admin usam os mesmos rótulos) */
+export const SLOT_LABELS: Record<AvatarSlotKey, string> = {
+  top: 'Camiseta',
+  bottom: 'Calça/Short',
+  shoes: 'Tênis',
+  accessory: 'Acessório',
+  head_accessory: 'Cabeça',
+  wrist_accessory: 'Pulso',
+  special: 'Especial',
+};
+
 export interface LayerAdjustment {
   scaleX: number;
   scaleY: number;

@@ -52,6 +52,19 @@ origem inteira é redesenhada com essa transformação, as aberturas vazadas
 - `geometry.test.ts` / `slotFallback.test.ts` — testes unitários (`npm test`)
   dos módulos puros.
 
+## Slot da peça × slot do item
+
+Cada `PieceSpec` declara também o `slot` a que a peça pertence (`M-06` Boné →
+`head_accessory`, `M-04` Short → `bottom` etc.). Isso importa porque, quando o
+item **não** tem `piece_spec_id`, o encaixe cai no fallback por slot: um boné
+cadastrado no slot `top` (o padrão do formulário do Admin) era encaixado na
+caixa da camiseta e aparecia cobrindo o tronco do avatar.
+
+Por isso o "Tipo de Peça" manda no slot: ao escolhê-lo no Admin, o slot do item
+é ajustado para `spec.slot` (e o mesmo é reforçado ao salvar). `getSpecSlot` e
+`isSlotMismatched` expõem essa regra — a lista de itens do Admin marca com aviso
+os itens cujo slot conflita com a spec, e os que estão sem tipo de peça.
+
 ## Onde o encaixe é aplicado
 
 1. **No upload (Admin)** — `src/utils/avatarUpload.ts`: quando o admin define
