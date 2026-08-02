@@ -13,8 +13,33 @@ Todas as métricas contam apenas o que aconteceu entre o **início** e o **fim**
 da temporada, e apenas de **membros aprovados** do time. Sem temporada aberta,
 o fallback é o mês corrente.
 
-A fonte é a `reward_history`: cada linha tem o XP ganho e o tipo do evento
-(check-in, WOD, PR, desafio, duelo, bônus semanal).
+A fonte é a `reward_history`: cada linha tem o XP ganho e o tipo do evento.
+
+## O que pontua para o time
+
+Só entram as fontes que têm **trava de repetição** — o que pode ser registrado
+várias vezes no mesmo dia fica de fora, senão dá para inflar o time sem treinar.
+
+| Conta | Trava |
+|---|---|
+| `checkin` — check-in na aula ou solo | 1x por dia |
+| `wod` — resultado no placar do dia | 1x por dia |
+| `wod_complete` — WOD do box | 1x por WOD publicado |
+| `challenge` — desafio do box | 1x por desafio |
+| `weekly_bonus` — bônus semanal de frequência | 1x por semana/faixa |
+
+| Não conta | Por quê |
+|---|---|
+| `duel` — vitória em duelo | 40 XP por vitória, sem teto; dois colegas do mesmo time podem duelar em série com WOD personalizado e resultado digitado à mão |
+| `pr` — novo PR no Diário | 30 XP a cada carga que supere a anterior, sem incremento mínimo (100 → 100,5 → 101kg) |
+| `level_up` | sempre 0 XP — é bônus só em moedas |
+
+Duelo e PR **continuam dando XP, moedas e nível ao atleta** e contam na Liga
+individual. A restrição vale só para a pontuação da temporada de times.
+
+A lista fica em `SEASON_XP_TYPES` (`src/lib/clanRanking.ts`) e é aplicada em
+dois lugares: no `.in('type', …)` da consulta e de novo no agregador, via
+`countsForSeason()`.
 
 ## Critérios
 
