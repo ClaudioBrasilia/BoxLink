@@ -13,6 +13,10 @@ import {
   TIEBREAKER_OPTIONS,
   DEFAULT_CRITERIA,
   DEFAULT_TIEBREAKER,
+  SEASON_XP_TYPES,
+  SEASON_XP_SOURCES,
+  SEASON_XP_EXCLUDED,
+  countsForSeason,
   type ClanRankingCriteria,
   type ClanTiebreaker,
 } from '../lib/clanRanking';
@@ -223,6 +227,7 @@ export default function Clans() {
       let xpQuery = supabase
         .from('reward_history')
         .select('user_id, xp, type')
+        .in('type', SEASON_XP_TYPES as unknown as string[])
         .gte('created_at', seasonStart);
       if (seasonEnd) xpQuery = xpQuery.lte('created_at', seasonEnd);
       const { data: xpData } = await xpQuery;
@@ -231,6 +236,8 @@ export default function Clans() {
       const checkinMap: Record<string, number> = {};
       (xpData || []).forEach((r: any) => {
         if (!r.user_id) return;
+        // Segunda barreira: se a consulta trouxer algo a mais, o filtro vale aqui
+        if (!countsForSeason(r.type)) return;
         xpMap[r.user_id] = (xpMap[r.user_id] || 0) + (r.xp || 0);
         if (r.type === 'checkin') checkinMap[r.user_id] = (checkinMap[r.user_id] || 0) + 1;
       });
@@ -1261,19 +1268,20 @@ export default function Clans() {
                   <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-2">4 · Como somar pontos para o time</p>
                   <div className="flex flex-col gap-1.5">
                     {[
-                      { icon: '✅', label: 'Check-in no treino', value: `+${rewards.xp_per_checkin ?? 20} XP` },
-                      { icon: '🏋️', label: 'WOD concluído', value: `+${rewards.wod_xp ?? 10} XP` },
-                      { icon: '📈', label: 'Novo PR no Diário', value: '+30 XP' },
-                      { icon: '⚔️', label: 'Vitória em duelo', value: `+${rewards.duel_win_xp ?? 40} XP` },
-                      { icon: '🎯', label: 'Desafios do box', value: 'XP definido no desafio' },
+                      { ...SEASON_XP_SOURCES[0], value: `+${rewards.xp_per_checkin ?? 20} XP` },
+                      { ...SEASON_XP_SOURCES[1], value: `+${rewards.wod_xp ?? 10} XP` },
+                      { ...SEASON_XP_SOURCES[2], value: `+${rewards.wod_xp ?? 10} XP` },
+                      { ...SEASON_XP_SOURCES[3], value: 'XP definido no desafio' },
                       {
-                        icon: '🔥',
-                        label: 'Bônus semanal (3/4/5/6 treinos)',
+                        ...SEASON_XP_SOURCES[4],
                         value: `+${rewards.weekly_bonus_3_xp ?? 50}/${rewards.weekly_bonus_4_xp ?? 100}/${rewards.weekly_bonus_5_xp ?? 150}/${rewards.weekly_bonus_6_xp ?? 200} XP`,
                       },
                     ].map((row) => (
                       <div key={row.label} className="flex items-center justify-between gap-2 bg-surface-container-highest rounded-xl px-3 py-2 border border-outline-variant/10">
-                        <span className="text-[11px] font-bold text-on-surface">{row.icon} {row.label}</span>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold text-on-surface">{row.icon} {row.label}</p>
+                          <p className="text-[10px] text-on-surface-variant">{row.limit}</p>
+                        </div>
                         <span className="text-[11px] font-black text-primary text-right flex-shrink-0">{row.value}</span>
                       </div>
                     ))}
@@ -1283,6 +1291,26 @@ export default function Clans() {
                       Nesta temporada o que decide é a quantidade de check-ins — o XP entra só como informação e no desempate.
                     </p>
                   )}
+                </div>
+
+                {/* O que não conta para o time */}
+                <div>
+                  <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-2">5 · O que não conta para o time</p>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {SEASON_XP_EXCLUDED.map((row) => (
+                      <span
+                        key={row.label}
+                        className="text-[11px] font-bold text-on-surface-variant bg-surface-container-highest rounded-xl px-3 py-2 border border-outline-variant/10 line-through decoration-error/60"
+                      >
+                        {row.icon} {row.label}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                    Continuam valendo XP, moedas e nível para você — e contam na Liga individual. Só não entram na
+                    pontuação do time, porque podem ser repetidos várias vezes no mesmo dia e desequilibrariam a
+                    temporada.
+                  </p>
                 </div>
               </div>
             </motion.div>

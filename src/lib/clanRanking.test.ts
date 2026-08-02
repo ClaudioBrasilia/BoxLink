@@ -3,6 +3,8 @@ import {
   rankClans,
   normalizeRankingConfig,
   formatClanScore,
+  countsForSeason,
+  SEASON_XP_TYPES,
   DEFAULT_CRITERIA,
   DEFAULT_TIEBREAKER,
   type ClanRankingInput,
@@ -31,6 +33,34 @@ describe('normalizeRankingConfig', () => {
   it('respeita o critério gravado', () => {
     expect(normalizeRankingConfig({ ranking_criteria: 'avg_xp', tiebreaker: 'fewer_members' }))
       .toEqual({ criteria: 'avg_xp', tiebreaker: 'fewer_members' });
+  });
+});
+
+describe('countsForSeason', () => {
+  it('aceita as fontes com trava de repetição', () => {
+    expect(countsForSeason('checkin')).toBe(true);       // 1x por dia
+    expect(countsForSeason('wod')).toBe(true);           // 1x por dia (placar)
+    expect(countsForSeason('wod_complete')).toBe(true);  // 1x por WOD do box
+    expect(countsForSeason('challenge')).toBe(true);     // 1x por desafio
+    expect(countsForSeason('weekly_bonus')).toBe(true);  // 1x por semana
+  });
+
+  it('barra o que pode ser repetido à vontade no mesmo dia', () => {
+    expect(countsForSeason('duel')).toBe(false);
+    expect(countsForSeason('pr')).toBe(false);
+    expect(countsForSeason('level_up')).toBe(false);
+  });
+
+  it('barra tipo ausente ou desconhecido', () => {
+    expect(countsForSeason(null)).toBe(false);
+    expect(countsForSeason(undefined)).toBe(false);
+    expect(countsForSeason('')).toBe(false);
+    expect(countsForSeason('tipo_novo_qualquer')).toBe(false);
+  });
+
+  it('a lista enviada ao banco bate com o filtro local', () => {
+    expect(SEASON_XP_TYPES.every((t) => countsForSeason(t))).toBe(true);
+    expect(SEASON_XP_TYPES).toHaveLength(5);
   });
 });
 

@@ -8,6 +8,50 @@
 // Todas as métricas saem da mesma janela de tempo da temporada (início/fim) e
 // contam apenas membros aprovados do time.
 
+// ─── O que pontua para o time ──────────────────────────────────────────────
+// Nem todo XP do atleta vira pontuação de time. Só entram as fontes que têm
+// trava de repetição (uma vez por dia, por WOD, por desafio ou por semana).
+//
+// Ficam de fora, de propósito:
+//  • 'duel' — vitória em duelo paga 40 XP sem teto, e nada impede dois
+//    colegas do MESMO time de duelar em série com WOD personalizado e
+//    resultado digitado à mão: seria XP infinito para o time.
+//  • 'pr' — 30 XP a cada carga que supere a anterior, sem incremento mínimo
+//    (100 → 100,5 → 101kg renderia 90 XP em um minuto).
+//  • 'level_up' — sempre 0 XP, é só bônus em moedas.
+//
+// Elas continuam valendo XP individual (nível, moedas, Liga do mês) — a
+// restrição vale só para a pontuação da temporada de times.
+export const SEASON_XP_TYPES = [
+  'checkin',       // check-in na aula ou solo — 1x por dia
+  'wod',           // resultado no placar do dia — 1x por dia
+  'wod_complete',  // WOD do box — 1x por WOD publicado
+  'challenge',     // desafio do box — 1x por desafio
+  'weekly_bonus',  // bônus semanal de frequência — 1x por semana/faixa
+] as const;
+
+/** Rótulos das fontes que pontuam, para explicar aos atletas. */
+export const SEASON_XP_SOURCES: { icon: string; label: string; limit: string }[] = [
+  { icon: '✅', label: 'Check-in no treino', limit: '1x por dia' },
+  { icon: '📋', label: 'Resultado no placar do dia', limit: '1x por dia' },
+  { icon: '🏋️', label: 'WOD do box', limit: '1x por WOD' },
+  { icon: '🎯', label: 'Desafios do box', limit: '1x por desafio' },
+  { icon: '🔥', label: 'Bônus semanal de frequência', limit: '1x por semana' },
+];
+
+/** Fontes que dão XP ao atleta mas não pontuam para o time. */
+export const SEASON_XP_EXCLUDED: { icon: string; label: string }[] = [
+  { icon: '⚔️', label: 'Vitória em duelo' },
+  { icon: '📈', label: 'Novo PR no Diário' },
+];
+
+const SEASON_XP_TYPE_SET = new Set<string>(SEASON_XP_TYPES);
+
+/** O XP desta linha de reward_history conta para a pontuação do time? */
+export function countsForSeason(type?: string | null): boolean {
+  return !!type && SEASON_XP_TYPE_SET.has(type);
+}
+
 export type ClanRankingCriteria = 'total_xp' | 'avg_xp' | 'checkins' | 'engagement';
 export type ClanTiebreaker = 'checkins' | 'avg_xp' | 'fewer_members' | 'created_first';
 
