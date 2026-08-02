@@ -192,9 +192,16 @@ const MASCULINO: PieceSpec[] = [
     slot: 'head_accessory',
     name: 'Boné',
     avatarBase: 'masculina',
-    box: { x1: 390, x2: 630, y1: 60, y2: 210 },
-    anchor: 'Copa cobre o topo da cabeça (y 60); aba termina na testa, acima das sobrancelhas (y ≈ 210). Cabeça da base: x ≈ 405–620.',
-    sizeRelative: 'Largura = largura da cabeça (≈ 240 px); Altura = topo da cabeça até a testa.',
+    // Largura calibrada pelo CRÂNIO, não pelo vão das orelhas: os 240 px
+    // anteriores eram a largura da cabeça medida em y ≈ 240, onde as orelhas
+    // se projetam (x 392–631). A aba fica em y ≈ 190, onde o crânio tem só
+    // 196 px (x 413–609) — com 240 px ela avançava ~21 px além da cabeça de
+    // cada lado e o boné parecia grande demais. 216 px deixa a sobra em 10 px
+    // por lado, e a caixa menos achatada reduz também o esmagamento vertical
+    // da arte no modo 'stretch' (razão 1,31 → 1,18).
+    box: { x1: 403, x2: 619, y1: 60, y2: 210 },
+    anchor: 'Copa cobre o topo da cabeça (y 60); aba termina na testa, acima das sobrancelhas (y ≈ 210). Centrada no eixo da cabeça (x ≈ 511). Crânio da base na altura da aba: x ≈ 413–609.',
+    sizeRelative: 'Largura = crânio da base + ~10 px de sobra por lado (≈ 216 px); Altura = topo da cabeça até a testa.',
     cutouts: ['Abertura inferior circular (encaixe da cabeça)'],
   },
   {
