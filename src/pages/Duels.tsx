@@ -28,9 +28,11 @@ import { computeDuelScore, DuelScoreOutcome } from '../lib/duelScore';
 import DuelRecapCard from '../components/DuelRecapCard';
 import ShareDuelButton from '../components/ShareDuelButton';
 import PremiumCTA from '../components/PremiumCTA';
-import { WodPaceMeta, parseTimeToSeconds } from '../lib/pace';
+import { WodPaceMeta, parseTimeToSeconds, computeRepsPerMinute } from '../lib/pace';
 import { isPremium } from '../lib/plan';
 import { computeRelativeStrength } from '../lib/relativeStrength';
+import WodSpotlightChart from '../components/WodSpotlightChart';
+import { WodSpotlightData } from '../lib/wodSpotlight';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -153,6 +155,9 @@ export default function Duels() {
   const isIndividual = user?.accountType === 'individual';
   // Recap comparativo do duelo (desempenho/esforço/ritmo/"por que venceu") é
   // Premium no individual. Conta de box sempre vê — comparação é core ali.
+  // Para liberar um teste, conceda Premium com validade pelo painel Admin: o
+  // acesso expira sozinho (isPremium respeita plan_expires_at) e fica
+  // registrado em plan_grants.
   const canSeeComparison = !isIndividual || isPremium(user);
 
   // Data
@@ -1075,15 +1080,74 @@ export default function Duels() {
             const timeBased = isTimeBased(duel.wodType);
 
             // Detalhamento do placar (desempenho + esforço) quando finalizado
+            const duelTimeBased = isTimeBasedDuel(duel.wodType, duel.results);
             const outcome: DuelScoreOutcome | null = duel.status === 'finished' && allSubmitted
               ? computeDuelScore(
                   duel.results,
                   duel.intensity,
                   allParticipants,
-                  isTimeBasedDuel(duel.wodType, duel.results),
+                  duelTimeBased,
                   parseResultValue,
                 )
               : null;
+
+            // Mesmo gráfico de barras do Ranking/TV: vencedor do duelo x o
+            // outro lado. Em duelo 1x1, esse outro lado é o oponente; em
+            // duelo de grupo (3+ participantes), é a MÉDIA dos demais — o
+            // gráfico só compara duas colunas, então não dá pra empilhar um
+            // participante por barra.
+            const getPhoto = (pid: string) => pid === user?.id ? (user as any).photo_url : users.find(u => u.id === pid)?.photo_url ?? null;
+            const avgOf = (nums: number[]) => nums.reduce((a, b) => a + b, 0) / nums.length;
+            let duelSpotlight: WodSpotlightData | null = null;
+            let duelSpotlightOtherName = '';
+            let duelSpotlightOtherShort = '';
+            if (outcome?.winnerId) {
+              const winnerId = outcome.winnerId;
+              const otherIds = allParticipants.filter(id => id !== winnerId);
+              if (otherIds.length > 0) {
+                const paceMeta = getPaceMeta(duel);
+                const strengthById = getStrengthById(duel);
+                const isGroup = otherIds.length > 1;
+
+                const otherScores = otherIds.map(id => parseResultValue(duel.results[id] || '', duelTimeBased));
+                const otherPaces = paceMeta
+                  ? otherIds.map(id => computeRepsPerMinute(duel.results[id] || '', paceMeta)).filter((p): p is number => p != null)
+                  : [];
+                const otherStrengths = otherIds.map(id => strengthById[id]).filter((s): s is number => s != null);
+                // Esforço só entra se TODOS registraram a FC — mesma regra do
+                // placar (outcome.usedIntensity), para não comparar quem tem
+                // sensor com quem não tem.
+                const otherEfforts = outcome.usedIntensity
+                  ? otherIds.map(id => outcome.entries[id]?.effort).filter((e): e is number => e != null)
+                  : [];
+
+                duelSpotlightOtherName = isGroup ? 'Média dos Oponentes' : getUserName(otherIds[0]);
+                duelSpotlightOtherShort = isGroup ? 'MÉDIA' : getUserName(otherIds[0]).split(' ')[0].toUpperCase();
+
+                duelSpotlight = {
+                  athlete: { id: winnerId, name: getUserName(winnerId), photoUrl: getPhoto(winnerId) },
+                  wodName: duel.wodName || '',
+                  wodType: duel.wodType || '',
+                  athleteCount: allParticipants.length,
+                  timeBased: duelTimeBased,
+                  leaderResult: duel.results[winnerId] || '',
+                  leaderScore: parseResultValue(duel.results[winnerId] || '', duelTimeBased),
+                  avgScore: avgOf(otherScores),
+                  leaderPace: paceMeta ? computeRepsPerMinute(duel.results[winnerId] || '', paceMeta) : null,
+                  avgPace: otherPaces.length ? avgOf(otherPaces) : null,
+                  leaderStrength: strengthById[winnerId] ?? null,
+                  avgStrength: otherStrengths.length ? avgOf(otherStrengths) : null,
+                  leaderHr: outcome.usedIntensity ? outcome.entries[winnerId]?.effort ?? null : null,
+                  avgHr: otherEfforts.length ? avgOf(otherEfforts) : null,
+                  hrMeta: {
+                    label: 'Esforço (FC)',
+                    unit: '% da FC máx',
+                    betterWord: 'menos esforço',
+                    worseWord: 'mais esforço',
+                  },
+                };
+              }
+            }
 
             return (
               <motion.div
@@ -1244,6 +1308,15 @@ export default function Duels() {
                 {duel.status === 'finished' && outcome && outcome.winnerId && (
                   canSeeComparison ? (
                     <div className="flex flex-col gap-2">
+                      {duelSpotlight && (
+                        <WodSpotlightChart
+                          variant="mobile"
+                          data={duelSpotlight}
+                          comparisonName={duelSpotlightOtherName}
+                          comparisonShortName={duelSpotlightOtherShort}
+                          badgeLabel="Vencedor do Duelo"
+                        />
+                      )}
                       <DuelRecapCard
                         wodName={duel.wodName}
                         wodType={duel.wodType}

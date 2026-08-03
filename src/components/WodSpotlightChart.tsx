@@ -31,10 +31,12 @@ interface WodSpotlightChartProps {
   comparisonName?: string;
   /** Rótulo curto pras barras (ex.: "BOX" ou o primeiro nome de um atleta). */
   comparisonShortName?: string;
+  /** Texto do selo no canto superior direito. Padrão: "Líder do WOD". */
+  badgeLabel?: string;
 }
 
 export default function WodSpotlightChart({
-  data, variant = 'tv', comparisonName = 'Média do Box', comparisonShortName = 'BOX',
+  data, variant = 'tv', comparisonName = 'Média do Box', comparisonShortName = 'BOX', badgeLabel = 'Líder do WOD',
 }: WodSpotlightChartProps) {
   const isTv = variant === 'tv';
   const firstName = data.athlete.name.split(' ')[0].toUpperCase();
@@ -46,7 +48,7 @@ export default function WodSpotlightChart({
   if (isTv) {
     return (
       <div className="h-full flex flex-col gap-5">
-        <Header firstName={firstName} subtitle={subtitle} isTv />
+        <Header firstName={firstName} subtitle={subtitle} badgeLabel={badgeLabel} isTv />
 
         <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
           <div className="col-span-3 bg-white/5 rounded-[2rem] border border-white/10 p-6 flex flex-col items-center justify-center gap-4">
@@ -80,7 +82,7 @@ export default function WodSpotlightChart({
   // ── Celular ──────────────────────────────────────────────────────────────
   return (
     <div className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-4 flex flex-col gap-4">
-      <Header firstName={firstName} subtitle={subtitle} />
+      <Header firstName={firstName} subtitle={subtitle} badgeLabel={badgeLabel} />
 
       <div className="flex items-center gap-3 bg-surface-container-highest/40 rounded-2xl p-3">
         <AthletePhoto photoUrl={data.athlete.photoUrl} name={data.athlete.name}
@@ -101,7 +103,7 @@ export default function WodSpotlightChart({
   );
 }
 
-function Header({ firstName, subtitle, isTv }: { firstName: string; subtitle: string; isTv?: boolean }) {
+function Header({ firstName, subtitle, badgeLabel, isTv }: { firstName: string; subtitle: string; badgeLabel: string; isTv?: boolean }) {
   return (
     <div className={cn('flex items-start justify-between gap-3', isTv && 'shrink-0')}>
       <div className="min-w-0">
@@ -122,7 +124,7 @@ function Header({ firstName, subtitle, isTv }: { firstName: string; subtitle: st
         isTv ? 'px-4 py-2' : 'px-2.5 py-1.5')}>
         <Trophy className={cn('text-primary', isTv ? 'w-5 h-5' : 'w-3.5 h-3.5')} />
         <span className={cn('text-primary font-black uppercase italic', isTv ? 'text-xs' : 'text-[9px]')}>
-          Líder do WOD
+          {badgeLabel}
         </span>
       </div>
     </div>
