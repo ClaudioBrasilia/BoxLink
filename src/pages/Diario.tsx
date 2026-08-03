@@ -140,6 +140,9 @@ export default function Diario() {
   const [codeInput, setCodeInput] = useState('');
   const [searchingFriend, setSearchingFriend] = useState(false);
   const [friends, setFriends] = useState<FriendProfile[]>([]);
+  // Amigos de duelos anteriores — salvos pra escolher direto, sem digitar o
+  // código de novo (a lista é mútua: aparece pros dois lados do duelo).
+  const [savedFriends, setSavedFriends] = useState<FriendProfile[]>([]);
   const [duelName, setDuelName] = useState('');
   const [duelType, setDuelType] = useState<'FOR TIME' | 'AMRAP' | 'EMOM'>('FOR TIME');
   const [duelDesc, setDuelDesc] = useState('');
@@ -185,6 +188,23 @@ export default function Diario() {
   };
 
   useEffect(() => { if (user) loadLogs(); }, [user]);
+
+  const loadSavedFriends = async () => {
+    if (!user || !isIndividual) return;
+    const { data } = await supabase
+      .from('duel_friends')
+      .select('user_id, friend_id')
+      .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`);
+    const otherIds = [...new Set((data || []).map(row => row.user_id === user.id ? row.friend_id : row.user_id))];
+    if (otherIds.length === 0) { setSavedFriends([]); return; }
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, name, level, xp, friend_code')
+      .in('id', otherIds);
+    setSavedFriends((profiles || []) as FriendProfile[]);
+  };
+
+  useEffect(() => { if (user) loadSavedFriends(); }, [user]);
 
   useEffect(() => {
     if (!user || user.accountType !== 'individual') return;
@@ -602,6 +622,30 @@ export default function Diario() {
 
   const removeFriend = (id: string) => setFriends(prev => prev.filter(f => f.id !== id));
 
+  // Escolhe um amigo já salvo (de um duelo anterior) direto pra este desafio,
+  // sem precisar digitar o código de novo.
+  const addSavedFriend = (f: FriendProfile) => {
+    if (friends.some(x => x.id === f.id)) return;
+    if (friends.length >= maxDuelFriends) {
+      toast.warning(premium
+        ? `Limite de ${maxDuelFriends} amigos por duelo.`
+        : `No plano grátis você chama 1 amigo por duelo. Premium: até ${PLAN_LIMITS.premium.maxDuelFriends}.`);
+      return;
+    }
+    setFriends(prev => [...prev, f]);
+  };
+
+  const removeSavedFriend = async (friendId: string) => {
+    if (!user) return;
+    setSavedFriends(prev => prev.filter(f => f.id !== friendId));
+    try {
+      await supabase.from('duel_friends').delete()
+        .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`);
+    } catch (err) {
+      console.error('Error removing saved friend:', err);
+    }
+  };
+
   const handleCreateDuel = async () => {
     if (!user || friends.length === 0) return;
     if (!duelName.trim() || !duelDesc.trim()) {
@@ -651,6 +695,16 @@ export default function Diario() {
           `${user.name || 'Um atleta'} te desafiou para um duelo — ${duelName.trim()}`,
           { challengerId: user.id, wodName: duelName.trim() }
         );
+      }
+
+      // Guarda quem participou pra aparecer na lista de amigos da próxima vez
+      // — não precisa dar erro no duelo se isso falhar (é só conveniência).
+      try {
+        await supabase.from('duel_friends')
+          .upsert(friends.map(f => ({ user_id: user.id, friend_id: f.id })), { onConflict: 'user_id,friend_id', ignoreDuplicates: true });
+        await loadSavedFriends();
+      } catch (err) {
+        console.error('Error saving duel friends:', err);
       }
 
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ['#CAFD00', '#ffffff'] });
@@ -1115,6 +1169,36 @@ export default function Diario() {
               : 'Buscar'}
           </button>
         </div>
+
+        {savedFriends.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest px-1">
+              Amigos de duelos anteriores
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {savedFriends.map(f => {
+                const alreadyAdded = friends.some(x => x.id === f.id);
+                return (
+                  <div
+                    key={f.id}
+                    className={`flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-full border ${alreadyAdded ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-surface-container-highest border-outline-variant/10 text-on-surface-variant'}`}
+                  >
+                    <button
+                      onClick={() => addSavedFriend(f)}
+                      disabled={alreadyAdded}
+                      className="text-[11px] font-black uppercase italic disabled:opacity-70"
+                    >
+                      {f.name.split(' ')[0]}
+                    </button>
+                    <button onClick={() => removeSavedFriend(f.id)} className="opacity-60 hover:opacity-100 p-0.5">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {!premium && (
           <div className="flex flex-col gap-2">
