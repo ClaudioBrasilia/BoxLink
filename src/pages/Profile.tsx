@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { User, Zap, Coins, Activity, Trophy, Settings, ChevronRight, Medal, Calendar, LogOut, Clock, History, Plus, X, Award, Download, Share2, Edit2, Save, CalendarCheck, ChevronLeft } from 'lucide-react';
+import { User, Zap, Coins, Activity, Trophy, Settings, ChevronRight, Medal, Calendar, LogOut, Clock, History, Plus, X, Award, Download, Share2, Edit2, Save, CalendarCheck, ChevronLeft, BookOpen, Timer, Dumbbell, Flame, StickyNote, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { RewardEvent, PersonalRecord } from '../types';
+import { RewardEvent, PersonalRecord, TrainingLog, TrainingLogCategory, TrainingFeeling } from '../types';
 import AvatarPreview from '../components/AvatarPreview';
 import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
@@ -13,6 +13,24 @@ import HeartRateHistory from '../components/HeartRateHistory';
 import type { Biometrics } from '../lib/heartRate';
 
 import { supabase } from '../lib/supabase';
+
+const todayBR = () =>
+  new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+
+const DIARY_CATEGORIES: { value: TrainingLogCategory; label: string; icon: typeof Timer }[] = [
+  { value: 'wod',     label: 'WOD',     icon: Timer },
+  { value: 'forca',   label: 'Força',   icon: Dumbbell },
+  { value: 'desafio', label: 'Desafio', icon: Flame },
+  { value: 'nota',    label: 'Nota',    icon: StickyNote },
+];
+
+const DIARY_FEELINGS: { value: TrainingFeeling; label: string; emoji: string }[] = [
+  { value: 'otimo',   label: 'Ótimo',   emoji: '🔥' },
+  { value: 'bem',     label: 'Bem',     emoji: '🙂' },
+  { value: 'normal',  label: 'Normal',  emoji: '😐' },
+  { value: 'cansado', label: 'Cansado', emoji: '🥱' },
+  { value: 'dor',     label: 'Dor',     emoji: '🤕' },
+];
 
 export default function Profile() {
   const { user, logout, updateUser } = useAuth();
@@ -31,6 +49,10 @@ export default function Profile() {
   const [editName, setEditName] = useState('');
   const [sharing, setSharing] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
+  // Histórico do Diário (individual) — veio da página inicial pra cá, junto
+  // do resto do progresso.
+  const [trainingLogs, setTrainingLogs] = useState<TrainingLog[]>([]);
+  const [trainingLogsExpanded, setTrainingLogsExpanded] = useState(false);
   const [itemAdjustments, setItemAdjustments] = useState<Record<string, Partial<LayerAdjustment>>>({});
   const [inactivityFade, setInactivityFade] = useState(0);
   const [inactivitySleep, setInactivitySleep] = useState(false);
@@ -100,6 +122,18 @@ export default function Profile() {
           .order('date', { ascending: false });
         setPrs(prsData || []);
 
+        // Fetch Diário (individual) — Box mantém o Histórico na própria tela do Diário
+        if (user.accountType === 'individual') {
+          const { data: logsData } = await supabase
+            .from('training_logs')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(120);
+          setTrainingLogs(logsData || []);
+        }
+
         // Fetch Checkin dates
         const { data: checkinsData, count } = await supabase
           .from('checkins')
@@ -130,6 +164,20 @@ export default function Profile() {
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const trainingLogsByDate = Object.entries(
+    trainingLogs.reduce((acc, l) => { (acc[l.date] ||= []).push(l); return acc; }, {} as Record<string, TrainingLog[]>)
+  ).sort((a, b) => b[0].localeCompare(a[0]));
+
+  const handleDeleteTrainingLog = async (log: TrainingLog) => {
+    try {
+      const { error } = await supabase.from('training_logs').delete().eq('id', log.id);
+      if (error) throw error;
+      setTrainingLogs(prev => prev.filter(l => l.id !== log.id));
+    } catch (err) {
+      console.error('Error deleting training log:', err);
+    }
   };
 
   const handleAddPr = async () => {
@@ -677,6 +725,107 @@ export default function Profile() {
           )}
         </AnimatePresence>
       </section>
+
+      {/* Histórico do Diário — só o individual tem (Box mantém no Diário) */}
+      {user?.accountType === 'individual' && (
+        <section className="space-y-4 mb-8">
+          <button
+            onClick={() => setTrainingLogsExpanded(prev => !prev)}
+            className="flex justify-between items-center px-2 w-full"
+          >
+            <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-primary" /> HISTÓRICO DO DIÁRIO
+              {trainingLogs.length > 0 && (
+                <span className="text-[10px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                  {trainingLogs.length}
+                </span>
+              )}
+            </h3>
+            <ChevronRight className={`w-5 h-5 text-on-surface-variant transition-transform duration-300 ${trainingLogsExpanded ? 'rotate-90' : ''}`} />
+          </button>
+
+          <AnimatePresence initial={false}>
+            {trainingLogsExpanded && (
+              <motion.div
+                key="training-logs-list"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3, ease: 'easeInOut' }}
+                style={{ overflow: 'hidden' }}
+              >
+                <div className="flex flex-col gap-5">
+                  {trainingLogs.length === 0 ? (
+                    <div className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10 text-center">
+                      <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50 italic">Seu diário está vazio</p>
+                    </div>
+                  ) : (
+                    trainingLogsByDate.map(([date, dayLogs]) => (
+                      <div key={date} className="flex flex-col gap-2">
+                        <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">
+                          {date === todayBR()
+                            ? 'Hoje'
+                            : new Date(date + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
+                        </p>
+                        {dayLogs.map(log => {
+                          const CatIcon = DIARY_CATEGORIES.find(c => c.value === log.category)?.icon || Timer;
+                          const feelingInfo = DIARY_FEELINGS.find(f => f.value === log.feeling);
+                          return (
+                            <div key={log.id} className="bg-surface-container-low rounded-3xl p-4 border border-outline-variant/10 flex flex-col gap-2">
+                              <div className="flex items-start gap-3">
+                                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                  <CatIcon className="w-4 h-4 text-primary" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-headline font-black text-on-surface uppercase italic truncate">
+                                    {log.title}
+                                  </p>
+                                  <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest">
+                                    {log.category === 'forca'
+                                      ? `${log.exercise}${log.load_kg ? ` • ${log.load_kg}kg` : ''}${log.result ? ` • ${log.result}` : ''}`
+                                      : [log.wod_type, log.result, log.load_kg ? `${log.load_kg}kg` : null].filter(Boolean).join(' • ') || 'Anotação'}
+                                    {log.rpe ? ` • RPE ${log.rpe}` : ''}
+                                    {feelingInfo ? ` ${feelingInfo.emoji}` : ''}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => handleDeleteTrainingLog(log)}
+                                  className="text-on-surface-variant/30 hover:text-error transition-all p-1"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                              {(log.description || log.notes) && (
+                                <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap pl-12">
+                                  {[log.description, log.notes].filter(Boolean).join('\n')}
+                                </p>
+                              )}
+                              {(log.hr_avg_pct || log.effort_index) && (
+                                <div className="ml-12 flex items-center gap-2 flex-wrap">
+                                  {log.hr_avg_pct != null && (
+                                    <span className="text-[9px] font-black uppercase tracking-widest bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full">
+                                      ❤️ {log.hr_avg_pct}% FCmáx
+                                    </span>
+                                  )}
+                                  {log.effort_index != null && (
+                                    <span className="text-[9px] font-black uppercase tracking-widest bg-surface-container-highest text-on-surface-variant px-2 py-0.5 rounded-full">
+                                      Esforço {log.effort_index}{log.hr_zone ? ` · ${log.hr_zone}` : ''}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
+      )}
 
       {/* ===== CALENDÁRIO DE CHECK-INS ===== */}
       <section className="flex flex-col gap-4">

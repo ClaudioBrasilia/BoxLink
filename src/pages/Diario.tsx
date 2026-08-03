@@ -1326,6 +1326,9 @@ export default function Diario() {
         </section>
       )}
 
+      {/* Histórico do individual foi pro Perfil (junto do resto do progresso) —
+          a página inicial fica focada no que fazer hoje. Box continua igual. */}
+      {!isIndividual && (
       <main className="px-6 flex flex-col gap-5">
         <h2 className="font-headline font-black text-sm text-on-surface-variant uppercase italic tracking-widest">Histórico</h2>
 
@@ -1403,6 +1406,7 @@ export default function Diario() {
           ))
         )}
       </main>
+      )}
 
       <button
         onClick={() => (showForm ? closeForm() : openBlankForm())}
