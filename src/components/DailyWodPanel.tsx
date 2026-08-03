@@ -35,13 +35,17 @@ interface WodGroup {
 }
 
 interface DailyWodPanelProps {
-  /** Muda quando um WOD do dia é postado/atualizado — pai pode reagir (ex: "Iniciar Meu WOD"). */
+  /** Muda quando um WOD do dia é postado/atualizado — pai pode reagir. */
   onChange?: () => void;
   /** Muda quando um resultado é gravado por fora deste card — força recarregar. */
   refreshSignal?: number;
+  /** Tocar num WOD "falta treinar" abre o cronômetro já carregado com ele. */
+  onStartWod?: (row: { id: string; wod_name: string; wod_type: string; description: string | null; scaling: 'rx' | 'scaled' }) => void;
+  /** Cronômetro livre, sem WOD pré-carregado. */
+  onFreeTrain?: () => void;
 }
 
-export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanelProps) {
+export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onFreeTrain }: DailyWodPanelProps) {
   const { user } = useAuth();
   const toast = useToast();
 
@@ -214,8 +218,13 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
               )}
             </div>
           ) : (
-            /* Postado, ainda não treinado: card só de leitura — "Editar" reabre o formulário */
-            <div key={row.id} className="bg-surface-container rounded-3xl p-5 border border-secondary/20 flex flex-col gap-3">
+            /* Postado, ainda não treinado: tocar no card já inicia o cronômetro com ele */
+            <button
+              key={row.id}
+              onClick={() => onStartWod?.(row)}
+              disabled={!onStartWod}
+              className="bg-surface-container rounded-3xl p-5 border border-secondary/20 flex flex-col gap-3 text-left hover:border-secondary/40 transition-all disabled:cursor-default"
+            >
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">Seu WOD</p>
                 <span className="text-[10px] font-black text-secondary uppercase tracking-widest">⏳ falta treinar</span>
@@ -232,16 +241,18 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
               {row.description && (
                 <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap">{row.description}</p>
               )}
-              <button
-                onClick={() => openEditForm(row)}
+              <span
+                onClick={e => { e.stopPropagation(); openEditForm(row); }}
+                role="button"
+                tabIndex={0}
                 className="self-start flex items-center gap-1.5 text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:text-primary transition-all"
               >
                 <Pencil className="w-3 h-3" /> Editar
-              </button>
-              <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest italic opacity-70 text-center">
-                Toque em "Iniciar Meu WOD" no topo para treinar e entrar no ranking
+              </span>
+              <p className="text-[9px] text-secondary font-bold uppercase tracking-widest italic opacity-90 text-center">
+                Toque para treinar e entrar no ranking
               </p>
-            </div>
+            </button>
           )
         ))}
 
@@ -298,12 +309,22 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
             </button>
           </div>
         ) : (
-          <button
-            onClick={openNewForm}
-            className="w-full py-3 rounded-2xl border-2 border-dashed border-outline-variant/20 text-on-surface-variant font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2 hover:border-primary/40 hover:text-primary transition-all"
-          >
-            <Plus className="w-4 h-4" /> {myRows.length === 0 ? 'Postar o WOD do dia' : 'Adicionar outro WOD'}
-          </button>
+          <>
+            <button
+              onClick={openNewForm}
+              className="w-full py-3 rounded-2xl border-2 border-dashed border-outline-variant/20 text-on-surface-variant font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2 hover:border-primary/40 hover:text-primary transition-all"
+            >
+              <Plus className="w-4 h-4" /> {myRows.length === 0 ? 'Postar o WOD do dia' : 'Adicionar outro WOD'}
+            </button>
+            {onFreeTrain && (
+              <button
+                onClick={onFreeTrain}
+                className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:text-primary transition-all text-center"
+              >
+                Ou treinar sem postar (cronômetro livre)
+              </button>
+            )}
+          </>
         )}
       </div>
 

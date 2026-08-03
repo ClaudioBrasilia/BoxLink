@@ -33,7 +33,7 @@ import PostWorkoutFeedback from '../components/PostWorkoutFeedback';
 import AvatarPreview from '../components/AvatarPreview';
 import DailyWodPanel from '../components/DailyWodPanel';
 import PremiumCTA from '../components/PremiumCTA';
-import { postDailyWodResult, dailyWodDate } from '../lib/dailyWods';
+import { postDailyWodResult } from '../lib/dailyWods';
 import { useNavigate } from 'react-router-dom';
 
 const todayBR = () =>
@@ -125,19 +125,11 @@ export default function Diario() {
   const [postToPlacar, setPostToPlacar] = useState(true);
   const [placarScaling, setPlacarScaling] = useState<'rx' | 'scaled'>('rx');
   const [placarRefreshKey, setPlacarRefreshKey] = useState(0);
-  // WODs do dia postados em "Poste seu WOD" (definição) — pode ter mais de
-  // um (ex: treino dobrado). Usado para "Iniciar Meu WOD" já carregar o
-  // cronômetro com o que o atleta vai treinar.
-  const [myPlacarWods, setMyPlacarWods] = useState<{
-    id: string; wod_name: string; wod_type: string; description: string | null; result: string | null; scaling: 'rx' | 'scaled';
-  }[]>([]);
-  // Qual WOD pendente foi escolhido pra treinar agora (via seletor, se houver
-  // mais de um) — usado pra pré-carregar o cronômetro e gravar o resultado
-  // na linha certa.
+  // Qual WOD foi escolhido pra treinar agora (tocado no card do Placar) —
+  // usado pra pré-carregar o cronômetro e gravar o resultado na linha certa.
   const [wodToTrain, setWodToTrain] = useState<{
     id: string; wod_name: string; wod_type: string; description: string | null; scaling: 'rx' | 'scaled';
   } | null>(null);
-  const [showWodPicker, setShowWodPicker] = useState(false);
   // Quando definido, o "Novo Registro" está em modo "adicionar detalhes" a um
   // treino que o cronômetro já salvou — o save vira UPDATE, não um INSERT novo.
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
@@ -193,19 +185,6 @@ export default function Diario() {
   };
 
   useEffect(() => { if (user) loadLogs(); }, [user]);
-
-  const loadMyPlacarWod = async () => {
-    if (!user || !isIndividual) return;
-    const { data } = await supabase
-      .from('daily_wod_results')
-      .select('id, wod_name, wod_type, description, result, scaling')
-      .eq('user_id', user.id)
-      .eq('wod_date', dailyWodDate())
-      .order('created_at', { ascending: true });
-    setMyPlacarWods(data ?? []);
-  };
-
-  useEffect(() => { if (user) loadMyPlacarWod(); }, [user]);
 
   useEffect(() => {
     if (!user || user.accountType !== 'individual') return;
@@ -277,10 +256,6 @@ export default function Diario() {
     logs.forEach(l => { (groups[l.date] ||= []).push(l); });
     return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
   }, [logs]);
-
-  // WODs já postados hoje mas ainda sem resultado — "Iniciar Meu WOD" carrega
-  // o cronômetro com eles em vez de abrir em branco. Mais de um → seletor.
-  const pendingPlacarWods = myPlacarWods.filter(w => !w.result);
 
   const refreshBalances = async () => {
     if (!user) return;
@@ -393,7 +368,6 @@ export default function Diario() {
             });
             setPlacarRowId(outcome.id);
             setPlacarRefreshKey(k => k + 1);
-            await loadMyPlacarWod();
           } catch (err) {
             console.error('Error syncing placar from details:', err);
           }
@@ -465,7 +439,6 @@ export default function Diario() {
             );
           }
           setPlacarRefreshKey(k => k + 1);
-          await loadMyPlacarWod();
         } catch (err: any) {
           console.error('Error posting placar from diário:', err);
           toast.error('Registro salvo, mas houve erro ao postar no placar.');
@@ -528,7 +501,6 @@ export default function Diario() {
           });
           setPlacarRowId(placarOutcome.id);
           setPlacarRefreshKey(k => k + 1);
-          await loadMyPlacarWod();
         } catch (err) {
           console.error('Error posting placar from timer:', err);
         }
@@ -789,70 +761,34 @@ export default function Diario() {
         )}
       </header>
 
-      <button
-        onClick={() => {
-          if (pendingPlacarWods.length > 1) {
-            setShowWodPicker(true);
-          } else {
-            setWodToTrain(pendingPlacarWods[0] || null);
-            setShowTimer(true);
-          }
-        }}
-        className="mx-6 mb-4 bg-gradient-to-r from-primary/15 to-secondary/10 border border-primary/25 rounded-3xl p-5 flex items-center gap-4 hover:border-primary/50 transition-all text-left w-[calc(100%-3rem)]"
-      >
-        <div className="w-12 h-12 rounded-2xl bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <Timer className="w-6 h-6 text-primary" />
-        </div>
-        <div className="flex-1">
-          <p className="font-headline font-black text-base text-on-surface uppercase italic leading-tight">Iniciar Meu WOD</p>
-          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
-            {pendingPlacarWods.length > 1
-              ? `${pendingPlacarWods.length} WODs pendentes — escolher`
-              : pendingPlacarWods[0]
-                ? `${pendingPlacarWods[0].wod_name} • ${pendingPlacarWods[0].wod_type}`
-                : 'Cronômetro For Time · AMRAP · EMOM · Tabata'}
-          </p>
-        </div>
-        <Play className="w-5 h-5 text-primary flex-shrink-0" />
-      </button>
-
-      {/* Seletor: mais de um WOD pendente hoje, escolher qual treinar agora */}
-      {showWodPicker && (
-        <div className="mx-6 mb-4 bg-surface-container rounded-3xl border border-outline-variant/10 p-5 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">Qual WOD treinar?</p>
-            <button onClick={() => setShowWodPicker(false)} className="text-on-surface-variant hover:text-on-surface transition-all">
-              <X className="w-4 h-4" />
-            </button>
+      {/* Box não tem Placar de WODs (é da comunidade individual), então o
+          cronômetro fica num botão simples aqui — sem WOD pré-carregado. */}
+      {!isIndividual && (
+        <button
+          onClick={() => { setWodToTrain(null); setShowTimer(true); }}
+          className="mx-6 mb-4 bg-gradient-to-r from-primary/15 to-secondary/10 border border-primary/25 rounded-3xl p-5 flex items-center gap-4 hover:border-primary/50 transition-all text-left w-[calc(100%-3rem)]"
+        >
+          <div className="w-12 h-12 rounded-2xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+            <Timer className="w-6 h-6 text-primary" />
           </div>
-          {pendingPlacarWods.map(w => (
-            <button
-              key={w.id}
-              onClick={() => { setWodToTrain(w); setShowWodPicker(false); setShowTimer(true); }}
-              className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-surface-container-highest hover:border-primary/40 border border-transparent transition-all text-left"
-            >
-              <Timer className="w-4 h-4 text-primary flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-on-surface uppercase italic truncate">{w.wod_name}</p>
-                <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest">{w.wod_type}</p>
-              </div>
-            </button>
-          ))}
-          <button
-            onClick={() => { setWodToTrain(null); setShowWodPicker(false); setShowTimer(true); }}
-            className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:text-primary transition-all text-center"
-          >
-            Treinar livre (sem WOD pré-carregado)
-          </button>
-        </div>
+          <div className="flex-1">
+            <p className="font-headline font-black text-base text-on-surface uppercase italic leading-tight">Iniciar Meu WOD</p>
+            <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
+              Cronômetro For Time · AMRAP · EMOM · Tabata
+            </p>
+          </div>
+          <Play className="w-5 h-5 text-primary flex-shrink-0" />
+        </button>
       )}
 
       {/* Placar de WODs é a comunidade do individual — atleta de box já tem
-          Feed/Ranking/WOD do dia próprios do box, não deve poluir nem ver este. */}
+          Feed/Ranking/WOD do dia próprios do box, não deve poluir nem ver este.
+          Tocar num WOD "falta treinar" já abre o cronômetro carregado com ele. */}
       {isIndividual && (
         <DailyWodPanel
-          onChange={loadMyPlacarWod}
           refreshSignal={placarRefreshKey}
+          onStartWod={row => { setWodToTrain(row); setShowTimer(true); }}
+          onFreeTrain={() => { setWodToTrain(null); setShowTimer(true); }}
         />
       )}
 
