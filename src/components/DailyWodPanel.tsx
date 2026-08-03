@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Calendar, Timer, Hash, Check, Trophy, Send, Pencil, Plus, X } from 'lucide-react';
+import { Calendar, Timer, Hash, Check, Trophy, Send, Pencil, Plus, X, ChevronDown } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn, compareBy } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -20,6 +20,7 @@ interface WodResultRow {
   description: string | null;
   result: string | null;
   scaling: 'rx' | 'scaled';
+  load_kg: number | null;
   name: string;
   level: number;
   avatar_equipped?: any;
@@ -29,6 +30,7 @@ interface WodResultRow {
 interface WodGroup {
   name: string;
   timeBased: boolean;
+  description: string | null;
   ranked: WodResultRow[];
 }
 
@@ -58,6 +60,9 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
   const [wodType, setWodType] = useState('FOR TIME');
   const [description, setDescription] = useState('');
   const [scaling, setScaling] = useState<'rx' | 'scaled'>('rx');
+  // Grupos do ranking com "ver movimentos" expandido — antes o placar só
+  // mostrava o nome do WOD, sem dar pra saber do que se tratava.
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,6 +91,7 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
         description: r.description ?? null,
         result: r.result ?? null,
         scaling: r.scaling ?? 'rx',
+        load_kg: r.load_kg ?? null,
         name: profilesMap[r.user_id]?.name ?? 'Atleta',
         level: profilesMap[r.user_id]?.level ?? 1,
         avatar_equipped: profilesMap[r.user_id]?.avatar_equipped,
@@ -121,7 +127,7 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
         },
         (a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'),
       ));
-      return { name: list[0].wod_name || 'WOD', timeBased, ranked };
+      return { name: list[0].wod_name || 'WOD', timeBased, description: list[0].description, ranked };
     }).sort((a, b) => b.ranked.length - a.ranked.length);
   }, [rows]);
 
@@ -198,7 +204,7 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-headline font-black text-on-surface uppercase italic truncate">{row.wod_name}</p>
                   <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
-                    {row.wod_type} • {row.scaling === 'rx' ? 'RX' : 'Scaled'}
+                    {row.wod_type} • {row.scaling === 'rx' ? 'RX' : 'Scaled'}{row.load_kg != null ? ` • ${row.load_kg}kg` : ''}
                   </p>
                 </div>
                 <span className="text-lg font-headline font-black text-primary italic flex-shrink-0">{row.result}</span>
@@ -316,13 +322,26 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
         ) : (
           groups.map(group => (
             <div key={group.name} className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                {group.timeBased ? <Timer className="w-4 h-4 text-primary" /> : <Hash className="w-4 h-4 text-primary" />}
+              <button
+                onClick={() => setExpandedGroups(prev => ({ ...prev, [group.name]: !prev[group.name] }))}
+                disabled={!group.description}
+                className="flex items-center gap-2 text-left disabled:cursor-default"
+              >
+                {group.timeBased ? <Timer className="w-4 h-4 text-primary flex-shrink-0" /> : <Hash className="w-4 h-4 text-primary flex-shrink-0" />}
                 <h3 className="font-headline font-black text-sm text-on-surface uppercase italic tracking-widest">{group.name}</h3>
                 <span className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">
                   • {group.ranked.length} {group.ranked.length === 1 ? 'atleta' : 'atletas'}
                 </span>
-              </div>
+                {group.description && (
+                  <ChevronDown className={cn('w-3.5 h-3.5 text-on-surface-variant transition-transform flex-shrink-0 ml-auto',
+                    expandedGroups[group.name] && 'rotate-180')} />
+                )}
+              </button>
+              {group.description && expandedGroups[group.name] && (
+                <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap bg-surface-container-highest/40 rounded-2xl px-4 py-3">
+                  {group.description}
+                </p>
+              )}
               {group.ranked.map((r, i) => {
                 const isMe = r.user_id === user?.id;
                 return (
@@ -344,7 +363,12 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
                         </span>
                       </div>
                     </div>
-                    <span className="text-base font-headline font-black text-primary italic flex-shrink-0 ml-2">{r.result}</span>
+                    <div className="text-right flex-shrink-0 ml-2">
+                      <span className="text-base font-headline font-black text-primary italic block">{r.result}</span>
+                      {r.load_kg != null && (
+                        <span className="text-[9px] font-bold text-on-surface-variant">{r.load_kg}kg</span>
+                      )}
+                    </div>
                   </motion.div>
                 );
               })}

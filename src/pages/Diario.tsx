@@ -364,11 +364,13 @@ export default function Diario() {
       if (!title.trim()) { toast.warning('Dê um nome ao WOD.'); return; }
       setSaving(true);
       try {
+        const parsedLoadKg = loadKg ? parseFloat(loadKg.replace(',', '.')) : null;
         const { error } = await supabase.from('training_logs').update({
           title: title.trim(),
           wod_type: wodType,
           description: description.trim() || null,
           result: result.trim() || null,
+          load_kg: parsedLoadKg,
           rpe: rpe > 0 ? rpe : null,
           feeling,
           sleep_hours: sleepHours ? parseLoad(sleepHours) : null,
@@ -381,7 +383,7 @@ export default function Diario() {
             const outcome = await postDailyWodResult({
               userId: user.id, wodName: title.trim(), wodType, result: result.trim(),
               scaling: placarScaling, description: description.trim() || undefined,
-              id: placarRowId || undefined,
+              id: placarRowId || undefined, loadKg: parsedLoadKg,
             });
             setPlacarRowId(outcome.id);
             setPlacarRefreshKey(k => k + 1);
@@ -412,6 +414,7 @@ export default function Diario() {
     setSaving(true);
     try {
       const eff = category === 'wod' ? effortData : null;
+      const parsedLoadKg = loadKg ? parseFloat(loadKg.replace(',', '.')) : null;
       const { error } = await supabase.from('training_logs').insert({
         user_id: user.id,
         date: todayBR(),
@@ -421,7 +424,7 @@ export default function Diario() {
         description: description.trim() || null,
         result: result.trim() || null,
         exercise: category === 'forca' ? exercise.trim() : null,
-        load_kg: category === 'forca' && loadKg ? parseFloat(loadKg.replace(',', '.')) : null,
+        load_kg: (category === 'forca' || category === 'wod') ? parsedLoadKg : null,
         rpe: rpe > 0 ? rpe : null,
         feeling,
         sleep_hours: sleepHours ? parseLoad(sleepHours) : null,
@@ -445,7 +448,7 @@ export default function Diario() {
         try {
           const outcome = await postDailyWodResult({
             userId: user.id, wodName: title.trim(), wodType, result: result.trim(), scaling: placarScaling,
-            description: description.trim() || undefined,
+            description: description.trim() || undefined, loadKg: parsedLoadKg,
           });
           if (outcome.firstTime) {
             confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 }, colors: ['#CAFD00', '#ffffff'] });
@@ -543,6 +546,7 @@ export default function Diario() {
       setTitle(data.title);
       setDescription(data.description);
       setResult(data.result);
+      setLoadKg('');
       setEffortData(data.effort ?? null);
       setPlacarScaling(scaling);
       setShowForm(true);
@@ -872,6 +876,14 @@ export default function Diario() {
                   className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
                 />
               </div>
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="Carga usada (kg) — opcional"
+                value={loadKg}
+                onChange={e => setLoadKg(e.target.value)}
+                className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+              />
               <textarea
                 placeholder="Movimentos / descrição"
                 value={description}
@@ -990,6 +1002,16 @@ export default function Diario() {
                       className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
                     />
                   </div>
+                )}
+                {category === 'wod' && (
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Carga usada (kg) — opcional"
+                    value={loadKg}
+                    onChange={e => setLoadKg(e.target.value)}
+                    className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+                  />
                 )}
                 {isIndividual && category === 'wod' && (
                   <div className="bg-surface-container-highest/50 rounded-2xl p-4 flex flex-col gap-3 border border-outline-variant/10">
@@ -1379,7 +1401,7 @@ export default function Diario() {
                         <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest">
                           {log.category === 'forca'
                             ? `${log.exercise}${log.load_kg ? ` • ${log.load_kg}kg` : ''}${log.result ? ` • ${log.result}` : ''}`
-                            : [log.wod_type, log.result].filter(Boolean).join(' • ') || 'Anotação'}
+                            : [log.wod_type, log.result, log.load_kg ? `${log.load_kg}kg` : null].filter(Boolean).join(' • ') || 'Anotação'}
                           {log.rpe ? ` • RPE ${log.rpe}` : ''}
                           {feelingInfo ? ` ${feelingInfo.emoji}` : ''}
                         </p>

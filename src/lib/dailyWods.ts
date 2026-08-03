@@ -94,6 +94,8 @@ export interface PostDailyWodParams {
   /** Linha específica a atualizar (o WOD que acabou de ser treinado). Se
    *  omitido, cria uma nova linha já com o resultado. */
   id?: string;
+  /** Carga (kg) opcional — WODs com barra com peso (paridade com o Box). */
+  loadKg?: number | null;
 }
 
 export interface PostDailyWodOutcome {
@@ -132,6 +134,8 @@ export async function postDailyWodResult(params: PostDailyWodParams): Promise<Po
       updated_at: new Date().toISOString(),
     };
     if (params.description) payload.description = params.description;
+    // Só mexe na carga se informada — omitida preserva a já gravada nesta linha.
+    if (params.loadKg !== undefined) payload.load_kg = params.loadKg;
 
     const { error } = await supabase.from('daily_wod_results').update(payload).eq('id', rowId);
     if (error) throw error;
@@ -145,6 +149,7 @@ export async function postDailyWodResult(params: PostDailyWodParams): Promise<Po
       result: params.result,
       scaling: params.scaling,
       description: params.description || null,
+      load_kg: params.loadKg ?? null,
     }).select('id').single();
     if (error) throw error;
     rowId = data.id;
