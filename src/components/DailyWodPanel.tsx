@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Calendar, Timer, Hash, Check, Trophy, Send } from 'lucide-react';
+import { Calendar, Timer, Hash, Check, Trophy, Send, Pencil } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn, compareBy } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -48,6 +48,10 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
   const [rows, setRows] = useState<WodResultRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Depois de postado, o formulário vira um card só de leitura — só reabre
+  // se o atleta tocar em "Editar" (evita a tela ficar poluída com campos
+  // que não precisam mais aparecer).
+  const [editingDefinition, setEditingDefinition] = useState(false);
 
   // O atleta escreve o WOD que vai fazer — nada é sugerido pelo app.
   const [wodName, setWodName] = useState('');
@@ -138,6 +142,7 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
         userId: user.id, wodName: wodName.trim(), wodType, description: description.trim(), scaling,
       });
       toast.success(myRow ? 'WOD do dia atualizado!' : 'WOD do dia postado! Toque em "Iniciar Meu WOD" para treinar.');
+      setEditingDefinition(false);
       onChange?.();
       await load();
     } catch (err: any) {
@@ -192,14 +197,50 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
             <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap">{myRow!.description}</p>
           )}
         </div>
+      ) : myRow && !editingDefinition ? (
+        /* Já postou, ainda não treinou: card só de leitura — sem formulário
+           aberto poluindo a tela. "Editar" reabre pra corrigir algo. */
+        <div className="bg-surface-container rounded-3xl p-5 border border-secondary/20 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">Seu WOD de hoje</p>
+            <span className="text-[10px] font-black text-secondary uppercase tracking-widest">⏳ falta treinar</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {isTimeBasedType(myRow.wod_type) ? <Timer className="w-4 h-4 text-primary flex-shrink-0" /> : <Hash className="w-4 h-4 text-primary flex-shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-headline font-black text-on-surface uppercase italic truncate">{myRow.wod_name}</p>
+              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
+                {myRow.wod_type} • {myRow.scaling === 'rx' ? 'RX' : 'Scaled'}
+              </p>
+            </div>
+          </div>
+          {myRow.description && (
+            <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap">{myRow.description}</p>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setEditingDefinition(true)}
+              className="flex items-center gap-1.5 text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:text-primary transition-all"
+            >
+              <Pencil className="w-3 h-3" /> Editar
+            </button>
+          </div>
+          <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest italic opacity-70 text-center">
+            Toque em "Iniciar Meu WOD" no topo para treinar e entrar no ranking
+          </p>
+        </div>
       ) : (
-        /* Ainda não treinou: aqui é onde se escreve o WOD do dia (definição) */
+        /* Ainda sem WOD postado, ou editando: aqui se escreve a definição */
         <div className="bg-surface-container rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">
-              {myRow ? 'Seu WOD de hoje' : 'Poste o seu WOD'}
+              {myRow ? 'Editar WOD do dia' : 'Poste o seu WOD'}
             </p>
-            {myRow && <span className="text-[10px] font-black text-secondary uppercase tracking-widest">⏳ falta treinar</span>}
+            {myRow && (
+              <button onClick={() => setEditingDefinition(false)} className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:text-primary transition-all">
+                Cancelar
+              </button>
+            )}
           </div>
           <input
             type="text"
@@ -242,11 +283,6 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
               : myRow ? <Check className="w-4 h-4" /> : <Send className="w-4 h-4" />}
             {myRow ? 'Atualizar WOD do dia' : 'Postar WOD do dia'}
           </button>
-          {myRow && (
-            <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest italic opacity-70 text-center">
-              Toque em "Iniciar Meu WOD" no topo para treinar e entrar no ranking
-            </p>
-          )}
         </div>
       )}
 
