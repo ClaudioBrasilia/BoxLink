@@ -125,14 +125,25 @@ export default function Diario() {
   const [postToPlacar, setPostToPlacar] = useState(true);
   const [placarScaling, setPlacarScaling] = useState<'rx' | 'scaled'>('rx');
   const [placarRefreshKey, setPlacarRefreshKey] = useState(0);
-  // WOD do dia postado em "Poste seu WOD" (definição) — usado para "Iniciar
-  // Meu WOD" já carregar o cronômetro com o que o atleta vai treinar.
-  const [myPlacarWod, setMyPlacarWod] = useState<{
-    wod_name: string; wod_type: string; description: string | null; result: string | null; scaling: 'rx' | 'scaled';
+  // WODs do dia postados em "Poste seu WOD" (definição) — pode ter mais de
+  // um (ex: treino dobrado). Usado para "Iniciar Meu WOD" já carregar o
+  // cronômetro com o que o atleta vai treinar.
+  const [myPlacarWods, setMyPlacarWods] = useState<{
+    id: string; wod_name: string; wod_type: string; description: string | null; result: string | null; scaling: 'rx' | 'scaled';
+  }[]>([]);
+  // Qual WOD pendente foi escolhido pra treinar agora (via seletor, se houver
+  // mais de um) — usado pra pré-carregar o cronômetro e gravar o resultado
+  // na linha certa.
+  const [wodToTrain, setWodToTrain] = useState<{
+    id: string; wod_name: string; wod_type: string; description: string | null; scaling: 'rx' | 'scaled';
   } | null>(null);
+  const [showWodPicker, setShowWodPicker] = useState(false);
   // Quando definido, o "Novo Registro" está em modo "adicionar detalhes" a um
   // treino que o cronômetro já salvou — o save vira UPDATE, não um INSERT novo.
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  // Linha do placar (daily_wod_results) ligada ao treino em edição — garante
+  // que ajustar o resultado em "Detalhes do Treino" bata na MESMA linha.
+  const [placarRowId, setPlacarRowId] = useState<string | null>(null);
 
   const [codeInput, setCodeInput] = useState('');
   const [searchingFriend, setSearchingFriend] = useState(false);
@@ -181,11 +192,11 @@ export default function Diario() {
     if (!user || !isIndividual) return;
     const { data } = await supabase
       .from('daily_wod_results')
-      .select('wod_name, wod_type, description, result, scaling')
+      .select('id, wod_name, wod_type, description, result, scaling')
       .eq('user_id', user.id)
       .eq('wod_date', dailyWodDate())
-      .maybeSingle();
-    setMyPlacarWod(data ?? null);
+      .order('created_at', { ascending: true });
+    setMyPlacarWods(data ?? []);
   };
 
   useEffect(() => { if (user) loadMyPlacarWod(); }, [user]);
@@ -261,9 +272,9 @@ export default function Diario() {
     return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
   }, [logs]);
 
-  // WOD já postado hoje mas ainda sem resultado — "Iniciar Meu WOD" carrega o
-  // cronômetro com ele em vez de abrir em branco.
-  const pendingPlacarWod = myPlacarWod && !myPlacarWod.result ? myPlacarWod : null;
+  // WODs já postados hoje mas ainda sem resultado — "Iniciar Meu WOD" carrega
+  // o cronômetro com eles em vez de abrir em branco. Mais de um → seletor.
+  const pendingPlacarWods = myPlacarWods.filter(w => !w.result);
 
   const refreshBalances = async () => {
     if (!user) return;
@@ -337,7 +348,7 @@ export default function Diario() {
     setExercise(''); setLoadKg(''); setRpe(0);
     setFeeling(null); setSleepHours(''); setNotes(''); setWodType('FOR TIME');
     setEffortData(null); setPostToPlacar(true); setPlacarScaling('rx');
-    setEditingLogId(null);
+    setEditingLogId(null); setPlacarRowId(null);
   };
 
   const closeForm = () => { setShowForm(false); resetForm(); };
@@ -367,10 +378,12 @@ export default function Diario() {
 
         if (isIndividual && result.trim()) {
           try {
-            await postDailyWodResult({
+            const outcome = await postDailyWodResult({
               userId: user.id, wodName: title.trim(), wodType, result: result.trim(),
               scaling: placarScaling, description: description.trim() || undefined,
+              id: placarRowId || undefined,
             });
+            setPlacarRowId(outcome.id);
             setPlacarRefreshKey(k => k + 1);
             await loadMyPlacarWod();
           } catch (err) {
@@ -474,7 +487,9 @@ export default function Diario() {
       const eff = data.effort;
       const wodName = data.title.trim() || data.wodType;
       const wodResult = data.result.trim();
-      const scaling = myPlacarWod?.scaling || 'rx';
+      const scaling = wodToTrain?.scaling || 'rx';
+      const trainedWodId = wodToTrain?.id;
+      setWodToTrain(null);
 
       const { data: inserted, error } = await supabase.from('training_logs').insert({
         user_id: user.id,
@@ -500,7 +515,9 @@ export default function Diario() {
           placarOutcome = await postDailyWodResult({
             userId: user.id, wodName, wodType: data.wodType, result: wodResult, scaling,
             description: data.description.trim() || undefined,
+            id: trainedWodId,
           });
+          setPlacarRowId(placarOutcome.id);
           setPlacarRefreshKey(k => k + 1);
           await loadMyPlacarWod();
         } catch (err) {
@@ -741,7 +758,14 @@ export default function Diario() {
       </header>
 
       <button
-        onClick={() => setShowTimer(true)}
+        onClick={() => {
+          if (pendingPlacarWods.length > 1) {
+            setShowWodPicker(true);
+          } else {
+            setWodToTrain(pendingPlacarWods[0] || null);
+            setShowTimer(true);
+          }
+        }}
         className="mx-6 mb-4 bg-gradient-to-r from-primary/15 to-secondary/10 border border-primary/25 rounded-3xl p-5 flex items-center gap-4 hover:border-primary/50 transition-all text-left w-[calc(100%-3rem)]"
       >
         <div className="w-12 h-12 rounded-2xl bg-primary/15 flex items-center justify-center flex-shrink-0">
@@ -750,13 +774,46 @@ export default function Diario() {
         <div className="flex-1">
           <p className="font-headline font-black text-base text-on-surface uppercase italic leading-tight">Iniciar Meu WOD</p>
           <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
-            {pendingPlacarWod
-              ? `${pendingPlacarWod.wod_name} • ${pendingPlacarWod.wod_type}`
-              : 'Cronômetro For Time · AMRAP · EMOM · Tabata'}
+            {pendingPlacarWods.length > 1
+              ? `${pendingPlacarWods.length} WODs pendentes — escolher`
+              : pendingPlacarWods[0]
+                ? `${pendingPlacarWods[0].wod_name} • ${pendingPlacarWods[0].wod_type}`
+                : 'Cronômetro For Time · AMRAP · EMOM · Tabata'}
           </p>
         </div>
         <Play className="w-5 h-5 text-primary flex-shrink-0" />
       </button>
+
+      {/* Seletor: mais de um WOD pendente hoje, escolher qual treinar agora */}
+      {showWodPicker && (
+        <div className="mx-6 mb-4 bg-surface-container rounded-3xl border border-outline-variant/10 p-5 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">Qual WOD treinar?</p>
+            <button onClick={() => setShowWodPicker(false)} className="text-on-surface-variant hover:text-on-surface transition-all">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {pendingPlacarWods.map(w => (
+            <button
+              key={w.id}
+              onClick={() => { setWodToTrain(w); setShowWodPicker(false); setShowTimer(true); }}
+              className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-surface-container-highest hover:border-primary/40 border border-transparent transition-all text-left"
+            >
+              <Timer className="w-4 h-4 text-primary flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-on-surface uppercase italic truncate">{w.wod_name}</p>
+                <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest">{w.wod_type}</p>
+              </div>
+            </button>
+          ))}
+          <button
+            onClick={() => { setWodToTrain(null); setShowWodPicker(false); setShowTimer(true); }}
+            className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:text-primary transition-all text-center"
+          >
+            Treinar livre (sem WOD pré-carregado)
+          </button>
+        </div>
+      )}
 
       {/* Placar de WODs é a comunidade do individual — atleta de box já tem
           Feed/Ranking/WOD do dia próprios do box, não deve poluir nem ver este. */}
@@ -1373,13 +1430,13 @@ export default function Diario() {
 
       {showTimer && (
         <WodTimer
-          onClose={() => setShowTimer(false)}
+          onClose={() => { setShowTimer(false); setWodToTrain(null); }}
           onFinish={handleTimerFinish}
           userId={user?.id}
-          initialTitle={pendingPlacarWod?.wod_name}
-          initialType={pendingPlacarWod && TIMER_TYPES.includes(pendingPlacarWod.wod_type as WodTimerType)
-            ? (pendingPlacarWod.wod_type as WodTimerType) : undefined}
-          initialDescription={pendingPlacarWod?.description || undefined}
+          initialTitle={wodToTrain?.wod_name}
+          initialType={wodToTrain && TIMER_TYPES.includes(wodToTrain.wod_type as WodTimerType)
+            ? (wodToTrain.wod_type as WodTimerType) : undefined}
+          initialDescription={wodToTrain?.description || undefined}
         />
       )}
     </div>

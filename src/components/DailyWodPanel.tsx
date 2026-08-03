@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Calendar, Timer, Hash, Check, Trophy, Send, Pencil } from 'lucide-react';
+import { Calendar, Timer, Hash, Check, Trophy, Send, Pencil, Plus, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn, compareBy } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -33,9 +33,9 @@ interface WodGroup {
 }
 
 interface DailyWodPanelProps {
-  /** Muda quando o WOD do dia é postado/atualizado — pai pode reagir (ex: "Iniciar Meu WOD"). */
+  /** Muda quando um WOD do dia é postado/atualizado — pai pode reagir (ex: "Iniciar Meu WOD"). */
   onChange?: () => void;
-  /** Muda quando o resultado é gravado por fora deste card — força recarregar. */
+  /** Muda quando um resultado é gravado por fora deste card — força recarregar. */
   refreshSignal?: number;
 }
 
@@ -48,12 +48,12 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
   const [rows, setRows] = useState<WodResultRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  // Depois de postado, o formulário vira um card só de leitura — só reabre
-  // se o atleta tocar em "Editar" (evita a tela ficar poluída com campos
-  // que não precisam mais aparecer).
-  const [editingDefinition, setEditingDefinition] = useState(false);
+  // Formulário fechado por padrão — só abre pra postar um novo WOD ou editar
+  // um já postado (evita a tela poluída com campos abertos o tempo todo).
+  const [formOpen, setFormOpen] = useState(false);
+  // Linha sendo editada (null = criando um WOD novo).
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
 
-  // O atleta escreve o WOD que vai fazer — nada é sugerido pelo app.
   const [wodName, setWodName] = useState('');
   const [wodType, setWodType] = useState('FOR TIME');
   const [description, setDescription] = useState('');
@@ -100,16 +100,8 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
 
   useEffect(() => { load(); }, [load, refreshSignal]);
 
-  const myRow = rows.find(r => r.user_id === user?.id);
-  const trained = Boolean(myRow?.result);
-
-  // Pré-preenche o formulário de definição com o que já foi postado hoje.
-  useEffect(() => {
-    if (myRow) {
-      setWodName(myRow.wod_name); setWodType(myRow.wod_type);
-      setDescription(myRow.description || ''); setScaling(myRow.scaling);
-    }
-  }, [myRow?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Um atleta pode postar mais de um WOD no mesmo dia (ex: treino dobrado).
+  const myRows = useMemo(() => rows.filter(r => r.user_id === user?.id), [rows, user?.id]);
 
   // Ranking só considera quem já treinou — definição sem resultado não conta.
   const groups = useMemo<WodGroup[]>(() => {
@@ -133,16 +125,32 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
     }).sort((a, b) => b.ranked.length - a.ranked.length);
   }, [rows]);
 
+  const openNewForm = () => {
+    setEditingRowId(null);
+    setWodName(''); setWodType('FOR TIME'); setDescription(''); setScaling('rx');
+    setFormOpen(true);
+  };
+
+  const openEditForm = (row: WodResultRow) => {
+    setEditingRowId(row.id);
+    setWodName(row.wod_name); setWodType(row.wod_type);
+    setDescription(row.description || ''); setScaling(row.scaling);
+    setFormOpen(true);
+  };
+
+  const closeForm = () => setFormOpen(false);
+
   const handlePostDefinition = async () => {
     if (!user) return;
-    if (!wodName.trim()) { toast.warning('Dê um nome ao WOD do dia.'); return; }
+    if (!wodName.trim()) { toast.warning('Dê um nome ao WOD.'); return; }
     setSaving(true);
     try {
       await postWodDefinition({
         userId: user.id, wodName: wodName.trim(), wodType, description: description.trim(), scaling,
+        id: editingRowId || undefined,
       });
-      toast.success(myRow ? 'WOD do dia atualizado!' : 'WOD do dia postado! Toque em "Iniciar Meu WOD" para treinar.');
-      setEditingDefinition(false);
+      toast.success(editingRowId ? 'WOD atualizado!' : 'WOD postado! Toque em "Iniciar Meu WOD" para treinar.');
+      setFormOpen(false);
       onChange?.();
       await load();
     } catch (err: any) {
@@ -176,115 +184,122 @@ export default function DailyWodPanel({ onChange, refreshSignal }: DailyWodPanel
         </div>
       </div>
 
-      {trained ? (
-        /* Já treinou hoje: resultado é gravado pelo cronômetro/Novo Registro, não aqui */
-        <div className="bg-surface-container rounded-3xl p-5 border border-primary/20 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">Seu WOD de hoje</p>
-            <span className="text-[10px] font-black text-primary uppercase tracking-widest">✓ Treinado</span>
-          </div>
-          <div className="flex items-center gap-3">
-            {isTimeBasedType(myRow!.wod_type) ? <Timer className="w-4 h-4 text-primary flex-shrink-0" /> : <Hash className="w-4 h-4 text-primary flex-shrink-0" />}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-headline font-black text-on-surface uppercase italic truncate">{myRow!.wod_name}</p>
-              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
-                {myRow!.wod_type} • {myRow!.scaling === 'rx' ? 'RX' : 'Scaled'}
+      <div className="flex flex-col gap-3">
+        {myRows.map(row => (
+          row.result ? (
+            /* Treinado: resultado é gravado pelo cronômetro/Novo Registro, não aqui */
+            <div key={row.id} className="bg-surface-container rounded-3xl p-5 border border-primary/20 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">Seu WOD</p>
+                <span className="text-[10px] font-black text-primary uppercase tracking-widest">✓ Treinado</span>
+              </div>
+              <div className="flex items-center gap-3">
+                {isTimeBasedType(row.wod_type) ? <Timer className="w-4 h-4 text-primary flex-shrink-0" /> : <Hash className="w-4 h-4 text-primary flex-shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-headline font-black text-on-surface uppercase italic truncate">{row.wod_name}</p>
+                  <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
+                    {row.wod_type} • {row.scaling === 'rx' ? 'RX' : 'Scaled'}
+                  </p>
+                </div>
+                <span className="text-lg font-headline font-black text-primary italic flex-shrink-0">{row.result}</span>
+              </div>
+              {row.description && (
+                <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap">{row.description}</p>
+              )}
+            </div>
+          ) : (
+            /* Postado, ainda não treinado: card só de leitura — "Editar" reabre o formulário */
+            <div key={row.id} className="bg-surface-container rounded-3xl p-5 border border-secondary/20 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">Seu WOD</p>
+                <span className="text-[10px] font-black text-secondary uppercase tracking-widest">⏳ falta treinar</span>
+              </div>
+              <div className="flex items-center gap-3">
+                {isTimeBasedType(row.wod_type) ? <Timer className="w-4 h-4 text-primary flex-shrink-0" /> : <Hash className="w-4 h-4 text-primary flex-shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-headline font-black text-on-surface uppercase italic truncate">{row.wod_name}</p>
+                  <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
+                    {row.wod_type} • {row.scaling === 'rx' ? 'RX' : 'Scaled'}
+                  </p>
+                </div>
+              </div>
+              {row.description && (
+                <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap">{row.description}</p>
+              )}
+              <button
+                onClick={() => openEditForm(row)}
+                className="self-start flex items-center gap-1.5 text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:text-primary transition-all"
+              >
+                <Pencil className="w-3 h-3" /> Editar
+              </button>
+              <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest italic opacity-70 text-center">
+                Toque em "Iniciar Meu WOD" no topo para treinar e entrar no ranking
               </p>
             </div>
-            <span className="text-lg font-headline font-black text-primary italic flex-shrink-0">{myRow!.result}</span>
-          </div>
-          {myRow!.description && (
-            <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap">{myRow!.description}</p>
-          )}
-        </div>
-      ) : myRow && !editingDefinition ? (
-        /* Já postou, ainda não treinou: card só de leitura — sem formulário
-           aberto poluindo a tela. "Editar" reabre pra corrigir algo. */
-        <div className="bg-surface-container rounded-3xl p-5 border border-secondary/20 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">Seu WOD de hoje</p>
-            <span className="text-[10px] font-black text-secondary uppercase tracking-widest">⏳ falta treinar</span>
-          </div>
-          <div className="flex items-center gap-3">
-            {isTimeBasedType(myRow.wod_type) ? <Timer className="w-4 h-4 text-primary flex-shrink-0" /> : <Hash className="w-4 h-4 text-primary flex-shrink-0" />}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-headline font-black text-on-surface uppercase italic truncate">{myRow.wod_name}</p>
-              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
-                {myRow.wod_type} • {myRow.scaling === 'rx' ? 'RX' : 'Scaled'}
+          )
+        ))}
+
+        {formOpen ? (
+          <div className="bg-surface-container rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">
+                {editingRowId ? 'Editar WOD' : 'Poste um WOD'}
               </p>
+              <button onClick={closeForm} className="text-on-surface-variant hover:text-on-surface transition-all">
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          </div>
-          {myRow.description && (
-            <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap">{myRow.description}</p>
-          )}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setEditingDefinition(true)}
-              className="flex items-center gap-1.5 text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:text-primary transition-all"
+            <input
+              type="text"
+              placeholder="Nome do WOD (ex: Fran, meu AMRAP)"
+              value={wodName}
+              onChange={e => setWodName(e.target.value)}
+              className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
+            />
+            <select
+              value={wodType}
+              onChange={e => setWodType(e.target.value)}
+              className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
             >
-              <Pencil className="w-3 h-3" /> Editar
+              {WOD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <textarea
+              placeholder="Movimentos (ex: 21-15-9 Thruster + Pull-up)"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={4}
+              className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
+            />
+            <div className="flex gap-2">
+              {(['rx', 'scaled'] as const).map(s => (
+                <button key={s} onClick={() => setScaling(s)}
+                  className={cn('flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all',
+                    scaling === s
+                      ? s === 'rx' ? 'bg-primary text-background' : 'bg-secondary text-background'
+                      : 'bg-surface-container-highest text-on-surface-variant')}>
+                  {s === 'rx' ? 'RX' : 'Scaled'}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={handlePostDefinition}
+              disabled={saving || !wodName.trim()}
+              className="w-full bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
+            >
+              {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
+                : editingRowId ? <Check className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+              {editingRowId ? 'Atualizar WOD' : 'Postar WOD'}
             </button>
           </div>
-          <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest italic opacity-70 text-center">
-            Toque em "Iniciar Meu WOD" no topo para treinar e entrar no ranking
-          </p>
-        </div>
-      ) : (
-        /* Ainda sem WOD postado, ou editando: aqui se escreve a definição */
-        <div className="bg-surface-container rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">
-              {myRow ? 'Editar WOD do dia' : 'Poste o seu WOD'}
-            </p>
-            {myRow && (
-              <button onClick={() => setEditingDefinition(false)} className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:text-primary transition-all">
-                Cancelar
-              </button>
-            )}
-          </div>
-          <input
-            type="text"
-            placeholder="Nome do WOD (ex: Fran, meu AMRAP)"
-            value={wodName}
-            onChange={e => setWodName(e.target.value)}
-            className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
-          />
-          <select
-            value={wodType}
-            onChange={e => setWodType(e.target.value)}
-            className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
-          >
-            {WOD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <textarea
-            placeholder="Movimentos (ex: 21-15-9 Thruster + Pull-up)"
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            rows={4}
-            className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
-          />
-          <div className="flex gap-2">
-            {(['rx', 'scaled'] as const).map(s => (
-              <button key={s} onClick={() => setScaling(s)}
-                className={cn('flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all',
-                  scaling === s
-                    ? s === 'rx' ? 'bg-primary text-background' : 'bg-secondary text-background'
-                    : 'bg-surface-container-highest text-on-surface-variant')}>
-                {s === 'rx' ? 'RX' : 'Scaled'}
-              </button>
-            ))}
-          </div>
+        ) : (
           <button
-            onClick={handlePostDefinition}
-            disabled={saving || !wodName.trim()}
-            className="w-full bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
+            onClick={openNewForm}
+            className="w-full py-3 rounded-2xl border-2 border-dashed border-outline-variant/20 text-on-surface-variant font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2 hover:border-primary/40 hover:text-primary transition-all"
           >
-            {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
-              : myRow ? <Check className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-            {myRow ? 'Atualizar WOD do dia' : 'Postar WOD do dia'}
+            <Plus className="w-4 h-4" /> {myRows.length === 0 ? 'Postar o WOD do dia' : 'Adicionar outro WOD'}
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Placar agrupado por WOD — só entra quem já tem resultado */}
       <div className="flex flex-col gap-5">
