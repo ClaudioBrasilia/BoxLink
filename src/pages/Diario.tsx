@@ -154,6 +154,12 @@ export default function Diario() {
 
   const premium = isPremium(user);
   const maxDuelFriends = planLimits(user).maxDuelFriends;
+  // Dias restantes do Premium (trial automático ou concessão manual com
+  // validade) — null quando não é Premium ou não tem data de expiração
+  // (concessão vitalícia, sem validade).
+  const planDaysLeft = premium && user?.planExpiresAt
+    ? Math.ceil((new Date(user.planExpiresAt).getTime() - Date.now()) / 86400000)
+    : null;
 
   const loadLogs = async () => {
     if (!user) return;
@@ -705,6 +711,28 @@ export default function Diario() {
             />
           </button>
         </div>
+
+        {planDaysLeft != null && (
+          <div className="flex flex-col gap-2">
+            <div className={cn(
+              'rounded-2xl px-4 py-3 flex items-center gap-2 border',
+              planDaysLeft <= 7 ? 'bg-secondary/10 border-secondary/30' : 'bg-primary/5 border-primary/20'
+            )}>
+              <span className="text-sm">{planDaysLeft <= 7 ? '⏳' : '⭐'}</span>
+              <p className={cn(
+                'text-[10px] font-bold uppercase tracking-widest leading-snug flex-1',
+                planDaysLeft <= 7 ? 'text-secondary' : 'text-on-surface-variant'
+              )}>
+                {planDaysLeft <= 0
+                  ? <>Seu <span className="text-secondary">Premium</span> vence hoje</>
+                  : planDaysLeft === 1
+                    ? <>Seu <span className="text-secondary">Premium</span> vence amanhã</>
+                    : <>Seu <span className="text-secondary">Premium</span> vence em {planDaysLeft} dias</>}
+              </p>
+            </div>
+            {planDaysLeft <= 7 && <PremiumCTA />}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-surface-container rounded-3xl p-4 border border-outline-variant/10 flex items-center gap-3">
