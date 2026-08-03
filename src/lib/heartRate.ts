@@ -146,6 +146,23 @@ export function parseStandardHeartRate(value: DataView): number | null {
 }
 
 /**
+ * Detecta "sensor sem contato com a pele" via flags do 0x2A37 (Bluetooth SIG),
+ * SEM depender do valor de BPM — ex.: Garmin no modo "Transmitir FC" pode
+ * pausar a leitura real e notificar só isto, sem derrubar o link BLE.
+ * Bits 2:1 dos flags = Sensor Contact Status:
+ *   10 = feature suportada, contato NÃO detectado (o caso que tratamos aqui)
+ *   11 = feature suportada, contato detectado
+ *   00/01 = feature não suportada nesta conexão (nada a inferir)
+ */
+export function hasNoSensorContact(value: DataView): boolean {
+  if (value.byteLength < 1) return false;
+  const flags = value.getUint8(0);
+  const contactSupported = (flags & 0x04) !== 0;
+  const contactDetected = (flags & 0x02) !== 0;
+  return contactSupported && !contactDetected;
+}
+
+/**
  * Parser tolerante — tenta o formato padrão e, se falhar, aplica heurísticas
  * para dispositivos genéricos que enviam o BPM em formatos não padronizados.
  */

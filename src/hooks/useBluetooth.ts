@@ -32,6 +32,7 @@ import {
   NAME_PREFIXES,
   parseHeartRateFallback,
   parseStandardHeartRate,
+  hasNoSensorContact,
   isLikelyHRDeviceName,
   isLikelyHRService,
   isLikelyHRCharacteristic,
@@ -499,9 +500,15 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           const timer = setTimeout(() => finish(false), waitMs);
           Ble.startNotifications(deviceId, cand.service, cand.characteristic, (value) => {
             const bpm = parseCandidateBpm(value, cand);
-            if (bpm !== null) pushHeartRate(bpm);
             // 0x2A37 padrão: qualquer notificação confirma o canal de FC
             // (cinta sem contato com a pele manda 0 bpm até "pegar").
+            // Sensor sem contato (flags do 0x2A37): sinal de vida — reseta
+            // watchdog sem exibir/latchar um BPM falso.
+            if (cand.standard && hasNoSensorContact(value)) {
+              lastBpmAtRef.current = Date.now();
+            } else if (bpm !== null) {
+              pushHeartRate(bpm);
+            }
             if (bpm !== null || cand.standard) finish(true);
           }).catch(() => finish(false));
         });
@@ -652,7 +659,13 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         const listener = (e: any) => {
           const value: DataView = e.target.value;
           const bpm = parseCandidateBpm(value, cand);
-          if (bpm !== null) pushHeartRate(bpm);
+          // Sensor sem contato (flags do 0x2A37): sinal de vida — reseta
+          // watchdog sem exibir/latchar um BPM falso.
+          if (cand.standard && hasNoSensorContact(value)) {
+            lastBpmAtRef.current = Date.now();
+          } else if (bpm !== null) {
+            pushHeartRate(bpm);
+          }
         };
 
         const ok = await new Promise<boolean>((resolve) => {
