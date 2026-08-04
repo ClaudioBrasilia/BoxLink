@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { cn, compareBy } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { parseWodResult, isTimeBasedType } from '../lib/dailyWods';
+import { computeRepsPerMinute, formatPace } from '../lib/pace';
+import { computeRelativeStrength, formatRelativeStrength } from '../lib/relativeStrength';
 import { useDailyWodRows, WodResultRow } from '../hooks/useDailyWodRows';
 import AvatarPreview from './AvatarPreview';
 import AthletePhoto from './AthletePhoto';
@@ -16,6 +18,9 @@ interface WodGroup {
   ranked: WodResultRow[];
 }
 
+type ScalingFilter = 'todos' | 'rx' | 'scaled';
+type GenderFilter = 'todos' | 'M' | 'F';
+
 /**
  * Ranking de quem treinou o mesmo WOD hoje, agrupado por WOD. Vive na Liga
  * (é a aba de ranking do individual); a Início só mostra o WOD do próprio
@@ -25,6 +30,8 @@ export default function WodPlacarRanking() {
   const { user } = useAuth();
   const { rows, loading } = useDailyWodRows();
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [scalingFilter, setScalingFilter] = useState<ScalingFilter>('todos');
+  const [genderFilter, setGenderFilter] = useState<GenderFilter>('todos');
 
   // Só entra no ranking quem já tem resultado — WOD postado e não treinado
   // ainda não é uma marca comparável.
@@ -48,6 +55,20 @@ export default function WodPlacarRanking() {
       return { name: list[0].wod_name || 'WOD', timeBased, description: list[0].description, ranked };
     }).sort((a, b) => b.ranked.length - a.ranked.length);
   }, [rows]);
+
+  // Filtros aplicados por cima do ranking já ordenado — grupos que ficam sem
+  // ninguém no filtro somem da lista, não aparecem vazios.
+  const filteredGroups = useMemo(() => {
+    return groups
+      .map(g => ({
+        ...g,
+        ranked: g.ranked.filter(r =>
+          (scalingFilter === 'todos' || r.scaling === scalingFilter) &&
+          (genderFilter === 'todos' || r.gender === genderFilter)
+        ),
+      }))
+      .filter(g => g.ranked.length > 0);
+  }, [groups, scalingFilter, genderFilter]);
 
   const Avatar = ({ r, className }: { r: WodResultRow; className?: string }) =>
     r.photo_url ? (
@@ -79,8 +100,45 @@ export default function WodPlacarRanking() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      {groups.map(group => (
+    <div className="flex flex-col gap-4">
+      {/* Filtros — mesma dupla do ranking de WOD do Box */}
+      <div className="flex gap-2 flex-wrap">
+        {(['todos', 'rx', 'scaled'] as ScalingFilter[]).map(f => (
+          <button key={f} onClick={() => setScalingFilter(f)}
+            className={cn(
+              'px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all',
+              scalingFilter === f
+                ? f === 'rx' ? 'bg-primary text-background'
+                  : f === 'scaled' ? 'bg-secondary text-background'
+                  : 'bg-on-surface text-background'
+                : 'bg-surface-container-highest text-on-surface-variant hover:text-on-surface'
+            )}>
+            {f === 'todos' ? 'Todos' : f === 'rx' ? 'RX' : 'Scaled'}
+          </button>
+        ))}
+        <div className="w-px bg-outline-variant/20 mx-1" />
+        {(['todos', 'M', 'F'] as GenderFilter[]).map(g => (
+          <button key={g} onClick={() => setGenderFilter(g)}
+            className={cn(
+              'px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all',
+              genderFilter === g ? 'bg-on-surface text-background' : 'bg-surface-container-highest text-on-surface-variant hover:text-on-surface'
+            )}>
+            {g === 'todos' ? 'Todos' : g === 'M' ? '♂ Masc' : '♀ Fem'}
+          </button>
+        ))}
+      </div>
+
+      {filteredGroups.length === 0 && (
+        <div className="bg-surface-container rounded-3xl p-8 flex flex-col items-center text-center gap-3 border border-outline-variant/10">
+          <Trophy className="w-12 h-12 text-on-surface-variant/20" />
+          <p className="text-on-surface-variant font-headline font-black uppercase italic">Ninguém no filtro</p>
+          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest opacity-60">
+            Tente outro filtro
+          </p>
+        </div>
+      )}
+
+      {filteredGroups.map(group => (
         <div key={group.name} className="flex flex-col gap-2">
           <button
             onClick={() => setExpandedGroups(prev => ({ ...prev, [group.name]: !prev[group.name] }))}
@@ -104,6 +162,14 @@ export default function WodPlacarRanking() {
           )}
           {group.ranked.map((r, i) => {
             const isMe = r.user_id === user?.id;
+            // Ritmo só existe pra FOR TIME com total de reps cadastrado (AMRAP
+            // gravado pelo cronômetro vem em "rounds+reps", sem um "reps por
+            // round" fixo pra decompor — decidimos não arriscar um número
+            // errado, então por ora fica de fora).
+            const pace = group.timeBased
+              ? computeRepsPerMinute(r.result || '', { type: r.wod_type, totalReps: r.total_reps })
+              : null;
+            const relStrength = computeRelativeStrength(r.load_kg, r.weight_kg);
             return (
               <motion.div key={r.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
                 className={cn('p-3 rounded-2xl border flex items-center justify-between transition-all',
@@ -121,12 +187,23 @@ export default function WodPlacarRanking() {
                       r.scaling === 'rx' ? 'bg-primary/15 text-primary border-primary/30' : 'bg-secondary/15 text-secondary border-secondary/30')}>
                       {r.scaling === 'rx' ? 'RX' : 'Scaled'} • Nv {r.level}
                     </span>
+                    {pace != null && (
+                      <p className="text-[9px] font-bold text-on-surface-variant/70 tracking-widest mt-0.5">{formatPace(pace)}</p>
+                    )}
+                    {r.effort_index != null && (
+                      <p className="text-[9px] font-bold text-secondary/80 tracking-widest mt-0.5">
+                        ❤️ Esforço {r.effort_index}{r.hr_zone ? ` · ${r.hr_zone}` : ''}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0 ml-2">
                   <span className="text-base font-headline font-black text-primary italic block">{r.result}</span>
                   {r.load_kg != null && (
-                    <span className="text-[9px] font-bold text-on-surface-variant">{r.load_kg}kg</span>
+                    <span className="text-[9px] font-bold text-on-surface-variant block">{r.load_kg}kg</span>
+                  )}
+                  {relStrength != null && (
+                    <span className="text-[9px] font-bold text-secondary block">{formatRelativeStrength(relStrength)}</span>
                   )}
                 </div>
               </motion.div>

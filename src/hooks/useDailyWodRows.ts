@@ -11,8 +11,14 @@ export interface WodResultRow {
   result: string | null;
   scaling: 'rx' | 'scaled';
   load_kg: number | null;
+  total_reps: number | null;
+  hr_avg_pct: number | null;
+  effort_index: number | null;
+  hr_zone: string | null;
   name: string;
   level: number;
+  weight_kg: number | null;
+  gender: 'M' | 'F' | null;
   avatar_equipped?: any;
   photo_url?: string | null;
 }
@@ -41,7 +47,7 @@ export function useDailyWodRows(refreshSignal?: number) {
       if (ids.length) {
         const { data: profs } = await supabase
           .from('profiles')
-          .select('id, name, level, avatar_equipped, photo_url')
+          .select('id, name, level, avatar_equipped, photo_url, weight_kg, gender')
           .in('id', ids);
         (profs || []).forEach((p: any) => { profilesMap[p.id] = p; });
       }
@@ -55,8 +61,15 @@ export function useDailyWodRows(refreshSignal?: number) {
         result: r.result ?? null,
         scaling: r.scaling ?? 'rx',
         load_kg: r.load_kg ?? null,
+        total_reps: r.total_reps ?? null,
+        hr_avg_pct: r.hr_avg_pct ?? null,
+        effort_index: r.effort_index ?? null,
+        hr_zone: r.hr_zone ?? null,
         name: profilesMap[r.user_id]?.name ?? 'Atleta',
         level: profilesMap[r.user_id]?.level ?? 1,
+        weight_kg: profilesMap[r.user_id]?.weight_kg ?? null,
+        gender: profilesMap[r.user_id]?.gender
+          ?? (profilesMap[r.user_id]?.avatar_equipped?.base_outfit === 'base_feminina' ? 'F' : 'M'),
         avatar_equipped: profilesMap[r.user_id]?.avatar_equipped,
         photo_url: profilesMap[r.user_id]?.photo_url ?? null,
       })));

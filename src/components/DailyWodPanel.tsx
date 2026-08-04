@@ -45,6 +45,9 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
   const [wodType, setWodType] = useState('FOR TIME');
   const [description, setDescription] = useState('');
   const [scaling, setScaling] = useState<'rx' | 'scaled'>('rx');
+  // Total de reps prescritas (FOR TIME) — opcional, mesma conta do Box: com o
+  // tempo do resultado vira ritmo (reps/min) no placar.
+  const [totalReps, setTotalReps] = useState('');
   // Cards abertos — fechados por padrão pra caber vários WODs do dia na tela.
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const formRef = useRef<HTMLDivElement>(null);
@@ -54,7 +57,7 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
 
   const openNewForm = () => {
     setEditingRowId(null);
-    setWodName(''); setWodType('FOR TIME'); setDescription(''); setScaling('rx');
+    setWodName(''); setWodType('FOR TIME'); setDescription(''); setScaling('rx'); setTotalReps('');
     setFormOpen(true);
   };
 
@@ -62,6 +65,7 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
     setEditingRowId(row.id);
     setWodName(row.wod_name); setWodType(row.wod_type);
     setDescription(row.description || ''); setScaling(row.scaling);
+    setTotalReps(row.total_reps != null ? String(row.total_reps) : '');
     setFormOpen(true);
   };
 
@@ -86,6 +90,7 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
       await postWodDefinition({
         userId: user.id, wodName: wodName.trim(), wodType, description: description.trim(), scaling,
         id: editingRowId || undefined,
+        totalReps: isTimeBasedType(wodType) && totalReps.trim() ? parseInt(totalReps, 10) || null : null,
       });
       toast.success(editingRowId ? 'WOD atualizado!' : 'WOD postado! Toque nele para treinar.');
       setFormOpen(false);
@@ -195,6 +200,21 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
             rows={4}
             className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
           />
+          {isTimeBasedType(wodType) && (
+            <div className="flex flex-col gap-1">
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="Total de reps do WOD (ex: 165)"
+                value={totalReps}
+                onChange={e => setTotalReps(e.target.value)}
+                className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+              />
+              <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
+                Opcional — libera o ritmo (reps/min) no placar
+              </p>
+            </div>
+          )}
           <div className="flex gap-2">
             {(['rx', 'scaled'] as const).map(s => (
               <button key={s} onClick={() => setScaling(s)}

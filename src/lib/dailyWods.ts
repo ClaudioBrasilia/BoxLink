@@ -51,6 +51,9 @@ export interface PostWodDefinitionParams {
   scaling: 'rx' | 'scaled';
   /** Atualiza esta linha se informado; senão cria um novo WOD do dia. */
   id?: string;
+  /** Total de reps prescritas (FOR TIME) — opcional, vira ritmo (reps/min)
+   *  no placar, mesma conta que o Box faz com o WOD do coach. */
+  totalReps?: number | null;
 }
 
 /**
@@ -65,6 +68,7 @@ export async function postWodDefinition(params: PostWodDefinitionParams): Promis
       wod_type: params.wodType,
       description: params.description,
       scaling: params.scaling,
+      total_reps: params.totalReps ?? null,
       updated_at: new Date().toISOString(),
     }).eq('id', params.id);
     if (error) throw error;
@@ -78,6 +82,7 @@ export async function postWodDefinition(params: PostWodDefinitionParams): Promis
     wod_type: params.wodType,
     description: params.description,
     scaling: params.scaling,
+    total_reps: params.totalReps ?? null,
   }).select('id').single();
   if (error) throw error;
   return data.id;
@@ -96,6 +101,11 @@ export interface PostDailyWodParams {
   id?: string;
   /** Carga (kg) opcional — WODs com barra com peso (paridade com o Box). */
   loadKg?: number | null;
+  /** Esforço fisiológico medido pelo cronômetro (FC) — mesmos campos já
+   *  gravados no diário, agora também no placar. */
+  hrAvgPct?: number | null;
+  effortIndex?: number | null;
+  hrZone?: string | null;
 }
 
 export interface PostDailyWodOutcome {
@@ -136,6 +146,9 @@ export async function postDailyWodResult(params: PostDailyWodParams): Promise<Po
     if (params.description) payload.description = params.description;
     // Só mexe na carga se informada — omitida preserva a já gravada nesta linha.
     if (params.loadKg !== undefined) payload.load_kg = params.loadKg;
+    if (params.hrAvgPct !== undefined) payload.hr_avg_pct = params.hrAvgPct;
+    if (params.effortIndex !== undefined) payload.effort_index = params.effortIndex;
+    if (params.hrZone !== undefined) payload.hr_zone = params.hrZone;
 
     const { error } = await supabase.from('daily_wod_results').update(payload).eq('id', rowId);
     if (error) throw error;
@@ -150,6 +163,9 @@ export async function postDailyWodResult(params: PostDailyWodParams): Promise<Po
       scaling: params.scaling,
       description: params.description || null,
       load_kg: params.loadKg ?? null,
+      hr_avg_pct: params.hrAvgPct ?? null,
+      effort_index: params.effortIndex ?? null,
+      hr_zone: params.hrZone ?? null,
     }).select('id').single();
     if (error) throw error;
     rowId = data.id;

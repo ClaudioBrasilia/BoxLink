@@ -455,6 +455,9 @@ export default function Diario() {
               userId: user.id, wodName: title.trim(), wodType, result: result.trim(),
               scaling: placarScaling, description: description.trim() || undefined,
               id: placarRowId || undefined, loadKg: parsedLoadKg,
+              hrAvgPct: effortData?.avgPctMax ?? null,
+              effortIndex: effortData?.effortIndex ?? null,
+              hrZone: effortData?.dominantZone ?? null,
             });
             setPlacarRowId(outcome.id);
             setPlacarRefreshKey(k => k + 1);
@@ -519,6 +522,9 @@ export default function Diario() {
           const outcome = await postDailyWodResult({
             userId: user.id, wodName: title.trim(), wodType, result: result.trim(), scaling: placarScaling,
             description: description.trim() || undefined, loadKg: parsedLoadKg,
+            hrAvgPct: eff?.avgPctMax ?? null,
+            effortIndex: eff?.effortIndex ?? null,
+            hrZone: eff?.dominantZone ?? null,
           });
           if (outcome.firstTime) {
             confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 }, colors: ['#CAFD00', '#ffffff'] });
@@ -588,6 +594,9 @@ export default function Diario() {
             userId: user.id, wodName, wodType: data.wodType, result: wodResult, scaling,
             description: data.description.trim() || undefined,
             id: trainedWodId,
+            hrAvgPct: eff?.avgPctMax ?? null,
+            effortIndex: eff?.effortIndex ?? null,
+            hrZone: eff?.dominantZone ?? null,
           });
           setPlacarRowId(placarOutcome.id);
           setPlacarRefreshKey(k => k + 1);
@@ -728,11 +737,13 @@ export default function Diario() {
       const results: Record<string, null> = { [user.id]: null };
       opponentIds.forEach(id => { results[id] = null; });
 
-      // Ritmo (reps/min) é Premium — números só são salvos com a assinatura ativa
-      const totalReps = premium && isTimeBasedType(duelType) && duelTotalReps.trim()
+      // Números do WOD (viram o ritmo reps/min) — livres pra todo mundo desde
+      // que o campo deixou de ser Premium; só a leitura comparativa no recap
+      // continua paga.
+      const totalReps = isTimeBasedType(duelType) && duelTotalReps.trim()
         ? parseInt(duelTotalReps, 10) || null
         : null;
-      const timeCapMinutes = premium && isAmrapType(duelType) && duelTimeCapMinutes.trim()
+      const timeCapMinutes = isAmrapType(duelType) && duelTimeCapMinutes.trim()
         ? parseInt(duelTimeCapMinutes, 10) || null
         : null;
 
