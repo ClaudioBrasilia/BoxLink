@@ -15,7 +15,7 @@ export default function Layout() {
 
   useEffect(() => {
     const unreadToMark = notifications.filter(n => !n.read);
-    if (location.pathname === '/' || location.pathname === '/dashboard') {
+    if (location.pathname === '/' || location.pathname === '/dashboard' || location.pathname === '/diario') {
       unreadToMark.filter(n => n.type === 'announcement').forEach(n => markRead(n.id));
     } else if (location.pathname === '/duels') {
       unreadToMark.filter(n => ['duel_created', 'duel_accepted', 'duel_finished', 'duel_result'].includes(n.type)).forEach(n => markRead(n.id));
