@@ -42,6 +42,7 @@ import PremiumCTA from '../components/PremiumCTA';
 import HeartRateWidget from '../components/HeartRateWidget';
 import ShopBanner from '../components/ShopBanner';
 import { postDailyWodResult } from '../lib/dailyWods';
+import { useDailyWodRows } from '../hooks/useDailyWodRows';
 import { useNavigate } from 'react-router-dom';
 
 const todayBR = () =>
@@ -347,6 +348,15 @@ export default function Diario() {
     return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
   }, [logs]);
 
+  // WODs que o atleta já postou hoje e ainda não treinou — no "Novo Registro"
+  // ele pode escolher um deles em vez de redigitar nome/tipo/movimentos, e a
+  // escolha faz o resultado bater na MESMA linha do placar (sem duplicar).
+  const { rows: placarRows } = useDailyWodRows(placarRefreshKey);
+  const myOpenPlacarWods = useMemo(
+    () => placarRows.filter(r => r.user_id === user?.id && !r.result),
+    [placarRows, user?.id]
+  );
+
   const refreshBalances = async () => {
     if (!user) return;
     const [{ data: profile }, { data: checkins }] = await Promise.all([
@@ -424,6 +434,20 @@ export default function Diario() {
 
   const closeForm = () => { setShowForm(false); resetForm(); };
   const openBlankForm = () => { resetForm(); setShowForm(true); };
+
+  // Escolhe (ou desmarca) um WOD já postado hoje como o que este registro vai
+  // completar — pré-preenche nome/tipo/movimentos e faz o resultado bater na
+  // MESMA linha do placar em vez de criar uma segunda entrada.
+  const selectPlacarWod = (row: (typeof myOpenPlacarWods)[number]) => {
+    if (placarRowId === row.id) {
+      setPlacarRowId(null); setTitle(''); setWodType('FOR TIME'); setDescription('');
+      return;
+    }
+    setPlacarRowId(row.id);
+    setTitle(row.wod_name); setWodType(row.wod_type);
+    setDescription(row.description || ''); setPlacarScaling(row.scaling);
+    setPostToPlacar(true);
+  };
 
   const handleSave = async () => {
     if (!user) return;
@@ -522,6 +546,7 @@ export default function Diario() {
           const outcome = await postDailyWodResult({
             userId: user.id, wodName: title.trim(), wodType, result: result.trim(), scaling: placarScaling,
             description: description.trim() || undefined, loadKg: parsedLoadKg,
+            id: placarRowId || undefined,
             hrAvgPct: eff?.avgPctMax ?? null,
             effortIndex: eff?.effortIndex ?? null,
             hrZone: eff?.dominantZone ?? null,
@@ -1241,6 +1266,30 @@ export default function Diario() {
               </div>
             ) : (
               <div className="flex flex-col gap-2">
+                {isIndividual && category === 'wod' && myOpenPlacarWods.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest px-1">
+                      Ou escolha o treino do dia
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {myOpenPlacarWods.map(row => (
+                        <button
+                          key={row.id}
+                          type="button"
+                          onClick={() => selectPlacarWod(row)}
+                          className={cn(
+                            'px-3 py-2 rounded-xl text-[11px] font-black uppercase italic tracking-wide transition-all border',
+                            placarRowId === row.id
+                              ? 'bg-primary text-background border-primary'
+                              : 'bg-surface-container-highest text-on-surface-variant border-transparent hover:border-primary/30'
+                          )}
+                        >
+                          {row.wod_name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <input
                   type="text"
                   placeholder={category === 'nota' ? 'Título da nota' : 'Nome do treino (ex: Murph, WOD do dia)'}
