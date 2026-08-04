@@ -9,6 +9,7 @@ import AthletePhoto from '../components/AthletePhoto';
 import { AvatarSlot } from '../types';
 import { isPremium } from '../lib/plan';
 import PremiumCTA from '../components/PremiumCTA';
+import WodPlacarRanking from '../components/WodPlacarRanking';
 
 interface LigaAthlete {
   id: string;
@@ -21,7 +22,7 @@ interface LigaAthlete {
   photo_url?: string | null;
 }
 
-type Tab = 'xp_total' | 'xp_mes';
+type Tab = 'xp_total' | 'xp_mes' | 'wods_hoje';
 
 // Divisões da Liga do Mês (por XP ganho no mês)
 interface Division { key: string; label: string; emoji: string; min: number; cls: string; }
@@ -164,8 +165,9 @@ export default function Liga() {
       {/* Tabs */}
       <div className="flex bg-surface-container-low p-1 rounded-2xl border border-outline-variant/10 gap-1">
         {([
-          { key: 'xp_total', label: 'XP Total',    premium: false },
-          { key: 'xp_mes',   label: 'Liga do Mês', premium: true },
+          { key: 'xp_total',   label: 'XP Total',    premium: false },
+          { key: 'xp_mes',     label: 'Liga do Mês', premium: true },
+          { key: 'wods_hoje',  label: 'WODs de Hoje', premium: false },
         ] as const).map(({ key, label, premium: isPrem }) => (
           <button key={key} onClick={() => setActiveTab(key)}
             className={cn('flex-1 py-3 rounded-xl font-headline font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1',
@@ -176,10 +178,18 @@ export default function Liga() {
       </div>
 
       <p className="text-center text-[10px] text-on-surface-variant font-black uppercase tracking-widest -mt-3">
-        {activeTab === 'xp_total' ? 'XP acumulado desde o início' : `XP ganho em ${monthName} — reinicia todo mês`}
+        {activeTab === 'xp_total'
+          ? 'XP acumulado desde o início'
+          : activeTab === 'wods_hoje'
+            ? 'Quem treinou o mesmo WOD hoje'
+            : `XP ganho em ${monthName} — reinicia todo mês`}
       </p>
 
       {/* Legenda de divisões (aba do mês, liberada) */}
+      {/* Placar de WODs do dia — saiu da Início (que ficou só com o WOD do
+          próprio atleta) e virou mais uma aba de ranking aqui. */}
+      {activeTab === 'wods_hoje' ? <WodPlacarRanking /> : (
+      <>
       {activeTab === 'xp_mes' && !monthlyLocked && (
         <div className="flex justify-center gap-2 flex-wrap -mt-2">
           {DIVISIONS.map(d => (
@@ -307,6 +317,8 @@ export default function Liga() {
             </section>
           )}
         </>
+      )}
+      </>
       )}
     </div>
   );

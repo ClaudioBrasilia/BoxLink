@@ -21,6 +21,7 @@ import {
   Activity,
   ChevronRight,
   Send,
+  Calendar,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
@@ -1055,12 +1056,28 @@ export default function Diario() {
           Feed/Ranking/WOD do dia próprios do box, não deve poluir nem ver este.
           Tocar num WOD "falta treinar" já abre o cronômetro carregado com ele. */}
       {isIndividual && (
-        <DailyWodPanel
-          refreshSignal={placarRefreshKey}
-          openFormSignal={placarFormKey}
-          onStartWod={row => { setWodToTrain(row); setShowTimer(true); }}
-          onFreeTrain={() => { setWodToTrain(null); setShowTimer(true); }}
-        />
+        <>
+          <div className="mx-6 mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-headline font-black italic text-on-surface uppercase tracking-tight">Seu WOD de hoje</h2>
+              <p className="text-on-surface-variant text-[10px] font-black uppercase tracking-widest opacity-60 flex items-center gap-1">
+                <Calendar className="w-3 h-3" /> Toque para ver os movimentos
+              </p>
+            </div>
+            <button
+              onClick={() => navigate('/liga')}
+              className="flex items-center gap-1 text-[9px] font-black text-secondary uppercase tracking-widest hover:opacity-80 transition-all"
+            >
+              Placar <ChevronRight className="w-3 h-3" />
+            </button>
+          </div>
+          <DailyWodPanel
+            refreshSignal={placarRefreshKey}
+            openFormSignal={placarFormKey}
+            onStartWod={row => { setWodToTrain(row); setShowTimer(true); }}
+            onFreeTrain={() => { setWodToTrain(null); setShowTimer(true); }}
+          />
+        </>
       )}
 
       <AnimatePresence>
