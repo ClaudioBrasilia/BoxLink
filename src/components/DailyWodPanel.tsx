@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Calendar, Timer, Hash, Check, Trophy, Send, Pencil, Plus, X, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Calendar, Timer, Hash, Check, Trophy, Send, Pencil, X, ChevronDown } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn, compareBy } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -43,9 +43,13 @@ interface DailyWodPanelProps {
   onStartWod?: (row: { id: string; wod_name: string; wod_type: string; description: string | null; scaling: 'rx' | 'scaled' }) => void;
   /** Cronômetro livre, sem WOD pré-carregado. */
   onFreeTrain?: () => void;
+  /** Muda quando o pai pede pra abrir o formulário de postar WOD — o botão
+   *  principal da Início do individual é quem chama, então este painel não
+   *  precisa repetir um botão próprio pra isso. */
+  openFormSignal?: number;
 }
 
-export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onFreeTrain }: DailyWodPanelProps) {
+export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onFreeTrain, openFormSignal }: DailyWodPanelProps) {
   const { user } = useAuth();
   const toast = useToast();
 
@@ -67,6 +71,7 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
   // Grupos do ranking com "ver movimentos" expandido — antes o placar só
   // mostrava o nome do WOD, sem dar pra saber do que se tratava.
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const formRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -149,6 +154,17 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
   };
 
   const closeForm = () => setFormOpen(false);
+
+  // O botão "Postar WOD" da Início fica lá em cima; ao abrir o formulário
+  // daqui, traz ele pra vista pra não parecer que nada aconteceu.
+  useEffect(() => {
+    if (!openFormSignal) return;
+    openNewForm();
+  }, [openFormSignal]);
+
+  useEffect(() => {
+    if (formOpen) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [formOpen]);
 
   const handlePostDefinition = async () => {
     if (!user) return;
@@ -257,7 +273,7 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
         ))}
 
         {formOpen ? (
-          <div className="bg-surface-container rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-3">
+          <div ref={formRef} className="bg-surface-container rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">
                 {editingRowId ? 'Editar WOD' : 'Poste um WOD'}
@@ -308,24 +324,16 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
               {editingRowId ? 'Atualizar WOD' : 'Postar WOD'}
             </button>
           </div>
-        ) : (
-          <>
-            <button
-              onClick={openNewForm}
-              className="w-full py-3 rounded-2xl border-2 border-dashed border-outline-variant/20 text-on-surface-variant font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2 hover:border-primary/40 hover:text-primary transition-all"
-            >
-              <Plus className="w-4 h-4" /> {myRows.length === 0 ? 'Postar o WOD do dia' : 'Adicionar outro WOD'}
-            </button>
-            {onFreeTrain && (
-              <button
-                onClick={onFreeTrain}
-                className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:text-primary transition-all text-center"
-              >
-                Ou treinar sem postar (cronômetro livre)
-              </button>
-            )}
-          </>
-        )}
+        ) : onFreeTrain ? (
+          /* Postar WOD agora é o botão principal da Início — aqui fica só a
+             saída pra quem quer treinar sem entrar no placar. */
+          <button
+            onClick={onFreeTrain}
+            className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:text-primary transition-all text-center"
+          >
+            Ou treinar sem postar (cronômetro livre)
+          </button>
+        ) : null}
       </div>
 
       {/* Placar agrupado por WOD — só entra quem já tem resultado */}

@@ -20,6 +20,7 @@ import {
   Coins,
   Activity,
   ChevronRight,
+  Send,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
@@ -131,6 +132,9 @@ export default function Diario() {
   const [postToPlacar, setPostToPlacar] = useState(true);
   const [placarScaling, setPlacarScaling] = useState<'rx' | 'scaled'>('rx');
   const [placarRefreshKey, setPlacarRefreshKey] = useState(0);
+  // Incrementa quando o botão "Postar WOD" da Início é tocado — abre o
+  // formulário de WOD lá no Placar (o único lugar que escreve no placar).
+  const [placarFormKey, setPlacarFormKey] = useState(0);
   // Qual WOD foi escolhido pra treinar agora (tocado no card do Placar) —
   // usado pra pré-carregar o cronômetro e gravar o resultado na linha certa.
   const [wodToTrain, setWodToTrain] = useState<{
@@ -963,19 +967,11 @@ export default function Diario() {
             que dá o check-in solo e os pontos do dia. */}
         {isIndividual && (
           <button
-            onClick={openBlankForm}
-            disabled={loggedToday || checkedInToday}
-            className={cn(
-              'w-full py-6 rounded-3xl font-headline font-black text-lg shadow-lg transition-all uppercase italic tracking-tight flex items-center justify-center gap-3',
-              loggedToday || checkedInToday
-                ? 'bg-surface-container-highest text-on-surface-variant cursor-not-allowed opacity-50'
-                : 'bg-primary text-background hover:scale-[0.98] active:scale-95 shadow-[0_10px_30px_rgba(202,253,0,0.2)]'
-            )}
+            onClick={() => setPlacarFormKey(k => k + 1)}
+            className="w-full py-6 rounded-3xl font-headline font-black text-lg shadow-lg transition-all uppercase italic tracking-tight flex items-center justify-center gap-3 bg-primary text-background hover:scale-[0.98] active:scale-95 shadow-[0_10px_30px_rgba(202,253,0,0.2)]"
           >
-            {loggedToday || checkedInToday ? 'WOD POSTADO' : 'POSTAR WOD'}
-            {loggedToday || checkedInToday
-              ? <Check className="w-6 h-6" strokeWidth={3} />
-              : <Plus className="w-6 h-6" strokeWidth={3} />}
+            POSTAR WOD
+            <Send className="w-6 h-6" />
           </button>
         )}
 
@@ -1061,6 +1057,7 @@ export default function Diario() {
       {isIndividual && (
         <DailyWodPanel
           refreshSignal={placarRefreshKey}
+          openFormSignal={placarFormKey}
           onStartWod={row => { setWodToTrain(row); setShowTimer(true); }}
           onFreeTrain={() => { setWodToTrain(null); setShowTimer(true); }}
         />
