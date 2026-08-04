@@ -1256,6 +1256,13 @@ export default function Duels() {
                       const isWinner = duel.status === 'finished' && duel.winnerId === pid;
                       const isTieFinished = duel.status === 'finished' && duel.winnerId === null;
                       const entry = outcome?.usedIntensity ? outcome.entries[pid] : null;
+                      // Ritmo próprio: quem informou os números do WOD vê o
+                      // seu reps/min mesmo sem Premium. Comparar o ritmo com o
+                      // do adversário continua sendo do recap (Premium no
+                      // individual) — aqui cada um só enxerga o de si.
+                      const myPace = pid === user?.id && visible !== 'Aguardando'
+                        ? computeRepsPerMinute(duel.results[pid] || '', getPaceMeta(duel) || {})
+                        : null;
                       return (
                         <div key={pid} className={cn(
                           'px-3 py-2 rounded-xl',
@@ -1276,6 +1283,11 @@ export default function Duels() {
                               {visible}
                             </span>
                           </div>
+                          {myPace != null && (
+                            <p className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant/70 mt-0.5">
+                              Seu ritmo: {myPace.toFixed(1)} reps/min
+                            </p>
+                          )}
                           {entry && (
                             <div className="flex items-center gap-2 mt-1 text-[9px] font-black uppercase tracking-widest text-on-surface-variant/80">
                               <span>Desemp. {entry.perf}</span>

@@ -1497,30 +1497,24 @@ export default function Diario() {
                 className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
               />
 
-              {/* Ritmo (reps/min) no recap — Premium */}
+              {/* Números do WOD que permitem calcular o ritmo. Livres de
+                  propósito: enquanto eram Premium o dado nunca era coletado,
+                  então nem havia o que mostrar depois. O que continua Premium
+                  é a leitura comparativa no recap, não o registro. */}
               {(duelType === 'FOR TIME' || duelType === 'AMRAP') && (
-                premium ? (
-                  <div className="flex flex-col gap-1">
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      placeholder={duelType === 'FOR TIME' ? 'Total de reps do desafio (ex: 150)' : 'Duração em minutos (ex: 20)'}
-                      value={duelType === 'FOR TIME' ? duelTotalReps : duelTimeCapMinutes}
-                      onChange={e => duelType === 'FOR TIME' ? setDuelTotalReps(e.target.value) : setDuelTimeCapMinutes(e.target.value)}
-                      className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
-                    />
-                    <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
-                      Opcional — mostra o ritmo (reps/min) de cada um no resumo do duelo
-                    </p>
-                  </div>
-                ) : (
-                  <div className="bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 flex items-center gap-2">
-                    <span className="text-sm">🔒</span>
-                    <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest leading-snug">
-                      <span className="text-secondary">Premium:</span> ritmo (reps/min) de cada atleta no resumo do duelo
-                    </p>
-                  </div>
-                )
+                <div className="flex flex-col gap-1">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    placeholder={duelType === 'FOR TIME' ? 'Total de reps do desafio (ex: 150)' : 'Duração em minutos (ex: 20)'}
+                    value={duelType === 'FOR TIME' ? duelTotalReps : duelTimeCapMinutes}
+                    onChange={e => duelType === 'FOR TIME' ? setDuelTotalReps(e.target.value) : setDuelTimeCapMinutes(e.target.value)}
+                    className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+                  />
+                  <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
+                    Opcional — libera o ritmo (reps/min) no resultado do duelo
+                  </p>
+                </div>
               )}
 
               <button
