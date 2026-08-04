@@ -648,8 +648,8 @@ export default function Admin() {
       setChallenges([data[0], ...challenges]);
       setNewChallenge({ title: '', description: '', active: true, startDate: format(new Date(), 'yyyy-MM-dd'), endDate: format(new Date(new Date().setDate(new Date().getDate() + 7)), 'yyyy-MM-dd'), xp: 50, coins: 10, repeatable: false, dailyLimit: 1, difficulty: 'easy', required_days: 1, require_photo: false, type: 'daily_checkin', target_value: 100, unit: 'reps' });
       toast.success('Desafio criado com sucesso!');
-      // Notifica todos os usuários sobre o novo desafio
-      for (const u of users) {
+      // Notifica os usuários sobre o novo desafio (Individual não tem acesso a Desafios)
+      for (const u of users.filter(u => u.accountType !== 'individual')) {
         await createNotification(
           u.id,
           'challenge_new',

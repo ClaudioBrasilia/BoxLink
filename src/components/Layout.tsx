@@ -28,10 +28,12 @@ export default function Layout() {
 
   const duelBadge = notifications.filter(n => !n.read && ['duel_created', 'duel_accepted', 'duel_finished', 'duel_result'].includes(n.type)).length;
   const feedBadge = notifications.filter(n => !n.read && ['like', 'comment', 'feed_post'].includes(n.type)).length;
-  const challengeBadge = notifications.filter(n => !n.read && ['challenge_done', 'challenge_new'].includes(n.type)).length;
-  const homeBadge = notifications.filter(n => !n.read && ['announcement'].includes(n.type)).length;
-
   const isIndividual = user?.accountType === 'individual';
+
+  // Desafios (/challenges) são exclusivos de conta Box — Individual nunca visita essa
+  // rota, então esse badge nunca seria limpo se contado para essas contas.
+  const challengeBadge = isIndividual ? 0 : notifications.filter(n => !n.read && ['challenge_done', 'challenge_new'].includes(n.type)).length;
+  const homeBadge = notifications.filter(n => !n.read && ['announcement'].includes(n.type)).length;
 
   const navItems = isIndividual
     ? [
