@@ -972,7 +972,7 @@ export default function Diario() {
                 : 'bg-primary text-background hover:scale-[0.98] active:scale-95 shadow-[0_10px_30px_rgba(202,253,0,0.2)]'
             )}
           >
-            {loggedToday || checkedInToday ? 'TREINO REGISTRADO' : 'REGISTRAR TREINO DE HOJE'}
+            {loggedToday || checkedInToday ? 'WOD POSTADO' : 'POSTAR WOD'}
             {loggedToday || checkedInToday
               ? <Check className="w-6 h-6" strokeWidth={3} />
               : <Plus className="w-6 h-6" strokeWidth={3} />}
