@@ -1065,7 +1065,7 @@ export default function Diario() {
               </p>
             </div>
             <button
-              onClick={() => navigate('/liga')}
+              onClick={() => navigate('/liga?tab=wods_hoje')}
               className="flex items-center gap-1 text-[9px] font-black text-secondary uppercase tracking-widest hover:opacity-80 transition-all"
             >
               Placar <ChevronRight className="w-3 h-3" />

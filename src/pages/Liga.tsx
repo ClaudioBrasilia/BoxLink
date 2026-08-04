@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Trophy, Zap, Calendar, Crown, Lock, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn, compareBy } from '../lib/utils';
@@ -50,7 +51,12 @@ export default function Liga() {
   const [athletes, setAthletes] = useState<LigaAthlete[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>('xp_total');
+  // ?tab=wods_hoje — o atalho "Placar" da Início cai direto na aba do WOD,
+  // não na de XP.
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<Tab>(
+    searchParams.get('tab') === 'wods_hoje' ? 'wods_hoje' : 'xp_total'
+  );
 
   const monthName = new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
 
