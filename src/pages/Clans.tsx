@@ -1178,10 +1178,10 @@ export default function Clans() {
                 </div>
               )}
             </div>
-            {!ended && noClansYet && !myClan && (
+            {!ended && !myClan && (
               <div className="mt-4 pt-4 border-t border-primary/20 flex items-center justify-between gap-3">
                 <p className="text-on-surface-variant text-xs font-bold">
-                  Nenhum time ainda. Seja o primeiro a montar o seu!
+                  {noClansYet ? 'Nenhum time ainda. Seja o primeiro a montar o seu!' : 'Você ainda não tem um time. Crie o seu!'}
                 </p>
                 <button
                   onClick={() => setShowCreateModal(true)}
