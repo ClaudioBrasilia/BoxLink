@@ -15,7 +15,12 @@ export default function Layout() {
 
   useEffect(() => {
     const unreadToMark = notifications.filter(n => !n.read);
-    if (location.pathname === '/' || location.pathname === '/dashboard' || location.pathname === '/diario') {
+    // A "Início" do individual é o /diario (ele não tem o Dashboard do box),
+    // então é lá que os comunicados contam como lidos — é o que zera o badge
+    // da home pra ele. No box o Diário é só mais uma página, e quem zera
+    // continua sendo a Início de verdade.
+    const homePath = user?.accountType === 'individual' ? '/diario' : '/';
+    if (location.pathname === homePath || location.pathname === '/dashboard') {
       unreadToMark.filter(n => n.type === 'announcement').forEach(n => markRead(n.id));
     } else if (location.pathname === '/duels') {
       unreadToMark.filter(n => ['duel_created', 'duel_accepted', 'duel_finished', 'duel_result'].includes(n.type)).forEach(n => markRead(n.id));
@@ -37,10 +42,10 @@ export default function Layout() {
 
   const navItems = isIndividual
     ? [
-        { icon: BookOpen, label: 'Diário', path: '/diario', badge: homeBadge },
-        { icon: Swords,   label: 'Duelos', path: '/duels',  badge: duelBadge },
-        { icon: Trophy,   label: 'Liga',   path: '/liga',   badge: 0 },
-        { icon: User,     label: 'Perfil', path: '/profile', badge: 0 },
+        { icon: Home,   label: 'Início', path: '/diario', badge: homeBadge },
+        { icon: Swords, label: 'Duelos', path: '/duels',  badge: duelBadge },
+        { icon: Trophy, label: 'Liga',   path: '/liga',   badge: 0 },
+        { icon: User,   label: 'Perfil', path: '/profile', badge: 0 },
       ]
     : [
         { icon: Home,   label: 'Início',   path: '/',            badge: homeBadge },
@@ -55,6 +60,7 @@ export default function Layout() {
         { icon: Heart,       label: 'Frequência', path: '/frequencia' },
         { icon: Activity,    label: 'Insights',   path: '/insights' },
         { icon: LineChart,   label: 'Evolução',   path: '/progress' },
+        { icon: BarChart3,   label: 'Benchmarks', path: '/benchmarks' },
         { icon: ShoppingBag, label: 'Loja',       path: '/shop' },
       ]
     : [

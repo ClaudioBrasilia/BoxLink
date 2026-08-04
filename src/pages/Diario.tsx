@@ -16,6 +16,10 @@ import {
   Share2,
   Building2,
   Trophy,
+  Zap,
+  Coins,
+  Activity,
+  ChevronRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
@@ -33,6 +37,8 @@ import PostWorkoutFeedback from '../components/PostWorkoutFeedback';
 import AvatarPreview from '../components/AvatarPreview';
 import DailyWodPanel from '../components/DailyWodPanel';
 import PremiumCTA from '../components/PremiumCTA';
+import HeartRateWidget from '../components/HeartRateWidget';
+import ShopBanner from '../components/ShopBanner';
 import { postDailyWodResult } from '../lib/dailyWods';
 import { useNavigate } from 'react-router-dom';
 
@@ -151,6 +157,12 @@ export default function Diario() {
   const [duelTimeCapMinutes, setDuelTimeCapMinutes] = useState('');
   const [creatingDuel, setCreatingDuel] = useState(false);
 
+  // Números da "Início" do individual — equivalentes ao que o Box mostra no
+  // Dashboard (lá é ranking do box e desafios do box; aqui é a Liga da
+  // comunidade individual e os duelos por código de amigo).
+  const [ligaPosition, setLigaPosition] = useState<number | null>(null);
+  const [activeDuels, setActiveDuels] = useState<{ id: string; name: string; status: string }[]>([]);
+
   const [joinRequest, setJoinRequest] = useState<{ id: string; status: string } | null>(null);
   const [sendingJoin, setSendingJoin] = useState(false);
   const [showBoxPicker, setShowBoxPicker] = useState(false);
@@ -205,6 +217,44 @@ export default function Diario() {
   };
 
   useEffect(() => { if (user) loadSavedFriends(); }, [user]);
+
+  // Posição na Liga do mês (mesma conta da página Liga: XP ganho no mês entre
+  // atletas individuais) e duelos em aberto — os dois cards de "status" da
+  // Início, no lugar do ranking do box e dos desafios do box.
+  const loadHomeStats = async () => {
+    if (!user || !isIndividual) return;
+    const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+      .toISOString().split('T')[0];
+    try {
+      const [{ data: profiles }, { data: rewards }, { data: duels }] = await Promise.all([
+        supabase.from('profiles').select('id, level')
+          .eq('account_type', 'individual').eq('status', 'approved'),
+        supabase.from('reward_history').select('user_id, xp')
+          .gte('created_at', firstDayOfMonth + 'T00:00:00'),
+        supabase.from('duels').select('id, name, status')
+          .neq('status', 'finished')
+          .or(`challenger_id.eq.${user.id},opponent_ids.cs.{${user.id}}`)
+          .order('created_at', { ascending: false }),
+      ]);
+
+      const monthXpByUser: Record<string, number> = {};
+      (rewards || []).forEach((r: any) => {
+        if (r.xp > 0) monthXpByUser[r.user_id] = (monthXpByUser[r.user_id] || 0) + r.xp;
+      });
+      const ranked = (profiles || [])
+        .map((p: any) => ({ id: p.id, level: p.level || 1, monthXp: monthXpByUser[p.id] || 0 }))
+        .filter(a => a.monthXp > 0)
+        .sort((a, b) => b.monthXp - a.monthXp || b.level - a.level);
+      const idx = ranked.findIndex(a => a.id === user.id);
+      setLigaPosition(idx >= 0 ? idx + 1 : null);
+
+      setActiveDuels((duels || []) as { id: string; name: string; status: string }[]);
+    } catch (err) {
+      console.error('Error loading home stats:', err);
+    }
+  };
+
+  useEffect(() => { if (user) loadHomeStats(); }, [user]);
 
   useEffect(() => {
     if (!user || user.accountType !== 'individual') return;
@@ -270,6 +320,21 @@ export default function Diario() {
 
   const loggedToday = logs.some(l => l.date === todayBR());
   const checkedInToday = (user?.checkins || []).some(c => c.date === todayBR());
+
+  // Treinos da semana (domingo a sábado, fuso Brasil) — equivalente ao
+  // "Check-ins Semana" do Box, mas contando dia treinado, venha do registro
+  // do diário ou do check-in solo.
+  const trainingsThisWeek = useMemo(() => {
+    const nowBR = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const startOfWeek = new Date(nowBR);
+    startOfWeek.setDate(nowBR.getDate() - nowBR.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    const dates = new Set([
+      ...logs.map(l => l.date),
+      ...(user?.checkins || []).map(c => c.date),
+    ]);
+    return [...dates].filter(d => new Date(d + 'T00:00:00') >= startOfWeek).length;
+  }, [logs, user?.checkins]);
 
   const logsByDate = useMemo(() => {
     const groups: Record<string, TrainingLog[]> = {};
@@ -528,6 +593,7 @@ export default function Diario() {
 
       await refreshBalances();
       await loadLogs();
+      await loadHomeStats();
 
       confetti({ particleCount: 160, spread: 90, origin: { y: 0.6 }, colors: ['#CAFD00', '#ffffff'] });
       toast.success(
@@ -703,6 +769,7 @@ export default function Diario() {
         await supabase.from('duel_friends')
           .upsert(friends.map(f => ({ user_id: user.id, friend_id: f.id })), { onConflict: 'user_id,friend_id', ignoreDuplicates: true });
         await loadSavedFriends();
+        await loadHomeStats();
       } catch (err) {
         console.error('Error saving duel friends:', err);
       }
@@ -737,27 +804,77 @@ export default function Diario() {
     <div className="min-h-screen bg-background pb-32">
 
       <header className="p-6 pt-12 flex flex-col gap-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-headline font-black italic text-on-surface uppercase tracking-tight">
-              Diário
-            </h1>
-            <p className="text-on-surface-variant text-xs font-medium uppercase tracking-widest opacity-60">
-              Seu treino, suas regras
-            </p>
+        {/* O individual usa esta página como Início do app (ele não tem o
+            Dashboard do box), então o topo espelha o do Box: avatar, saudação,
+            nível/XP, moedas e compartilhar. O box mantém o título simples,
+            porque pra ele o Diário é só mais uma página. */}
+        {isIndividual ? (
+          <div className="flex justify-between items-start">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigate('/avatar')}
+                className="w-14 h-14 rounded-full bg-primary/10 border border-primary/20 overflow-hidden flex items-center justify-center hover:border-primary/50 active:scale-95 transition-all flex-shrink-0"
+                aria-label="Personalizar avatar"
+              >
+                <AvatarPreview
+                  equipped={(user?.avatar?.equipped || {}) as AvatarSlot}
+                  size="sm"
+                  className="w-full h-full border-none shadow-none"
+                />
+              </button>
+              <div>
+                <h1 className="text-2xl font-headline font-black text-on-surface tracking-tight uppercase italic leading-none">
+                  OLÁ, <span className="text-primary">{user?.name?.split(' ')[0]}</span>
+                </h1>
+                <p className="text-on-surface-variant text-[10px] font-bold tracking-widest uppercase mt-1 italic">
+                  {streak > 1 ? `🔥 ${streak} dias seguidos` : 'Pronto para o treino?'}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded-full border border-outline-variant/10">
+                <span className="text-[10px] font-black text-primary uppercase italic">LVL {user?.level}</span>
+                <div className="w-[1px] h-3 bg-outline-variant/20" />
+                <Zap className="w-4 h-4 text-primary fill-primary" />
+                <span className="font-headline font-black text-sm text-on-surface">{user?.xp}</span>
+              </div>
+              <div className="flex items-center gap-2 bg-surface-container-low px-3 py-1.5 rounded-full border border-outline-variant/10">
+                <Coins className="w-4 h-4 text-secondary fill-secondary" />
+                <span className="font-headline font-black text-sm text-on-surface">{user?.coins}</span>
+                <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">BC</span>
+              </div>
+              <button
+                onClick={handleShareCode}
+                className="flex items-center gap-1 bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-full hover:bg-primary/20 transition-all"
+              >
+                <Share2 className="w-3 h-3 text-primary" />
+                <span className="text-[8px] font-black text-primary uppercase tracking-widest">SHARE</span>
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => navigate('/avatar')}
-            className="w-14 h-14 rounded-full bg-primary/10 border border-primary/20 overflow-hidden flex items-center justify-center hover:border-primary/50 active:scale-95 transition-all"
-            aria-label="Personalizar avatar"
-          >
-            <AvatarPreview
-              equipped={(user?.avatar?.equipped || {}) as AvatarSlot}
-              size="sm"
-              className="w-full h-full border-none shadow-none"
-            />
-          </button>
-        </div>
+        ) : (
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-headline font-black italic text-on-surface uppercase tracking-tight">
+                Diário
+              </h1>
+              <p className="text-on-surface-variant text-xs font-medium uppercase tracking-widest opacity-60">
+                Seu treino, suas regras
+              </p>
+            </div>
+            <button
+              onClick={() => navigate('/avatar')}
+              className="w-14 h-14 rounded-full bg-primary/10 border border-primary/20 overflow-hidden flex items-center justify-center hover:border-primary/50 active:scale-95 transition-all"
+              aria-label="Personalizar avatar"
+            >
+              <AvatarPreview
+                equipped={(user?.avatar?.equipped || {}) as AvatarSlot}
+                size="sm"
+                className="w-full h-full border-none shadow-none"
+              />
+            </button>
+          </div>
+        )}
 
         {planDaysLeft != null && (
           <div className="flex flex-col gap-2">
@@ -807,13 +924,116 @@ export default function Diario() {
               <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">Hoje</p>
             </div>
           </div>
+          {/* Sem box não existe check-in por GPS/aula: aqui o "check-in" do dia
+              é o treino registrado. Os outros dois cards são o equivalente do
+              "Check-ins Semana" e "Ranking Box" do Dashboard. */}
+          {isIndividual && (
+            <>
+              <div className="bg-surface-container rounded-3xl p-4 border border-outline-variant/10 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <Activity className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <p className="text-xl font-headline font-black text-on-surface italic leading-none">
+                    {trainingsThisWeek}<span className="text-on-surface-variant text-sm">/6</span>
+                  </p>
+                  <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">Treinos semana</p>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate('/liga')}
+                className="bg-surface-container rounded-3xl p-4 border border-outline-variant/10 flex items-center gap-3 text-left hover:border-secondary/40 transition-all"
+              >
+                <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center">
+                  <Trophy className="w-5 h-5 text-secondary" />
+                </div>
+                <div>
+                  <p className="text-xl font-headline font-black text-on-surface italic leading-none">
+                    {ligaPosition != null ? `#${ligaPosition}` : '—'}
+                  </p>
+                  <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">Liga do mês</p>
+                </div>
+              </button>
+            </>
+          )}
         </div>
+
+        {/* Ação principal da Início do individual — mesmo peso visual do
+            "FAZER CHECK-IN AGORA" do Box, já que aqui registrar o treino é o
+            que dá o check-in solo e os pontos do dia. */}
+        {isIndividual && (
+          <button
+            onClick={openBlankForm}
+            disabled={loggedToday || checkedInToday}
+            className={cn(
+              'w-full py-6 rounded-3xl font-headline font-black text-lg shadow-lg transition-all uppercase italic tracking-tight flex items-center justify-center gap-3',
+              loggedToday || checkedInToday
+                ? 'bg-surface-container-highest text-on-surface-variant cursor-not-allowed opacity-50'
+                : 'bg-primary text-background hover:scale-[0.98] active:scale-95 shadow-[0_10px_30px_rgba(202,253,0,0.2)]'
+            )}
+          >
+            {loggedToday || checkedInToday ? 'TREINO REGISTRADO' : 'REGISTRAR TREINO DE HOJE'}
+            {loggedToday || checkedInToday
+              ? <Check className="w-6 h-6" strokeWidth={3} />
+              : <Plus className="w-6 h-6" strokeWidth={3} />}
+          </button>
+        )}
+
         {!checkedInToday && (
           <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest text-center italic opacity-70">
             Registre seu primeiro treino do dia e ganhe o check-in solo + pontos
           </p>
         )}
       </header>
+
+      {/* Blocos que o Dashboard do Box também tem, na mesma ordem: vitrine da
+          loja, atalho do que está em aberto (lá desafios, aqui duelos) e o
+          monitor de frequência cardíaca. */}
+      {isIndividual && (
+        <div className="px-6 mb-6 flex flex-col gap-5">
+          <ShopBanner />
+
+          {activeDuels.length > 0 && (
+            <button
+              onClick={() => navigate('/duels')}
+              className="bg-surface-container-low rounded-3xl border border-outline-variant/10 p-4 text-left hover:border-primary/30 transition-all"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 bg-secondary/20 rounded-xl flex items-center justify-center">
+                    <Swords className="w-4 h-4 text-secondary" />
+                  </div>
+                  <h3 className="text-[10px] font-black text-on-surface uppercase tracking-widest italic">Duelos em aberto</h3>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-black text-secondary bg-secondary/10 px-2 py-0.5 rounded-full">{activeDuels.length}</span>
+                  <ChevronRight className="w-4 h-4 text-on-surface-variant" />
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                {activeDuels.slice(0, 2).map(d => (
+                  <div key={d.id} className="flex items-center justify-between bg-surface-container-highest/50 rounded-2xl px-3 py-2">
+                    <p className="text-xs font-bold text-on-surface uppercase italic truncate flex-1">{d.name}</p>
+                    <span className={cn(
+                      'text-[9px] font-black uppercase ml-2 shrink-0',
+                      d.status === 'active' ? 'text-primary' : 'text-on-surface-variant'
+                    )}>
+                      {d.status === 'active' ? 'Em andamento' : 'Aguardando'}
+                    </span>
+                  </div>
+                ))}
+                {activeDuels.length > 2 && (
+                  <p className="text-[9px] text-center text-on-surface-variant font-bold uppercase tracking-widest">
+                    +{activeDuels.length - 2} outros duelos
+                  </p>
+                )}
+              </div>
+            </button>
+          )}
+
+          <HeartRateWidget userId={user?.id} />
+        </div>
+      )}
 
       {/* Box não tem Placar de WODs (é da comunidade individual), então o
           cronômetro fica num botão simples aqui — sem WOD pré-carregado. */}
