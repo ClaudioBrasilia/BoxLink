@@ -41,6 +41,7 @@ import DailyWodPanel from '../components/DailyWodPanel';
 import PremiumCTA from '../components/PremiumCTA';
 import HeartRateWidget from '../components/HeartRateWidget';
 import ShopBanner from '../components/ShopBanner';
+import { AppSponsorBanner, useSponsors } from '../components/SponsorBanner';
 import { postDailyWodResult } from '../lib/dailyWods';
 import { useDailyWodRows } from '../hooks/useDailyWodRows';
 import { useNavigate } from 'react-router-dom';
@@ -175,6 +176,10 @@ export default function Diario() {
   const [boxes, setBoxes] = useState<{ id: string; name: string; logo?: string | null }[]>([]);
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
   const [loadingBoxes, setLoadingBoxes] = useState(false);
+
+  // Patrocinadores são do app inteiro (a tabela não tem vínculo com box — quem
+  // manda é a flag show_on_app), então valem para o individual também.
+  const sponsors = useSponsors();
 
   const premium = isPremium(user);
   const maxDuelFriends = planLimits(user).maxDuelFriends;
@@ -1024,7 +1029,11 @@ export default function Diario() {
           monitor de frequência cardíaca. */}
       {isIndividual && (
         <div className="px-6 mb-6 flex flex-col gap-5">
-          <ShopBanner />
+          {/* Mesma dupla do Dashboard do Box: patrocínio e loja lado a lado. */}
+          <div className="flex gap-3 items-start">
+            <AppSponsorBanner sponsors={sponsors} className="flex-1 min-w-0" />
+            <ShopBanner />
+          </div>
 
           {activeDuels.length > 0 && (
             <button
