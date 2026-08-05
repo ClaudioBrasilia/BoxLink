@@ -43,6 +43,7 @@ import HeartRateWidget from '../components/HeartRateWidget';
 import ShopBanner from '../components/ShopBanner';
 import { AppSponsorBanner, useSponsors } from '../components/SponsorBanner';
 import { postDailyWodResult } from '../lib/dailyWods';
+import { normalizeFriendCode } from '../lib/friendCode';
 import { useDailyWodRows } from '../hooks/useDailyWodRows';
 import { useNavigate } from 'react-router-dom';
 
@@ -89,11 +90,6 @@ const calcStreak = (dates: string[]): number => {
 const parseLoad = (value: string): number =>
   parseFloat(String(value).replace(',', '.').replace(/[^0-9.]/g, '')) || 0;
 
-const normalizeFriendCode = (raw: string): string => {
-  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (clean.length !== 8) return raw.toUpperCase().trim();
-  return `${clean.slice(0, 4)}-${clean.slice(4)}`;
-};
 
 interface FriendProfile {
   id: string;

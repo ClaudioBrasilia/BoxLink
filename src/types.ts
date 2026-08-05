@@ -105,6 +105,9 @@ export interface User {
   friendCode?: string | null;
   plan?: 'free' | 'premium';
   planExpiresAt?: string | null;
+  /** Box ao qual o atleta pertence (null para individual). Usado pra restringir
+   *  a busca de oponentes de duelo aos colegas do próprio box. */
+  boxId?: string | null;
 }
 
 export interface Wod {
