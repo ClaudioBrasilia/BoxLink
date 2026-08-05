@@ -12,6 +12,9 @@ import {
   Timer,
   Hash,
   Info,
+  Globe,
+  Copy,
+  Share2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
@@ -33,6 +36,7 @@ import { isPremium } from '../lib/plan';
 import { computeRelativeStrength } from '../lib/relativeStrength';
 import WodSpotlightChart from '../components/WodSpotlightChart';
 import { WodSpotlightData } from '../lib/wodSpotlight';
+import { normalizeFriendCode } from '../lib/friendCode';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -162,7 +166,16 @@ export default function Duels() {
 
   // Data
   const [duels, setDuels] = useState<Duel[]>([]);
+  // Perfis dos participantes dos duelos visíveis — só o necessário pra
+  // resolver nome/avatar/peso (getUserName/getUserProfile/getStrengthById),
+  // nunca o diretório inteiro da plataforma.
   const [users, setUsers] = useState<UserProfile[]>([]);
+  // Colegas do próprio box — usado só pelo picker de "novo desafio" (busca
+  // por nome). Separado de `users` de propósito: antes a busca de oponente
+  // não filtrava por box_id e qualquer aluno de qualquer box (ou conta
+  // individual) aparecia pra qualquer outro. Desafiar alguém de fora agora é
+  // um gesto à parte, por código (ver `outsideCode` abaixo).
+  const [boxMates, setBoxMates] = useState<UserProfile[]>([]);
   const [wods, setWods] = useState<WodOption[]>([]);
   const [boxSettings, setBoxSettings] = useState<any>(null);
   // Números do WOD (reps totais / duração) por wod_id — usados para o ritmo
@@ -190,6 +203,11 @@ export default function Duels() {
   // Criação de duelo
   const [opponentSearch, setOpponentSearch] = useState('');
   const [selectedOpponents, setSelectedOpponents] = useState<string[]>([]);
+  // Oponentes adicionados por código (de fora do box) — só pra exibir o
+  // selo "DE FORA" no chip; não muda como o duelo é criado.
+  const [outsideOpponentIds, setOutsideOpponentIds] = useState<Set<string>>(new Set());
+  const [outsideCode, setOutsideCode] = useState('');
+  const [searchingOutside, setSearchingOutside] = useState(false);
   const [wodMode, setWodMode] = useState<'existing' | 'custom'>('existing');
   const [selectedWodId, setSelectedWodId] = useState('');
   const [category, setCategory] = useState<'RX' | 'SCALED' | 'BEGINNER'>('RX');
@@ -207,12 +225,27 @@ export default function Duels() {
     if (!user) return;
     setLoading(true);
     try {
-      const [duelsRes, usersRes, wodsRes, settingsRes] = await Promise.all([
+      const profileFields = 'id, name, xp, coins, level, avatar_equipped, photo_url, weight_kg';
+      const [duelsRes, wodsRes, settingsRes] = await Promise.all([
         supabase.from('duels').select('*').order('created_at', { ascending: false }),
-        supabase.from('profiles').select('id, name, xp, coins, level, avatar_equipped, photo_url, weight_kg').eq('status', 'approved').neq('id', user.id),
         supabase.from('wods').select('id, name, type, date, rx').order('date', { ascending: false }).limit(30),
         supabase.from('box_settings').select('*').maybeSingle(),
       ]);
+
+      // Colegas do próprio box — só pra montar um duelo novo pelo picker de
+      // busca. Quem é de fora entra por código (handleFindOutside), não por
+      // aqui, então não precisa (nem deve) aparecer nesta lista.
+      if (!isIndividual && user.boxId) {
+        const { data: mates } = await supabase
+          .from('profiles')
+          .select(profileFields)
+          .eq('status', 'approved')
+          .eq('box_id', user.boxId)
+          .neq('id', user.id);
+        setBoxMates(mates || []);
+      } else {
+        setBoxMates([]);
+      }
 
       if (duelsRes.data) {
         const mapped = duelsRes.data.map((d: any) => ({
@@ -267,8 +300,21 @@ export default function Duels() {
           });
           setWodPaceMeta(metaMap);
         }
+
+        // Perfis de todo participante dos duelos visíveis (challenger +
+        // oponentes), de qualquer box ou conta — é o que getUserName/
+        // getUserProfile/getStrengthById usam pra resolver nome/avatar/peso.
+        // Busca só quem aparece nos duelos, não o diretório inteiro.
+        const participantIds = [...new Set(visible.flatMap(d => [d.challengerId, ...d.opponentIds]))]
+          .filter(id => id !== user.id);
+        if (participantIds.length > 0) {
+          const { data: profilesData } = await supabase
+            .from('profiles').select(profileFields).in('id', participantIds);
+          if (profilesData) setUsers(profilesData);
+        } else {
+          setUsers([]);
+        }
       }
-      if (usersRes.data) setUsers(usersRes.data);
       if (wodsRes.data) setWods(wodsRes.data);
       if (settingsRes.data) setBoxSettings(settingsRes.data);
 
@@ -344,6 +390,54 @@ export default function Duels() {
 
   const getDuelWinXp = () => boxSettings?.rewards?.duel_win_xp ?? 40;
   const getDuelWinCoins = () => boxSettings?.rewards?.duel_win_coins ?? 10;
+
+  // ─── Desafiar alguém de fora do box (por código, mesmo gesto do Individual) ─
+
+  const handleCopyMyCode = async () => {
+    if (!user?.friendCode) return;
+    try {
+      await navigator.clipboard.writeText(user.friendCode);
+      toast.success('Código copiado!');
+    } catch {
+      toast.warning(`Seu código: ${user.friendCode}`);
+    }
+  };
+
+  const handleShareMyCode = () => {
+    if (!user?.friendCode) return;
+    const text = `⚔️ Me desafie para um duelo no BoxLink! Meu código de atleta: ${user.friendCode} — ${window.location.origin}`;
+    if (navigator.share) navigator.share({ title: 'BoxLink — Duelo', text }).catch(() => {});
+    else handleCopyMyCode();
+  };
+
+  const handleFindOutside = async () => {
+    if (!user || !outsideCode.trim()) return;
+    const code = normalizeFriendCode(outsideCode);
+    if (code === user.friendCode) {
+      toast.warning('Esse é o seu próprio código!'); return;
+    }
+    setSearchingOutside(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name, xp, coins, level, avatar_equipped, photo_url, weight_kg, friend_code')
+        .eq('friend_code', code)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) { toast.error('Nenhum atleta encontrado com esse código.'); return; }
+      if (selectedOpponents.includes(data.id)) { toast.warning('Esse atleta já está no desafio.'); return; }
+
+      setUsers(prev => prev.some(u => u.id === data.id) ? prev : [...prev, data]);
+      setSelectedOpponents(prev => [...prev, data.id]);
+      setOutsideOpponentIds(prev => new Set(prev).add(data.id));
+      setOutsideCode('');
+    } catch (err: any) {
+      console.error('Error finding outside athlete:', err);
+      toast.error('Erro ao buscar atleta.');
+    } finally {
+      setSearchingOutside(false);
+    }
+  };
 
   // ─── Criação de duelo ─────────────────────────────────────────────────────
 
@@ -431,6 +525,8 @@ export default function Duels() {
       }
 
       setSelectedOpponents([]);
+      setOutsideOpponentIds(new Set());
+      setOutsideCode('');
       setOpponentSearch('');
       setSelectedWodId('');
       setCategory('RX');
@@ -760,7 +856,7 @@ export default function Duels() {
     return true;
   }), [duels, activeTab, user]);
 
-  const filteredOpponents = users.filter(u =>
+  const filteredOpponents = boxMates.filter(u =>
     u.name.toLowerCase().includes(opponentSearch.toLowerCase()) &&
     !selectedOpponents.includes(u.id)
   );
@@ -897,14 +993,64 @@ export default function Duels() {
                 <div className="flex flex-wrap gap-2">
                   {selectedOpponents.map(id => (
                     <div key={id} className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 text-primary px-3 py-1.5 rounded-full">
+                      {outsideOpponentIds.has(id) && (
+                        <span className="flex items-center gap-0.5 text-[8px] font-black uppercase tracking-widest text-secondary border border-secondary/30 rounded-full px-1.5 py-0.5">
+                          <Globe className="w-2.5 h-2.5" /> Fora
+                        </span>
+                      )}
                       <span className="text-[11px] font-black uppercase">{getUserName(id)}</span>
-                      <button onClick={() => setSelectedOpponents(prev => prev.filter(x => x !== id))}>
+                      <button onClick={() => {
+                        setSelectedOpponents(prev => prev.filter(x => x !== id));
+                        setOutsideOpponentIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+                      }}>
                         <X className="w-3 h-3" />
                       </button>
                     </div>
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Desafiar alguém de fora do box, por código de atleta */}
+            <div className="bg-secondary/5 border border-secondary/20 rounded-2xl p-4 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-secondary flex-shrink-0" />
+                <p className="text-[10px] font-black text-secondary uppercase tracking-widest">Desafiar alguém de fora do box</p>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Código do atleta (ex: AB2C-3DEF)"
+                  value={outsideCode}
+                  onChange={e => setOutsideCode(e.target.value.toUpperCase())}
+                  className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface placeholder:text-on-surface-variant/40 outline-none tracking-wider"
+                />
+                <button
+                  onClick={handleFindOutside}
+                  disabled={searchingOutside || !outsideCode.trim()}
+                  className="bg-secondary text-background px-5 rounded-2xl font-headline font-black text-xs uppercase italic disabled:opacity-40 hover:opacity-90 transition-all"
+                >
+                  {searchingOutside
+                    ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
+                    : 'Buscar'}
+                </button>
+              </div>
+              <div className="flex items-center justify-between bg-surface-container-highest/50 rounded-xl px-3 py-2">
+                <div>
+                  <p className="text-[8px] text-on-surface-variant font-black uppercase tracking-widest">Seu código</p>
+                  <p className="text-sm font-headline font-black text-secondary italic tracking-wider">
+                    {user?.friendCode || '— — — —'}
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={handleCopyMyCode} className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant hover:text-secondary transition-all">
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={handleShareMyCode} className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant hover:text-secondary transition-all">
+                    <Share2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* WOD */}

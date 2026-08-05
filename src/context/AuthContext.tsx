@@ -65,6 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: data.created_at,
         accountType: data.account_type || 'box',
         friendCode: data.friend_code || null,
+        boxId: data.box_id || null,
         plan: data.plan || 'free',
         planExpiresAt: data.plan_expires_at || null
       };
