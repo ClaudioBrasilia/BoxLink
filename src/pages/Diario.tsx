@@ -20,6 +20,7 @@ import {
   Coins,
   Activity,
   ChevronRight,
+  ChevronDown,
   Send,
   Calendar,
 } from 'lucide-react';
@@ -167,6 +168,9 @@ export default function Diario() {
   // padrão — o caminho normal é tocar no chip do WOD do dia.
   const [showFreeDuel, setShowFreeDuel] = useState(false);
   const [creatingDuel, setCreatingDuel] = useState(false);
+  // Card de Amigos e Duelos fechado por padrão — igual aos cards de WOD, só
+  // o cabeçalho aparece até o atleta tocar pra abrir.
+  const [duelPanelOpen, setDuelPanelOpen] = useState(false);
 
   // Números da "Início" do individual — equivalentes ao que o Box mostra no
   // Dashboard (lá é ranking do box e desafios do box; aqui é a Liga da
@@ -1486,16 +1490,27 @@ export default function Diario() {
           Box já cria duelo em Duelos (busca entre atletas do próprio box). */}
       {isIndividual && (
       <section className="mx-6 mb-6 bg-surface-container rounded-3xl border border-outline-variant/10 p-6 flex flex-col gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center">
+        <button
+          type="button"
+          onClick={() => setDuelPanelOpen(o => !o)}
+          className="w-full flex items-center gap-3 text-left"
+        >
+          <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center flex-shrink-0">
             <Swords className="w-5 h-5 text-secondary" />
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <h2 className="font-headline font-black text-base text-on-surface uppercase italic leading-tight">Amigos e Duelos</h2>
-            <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest">Seus amigos formam sua Liga — e você pode desafiá-los</p>
+            <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest truncate">
+              {friends.length > 0
+                ? `${friends.length} amigo${friends.length > 1 ? 's' : ''} chamado${friends.length > 1 ? 's' : ''} pro desafio`
+                : 'Seus amigos formam sua Liga — e você pode desafiá-los'}
+            </p>
           </div>
-        </div>
+          <ChevronDown className={cn('w-4 h-4 text-on-surface-variant transition-transform flex-shrink-0', duelPanelOpen && 'rotate-180')} />
+        </button>
 
+        {duelPanelOpen && (
+        <>
         <div className="bg-surface-container-highest/50 rounded-2xl p-4 flex items-center justify-between border border-outline-variant/10">
           <div>
             <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest mb-0.5">Meu código de atleta</p>
@@ -1704,6 +1719,8 @@ export default function Diario() {
                     : friends.length > 1 ? `ENVIAR DESAFIO (${friends.length})` : 'ENVIAR DESAFIO'}
               </button>
         </div>
+        </>
+        )}
       </section>
       )}
 
