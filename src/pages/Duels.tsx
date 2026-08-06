@@ -37,6 +37,7 @@ import { computeRelativeStrength } from '../lib/relativeStrength';
 import WodSpotlightChart from '../components/WodSpotlightChart';
 import { WodSpotlightData } from '../lib/wodSpotlight';
 import { normalizeFriendCode } from '../lib/friendCode';
+import { registerDuelWorkout } from '../lib/duelWorkout';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -834,6 +835,33 @@ export default function Duels() {
             { duelId: duel.id }
           );
         }
+      }
+
+      // O duelo também é treino: registra no diário (e no placar/ranking
+      // conforme o tipo de conta). Isolado do fluxo do duelo de propósito —
+      // o resultado já está salvo aqui, então uma falha ao registrar não
+      // pode derrubar a submissão nem mostrar um erro enganoso.
+      try {
+        const logged = await registerDuelWorkout({
+          userId: user.id,
+          duelId: duel.id,
+          wodName: duel.wodName || 'Duelo',
+          wodType: duel.wodType,
+          description: duel.wodRx,
+          result,
+          isIndividual,
+          wodId: duel.wodId,
+          category: duel.category,
+          hrAvgPct: myPct,
+          loadKg: myLoad,
+        });
+        if (logged.logged && (logged.xp > 0 || logged.coins > 0)) {
+          toast.success(`Treino registrado! +${logged.xp} XP, +${logged.coins} coins`);
+        } else if (logged.logged) {
+          toast.success('Treino registrado no seu diário.');
+        }
+      } catch (logErr) {
+        console.error('Error registering duel workout:', logErr);
       }
 
       setSubmission(prev => ({ ...prev, [duel.id]: '' }));
