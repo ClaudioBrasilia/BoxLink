@@ -146,6 +146,9 @@ export default function Diario() {
   // Linha do placar (daily_wod_results) ligada ao treino em edição — garante
   // que ajustar o resultado em "Detalhes do Treino" bata na MESMA linha.
   const [placarRowId, setPlacarRowId] = useState<string | null>(null);
+  // Chips de "escolher o treino do dia" no Novo Registro ficam escondidos até
+  // o atleta tocar pra abrir — reduz a poluição visual do formulário.
+  const [showPlacarWodPicker, setShowPlacarWodPicker] = useState(false);
 
   const [codeInput, setCodeInput] = useState('');
   const [searchingFriend, setSearchingFriend] = useState(false);
@@ -1349,26 +1352,40 @@ export default function Diario() {
               <div className="flex flex-col gap-2">
                 {isIndividual && category === 'wod' && myOpenPlacarWods.length > 0 && (
                   <div className="flex flex-col gap-1.5">
-                    <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest px-1">
-                      Ou escolha o treino do dia
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {myOpenPlacarWods.map(row => (
-                        <button
-                          key={row.id}
-                          type="button"
-                          onClick={() => selectPlacarWod(row)}
-                          className={cn(
-                            'px-3 py-2 rounded-xl text-[11px] font-black uppercase italic tracking-wide transition-all border',
-                            placarRowId === row.id
-                              ? 'bg-primary text-background border-primary'
-                              : 'bg-surface-container-highest text-on-surface-variant border-transparent hover:border-primary/30'
-                          )}
-                        >
-                          {row.wod_name}
-                        </button>
-                      ))}
-                    </div>
+                    {/* Chips escondidos atrás de uma seta — igual ao resto do
+                        app — pra não pesar o formulário com um treino que já
+                        tem nome próprio. */}
+                    <button
+                      type="button"
+                      onClick={() => setShowPlacarWodPicker(o => !o)}
+                      className="w-full flex items-center justify-between gap-2 bg-surface-container-highest/50 rounded-2xl px-4 py-3 border border-outline-variant/10"
+                    >
+                      <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest truncate">
+                        {placarRowId
+                          ? `Treino: ${myOpenPlacarWods.find(r => r.id === placarRowId)?.wod_name}`
+                          : 'Ou escolha o treino do dia'}
+                      </span>
+                      <ChevronDown className={cn('w-4 h-4 text-on-surface-variant transition-transform flex-shrink-0', showPlacarWodPicker && 'rotate-180')} />
+                    </button>
+                    {showPlacarWodPicker && (
+                      <div className="flex flex-wrap gap-2">
+                        {myOpenPlacarWods.map(row => (
+                          <button
+                            key={row.id}
+                            type="button"
+                            onClick={() => selectPlacarWod(row)}
+                            className={cn(
+                              'px-3 py-2 rounded-xl text-[11px] font-black uppercase italic tracking-wide transition-all border',
+                              placarRowId === row.id
+                                ? 'bg-primary text-background border-primary'
+                                : 'bg-surface-container-highest text-on-surface-variant border-transparent hover:border-primary/30'
+                            )}
+                          >
+                            {row.wod_name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
                 <input
