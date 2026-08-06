@@ -16,6 +16,7 @@ import { DuelScoreOutcome } from '../lib/duelScore';
 import DuelRecapCard from '../components/DuelRecapCard';
 import WodSpotlightChart from '../components/WodSpotlightChart';
 import { WodSpotlightData } from '../lib/wodSpotlight';
+import { resolveGenderCode } from '../lib/profileGender';
 
 interface RankedUser extends UserType {
   monthXp?: number;
@@ -212,7 +213,7 @@ export default function Leaderboard() {
         if (!rawResults.length) return [];
         const userIds = [...new Set(rawResults.map((r: any) => r.user_id))];
         const { data: profilesData } = await supabase
-          .from('profiles').select('id, name, level, gender, avatar_equipped, photo_url, weight_kg').in('id', userIds);
+          .from('profiles').select('id, name, level, sex, avatar_equipped, photo_url, weight_kg').in('id', userIds);
         const profileMap: Record<string, any> = {};
         (profilesData || []).forEach((p: any) => { profileMap[p.id] = p; });
         return rawResults.map((r: any) => ({ ...r, profiles: profileMap[r.user_id] ?? null }));
@@ -238,8 +239,7 @@ export default function Leaderboard() {
           .sort((a: any, b: any) => isTimeBased ? a.scoreNum - b.scoreNum : b.scoreNum - a.scoreNum)
           .map((r: any) => {
             const profile = r.profiles;
-            const gender = profile?.gender ||
-              (profile?.avatar_equipped?.base_outfit === 'base_feminina' ? 'F' : 'M');
+            const gender = resolveGenderCode(profile);
             return {
               id: r.id,
               userId: r.user_id,

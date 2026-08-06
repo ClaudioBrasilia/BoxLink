@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../context/ToastContext';
 import { isTimeBasedType } from '../lib/pace';
+import { resolveGenderCode } from '../lib/profileGender';
 
 import { formatInTimeZone } from 'date-fns-tz';
 
@@ -50,7 +51,7 @@ export default function Coach() {
     if (todayWods && todayWods.length > 0) {
       const { data: resultsData } = await supabase
         .from('wod_results')
-        .select('*, profiles(name, gender, avatar_equipped), wods(*)')
+        .select('*, profiles(name, sex, avatar_equipped), wods(*)')
         .in('wod_id', todayWods.map(w => w.id))
         .order('created_at', { ascending: false });
       setResults(resultsData || []);
@@ -171,9 +172,7 @@ export default function Coach() {
         const key = `${cat} ${gLabel}`;
         const catResults = filteredResults.filter(r => {
           const rCat = r.type === 'RX' ? 'RX' : 'Scaled';
-          const equipped = r.profiles?.avatar_equipped;
-          const profileGender = r.profiles?.gender ||
-            (equipped?.base_outfit === 'base_feminina' ? 'F' : 'M');
+          const profileGender = resolveGenderCode(r.profiles);
           return rCat === cat && profileGender === g;
         });
 
