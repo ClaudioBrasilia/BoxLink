@@ -15,6 +15,7 @@ import { computeRepsPerMinute, parseTimeToSeconds, isTimeBasedType, WodPaceMeta 
 import { computeRelativeStrength } from '../lib/relativeStrength';
 import { WodSpotlightData } from '../lib/wodSpotlight';
 import WodSpotlightChart from '../components/WodSpotlightChart';
+import { resolveGenderCode } from '../lib/profileGender';
 
 const TIMEZONE = "America/Sao_Paulo";
 
@@ -110,6 +111,21 @@ function TVHeartRatePanel() {
 // muito mais legível de longe na TV do que uma tabela de números.
 
 // O gráfico em si vive em WodSpotlightChart, compartilhado com o celular.
+
+/** Converte o resultado bruto do WOD em número comparável (segundos p/ tempo,
+ *  rounds*repsPerRound+reps p/ AMRAP). Compartilhado pelo Destaque e pelo
+ *  ranking por gênero — os dois precisam ranquear exatamente do mesmo jeito. */
+function parseWodScore(r: string, repsPerRound?: number): number | null {
+  const str = (r || '').trim();
+  if (!str) return null;
+  const amrap = str.match(/^(\d+)\+(\d+)$/);
+  if (amrap) return parseInt(amrap[1], 10) * (repsPerRound || 100) + parseInt(amrap[2], 10);
+  const secs = parseTimeToSeconds(str);
+  if (secs != null) return secs;
+  const n = parseFloat(str.replace(/[^0-9.]/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /** Monta o destaque do WOD do dia a partir do placar já registrado. */
 async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>): Promise<WodSpotlightData | null> {
   if (!activeWod?.id) return null;
@@ -127,21 +143,10 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
     timeCapMinutes: activeWod.time_cap_minutes,
   };
 
-  const parseScore = (r: string): number | null => {
-    const str = (r || '').trim();
-    if (!str) return null;
-    const amrap = str.match(/^(\d+)\+(\d+)$/);
-    if (amrap) return parseInt(amrap[1], 10) * (repsPerRound || 100) + parseInt(amrap[2], 10);
-    const secs = parseTimeToSeconds(str);
-    if (secs != null) return secs;
-    const n = parseFloat(str.replace(/[^0-9.]/g, ''));
-    return Number.isFinite(n) && n > 0 ? n : null;
-  };
-
   // Melhor resultado de cada atleta
   const bestByUser: Record<string, { result: string; score: number; loadKg: number | null }> = {};
   rows.forEach((r: any) => {
-    const score = parseScore(r.result);
+    const score = parseWodScore(r.result, repsPerRound);
     if (score == null) return;
     const prev = bestByUser[r.user_id];
     if (!prev || (timeBased ? score < prev.score : score > prev.score)) {
@@ -187,6 +192,58 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
   };
 }
 
+export interface TVWodRankEntry {
+  id: string;
+  name: string;
+  photo_url: string | null;
+  result: string;
+  scoreNum: number;
+}
+
+/** Ranking do WOD do dia (mesmo placar do Destaque), separado em masculino e
+ *  feminino a partir de profiles.sex — cada lista já vem ordenada. */
+async function buildWodGenderRanking(
+  activeWod: any,
+  profileMap: Record<string, any>
+): Promise<{ male: TVWodRankEntry[]; female: TVWodRankEntry[] }> {
+  const empty = { male: [], female: [] };
+  if (!activeWod?.id) return empty;
+
+  const { data: rows } = await supabase
+    .from('wod_results').select('user_id, result').eq('wod_id', activeWod.id);
+  if (!rows || rows.length === 0) return empty;
+
+  const timeBased = isTimeBasedType(activeWod.type);
+  const repsPerRound = activeWod.reps_per_round as number | undefined;
+
+  const bestByUser: Record<string, { result: string; score: number }> = {};
+  rows.forEach((r: any) => {
+    const score = parseWodScore(r.result, repsPerRound);
+    if (score == null) return;
+    const prev = bestByUser[r.user_id];
+    if (!prev || (timeBased ? score < prev.score : score > prev.score)) {
+      bestByUser[r.user_id] = { result: r.result, score };
+    }
+  });
+
+  const entries = Object.entries(bestByUser).map(([userId, v]) => ({
+    id: userId,
+    name: profileMap[userId]?.name || 'Atleta',
+    photo_url: profileMap[userId]?.photo_url ?? null,
+    result: v.result,
+    scoreNum: v.score,
+    gender: resolveGenderCode(profileMap[userId]),
+  }));
+
+  const byScore = (a: typeof entries[number], b: typeof entries[number]) =>
+    timeBased ? a.scoreNum - b.scoreNum : b.scoreNum - a.scoreNum;
+
+  return {
+    male: entries.filter(e => e.gender === 'M').sort(byScore),
+    female: entries.filter(e => e.gender === 'F').sort(byScore),
+  };
+}
+
 function TVSpotlightPanel({ spotlight }: { spotlight: WodSpotlightData | null }) {
   const [hr, setHr] = useState<{ mine: number | null; avg: number | null }>({ mine: null, avg: null });
   const athleteId = spotlight?.athlete.id;
@@ -221,13 +278,15 @@ function TVSpotlightPanel({ spotlight }: { spotlight: WodSpotlightData | null })
   );
 }
 
+type RankingView = 'xp' | 'frequency' | 'wod_m' | 'wod_f';
+
 // ─── TV Principal ─────────────────────────────────────────────────────────────
 export default function TV() {
   const sponsors = useSponsors();
   const [data, setData] = useState<any>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isWodAutoRotationActive, setIsWodAutoRotationActive] = useState(true);
-  const [rankingView, setRankingView] = useState<'xp' | 'frequency'>('xp');
+  const [rankingView, setRankingView] = useState<RankingView>('xp');
   const [athleteIndex, setAthleteIndex] = useState(0);
   const [wodTabIndex, setWodTabIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -257,7 +316,7 @@ export default function TV() {
       const nowStr = formatInTimeZone(new Date(), TIMEZONE, 'HH:mm');
       const currentClass = (scheduleData || []).find((s: any) => nowStr >= s.time && nowStr <= (s.end_time || s.endTime || '23:59'));
       const { data: checkinsRaw } = await supabase.from('checkins').select('*').gte('date', today).order('timestamp', { ascending: false }).limit(20);
-      const { data: profilesRaw } = await supabase.from('profiles').select('id, name, avatar_equipped, xp, level, role, photo_url, weight_kg');
+      const { data: profilesRaw } = await supabase.from('profiles').select('id, name, avatar_equipped, xp, level, role, photo_url, weight_kg, sex');
       const profileMap = Object.fromEntries((profilesRaw || []).map((p: any) => [p.id, p]));
 
       const inactivitySettings: InactivitySettings = settings?.inactivity ||
@@ -329,6 +388,7 @@ export default function TV() {
       // Usa o placar do WOD (o que o box acabou de viver na aula), não o XP do
       // mês — é o dado que faz sentido comparar na tela durante/depois da aula.
       const wodSpotlight = await buildWodSpotlight(activeWod, profileMap);
+      const wodGenderRanking = await buildWodGenderRanking(activeWod, profileMap);
 
       const rawTvConfig = settings?.tv_config || settings?.tvConfig || {};
       const tvConfig = {
@@ -365,7 +425,7 @@ export default function TV() {
         tvConfig, rewards: economy, wod: activeWod || null, checkins: checkins || [],
         challenges: challenges || [],
         duels: mappedDuels,
-        rankings: rankings || [], stats, frequencyRanking, wodSpotlight,
+        rankings: rankings || [], stats, frequencyRanking, wodSpotlight, wodGenderRanking,
         announcements: settings?.announcements || [],
       });
       setError(null);
@@ -384,14 +444,34 @@ export default function TV() {
     athleteCountRef.current = count;
   }, [data?.checkins?.length, data?.rankings?.length]);
 
+  // Contagem por gênero do ranking WOD — o rodízio automático pula WOD ♂/♀
+  // enquanto ninguém daquele gênero tiver resultado ainda.
+  const wodGenderCountsRef = useRef({ male: 0, female: 0 });
+  useEffect(() => {
+    wodGenderCountsRef.current = {
+      male: data?.wodGenderRanking?.male?.length || 0,
+      female: data?.wodGenderRanking?.female?.length || 0,
+    };
+  }, [data?.wodGenderRanking]);
+
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 30000);
     const athleteInterval = setInterval(() => {
       setAthleteIndex(prev => { const count = athleteCountRef.current || 1; return (prev + 1) % count; });
     }, 4000);
+    const rankingOrder: RankingView[] = ['xp', 'frequency', 'wod_m', 'wod_f'];
     const rankingInterval = setInterval(() => {
-      setRankingView(prev => prev === 'xp' ? 'frequency' : 'xp');
+      setRankingView(prev => {
+        const startIdx = rankingOrder.indexOf(prev);
+        for (let step = 1; step <= rankingOrder.length; step++) {
+          const next = rankingOrder[(startIdx + step) % rankingOrder.length];
+          if (next === 'wod_m' && wodGenderCountsRef.current.male === 0) continue;
+          if (next === 'wod_f' && wodGenderCountsRef.current.female === 0) continue;
+          return next;
+        }
+        return prev;
+      });
     }, 10000);
 
     let realtimeChannel: ReturnType<typeof supabase.channel>;
@@ -439,6 +519,16 @@ export default function TV() {
   );
 
   const { wod, checkins, settings, rankings, stats, duels, challenges, frequencyRanking, tvConfig, announcements, wodSpotlight } = data;
+  const wodGenderRanking: { male: TVWodRankEntry[]; female: TVWodRankEntry[] } = data.wodGenderRanking || { male: [], female: [] };
+
+  const currentRankingList = rankingView === 'xp' ? rankings
+    : rankingView === 'frequency' ? frequencyRanking
+    : rankingView === 'wod_m' ? wodGenderRanking.male
+    : wodGenderRanking.female;
+
+  const rankingScoreLabel = (r: any) => rankingView === 'xp' ? `${r.xp} XP`
+    : rankingView === 'frequency' ? `${r.count} aulas`
+    : r.result;
   const tickerItems = {
     duels: tvConfig?.tickerItems?.duels ?? true,
     checkins: tvConfig?.tickerItems?.checkins ?? true,
@@ -667,75 +757,85 @@ export default function TV() {
                 <Trophy className="w-5 h-5 text-primary" />
                 <h3 className="text-base font-headline font-black text-white italic uppercase tracking-tight">TOP 3</h3>
               </div>
-              <div className="flex gap-2">
-                {(['xp', 'frequency'] as const).map(tab => (
+              <div className="flex gap-1.5 flex-wrap justify-end">
+                {(['xp', 'frequency', 'wod_m', 'wod_f'] as const).map(tab => (
                   <button key={tab} onClick={() => setRankingView(tab)}
-                    className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${rankingView === tab ? 'bg-primary text-black' : 'bg-white/5 text-white/40'}`}>
-                    {tab === 'xp' ? 'XP MÊS' : 'FREQ'}
+                    className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${rankingView === tab ? 'bg-primary text-black' : 'bg-white/5 text-white/40'}`}>
+                    {tab === 'xp' ? 'XP MÊS' : tab === 'frequency' ? 'FREQ' : tab === 'wod_m' ? 'WOD ♂' : 'WOD ♀'}
                   </button>
                 ))}
               </div>
             </div>
 
-            <AnimatePresence mode="wait">
-              <motion.div key={rankingView}
-                initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                className="flex items-end justify-between gap-2 px-2 pb-1">
-                {(rankingView === 'xp' ? rankings : frequencyRanking)[1] && (() => {
-                  const r = (rankingView === 'xp' ? rankings : frequencyRanking)[1];
-                  return (
-                    <div className="flex flex-col items-center gap-1 flex-1">
-                      <AthletePhoto photoUrl={r.photo_url} name={r.name || '?'} size="sm" ringColor="border-white/20" className="w-10 h-10" />
-                      <p className="text-white/80 text-[9px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
-                      <p className="text-white/50 text-[8px] font-bold">{rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}</p>
-                      <div className="w-full h-8 bg-white/10 rounded-t-lg flex items-center justify-center">
-                        <span className="text-white/60 text-xs font-black">#2</span>
-                      </div>
-                    </div>
-                  );
-                })()}
-                {(rankingView === 'xp' ? rankings : frequencyRanking)[0] && (() => {
-                  const r = (rankingView === 'xp' ? rankings : frequencyRanking)[0];
-                  return (
-                    <div className="flex flex-col items-center gap-1 flex-1">
-                      <AthletePhoto photoUrl={r.photo_url} name={r.name || '?'} size="md" ringColor="border-primary" className="w-12 h-12 shadow-[0_0_15px_rgba(202,253,0,0.4)]" />
-                      <p className="text-primary text-[10px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
-                      <p className="text-primary text-[9px] font-black">{rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}</p>
-                      <div className="w-full h-12 bg-primary/20 border border-primary/30 rounded-t-lg flex items-center justify-center">
-                        <span className="text-primary text-sm font-black">👑 #1</span>
-                      </div>
-                    </div>
-                  );
-                })()}
-                {(rankingView === 'xp' ? rankings : frequencyRanking)[2] && (() => {
-                  const r = (rankingView === 'xp' ? rankings : frequencyRanking)[2];
-                  return (
-                    <div className="flex flex-col items-center gap-1 flex-1">
-                      <AthletePhoto photoUrl={r.photo_url} name={r.name || '?'} size="sm" ringColor="border-white/10" className="w-9 h-9" />
-                      <p className="text-white/50 text-[9px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
-                      <p className="text-white/40 text-[8px] font-bold">{rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}</p>
-                      <div className="w-full h-6 bg-white/5 rounded-t-lg flex items-center justify-center">
-                        <span className="text-white/40 text-[9px] font-black">#3</span>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </motion.div>
-            </AnimatePresence>
+            {currentRankingList.length === 0 ? (
+              <p className="text-white/20 text-[10px] font-black uppercase tracking-widest italic text-center py-8">
+                {rankingView === 'wod_m' ? 'Nenhum resultado masculino ainda'
+                  : rankingView === 'wod_f' ? 'Nenhum resultado feminino ainda'
+                  : 'Sem dados ainda'}
+              </p>
+            ) : (
+              <>
+                <AnimatePresence mode="wait">
+                  <motion.div key={rankingView}
+                    initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+                    className="flex items-end justify-between gap-2 px-2 pb-1">
+                    {currentRankingList[1] && (() => {
+                      const r = currentRankingList[1];
+                      return (
+                        <div className="flex flex-col items-center gap-1 flex-1">
+                          <AthletePhoto photoUrl={r.photo_url} name={r.name || '?'} size="sm" ringColor="border-white/20" className="w-10 h-10" />
+                          <p className="text-white/80 text-[9px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
+                          <p className="text-white/50 text-[8px] font-bold">{rankingScoreLabel(r)}</p>
+                          <div className="w-full h-8 bg-white/10 rounded-t-lg flex items-center justify-center">
+                            <span className="text-white/60 text-xs font-black">#2</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {currentRankingList[0] && (() => {
+                      const r = currentRankingList[0];
+                      return (
+                        <div className="flex flex-col items-center gap-1 flex-1">
+                          <AthletePhoto photoUrl={r.photo_url} name={r.name || '?'} size="md" ringColor="border-primary" className="w-12 h-12 shadow-[0_0_15px_rgba(202,253,0,0.4)]" />
+                          <p className="text-primary text-[10px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
+                          <p className="text-primary text-[9px] font-black">{rankingScoreLabel(r)}</p>
+                          <div className="w-full h-12 bg-primary/20 border border-primary/30 rounded-t-lg flex items-center justify-center">
+                            <span className="text-primary text-sm font-black">👑 #1</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {currentRankingList[2] && (() => {
+                      const r = currentRankingList[2];
+                      return (
+                        <div className="flex flex-col items-center gap-1 flex-1">
+                          <AthletePhoto photoUrl={r.photo_url} name={r.name || '?'} size="sm" ringColor="border-white/10" className="w-9 h-9" />
+                          <p className="text-white/50 text-[9px] font-black uppercase italic truncate max-w-full text-center">{r.name?.split(' ')[0]}</p>
+                          <p className="text-white/40 text-[8px] font-bold">{rankingScoreLabel(r)}</p>
+                          <div className="w-full h-6 bg-white/5 rounded-t-lg flex items-center justify-center">
+                            <span className="text-white/40 text-[9px] font-black">#3</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </motion.div>
+                </AnimatePresence>
 
-            <div className="flex flex-col gap-1 pt-2 border-t border-white/5">
-              {(rankingView === 'xp' ? rankings : frequencyRanking).slice(3, 5).map((r: any, i: number) => (
-                <div key={i} className="flex items-center justify-between px-2 py-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-white/30 text-[9px] font-black w-4">#{i + 4}</span>
-                    <span className="text-white/60 text-[10px] font-black uppercase truncate max-w-[100px]">{r.name?.split(' ')[0]}</span>
-                  </div>
-                  <span className="text-white/40 text-[9px] font-black">
-                    {rankingView === 'xp' ? `${r.xp} XP` : `${r.count} aulas`}
-                  </span>
+                <div className="flex flex-col gap-1 pt-2 border-t border-white/5">
+                  {currentRankingList.slice(3, 5).map((r: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between px-2 py-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/30 text-[9px] font-black w-4">#{i + 4}</span>
+                        <span className="text-white/60 text-[10px] font-black uppercase truncate max-w-[100px]">{r.name?.split(' ')[0]}</span>
+                      </div>
+                      <span className="text-white/40 text-[9px] font-black">
+                        {rankingScoreLabel(r)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </section>
 
           <TVHeartRatePanel />
