@@ -153,7 +153,9 @@ export default function Diario() {
   // código de novo (a lista é mútua: aparece pros dois lados do duelo).
   const [savedFriends, setSavedFriends] = useState<FriendProfile[]>([]);
   const [duelName, setDuelName] = useState('');
-  const [duelType, setDuelType] = useState<'FOR TIME' | 'AMRAP' | 'EMOM'>('FOR TIME');
+  // Texto livre porque o tipo pode vir copiado do WOD do dia (que aceita
+  // TABATA/OUTRO além dos três do desafio livre).
+  const [duelType, setDuelType] = useState<string>('FOR TIME');
   const [duelDesc, setDuelDesc] = useState('');
   // Premium: números do WOD para calcular o ritmo (reps/min) no recap do duelo
   const [duelTotalReps, setDuelTotalReps] = useState('');
@@ -161,6 +163,9 @@ export default function Diario() {
   // WOD de hoje escolhido como desafio (chip marcado) — só controla a seleção
   // visual; o duelo em si continua guardando nome/tipo/movimentos copiados.
   const [duelFromWodId, setDuelFromWodId] = useState<string | null>(null);
+  // Desafio livre: escreve um WOD que não foi postado hoje. Fica fechado por
+  // padrão — o caminho normal é tocar no chip do WOD do dia.
+  const [showFreeDuel, setShowFreeDuel] = useState(false);
   const [creatingDuel, setCreatingDuel] = useState(false);
 
   // Números da "Início" do individual — equivalentes ao que o Box mostra no
@@ -462,25 +467,33 @@ export default function Diario() {
     setPostToPlacar(true);
   };
 
-  /** Desafiar com um WOD já postado hoje: copia nome/tipo/movimentos pro
-   *  formulário do duelo. Tocar no chip marcado de novo desmarca e devolve
-   *  os campos em branco, pra escrever um desafio do zero. */
+  const clearDuelWod = () => {
+    setDuelFromWodId(null);
+    setDuelName(''); setDuelType('FOR TIME'); setDuelDesc('');
+    setDuelTotalReps(''); setDuelTimeCapMinutes('');
+  };
+
+  /** Desafiar com um WOD já postado hoje: o desafio É aquele WOD, então
+   *  nome/tipo/movimentos vêm copiados dele em vez de redigitados. O tipo vai
+   *  como está no WOD (inclusive TABATA/OUTRO) — quem decide se o placar é
+   *  por tempo ou por reps é o próprio tipo, lá no duelo. */
   const selectDuelWod = (row: (typeof myWodsToday)[number]) => {
-    if (duelFromWodId === row.id) {
-      setDuelFromWodId(null);
-      setDuelName(''); setDuelType('FOR TIME'); setDuelDesc('');
-      setDuelTotalReps(''); setDuelTimeCapMinutes('');
-      return;
-    }
+    if (duelFromWodId === row.id) { clearDuelWod(); return; }
+    setShowFreeDuel(false);
     setDuelFromWodId(row.id);
     setDuelName(row.wod_name);
-    // O duelo só sabe rodar estes três tipos; qualquer outro cai em FOR TIME.
-    const type = (row.wod_type || '').toUpperCase();
-    setDuelType(type === 'AMRAP' || type === 'EMOM' ? type : 'FOR TIME');
+    setDuelType(row.wod_type || 'FOR TIME');
     setDuelDesc(row.description || '');
     // Total de reps já cadastrado no placar libera o ritmo sem redigitar.
     setDuelTotalReps(row.total_reps != null ? String(row.total_reps) : '');
     setDuelTimeCapMinutes('');
+  };
+
+  /** Abre/fecha o desafio livre (WOD que não foi postado hoje). */
+  const toggleFreeDuel = () => {
+    if (showFreeDuel) { setShowFreeDuel(false); clearDuelWod(); return; }
+    clearDuelWod();
+    setShowFreeDuel(true);
   };
 
   const handleSave = async () => {
@@ -808,8 +821,13 @@ export default function Diario() {
 
   const handleCreateDuel = async () => {
     if (!user || friends.length === 0) return;
-    if (!duelName.trim() || !duelDesc.trim()) {
-      toast.warning('Preencha nome e descrição do desafio.'); return;
+    if (!duelName.trim()) {
+      toast.warning('Escolha um WOD de hoje ou escreva um desafio.'); return;
+    }
+    // Descrição só é obrigatória no desafio livre: vindo de um WOD do dia,
+    // os movimentos podem não ter sido preenchidos no momento de postar.
+    if (showFreeDuel && !duelDesc.trim()) {
+      toast.warning('Preencha a descrição do desafio.'); return;
     }
     setCreatingDuel(true);
     try {
@@ -874,8 +892,8 @@ export default function Diario() {
       toast.success(friends.length === 1
         ? `Duelo enviado para ${friends[0].name}! Acompanhe na aba Duelos. ⚔️`
         : `Duelo enviado para ${friends.length} amigos! Acompanhe na aba Duelos. ⚔️`);
-      setFriends([]); setCodeInput(''); setDuelName(''); setDuelDesc('');
-      setDuelTotalReps(''); setDuelTimeCapMinutes(''); setDuelFromWodId(null);
+      setFriends([]); setCodeInput('');
+      clearDuelWod(); setShowFreeDuel(false);
     } catch (err: any) {
       console.error('Error creating friend duel:', err);
       toast.error('Erro ao criar duelo: ' + err.message);
@@ -1617,53 +1635,62 @@ export default function Diario() {
                   Poste um WOD hoje e ele aparece aqui para desafiar com um toque
                 </p>
               )}
-              <input
-                type="text"
-                placeholder="Nome do desafio (ex: 100 Burpees)"
-                value={duelName}
-                onChange={e => setDuelName(e.target.value)}
-                className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
-              />
-              <select
-                value={duelType}
-                onChange={e => setDuelType(e.target.value as any)}
-                className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+              {/* Escrever um WOD que não foi postado hoje continua possível,
+                  mas fechado por padrão — o caminho normal é o chip acima. */}
+              <button
+                type="button"
+                onClick={toggleFreeDuel}
+                className="self-start text-[9px] font-black text-secondary uppercase tracking-widest px-1 hover:opacity-80 transition-opacity"
               >
-                <option value="FOR TIME">For Time — menor tempo vence</option>
-                <option value="AMRAP">AMRAP — mais reps vence</option>
-                <option value="EMOM">EMOM</option>
-              </select>
-              <textarea
-                placeholder="Descrição / movimentos do desafio"
-                value={duelDesc}
-                onChange={e => setDuelDesc(e.target.value)}
-                rows={2}
-                className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
-              />
+                {showFreeDuel ? '← Usar um WOD de hoje' : '+ Escrever outro desafio'}
+              </button>
 
-              {/* Números do WOD que permitem calcular o ritmo. Livres de
-                  propósito: enquanto eram Premium o dado nunca era coletado,
-                  então nem havia o que mostrar depois. O que continua Premium
-                  é a leitura comparativa no recap, não o registro. */}
-              {(duelType === 'FOR TIME' || duelType === 'AMRAP') && (
-                <div className="flex flex-col gap-1">
+              {showFreeDuel && (
+                <>
                   <input
-                    type="number"
-                    inputMode="numeric"
-                    placeholder={duelType === 'FOR TIME' ? 'Total de reps do desafio (ex: 150)' : 'Duração em minutos (ex: 20)'}
-                    value={duelType === 'FOR TIME' ? duelTotalReps : duelTimeCapMinutes}
-                    onChange={e => duelType === 'FOR TIME' ? setDuelTotalReps(e.target.value) : setDuelTimeCapMinutes(e.target.value)}
-                    className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+                    type="text"
+                    placeholder="Nome do desafio (ex: 100 Burpees)"
+                    value={duelName}
+                    onChange={e => setDuelName(e.target.value)}
+                    className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
                   />
-                  <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
-                    Opcional — libera o ritmo (reps/min) no resultado do duelo
-                  </p>
-                </div>
+                  <select
+                    value={duelType}
+                    onChange={e => setDuelType(e.target.value)}
+                    className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+                  >
+                    <option value="FOR TIME">For Time — menor tempo vence</option>
+                    <option value="AMRAP">AMRAP — mais reps vence</option>
+                    <option value="EMOM">EMOM</option>
+                  </select>
+                  <textarea
+                    placeholder="Descrição / movimentos do desafio"
+                    value={duelDesc}
+                    onChange={e => setDuelDesc(e.target.value)}
+                    rows={2}
+                    className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
+                  />
+                  {(duelType === 'FOR TIME' || duelType === 'AMRAP') && (
+                    <div className="flex flex-col gap-1">
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        placeholder={duelType === 'FOR TIME' ? 'Total de reps do desafio (ex: 150)' : 'Duração em minutos (ex: 20)'}
+                        value={duelType === 'FOR TIME' ? duelTotalReps : duelTimeCapMinutes}
+                        onChange={e => duelType === 'FOR TIME' ? setDuelTotalReps(e.target.value) : setDuelTimeCapMinutes(e.target.value)}
+                        className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+                      />
+                      <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
+                        Opcional — libera o ritmo (reps/min) no resultado do duelo
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
 
               <button
                 onClick={handleCreateDuel}
-                disabled={creatingDuel || friends.length === 0 || !duelName.trim() || !duelDesc.trim()}
+                disabled={creatingDuel || friends.length === 0 || !duelName.trim()}
                 className="w-full bg-secondary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic shadow-lg flex items-center justify-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
               >
                 {creatingDuel
@@ -1672,7 +1699,9 @@ export default function Diario() {
                 {/* O botão é quem avisa o que falta — nada some da tela. */}
                 {friends.length === 0
                   ? 'ADICIONE UM AMIGO'
-                  : friends.length > 1 ? `ENVIAR DESAFIO (${friends.length})` : 'ENVIAR DESAFIO'}
+                  : !duelName.trim()
+                    ? 'ESCOLHA O WOD'
+                    : friends.length > 1 ? `ENVIAR DESAFIO (${friends.length})` : 'ENVIAR DESAFIO'}
               </button>
         </div>
       </section>
