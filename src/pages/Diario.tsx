@@ -1584,15 +1584,12 @@ export default function Diario() {
           </div>
         )}
 
-        <AnimatePresence>
-          {friends.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="flex flex-col gap-3 overflow-hidden"
-            >
-              {myWodsToday.length > 0 && (
+        {/* Formulário sempre visível: antes ele só aparecia depois de
+            adicionar um amigo, então quem abria a seção via só o campo de
+            código e não descobria que dava pra desafiar com o WOD do dia.
+            Agora tudo fica à mostra e o botão diz o que ainda falta. */}
+        <div className="flex flex-col gap-3">
+              {myWodsToday.length > 0 ? (
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest px-1">
                     Desafie com um WOD de hoje
@@ -1615,6 +1612,10 @@ export default function Diario() {
                     ))}
                   </div>
                 </div>
+              ) : (
+                <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest px-1 leading-snug">
+                  Poste um WOD hoje e ele aparece aqui para desafiar com um toque
+                </p>
               )}
               <input
                 type="text"
@@ -1662,17 +1663,18 @@ export default function Diario() {
 
               <button
                 onClick={handleCreateDuel}
-                disabled={creatingDuel || !duelName.trim() || !duelDesc.trim()}
+                disabled={creatingDuel || friends.length === 0 || !duelName.trim() || !duelDesc.trim()}
                 className="w-full bg-secondary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic shadow-lg flex items-center justify-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
               >
                 {creatingDuel
                   ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
                   : <Swords className="w-5 h-5" />}
-                {friends.length > 1 ? `ENVIAR DESAFIO (${friends.length})` : 'ENVIAR DESAFIO'}
+                {/* O botão é quem avisa o que falta — nada some da tela. */}
+                {friends.length === 0
+                  ? 'ADICIONE UM AMIGO'
+                  : friends.length > 1 ? `ENVIAR DESAFIO (${friends.length})` : 'ENVIAR DESAFIO'}
               </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        </div>
       </section>
       )}
 
