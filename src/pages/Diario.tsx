@@ -152,6 +152,8 @@ export default function Diario() {
 
   const [codeInput, setCodeInput] = useState('');
   const [searchingFriend, setSearchingFriend] = useState(false);
+  // Sugestão de amigos abaixo do campo de busca — abre ao tocar nele.
+  const [friendPickerOpen, setFriendPickerOpen] = useState(false);
   const [friends, setFriends] = useState<FriendProfile[]>([]);
   // Amigos de duelos anteriores — salvos pra escolher direto, sem digitar o
   // código de novo (a lista é mútua: aparece pros dois lados do duelo).
@@ -381,6 +383,17 @@ export default function Diario() {
     () => placarRows.filter(r => r.user_id === user?.id),
     [placarRows, user?.id]
   );
+
+  // Sugestões do campo de busca: amigos de duelos anteriores que ainda não
+  // estão neste desafio. Sem texto (campo recém-tocado) mostra todos; com
+  // texto filtra por nome — quem não está na lista continua entrando por
+  // código, pelo botão Buscar.
+  const friendSuggestions = useMemo(() => {
+    const available = savedFriends.filter(f => !friends.some(x => x.id === f.id));
+    const query = codeInput.trim().toLowerCase();
+    if (!query) return available;
+    return available.filter(f => f.name.toLowerCase().includes(query));
+  }, [savedFriends, friends, codeInput]);
 
   const refreshBalances = async () => {
     if (!user) return;
@@ -759,6 +772,12 @@ export default function Diario() {
   const handleFindFriend = async () => {
     if (!user || !codeInput.trim()) return;
     const code = normalizeFriendCode(codeInput);
+    // O campo aceita nome ou código, mas só o código encontra alguém novo —
+    // nome serve pra filtrar a lista de sugestões logo abaixo.
+    if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) {
+      toast.warning('Toque num amigo da lista ou digite o código dele (ex: AB2C-3DEF).');
+      return;
+    }
     if (code === user.friendCode) {
       toast.warning('Esse é o seu próprio código! Chame um colega. 😄'); return;
     }
@@ -1540,16 +1559,47 @@ export default function Diario() {
           </div>
         </div>
 
+        {/* Um campo só: nome (filtra os amigos de duelos anteriores, na lista
+            que abre abaixo) ou código (acha alguém novo, pelo botão Buscar). */}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-variant/50" />
             <input
               type="text"
-              placeholder="Código do amigo (ex: AB2C-3DEF)"
+              placeholder="Nome ou código do amigo"
               value={codeInput}
-              onChange={e => setCodeInput(e.target.value.toUpperCase())}
+              onChange={e => setCodeInput(e.target.value)}
+              onFocus={() => setFriendPickerOpen(true)}
+              // Atraso pro toque na sugestão acontecer antes do campo fechar.
+              onBlur={() => setTimeout(() => setFriendPickerOpen(false), 150)}
               className="w-full bg-surface-container-highest rounded-2xl pl-9 pr-4 py-3 text-sm font-bold text-on-surface placeholder:text-on-surface-variant/40 outline-none tracking-wider"
             />
+            {friendPickerOpen && friendSuggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 z-20 bg-surface-container-highest rounded-2xl border border-outline-variant/10 shadow-xl max-h-56 overflow-y-auto">
+                {friendSuggestions.map(f => (
+                  <div key={f.id} className="flex items-center gap-3 pl-4 pr-2 hover:bg-primary/10 transition-all">
+                    <button
+                      onClick={() => { addSavedFriend(f); setCodeInput(''); setFriendPickerOpen(false); }}
+                      className="flex-1 flex items-center gap-3 py-3 text-left min-w-0"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center font-headline font-black text-sm text-on-surface flex-shrink-0">
+                        {f.name[0]}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-on-surface uppercase italic truncate">{f.name}</p>
+                        <p className="text-[10px] text-on-surface-variant font-bold">Nível {f.level} • {f.xp} XP</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => removeSavedFriend(f.id)}
+                      className="p-2 text-on-surface-variant/60 hover:text-on-surface transition-all flex-shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <button
             onClick={handleFindFriend}
@@ -1561,36 +1611,6 @@ export default function Diario() {
               : 'Buscar'}
           </button>
         </div>
-
-        {savedFriends.length > 0 && (
-          <div className="flex flex-col gap-2">
-            <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest px-1">
-              Seus amigos ({savedFriends.length}) — toque para chamar ao duelo
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {savedFriends.map(f => {
-                const alreadyAdded = friends.some(x => x.id === f.id);
-                return (
-                  <div
-                    key={f.id}
-                    className={`flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-full border ${alreadyAdded ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-surface-container-highest border-outline-variant/10 text-on-surface-variant'}`}
-                  >
-                    <button
-                      onClick={() => addSavedFriend(f)}
-                      disabled={alreadyAdded}
-                      className="text-[11px] font-black uppercase italic disabled:opacity-70"
-                    >
-                      {f.name.split(' ')[0]}
-                    </button>
-                    <button onClick={() => removeSavedFriend(f.id)} className="opacity-60 hover:opacity-100 p-0.5">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {!premium && (
           <div className="flex flex-col gap-2">
