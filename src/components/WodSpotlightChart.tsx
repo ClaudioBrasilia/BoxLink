@@ -107,16 +107,18 @@ function Header({ firstName, subtitle, badgeLabel, isTv }: { firstName: string; 
   return (
     <div className={cn('flex items-start justify-between gap-3', isTv && 'shrink-0')}>
       <div className="min-w-0">
-        {/* Na TV sobra largura e o corte evita quebrar o layout; no celular o
-            título é o gancho da tela, então quebra em duas linhas em vez de
-            virar "ONDE ISABELA S...". */}
-        <h2 className={cn('font-headline font-black uppercase italic tracking-tighter leading-none',
-          isTv ? 'text-[2.75rem] truncate' : 'text-lg')}
-          style={{ background: TITLE_GRADIENT, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-          ONDE {firstName} SE SEPARA
-        </h2>
-        <p className={cn('font-black uppercase tracking-[0.2em] italic mt-1',
-          isTv ? 'text-white/50 text-sm' : 'text-on-surface-variant text-[9px] leading-snug')}>
+        {/* Na TV o título "ONDE X SE SEPARA" foi removido a pedido — fica só
+            o subtítulo (WOD + contagem) maior, para não deixar o cabeçalho
+            vazio. No celular o título continua: ali ele é o gancho da tela e
+            quebra em duas linhas em vez de truncar. */}
+        {!isTv && (
+          <h2 className="font-headline font-black uppercase italic tracking-tighter leading-none text-lg"
+            style={{ background: TITLE_GRADIENT, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            ONDE {firstName} SE SEPARA
+          </h2>
+        )}
+        <p className={cn('font-black uppercase tracking-[0.2em] italic',
+          isTv ? 'text-white/70 text-xl mt-0' : 'text-on-surface-variant text-[9px] leading-snug mt-1')}>
           {subtitle}
         </p>
       </div>
