@@ -158,6 +158,9 @@ export default function Diario() {
   // Premium: números do WOD para calcular o ritmo (reps/min) no recap do duelo
   const [duelTotalReps, setDuelTotalReps] = useState('');
   const [duelTimeCapMinutes, setDuelTimeCapMinutes] = useState('');
+  // WOD de hoje escolhido como desafio (chip marcado) — só controla a seleção
+  // visual; o duelo em si continua guardando nome/tipo/movimentos copiados.
+  const [duelFromWodId, setDuelFromWodId] = useState<string | null>(null);
   const [creatingDuel, setCreatingDuel] = useState(false);
 
   // Números da "Início" do individual — equivalentes ao que o Box mostra no
@@ -358,6 +361,15 @@ export default function Diario() {
     [placarRows, user?.id]
   );
 
+  // Para o duelo, TODOS os WODs que o atleta postou hoje — inclusive os já
+  // treinados: desafiar alguém a repetir o WOD que você acabou de fazer é
+  // justamente o caso comum (diferente do "Novo Registro", que só oferece os
+  // que faltam treinar porque lá o objetivo é preencher o resultado).
+  const myWodsToday = useMemo(
+    () => placarRows.filter(r => r.user_id === user?.id),
+    [placarRows, user?.id]
+  );
+
   const refreshBalances = async () => {
     if (!user) return;
     const [{ data: profile }, { data: checkins }] = await Promise.all([
@@ -448,6 +460,27 @@ export default function Diario() {
     setTitle(row.wod_name); setWodType(row.wod_type);
     setDescription(row.description || ''); setPlacarScaling(row.scaling);
     setPostToPlacar(true);
+  };
+
+  /** Desafiar com um WOD já postado hoje: copia nome/tipo/movimentos pro
+   *  formulário do duelo. Tocar no chip marcado de novo desmarca e devolve
+   *  os campos em branco, pra escrever um desafio do zero. */
+  const selectDuelWod = (row: (typeof myWodsToday)[number]) => {
+    if (duelFromWodId === row.id) {
+      setDuelFromWodId(null);
+      setDuelName(''); setDuelType('FOR TIME'); setDuelDesc('');
+      setDuelTotalReps(''); setDuelTimeCapMinutes('');
+      return;
+    }
+    setDuelFromWodId(row.id);
+    setDuelName(row.wod_name);
+    // O duelo só sabe rodar estes três tipos; qualquer outro cai em FOR TIME.
+    const type = (row.wod_type || '').toUpperCase();
+    setDuelType(type === 'AMRAP' || type === 'EMOM' ? type : 'FOR TIME');
+    setDuelDesc(row.description || '');
+    // Total de reps já cadastrado no placar libera o ritmo sem redigitar.
+    setDuelTotalReps(row.total_reps != null ? String(row.total_reps) : '');
+    setDuelTimeCapMinutes('');
   };
 
   const handleSave = async () => {
@@ -842,7 +875,7 @@ export default function Diario() {
         ? `Duelo enviado para ${friends[0].name}! Acompanhe na aba Duelos. ⚔️`
         : `Duelo enviado para ${friends.length} amigos! Acompanhe na aba Duelos. ⚔️`);
       setFriends([]); setCodeInput(''); setDuelName(''); setDuelDesc('');
-      setDuelTotalReps(''); setDuelTimeCapMinutes('');
+      setDuelTotalReps(''); setDuelTimeCapMinutes(''); setDuelFromWodId(null);
     } catch (err: any) {
       console.error('Error creating friend duel:', err);
       toast.error('Erro ao criar duelo: ' + err.message);
@@ -1559,6 +1592,30 @@ export default function Diario() {
               exit={{ opacity: 0, height: 0 }}
               className="flex flex-col gap-3 overflow-hidden"
             >
+              {myWodsToday.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest px-1">
+                    Desafie com um WOD de hoje
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {myWodsToday.map(row => (
+                      <button
+                        key={row.id}
+                        type="button"
+                        onClick={() => selectDuelWod(row)}
+                        className={cn(
+                          'px-3 py-2 rounded-xl text-[11px] font-black uppercase italic tracking-wide transition-all border',
+                          duelFromWodId === row.id
+                            ? 'bg-secondary text-background border-secondary'
+                            : 'bg-surface-container-highest text-on-surface-variant border-transparent hover:border-secondary/30'
+                        )}
+                      >
+                        {row.wod_name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <input
                 type="text"
                 placeholder="Nome do desafio (ex: 100 Burpees)"
