@@ -38,6 +38,7 @@ import WodSpotlightChart from '../components/WodSpotlightChart';
 import { WodSpotlightData } from '../lib/wodSpotlight';
 import { normalizeFriendCode } from '../lib/friendCode';
 import { registerDuelWorkout } from '../lib/duelWorkout';
+import TimeInput from '../components/TimeInput';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1592,13 +1593,22 @@ export default function Duels() {
                 {duel.status === 'active' && isParticipant && !mySubmitted && (
                   <div className="flex flex-col gap-2 mt-2">
                     <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder={timeBased ? 'Resultado (ex: 12:45)' : 'Resultado (ex: 150 reps)'}
-                        value={submission[duel.id] || ''}
-                        onChange={e => setSubmission(prev => ({ ...prev, [duel.id]: e.target.value }))}
-                        className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
-                      />
+                      {timeBased ? (
+                        <div className="flex-1">
+                          <TimeInput
+                            value={submission[duel.id] || ''}
+                            onChange={v => setSubmission(prev => ({ ...prev, [duel.id]: v }))}
+                          />
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="Resultado (ex: 150 reps)"
+                          value={submission[duel.id] || ''}
+                          onChange={e => setSubmission(prev => ({ ...prev, [duel.id]: e.target.value }))}
+                          className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
+                        />
+                      )}
                       <button
                         onClick={() => handleSubmitResult(duel)}
                         disabled={saving || !submission[duel.id]?.trim() || (timeBased && parseTimeToSeconds(submission[duel.id]?.trim() || '') == null)}
@@ -1607,11 +1617,6 @@ export default function Duels() {
                         {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
                       </button>
                     </div>
-                    {timeBased && submission[duel.id]?.trim() && parseTimeToSeconds(submission[duel.id].trim()) == null && (
-                      <p className="text-[9px] text-error font-bold uppercase tracking-widest px-1">
-                        Formato inválido — use mm:ss (ex: 12:45)
-                      </p>
-                    )}
                     {/* Esforço opcional: % da FC máx */}
                     <div className="flex items-center gap-2 bg-surface-container-highest/40 rounded-2xl px-4 py-2.5 border border-outline-variant/10">
                       <span className="text-secondary text-sm">❤️</span>
