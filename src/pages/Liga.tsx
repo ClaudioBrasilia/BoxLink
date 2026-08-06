@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Trophy, Zap, Calendar, Crown, Lock, Flame } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn, compareBy } from '../lib/utils';
@@ -24,6 +24,7 @@ interface LigaAthlete {
 }
 
 type Tab = 'xp_total' | 'xp_mes' | 'wods_hoje';
+type Scope = 'amigos' | 'global';
 
 // Divisões da Liga do Mês (por XP ganho no mês)
 interface Division { key: string; label: string; emoji: string; min: number; cls: string; }
@@ -46,6 +47,7 @@ const DivisionBadge = ({ xp }: { xp: number }) => {
 
 export default function Liga() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const premium = isPremium(user);
 
   const [athletes, setAthletes] = useState<LigaAthlete[]>([]);
@@ -57,6 +59,14 @@ export default function Liga() {
   const [activeTab, setActiveTab] = useState<Tab>(
     searchParams.get('tab') === 'wods_hoje' ? 'wods_hoje' : 'xp_total'
   );
+
+  // Ranking geral vira ruído conforme o app cresce (ficar em #237 entre
+  // desconhecidos não motiva ninguém). O recorte "Amigos" usa a lista de
+  // duel_friends como equivalente do "seu box" — uma comunidade do tamanho
+  // certo. O geral continua existindo como referência.
+  const [scope, setScope] = useState<Scope>('global');
+  const [friendIds, setFriendIds] = useState<string[]>([]);
+  const scopeTouched = useRef(false);
 
   const monthName = new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
 
@@ -106,6 +116,25 @@ export default function Liga() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // A amizade é mútua: a linha pode ter sido criada por qualquer um dos dois,
+  // então o "outro" é o lado que não sou eu.
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from('duel_friends')
+      .select('user_id, friend_id')
+      .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
+      .then(({ data }) => {
+        const ids = [...new Set<string>(
+          (data || []).map((r: any) => (r.user_id === user.id ? r.friend_id : r.user_id) as string)
+        )];
+        setFriendIds(ids);
+        // Quem já tem amigos abre direto na própria liga; quem não tem veria
+        // uma tela vazia, então começa no geral. Só até tocar no seletor.
+        if (!scopeTouched.current && ids.length > 0) setScope('amigos');
+      });
+  }, [user]);
+
   const scoreOf = (a: LigaAthlete) => (activeTab === 'xp_mes' ? a.monthXp : a.xp);
 
   const ranked = useMemo(() => {
@@ -115,12 +144,13 @@ export default function Liga() {
       (a.name || '').localeCompare(b.name || '', 'pt-BR');
     return [...athletes]
       .filter(a => scoreOf(a) > 0)
+      .filter(a => scope === 'global' || a.id === user?.id || friendIds.includes(a.id))
       .sort(compareBy<LigaAthlete>(
         (a, b) => scoreOf(b) - scoreOf(a),
         (a, b) => (b.level || 1) - (a.level || 1),
         byAgeAsc, byNameAsc,
       ));
-  }, [athletes, activeTab]);
+  }, [athletes, activeTab, scope, friendIds, user?.id]);
 
   const myPosition = useMemo(() => {
     const idx = ranked.findIndex(a => a.id === user?.id);
@@ -183,6 +213,28 @@ export default function Liga() {
         ))}
       </div>
 
+      {/* Recorte da comunidade — não se aplica ao placar de WODs, que já é
+          naturalmente limitado a quem treinou o mesmo WOD hoje. */}
+      {activeTab !== 'wods_hoje' && (
+        <div className="flex gap-2 justify-center -mt-1">
+          {([
+            { key: 'amigos', label: `Meus amigos${friendIds.length ? ` (${friendIds.length})` : ''}` },
+            { key: 'global', label: 'Geral' },
+          ] as const).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => { scopeTouched.current = true; setScope(key); }}
+              className={cn('px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border',
+                scope === key
+                  ? 'bg-primary text-background border-primary'
+                  : 'bg-surface-container-highest text-on-surface-variant border-transparent hover:text-on-surface')}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <p className="text-center text-[10px] text-on-surface-variant font-black uppercase tracking-widest -mt-3">
         {activeTab === 'xp_total'
           ? 'XP acumulado desde o início'
@@ -239,10 +291,27 @@ export default function Liga() {
       ) : ranked.length === 0 ? (
         <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-12 flex flex-col items-center text-center gap-4">
           <Flame className="w-14 h-14 text-on-surface-variant/20" />
-          <p className="text-on-surface-variant font-headline font-black uppercase italic">Ninguém pontuou ainda</p>
-          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest opacity-60">
-            Registre treinos no Diário para entrar na liga
-          </p>
+          {scope === 'amigos' && friendIds.length === 0 ? (
+            <>
+              <p className="text-on-surface-variant font-headline font-black uppercase italic">Sua liga está vazia</p>
+              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest opacity-60 leading-relaxed max-w-xs">
+                Adicione amigos pelo código de atleta no Diário — eles aparecem aqui e vocês disputam juntos
+              </p>
+              <button
+                onClick={() => navigate('/diario')}
+                className="bg-primary text-background px-5 py-2.5 rounded-xl font-headline font-black text-[10px] uppercase italic hover:opacity-90 transition-all"
+              >
+                Adicionar amigos
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-on-surface-variant font-headline font-black uppercase italic">Ninguém pontuou ainda</p>
+              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest opacity-60">
+                Registre treinos no Diário para entrar na liga
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <>

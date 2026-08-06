@@ -691,20 +691,23 @@ export default function Diario() {
     else handleCopyCode();
   };
 
+  /** Grava a amizade (mútua) — é esta lista que forma a Liga de amigos. */
+  const saveFriend = async (f: FriendProfile) => {
+    if (!user) return;
+    try {
+      await supabase.from('duel_friends')
+        .upsert({ user_id: user.id, friend_id: f.id }, { onConflict: 'user_id,friend_id', ignoreDuplicates: true });
+      await loadSavedFriends();
+    } catch (err) {
+      console.error('Error saving friend:', err);
+    }
+  };
+
   const handleFindFriend = async () => {
     if (!user || !codeInput.trim()) return;
     const code = normalizeFriendCode(codeInput);
     if (code === user.friendCode) {
       toast.warning('Esse é o seu próprio código! Chame um colega. 😄'); return;
-    }
-    if (friends.some(f => f.friend_code === code)) {
-      toast.warning('Esse amigo já está na lista.'); return;
-    }
-    if (friends.length >= maxDuelFriends) {
-      toast.warning(premium
-        ? `Limite de ${maxDuelFriends} amigos por duelo.`
-        : `No plano grátis você chama 1 amigo por duelo. Premium: até ${PLAN_LIMITS.premium.maxDuelFriends}.`);
-      return;
     }
     setSearchingFriend(true);
     try {
@@ -715,8 +718,26 @@ export default function Diario() {
         .maybeSingle();
       if (error) throw error;
       if (!data) { toast.error('Nenhum atleta encontrado com esse código.'); return; }
-      if (friends.some(f => f.id === data.id)) { toast.warning('Esse amigo já está na lista.'); return; }
-      setFriends(prev => [...prev, data as FriendProfile]);
+      const found = data as FriendProfile;
+      const firstName = found.name.split(' ')[0];
+
+      // Achou pelo código = já vira amigo, sem depender de criar duelo. Antes
+      // a amizade só era gravada ao ENVIAR um desafio, então não dava pra
+      // montar a liga sem desafiar cada pessoa antes.
+      await saveFriend(found);
+
+      // O limite do plano é por duelo, não por amizade — então ele só impede
+      // de entrar neste desafio, nunca de virar amigo.
+      if (friends.some(f => f.id === found.id)) {
+        toast.success(`${firstName} já está neste desafio.`);
+      } else if (friends.length >= maxDuelFriends) {
+        toast.success(premium
+          ? `${firstName} salvo nos amigos! Limite de ${maxDuelFriends} por duelo já atingido.`
+          : `${firstName} salvo nos amigos! No plano grátis você chama 1 por duelo — Premium: até ${PLAN_LIMITS.premium.maxDuelFriends}.`);
+      } else {
+        setFriends(prev => [...prev, found]);
+        toast.success(`${firstName} adicionado aos amigos e ao desafio!`);
+      }
       setCodeInput('');
     } catch (err: any) {
       console.error('Error finding friend:', err);
@@ -1419,8 +1440,8 @@ export default function Diario() {
             <Swords className="w-5 h-5 text-secondary" />
           </div>
           <div>
-            <h2 className="font-headline font-black text-base text-on-surface uppercase italic leading-tight">Duelo com Amigos</h2>
-            <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest">Desafie quem tem o app, de qualquer lugar</p>
+            <h2 className="font-headline font-black text-base text-on-surface uppercase italic leading-tight">Amigos e Duelos</h2>
+            <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest">Seus amigos formam sua Liga — e você pode desafiá-los</p>
           </div>
         </div>
 
@@ -1472,7 +1493,7 @@ export default function Diario() {
         {savedFriends.length > 0 && (
           <div className="flex flex-col gap-2">
             <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest px-1">
-              Amigos de duelos anteriores
+              Seus amigos ({savedFriends.length}) — toque para chamar ao duelo
             </p>
             <div className="flex flex-wrap gap-2">
               {savedFriends.map(f => {
