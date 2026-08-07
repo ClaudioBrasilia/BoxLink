@@ -693,20 +693,9 @@ export default function Duels() {
 
     setSaving(true);
     try {
-      // O merge acontece no banco (results || {meu_id: resultado}), não aqui:
-      // montar o jsonb a partir do que está em tela fazia o último a enviar
-      // apagar o resultado de quem enviou antes, quando a tela estava velha.
-      // O retorno já vem com o duelo fresco, incluindo o resultado do outro.
-      const { data: freshDuel, error: submitError } = await supabase.rpc('submit_duel_result', {
-        p_duel_id: duel.id,
-        p_result: result,
-        p_intensity: myPct && myPct > 0 ? myPct : null,
-        p_load: myLoad,
-      });
-      if (submitError) throw submitError;
-
-      const newResults: DuelResult = freshDuel?.results ?? {};
-      const newIntensity: DuelIntensity = freshDuel?.intensity ?? {};
+      const newResults: DuelResult = { ...duel.results, [user.id]: result };
+      const newIntensity: DuelIntensity = { ...duel.intensity, [user.id]: myPct && myPct > 0 ? myPct : null };
+      const newLoads: DuelLoads = { ...duel.loads, [user.id]: myLoad };
       const allParticipants = [duel.challengerId, ...duel.opponentIds];
       const allSubmitted = allParticipants.every(id => newResults[id]);
 
@@ -736,9 +725,10 @@ export default function Duels() {
           isTie,
         });
 
-        // Sem results/intensity/loads: já foram gravados pelo merge no banco.
-        // Regravá-los aqui traria de volta a sobrescrita que a RPC evita.
         const updates: any = {
+          results: newResults,
+          intensity: newIntensity,
+          loads: newLoads,
           status: 'finished',
           winner_id: winnerId,   // null = empate ou sem resultado válido
           updated_at: new Date().toISOString(),
@@ -829,8 +819,13 @@ export default function Duels() {
           );
         }
       } else {
-        // Nada a gravar: o resultado já foi salvo pelo merge no banco. Só
-        // falta avisar quem ainda não enviou.
+        await supabase.from('duels').update({
+          results: newResults,
+          intensity: newIntensity,
+          loads: newLoads,
+          updated_at: new Date().toISOString(),
+        }).eq('id', duel.id);
+
         for (const pid of allParticipants) {
           if (pid === user.id || newResults[pid]) continue;
           await createNotification(
