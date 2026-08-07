@@ -363,20 +363,31 @@ export default function Clans() {
   };
 
   const fetchClanMembers = async (clanId: string) => {
-    const { data } = await supabase
+    // Limpa antes de buscar: clanMembers é um estado só, compartilhado por todos
+    // os times. Sem isso, abrir o time B logo depois do A mostra os membros do A
+    // enquanto a consulta não volta — e para sempre, se ela falhar.
+    setClanMembers([]);
+    const { data, error } = await supabase
       .from('clan_memberships')
       .select('id, user_id, role, profiles(id, name, xp)')
       .eq('clan_id', clanId)
       .eq('status', 'approved');
-    if (data) {
-      setClanMembers(data.map((m: any) => ({
-        id: m.profiles.id,
-        name: m.profiles.name,
-        role: m.role,
-        xp: m.profiles.xp,
-        membershipId: m.id,
-      })));
+    if (error) {
+      console.error('Erro ao carregar membros do time:', error);
+      return;
     }
+    setClanMembers(
+      (data || [])
+        // Membership sem profile correspondente derrubaria a lista inteira
+        .filter((m: any) => m.profiles)
+        .map((m: any) => ({
+          id: m.profiles.id,
+          name: m.profiles.name,
+          role: m.role,
+          xp: m.profiles.xp,
+          membershipId: m.id,
+        })),
+    );
   };
 
   const handleApproveMember = async (requestId: string) => {
