@@ -283,11 +283,15 @@ export default function Clans() {
 
         // Solicitações pendentes (só para capitães aprovados)
         if (primaryMembership?.status === 'approved' && primaryMembership.role === 'captain') {
-          const { data: pending } = await supabase
+          const { data: pending, error: pendingError } = await supabase
             .from('clan_memberships')
             .select('*, profiles(name)')
             .eq('clan_id', primaryMembership.clan_id)
             .eq('status', 'pending');
+          // Esta consulta depende da FK clan_memberships.user_id -> profiles.id.
+          // Sem ela o join embutido falha e a lista de solicitações fica vazia
+          // sem nenhum aviso — foi o que escondeu o problema por um bom tempo.
+          if (pendingError) console.error('Erro ao carregar solicitações pendentes:', pendingError);
           setPendingRequests((pending as any) || []);
         } else {
           setPendingRequests([]);

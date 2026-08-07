@@ -208,7 +208,11 @@ create table public.clans (
 create table public.clan_memberships (
   id uuid primary key default gen_random_uuid(),
   clan_id uuid references public.clans(id) on delete cascade,
-  user_id uuid references auth.users(id) on delete cascade,
+  -- A FK para profiles é obrigatória, não decorativa: sem ela o PostgREST não
+  -- enxerga relação entre as duas tabelas e todo select com join embutido
+  -- (`profiles(...)`) falha em silêncio, deixando as listas de membros e de
+  -- solicitações vazias.
+  user_id uuid references public.profiles(id) on delete cascade,
   role text default 'member' check (role in ('member', 'captain')),
   status text default 'pending' check (status in ('pending', 'approved', 'rejected', 'invited')),
   created_at timestamptz default now(),
