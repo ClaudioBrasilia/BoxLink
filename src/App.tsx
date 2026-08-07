@@ -29,7 +29,8 @@ import Frequencia from './pages/Frequencia';
 import Install from './pages/Install';
 import Feed from './pages/Feed';
 import Shop from './pages/Shop';
-import { Shield, Lock } from 'lucide-react';
+import { Shield, Lock, Building2 } from 'lucide-react';
+import { isIndividualApp, isBoxApp } from './lib/appMode';
 import Onboarding from './components/Onboarding';
 import { ToastProvider } from './context/ToastContext';
 import { supabase } from './lib/supabase';
@@ -84,8 +85,38 @@ const BoxOnlyGuard = ({ children }: { children: React.ReactNode }) => {
 
 const HomeRoute = () => {
   const { user } = useAuth();
-  if (user?.accountType === 'individual') return <Navigate to="/diario" replace />;
+  // A Início do individual é o /diario — no app dele o Dashboard nem existe.
+  if (isIndividualApp || user?.accountType === 'individual') {
+    return <Navigate to="/diario" replace />;
+  }
   return <Dashboard />;
+};
+
+/**
+ * Conta de box abrindo o app do individual. Os dois compartilham o mesmo
+ * backend, então o login funciona — mas aqui não existe nenhuma tela para ele.
+ * Acontece de verdade quando um individual é aprovado num box: o account_type
+ * vira 'box' e ele precisa migrar de app.
+ */
+const WrongAppScreen = () => {
+  const { logout } = useAuth();
+  return (
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+      <div className="w-20 h-20 bg-surface-container-low rounded-3xl border border-outline-variant/10 flex items-center justify-center mb-6">
+        <Building2 className="w-10 h-10 text-primary" />
+      </div>
+      <h1 className="text-2xl font-headline font-black text-on-surface uppercase italic mb-2">Você é aluno de um box</h1>
+      <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest max-w-xs leading-relaxed">
+        Esta conta faz parte de um box, então use o aplicativo BoxLink — lá estão a grade de aulas, o WOD do dia e o ranking da sua academia.
+      </p>
+      <button
+        onClick={() => logout()}
+        className="mt-8 text-primary font-headline font-black uppercase italic text-sm hover:underline"
+      >
+        SAIR DA CONTA
+      </button>
+    </div>
+  );
 };
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
@@ -118,6 +149,9 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?
     );
   }
 
+  // No app do individual, conta de box não tem para onde ir.
+  if (isIndividualApp && user.accountType === 'box') return <WrongAppScreen />;
+
   if (roles && !roles.includes(user.role)) return <Navigate to="/" />;
   return <>{children}</>;
 };
@@ -131,27 +165,34 @@ function AppRoutes() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password"  element={<ResetPassword />} />
         <Route path="/install"         element={<Install />} />
-        <Route path="/tv"              element={<TV />} />
+        {/* TV é telão de academia — não existe no app do individual. */}
+        {isBoxApp && <Route path="/tv" element={<TV />} />}
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<HomeRoute />} />
-          <Route path="wod"         element={<BoxOnlyGuard><VisitorGuard page="wod"><Wod /></VisitorGuard></BoxOnlyGuard>} />
-          <Route path="leaderboard" element={<BoxOnlyGuard><VisitorGuard page="leaderboard"><Leaderboard /></VisitorGuard></BoxOnlyGuard>} />
+          {/* Comuns aos dois apps */}
           <Route path="profile"     element={<Profile />} />
           <Route path="diario"      element={<Diario />} />
           <Route path="liga"        element={<Liga />} />
           <Route path="insights"    element={<Insights />} />
           <Route path="frequencia"  element={<Frequencia />} />
-          <Route path="challenges"  element={<BoxOnlyGuard><VisitorGuard page="challenges"><Challenges /></VisitorGuard></BoxOnlyGuard>} />
           <Route path="duels"       element={<VisitorGuard page="duels"><Duels /></VisitorGuard>} />
           <Route path="progress"    element={<VisitorGuard page="progress"><Progress /></VisitorGuard>} />
-          <Route path="mybox"       element={<BoxOnlyGuard><VisitorGuard page="mybox"><MyBox /></VisitorGuard></BoxOnlyGuard>} />
-          <Route path="clans"       element={<BoxOnlyGuard><VisitorGuard page="clans"><Clans /></VisitorGuard></BoxOnlyGuard>} />
           <Route path="avatar"      element={<VisitorGuard page="avatar"><AvatarCustomization /></VisitorGuard>} />
           <Route path="benchmarks"  element={<VisitorGuard page="benchmarks"><Benchmarks /></VisitorGuard>} />
-          <Route path="feed"        element={<BoxOnlyGuard><VisitorGuard page="feed"><Feed /></VisitorGuard></BoxOnlyGuard>} />
           <Route path="shop"        element={<Shop />} />
-          <Route path="admin"       element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
-          <Route path="coach"       element={<ProtectedRoute roles={['coach', 'admin']}><Coach /></ProtectedRoute>} />
+
+          {/* Só o app do box: no build do individual estas rotas não existem,
+              então nem o código delas entra no bundle publicado. */}
+          {isBoxApp && <>
+            <Route path="wod"         element={<BoxOnlyGuard><VisitorGuard page="wod"><Wod /></VisitorGuard></BoxOnlyGuard>} />
+            <Route path="leaderboard" element={<BoxOnlyGuard><VisitorGuard page="leaderboard"><Leaderboard /></VisitorGuard></BoxOnlyGuard>} />
+            <Route path="challenges"  element={<BoxOnlyGuard><VisitorGuard page="challenges"><Challenges /></VisitorGuard></BoxOnlyGuard>} />
+            <Route path="mybox"       element={<BoxOnlyGuard><VisitorGuard page="mybox"><MyBox /></VisitorGuard></BoxOnlyGuard>} />
+            <Route path="clans"       element={<BoxOnlyGuard><VisitorGuard page="clans"><Clans /></VisitorGuard></BoxOnlyGuard>} />
+            <Route path="feed"        element={<BoxOnlyGuard><VisitorGuard page="feed"><Feed /></VisitorGuard></BoxOnlyGuard>} />
+            <Route path="admin"       element={<ProtectedRoute roles={['admin']}><Admin /></ProtectedRoute>} />
+            <Route path="coach"       element={<ProtectedRoute roles={['coach', 'admin']}><Coach /></ProtectedRoute>} />
+          </>}
         </Route>
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

@@ -175,3 +175,55 @@ O mesmo app atende os dois mundos — e é isso que cria o efeito de rede:
 - O atleta individual pode ser convidado por um amigo de box para um duelo.
 - Quando um box assina o BoxLink, seus alunos individuais migram com todo o
   histórico (mesma conta, `account_type` muda de `individual` para `box`).
+
+## 7. Publicando o app do individual (dois builds, um backend)
+
+O individual saiu do modo "aba dentro do app do box" e virou um **aplicativo
+próprio**, publicável separadamente — mas os dois builds continuam saindo
+**deste mesmo repositório e apontando para o mesmo Supabase**. Isso não é
+economia de esforço: é requisito. É o backend compartilhado que permite um
+atleta individual entrar num box levando XP, PRs e diário (seção 6). Com
+bancos separados, "entrar no box" viraria migração de dados entre sistemas.
+
+O que muda entre os dois é só a casca: rotas, menu, cadastro e identidade PWA.
+
+### Como buildar
+
+```bash
+npm run build        # app do box (padrão) — BoxLink
+npm run build:solo   # app do individual  — BoxLink Solo
+npm run dev:solo     # desenvolvimento no modo individual
+```
+
+O modo vem de `VITE_APP_MODE=individual`, lido em `src/lib/appMode.ts`
+(`isIndividualApp` / `isBoxApp`). O padrão é `box`, para que o app já
+publicado não mude de comportamento por engano.
+
+### O que o build do individual não tem
+
+As rotas do box (`/wod`, `/leaderboard`, `/challenges`, `/mybox`, `/clans`,
+`/feed`, `/admin`, `/coach`, `/tv`) **não são registradas** nesse build. Como
+`VITE_APP_MODE` é substituído em tempo de build, o Rollup elimina o código
+delas: o bundle do Solo sai ~340 KiB menor e não contém nenhuma string dessas
+telas. Não é só esconder do menu — o código não vai publicado.
+
+### Deploy
+
+Dois deploys do mesmo repositório, cada um com sua env:
+
+| App | Env | Domínio sugerido |
+|---|---|---|
+| BoxLink | (nenhuma) | app.boxlink… |
+| BoxLink Solo | `VITE_APP_MODE=individual` | solo.boxlink… |
+
+Para dar arte própria ao Solo, basta trocar `public/pwa-192x192.png`,
+`public/pwa-512x512.png` e `public/favicon.png` no deploy dele — os nomes dos
+arquivos são os mesmos, então nada muda no código.
+
+### Conta de box abrindo o app do individual
+
+Acontece de verdade: quando um individual é aprovado num box, o
+`account_type` vira `box`. Como o login é o mesmo backend, ele consegue
+entrar — mas não há tela para ele ali. O app mostra um aviso explicando que
+aquela conta agora é de um box e oferece sair (`WrongAppScreen` em
+`src/App.tsx`).

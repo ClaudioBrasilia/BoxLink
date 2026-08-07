@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNotifications } from '../hooks/useNotifications';
+import { isIndividualApp } from '../lib/appMode';
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -33,7 +34,9 @@ export default function Layout() {
 
   const duelBadge = notifications.filter(n => !n.read && ['duel_created', 'duel_accepted', 'duel_finished', 'duel_result'].includes(n.type)).length;
   const feedBadge = notifications.filter(n => !n.read && ['like', 'comment', 'feed_post'].includes(n.type)).length;
-  const isIndividual = user?.accountType === 'individual';
+  // No app do individual o menu é sempre o dele, independente da conta — as
+  // rotas do box nem existem neste build.
+  const isIndividual = isIndividualApp || user?.accountType === 'individual';
 
   // Desafios (/challenges) são exclusivos de conta Box — Individual nunca visita essa
   // rota, então esse badge nunca seria limpo se contado para essas contas.

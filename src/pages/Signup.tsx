@@ -4,12 +4,16 @@ import { UserPlus, ChevronRight, Building2, Dumbbell } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
+import { isIndividualApp, APP_NAME } from '../lib/appMode';
 
 export default function Signup() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [accountType, setAccountType] = useState<'box' | 'individual'>('box');
+  // No app do individual não há o que escolher — toda conta nasce individual.
+  const [accountType, setAccountType] = useState<'box' | 'individual'>(
+    isIndividualApp ? 'individual' : 'box'
+  );
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const { signup, loading } = useAuth();
@@ -47,12 +51,16 @@ export default function Signup() {
           <div className="w-24 h-24 bg-surface-container-low rounded-[2rem] border border-outline-variant/10 flex items-center justify-center mx-auto mb-6 shadow-2xl">
             <UserPlus className="w-12 h-12 text-secondary" />
           </div>
-          <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter uppercase italic">ENTRE NA <span className="text-secondary">BOXLINK</span></h1>
-          <p className="text-on-surface-variant text-xs font-bold tracking-widest uppercase mt-2 italic">Solicite seu Acesso de Atleta</p>
+          <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter uppercase italic">
+            ENTRE NA <span className="text-secondary">{APP_NAME.toUpperCase()}</span>
+          </h1>
+          <p className="text-on-surface-variant text-xs font-bold tracking-widest uppercase mt-2 italic">
+            {isIndividualApp ? 'Crie sua conta e treine hoje' : 'Solicite seu Acesso de Atleta'}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="space-y-2">
+          <div className={cn('space-y-2', isIndividualApp && 'hidden')}>
             <label className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest ml-4">Como você treina?</label>
             <div className="grid grid-cols-2 gap-3">
               <button

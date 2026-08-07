@@ -6,10 +6,24 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
+
+  // Dois aplicativos saem deste mesmo código: o do box (padrão) e o do atleta
+  // individual (VITE_APP_MODE=individual). Só muda a casca — backend é o
+  // mesmo, que é o que permite o individual entrar num box sem perder nada.
+  const isIndividualApp = env.VITE_APP_MODE === 'individual';
+  const appName = isIndividualApp ? 'BoxLink Solo' : 'BoxLink';
+
   return {
     plugins: [
       react(),
       tailwindcss(),
+      // index.html é estático e serve aos dois builds — o título vem daqui.
+      {
+        name: 'app-name-html',
+        transformIndexHtml(html: string) {
+          return html.replace(/<title>.*?<\/title>/, `<title>${appName}</title>`);
+        },
+      },
       VitePWA({
         registerType: 'autoUpdate',
         strategies: 'generateSW',
@@ -20,12 +34,17 @@ export default defineConfig(({ mode }) => {
           navigateFallbackDenylist: [/^\/api/],
         },
         manifest: {
-          name: 'BoxLink',
-          short_name: 'BoxLink',
-          description: 'BoxLink — treino, duelos e liga para atletas',
+          name: appName,
+          short_name: appName,
+          description: isIndividualApp
+            ? 'BoxLink Solo — seu treino, seu placar, seus duelos. Sem depender de academia.'
+            : 'BoxLink — treino, duelos e liga para atletas',
           theme_color: '#0e0e0e',
           background_color: '#0e0e0e',
           display: 'standalone',
+          // Os dois apps usam a mesma arte por ora. Para dar identidade
+          // própria ao Solo, basta trocar estes PNGs em public/ no deploy
+          // dele — os nomes continuam os mesmos, então nada aqui muda.
           icons: [
             { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
             { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
