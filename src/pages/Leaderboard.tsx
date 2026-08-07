@@ -87,7 +87,11 @@ export default function Leaderboard() {
         { data: membershipsData },
         todayWod,
       ] = await Promise.all([
-        supabase.from('profiles').select('*').eq('status', 'approved'),
+        // Só contas de box: sem este filtro, atletas individuais (que ganham XP
+        // e check-in solo por fora) entravam no ranking do box como se
+        // treinassem aqui. account_type é not null default 'box', então contas
+        // antigas continuam entrando normalmente.
+        supabase.from('profiles').select('*').eq('status', 'approved').eq('account_type', 'box'),
         supabase.from('box_settings').select('inactivity, name, logo').maybeSingle(),
         supabase.from('reward_history').select('user_id, xp').gte('created_at', firstDayOfMonth + 'T00:00:00'),
         supabase.from('checkins').select('user_id, date').gte('date', firstDayOfMonth),

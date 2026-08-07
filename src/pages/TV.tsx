@@ -316,8 +316,16 @@ export default function TV() {
       const nowStr = formatInTimeZone(new Date(), TIMEZONE, 'HH:mm');
       const currentClass = (scheduleData || []).find((s: any) => nowStr >= s.time && nowStr <= (s.end_time || s.endTime || '23:59'));
       const { data: checkinsRaw } = await supabase.from('checkins').select('*').gte('date', today).order('timestamp', { ascending: false }).limit(20);
-      const { data: profilesRaw } = await supabase.from('profiles').select('id, name, avatar_equipped, xp, level, role, photo_url, weight_kg, sex');
+      // A TV é do box: atleta individual não pode aparecer nela. Como os
+      // rankings abaixo são montados a partir de reward_history/checkins (e não
+      // desta lista), o profileMap serve de crivo — quem não está aqui é
+      // descartado, em vez de virar um "Atleta" anônimo com XP no telão.
+      const { data: profilesRaw } = await supabase
+        .from('profiles')
+        .select('id, name, avatar_equipped, xp, level, role, photo_url, weight_kg, sex')
+        .eq('account_type', 'box');
       const profileMap = Object.fromEntries((profilesRaw || []).map((p: any) => [p.id, p]));
+      const isBoxAthlete = (userId: string) => !!profileMap[userId];
 
       const inactivitySettings: InactivitySettings = settings?.inactivity ||
         { enabled: false, minWorkoutsPerWeek: 3, excludeSunday: true, showOnTV: false };
@@ -357,19 +365,25 @@ export default function TV() {
       const freqMap: Record<string, number> = {};
       (monthlyCheckins || []).forEach(c => { freqMap[c.user_id] = (freqMap[c.user_id] || 0) + 1; });
       const frequencyRanking = Object.entries(freqMap)
-        .map(([userId, count]) => ({ ...(profileMap[userId] || { name: 'Atleta' }), count }))
+        .filter(([userId]) => isBoxAthlete(userId))
+        .map(([userId, count]) => ({ ...profileMap[userId], count }))
         .sort((a, b) => b.count - a.count).slice(0, 5);
 
       const rankings = Object.entries(xpMonthMap)
-        .map(([userId, monthXp]) => ({ ...(profileMap[userId] || { name: 'Atleta' }), xp: monthXp, checkins: freqMap[userId] || 0 }))
+        .filter(([userId]) => isBoxAthlete(userId))
+        .map(([userId, monthXp]) => ({ ...profileMap[userId], xp: monthXp, checkins: freqMap[userId] || 0 }))
         .sort((a, b) => b.xp - a.xp)
         .slice(0, 10);
 
-      const allCheckins = (checkinsRaw || []).map((c: any) => ({
-        ...c,
-        profiles: profileMap[c.user_id] || null,
-        inactivity: inactivityByUser[c.user_id] || null,
-      }));
+      // Check-in solo do individual não é presença nesta academia — fora do
+      // telão. Sem o filtro, ele entrava na lista e no contador de presentes.
+      const allCheckins = (checkinsRaw || [])
+        .filter((c: any) => isBoxAthlete(c.user_id))
+        .map((c: any) => ({
+          ...c,
+          profiles: profileMap[c.user_id],
+          inactivity: inactivityByUser[c.user_id] || null,
+        }));
       const checkins = currentClass ? allCheckins.filter((c: any) => c.class_time === currentClass.time) : allCheckins;
       const stats = {
         checkins: checkins.length,
@@ -404,21 +418,29 @@ export default function TV() {
       };
 
       // Mapear nomes dos atletas para os duelos (suporta formato antigo e novo, com múltiplos oponentes)
-      const mappedDuels = (duels || []).map((d: any) => {
-        const challenger = profileMap[d.challenger_id];
+      const mappedDuels = (duels || [])
+        // Duelo entre dois atletas individuais não é do box — não vai ao
+        // telão. Basta um participante do box para o duelo ser daqui (um
+        // aluno pode desafiar alguém de fora pelo código).
+        .filter((d: any) => {
+          const ids = [d.challenger_id, ...(d.opponent_ids || (d.opponent_id ? [d.opponent_id] : []))];
+          return ids.some((id: string) => isBoxAthlete(id));
+        })
+        .map((d: any) => {
+          const challenger = profileMap[d.challenger_id];
 
-        // Suporte para múltiplos oponentes (novo formato) ou único (antigo)
-        const opponentIds = d.opponent_ids || (d.opponent_id ? [d.opponent_id] : []);
-        const opponentNames = opponentIds
-          .map((id: string) => profileMap[id]?.name?.split(' ')[0] || 'Atleta')
-          .join(' & ');
+          // Suporte para múltiplos oponentes (novo formato) ou único (antigo)
+          const opponentIds = d.opponent_ids || (d.opponent_id ? [d.opponent_id] : []);
+          const opponentNames = opponentIds
+            .map((id: string) => profileMap[id]?.name?.split(' ')[0] || 'Atleta')
+            .join(' & ');
 
-        return {
-          ...d,
-          challengerName: challenger?.name || 'Atleta',
-          opponentName: opponentNames || 'Oponente'
-        };
-      });
+          return {
+            ...d,
+            challengerName: challenger?.name || 'Atleta',
+            opponentName: opponentNames || 'Oponente'
+          };
+        });
 
       setData({
         settings: settings || { name: "BoxLink", logo: "" },
