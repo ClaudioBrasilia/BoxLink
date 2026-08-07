@@ -210,8 +210,11 @@ create table public.clan_memberships (
   clan_id uuid references public.clans(id) on delete cascade,
   user_id uuid references auth.users(id) on delete cascade,
   role text default 'member' check (role in ('member', 'captain')),
-  status text default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  status text default 'pending' check (status in ('pending', 'approved', 'rejected', 'invited')),
   created_at timestamptz default now(),
+  -- Uma linha por atleta por time: o atleta pode ter convites de vários times
+  -- ao mesmo tempo. A regra "um time por vez" vem de
+  -- box_settings.allow_multiple_clans_per_user, aplicada no app.
   unique(clan_id, user_id)
 );
 
@@ -297,12 +300,34 @@ create policy "Users can create clans" on public.clans for insert with check (au
 
 create policy "Memberships are viewable by everyone" on public.clan_memberships for select using (true);
 create policy "Users can apply for membership" on public.clan_memberships for insert with check (auth.uid() = user_id);
-create policy "Captains can manage memberships" on public.clan_memberships for all using (
-  exists (
+create policy "Users can delete their own membership" on public.clan_memberships for delete using (auth.uid() = user_id);
+
+-- A checagem de capitão precisa ser SECURITY DEFINER: consultar clan_memberships
+-- direto dentro de uma policy da própria clan_memberships redispara o RLS na
+-- consulta interna e derruba a tabela inteira com "infinite recursion detected
+-- in policy". A função roda com os privilégios do owner e quebra o ciclo.
+create or replace function public.is_approved_clan_captain(p_clan_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
     select 1 from public.clan_memberships
-    where clan_id = public.clan_memberships.clan_id and user_id = auth.uid() and role = 'captain'
-  )
-);
+    where clan_id = p_clan_id
+      and user_id = auth.uid()
+      and role = 'captain'
+      and status = 'approved'
+  );
+$$;
+
+revoke all on function public.is_approved_clan_captain(uuid) from public;
+grant execute on function public.is_approved_clan_captain(uuid) to authenticated;
+
+create policy "Captains can manage their clan memberships" on public.clan_memberships for all
+  using (public.is_approved_clan_captain(clan_id))
+  with check (public.is_approved_clan_captain(clan_id));
 
 create policy "Territories are viewable by everyone" on public.territories for select using (true);
 

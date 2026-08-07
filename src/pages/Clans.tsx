@@ -262,11 +262,16 @@ export default function Clans() {
           .select('*')
           .eq('user_id', user.id);
 
-        // Prioriza a "principal": aprovada > pendente > convidada (para mostrar no card "Seu Time")
-        const approvedOrPending = (allMyMemberships || []).find(
-          (m: any) => m.status === 'approved' || m.status === 'pending'
-        );
-        const primaryMembership = approvedOrPending || (allMyMemberships || [])[0] || null;
+        // Prioriza a "principal": aprovada > pendente > convidada (para mostrar no card "Seu Time").
+        // Precisa ser em duas buscas: um único find aceitaria a primeira linha que
+        // fosse aprovada OU pendente, e a ordem que o banco devolve é arbitrária —
+        // uma solicitação pendente podia mascarar o time onde o atleta já está.
+        const myRows = allMyMemberships || [];
+        const primaryMembership =
+          myRows.find((m: any) => m.status === 'approved') ||
+          myRows.find((m: any) => m.status === 'pending') ||
+          myRows[0] ||
+          null;
         setMyMembership(primaryMembership);
 
         if (primaryMembership) {
@@ -310,14 +315,30 @@ export default function Clans() {
     if (query.trim().length < 3) { setFoundAthletes([]); return; }
     setLoadingSearch(true);
     try {
-      const { data: allMemberships } = await supabase.from('clan_memberships').select('user_id');
-      const memberIds = (allMemberships || []).map((m) => m.user_id);
-      const { data: athletes } = await supabase
+      const { data: allMemberships } = await supabase
+        .from('clan_memberships')
+        .select('user_id, clan_id, status');
+      // Ficam de fora da busca: quem já está aprovado em algum time (a menos que
+      // o box permita vários times por atleta) e quem já tem linha neste time —
+      // convite repetido esbarra no unique(clan_id, user_id). Quem só tem
+      // convite de outro time continua convidável: quem escolhe é o atleta.
+      const blockedIds = (allMemberships || [])
+        .filter(
+          (m: any) =>
+            (m.status === 'approved' && !boxSettings.allow_multiple_clans_per_user) ||
+            m.clan_id === myClan?.id,
+        )
+        .map((m: any) => m.user_id)
+        .filter(Boolean);
+      let athleteQuery = supabase
         .from('profiles')
         .select('id, name')
         .ilike('name', `%${query}%`)
-        .not('id', 'in', `(${memberIds.length > 0 ? memberIds.join(',') : '""'})`)
         .limit(5);
+      if (blockedIds.length > 0) {
+        athleteQuery = athleteQuery.not('id', 'in', `(${blockedIds.join(',')})`);
+      }
+      const { data: athletes } = await athleteQuery;
       setFoundAthletes(athletes || []);
     } finally {
       setLoadingSearch(false);
@@ -333,6 +354,9 @@ export default function Clans() {
       alert('Convite enviado!');
       setAthleteSearch('');
       setFoundAthletes([]);
+      setTick((v) => v + 1);
+    } else if (error.code === '23505') {
+      alert('Este atleta já tem convite ou participação neste time.');
     } else {
       alert('Erro ao enviar convite: ' + error.message);
     }
@@ -380,7 +404,18 @@ export default function Clans() {
   const handleAcceptInvite = async (inviteId: string) => {
     const { error } = await supabase
       .from('clan_memberships').update({ status: 'approved' }).eq('id', inviteId);
-    if (!error) setTick((v) => v + 1);
+    if (error) { alert('Erro ao aceitar convite: ' + error.message); return; }
+    // Um atleta pode acumular convites de vários times ao mesmo tempo. Ao aceitar
+    // um deles, as outras linhas saem para não deixar convite ou solicitação
+    // órfã pendurada — e para o atleta não acabar aprovado em dois times.
+    if (user && !boxSettings.allow_multiple_clans_per_user) {
+      await supabase
+        .from('clan_memberships')
+        .delete()
+        .eq('user_id', user.id)
+        .neq('id', inviteId);
+    }
+    setTick((v) => v + 1);
   };
 
   const handleRejectInvite = async (inviteId: string) => {
@@ -493,6 +528,15 @@ export default function Clans() {
 
   const handleJoinClan = async (clanId: string) => {
     if (!user) return;
+
+    // Um atleta só pertence a um time por vez, salvo se o admin liberar vários
+    const alreadyApproved = memberships.some(
+      (m) => m.user_id === user.id && m.status === 'approved',
+    );
+    if (alreadyApproved && !boxSettings.allow_multiple_clans_per_user) {
+      alert('Você já faz parte de um time. Saia do time atual para entrar em outro.');
+      return;
+    }
 
     // Verifica limite de membros
     const approvedCount = memberships.filter(m => m.clan_id === clanId && m.status === 'approved').length;
