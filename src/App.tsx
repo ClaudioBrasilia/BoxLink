@@ -33,6 +33,7 @@ import { Shield, Lock, Building2 } from 'lucide-react';
 import { isIndividualApp, isBoxApp } from './lib/appMode';
 import Onboarding from './components/Onboarding';
 import { ToastProvider } from './context/ToastContext';
+import { NotificationsProvider } from './hooks/useNotifications';
 import { supabase } from './lib/supabase';
 import { VisitorPermissions } from './types';
 
@@ -203,11 +204,13 @@ function AppRoutes() {
 export default function App() {
   const { showOnboarding, completeOnboarding } = useAuth();
   return (
-    <ToastProvider>
-      <AppRoutes />
-      <AnimatePresence>
-        {showOnboarding && <Onboarding onComplete={completeOnboarding} />}
-      </AnimatePresence>
-    </ToastProvider>
+    <NotificationsProvider>
+      <ToastProvider>
+        <AppRoutes />
+        <AnimatePresence>
+          {showOnboarding && <Onboarding onComplete={completeOnboarding} />}
+        </AnimatePresence>
+      </ToastProvider>
+    </NotificationsProvider>
   );
 }

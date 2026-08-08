@@ -185,7 +185,16 @@ export default function Layout() {
             </NavLink>
           ))}
           <button
-            onClick={() => setIsMenuOpen(true)}
+            onClick={() => {
+              setIsMenuOpen(true);
+              // O badge do "Mais" resume notificações de desafio, mas o menu
+              // é só uma lista de atalhos — não existe uma página própria
+              // pra "visitar" e zerar isso. Zera aqui, no ponto onde o
+              // usuário efetivamente viu o resumo.
+              notifications
+                .filter(n => !n.read && ['challenge_done', 'challenge_new'].includes(n.type))
+                .forEach(n => markRead(n.id));
+            }}
             className="flex flex-col items-center gap-1 text-on-surface-variant hover:text-on-surface transition-all flex-1"
           >
             <div className="relative">

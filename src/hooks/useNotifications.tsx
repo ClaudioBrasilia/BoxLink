@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
@@ -13,7 +13,21 @@ export interface AppNotification {
   created_at: string;
 }
 
-export function useNotifications() {
+interface NotificationsContextType {
+  notifications: AppNotification[];
+  unreadCount: number;
+  fetchNotifications: () => Promise<void>;
+  markRead: (id: string) => Promise<void>;
+  markAllRead: () => Promise<void>;
+}
+
+// Contexto único compartilhado pelo app inteiro — páginas que marcam
+// notificações como lidas (ex: Challenges) precisam do mesmo estado que
+// alimenta os badges do Layout, senão a leitura fica "presa" numa
+// instância isolada do hook e o badge nunca reflete o markRead.
+const NotificationsContext = createContext<NotificationsContextType | undefined>(undefined);
+
+export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -71,7 +85,17 @@ export function useNotifications() {
     return () => { supabase.removeChannel(channel); };
   }, [user?.id, fetchNotifications]);
 
-  return { notifications, unreadCount, fetchNotifications, markRead, markAllRead };
+  return (
+    <NotificationsContext.Provider value={{ notifications, unreadCount, fetchNotifications, markRead, markAllRead }}>
+      {children}
+    </NotificationsContext.Provider>
+  );
+}
+
+export function useNotifications() {
+  const context = useContext(NotificationsContext);
+  if (context === undefined) throw new Error('useNotifications must be used within a NotificationsProvider');
+  return context;
 }
 
 /** Cria notificação para um usuário */
