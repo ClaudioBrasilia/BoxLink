@@ -20,4 +20,4 @@ export const isIndividualApp = APP_MODE === 'individual';
 /** Build do app do box (o BoxLink completo, com admin, TV, turmas). */
 export const isBoxApp = APP_MODE === 'box';
 
-export const APP_NAME = isIndividualApp ? 'BoxLink Solo' : 'BoxLink';
+export const APP_NAME = isIndividualApp ? 'BoxLink League' : 'BoxLink';

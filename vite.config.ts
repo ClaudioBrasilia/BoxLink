@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
   // individual (VITE_APP_MODE=individual). Só muda a casca — backend é o
   // mesmo, que é o que permite o individual entrar num box sem perder nada.
   const isIndividualApp = env.VITE_APP_MODE === 'individual';
-  const appName = isIndividualApp ? 'BoxLink Solo' : 'BoxLink';
+  const appName = isIndividualApp ? 'BoxLink League' : 'BoxLink';
 
   return {
     plugins: [
@@ -35,9 +35,11 @@ export default defineConfig(({ mode }) => {
         },
         manifest: {
           name: appName,
-          short_name: appName,
+          // Curto de propósito: é o texto que aparece embaixo do ícone na tela
+          // inicial do celular, e "BoxLink League" cortaria com reticências.
+          short_name: isIndividualApp ? 'BoxLeague' : 'BoxLink',
           description: isIndividualApp
-            ? 'BoxLink Solo — seu treino, seu placar, seus duelos. Sem depender de academia.'
+            ? 'BoxLink League — treine sozinho, dispute com amigos, suba na liga.'
             : 'BoxLink — treino, duelos e liga para atletas',
           theme_color: '#0e0e0e',
           background_color: '#0e0e0e',
