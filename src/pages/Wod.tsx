@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Flame, Star, Edit2, CheckCircle2, X, Lock, Dumbbell } from 'lucide-react';
+import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Flame, Star, Edit2, CheckCircle2, X, Lock, Dumbbell, Heart } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { Wod as WodType } from '../types';
@@ -11,10 +12,12 @@ import { supabase } from '../lib/supabase';
 import { getWodByDate, getLatestWod } from '../lib/wods';
 import { addReward, getRewardSettings } from '../utils/rewards';
 import { calcInactivity, InactivitySettings, InactivityState } from '../utils/inactivity';
-import HeartRateDisplay from '../components/HeartRateDisplay';
 import PostWorkoutFeedback from '../components/PostWorkoutFeedback';
 import TimeInput from '../components/TimeInput';
 import { TrainingFeeling } from '../types';
+import { fetchRecentHeartRateSession } from '../lib/heartRateSessions';
+import { effortFromSession, WodEffort } from '../lib/effort';
+import { useUserBiometrics } from '../hooks/useUserBiometrics';
 
 const TIMEZONE = 'America/Sao_Paulo';
 
@@ -163,6 +166,16 @@ export default function Wod() {
   const [inactivity, setInactivity] = useState<InactivityState | null>(null);
   const [inactivityLoading, setInactivityLoading] = useState(true);
 
+  // Esforço (FC) que acompanha o resultado. Vem da última sessão medida na
+  // tela de Frequência: o Box não tem cronômetro que colete as amostras, então
+  // o caminho é medir a FC lá e registrar o resultado aqui. É o dado que
+  // libera a 4ª barra ("Esforço") na comparação entre atletas.
+  const bio = useUserBiometrics(user?.id);
+  // O que já está gravado neste resultado (o que a comparação usa hoje).
+  const [savedEffort, setSavedEffort] = useState<WodEffort | null>(null);
+  // O que a sessão recente de FC tem a oferecer, ainda não gravado.
+  const [sessionEffort, setSessionEffort] = useState<WodEffort | null>(null);
+
   // Percepção de esforço — aparece a cada vez que o resultado é salvo
   // (registrado ou editado), mesmo padrão do Diário no modo Individual.
   const [showFeedback, setShowFeedback] = useState(false);
@@ -218,7 +231,7 @@ export default function Wod() {
 
   const fetchWod = async () => {
     if (!user) return;
-    setLoading(true); setSubmitted(false); setExistingResultId(null); setResult(''); setLoadKg('');
+    setLoading(true); setSubmitted(false); setExistingResultId(null); setResult(''); setLoadKg(''); setSavedEffort(null);
     const dateStr = formatInTimeZone(selectedDate, TIMEZONE, 'yyyy-MM-dd');
     let wodData = await getWodByDate(dateStr);
     if (!wodData && isSameDay(selectedDate, new Date())) {
@@ -234,21 +247,45 @@ export default function Wod() {
         setResult(resultData.result ?? '');
         setCategory((resultData.type as 'RX' | 'Scaled') || 'RX');
         setLoadKg(resultData.load_kg != null ? String(resultData.load_kg) : '');
+        if (resultData.hr_avg_pct != null || resultData.effort_index != null || resultData.hr_zone != null) {
+          setSavedEffort({
+            hrAvgPct: resultData.hr_avg_pct ?? null,
+            effortIndex: resultData.effort_index ?? null,
+            hrZone: resultData.hr_zone ?? null,
+          });
+        }
       }
     }
     setLoading(false);
   };
+
+  // Sessão de FC recente do atleta — só faz sentido no WOD de hoje: registrar
+  // o resultado de um treino de terça não deve pegar a FC medida agora.
+  useEffect(() => {
+    if (!user?.id || !isSameDay(selectedDate, new Date())) { setSessionEffort(null); return; }
+    let cancelled = false;
+    fetchRecentHeartRateSession(user.id).then(session => {
+      if (!cancelled) setSessionEffort(effortFromSession(session, bio));
+    });
+    return () => { cancelled = true; };
+  }, [user?.id, selectedDate, bio]);
 
   const handleSubmit = async () => {
     if (!user || !wod || !result.trim()) return;
     // Carga é opcional: campo vazio (ou inválido) grava null, não zero.
     const parsedLoad = loadKg.trim() ? parseFloat(loadKg.replace(',', '.')) : NaN;
     const parsedLoadKg = Number.isFinite(parsedLoad) && parsedLoad > 0 ? parsedLoad : null;
+    // Esforço medido hoje entra junto do resultado. Sem faixa conectada
+    // (ou fora da janela) o campo nem vai no payload: editar um resultado não
+    // pode apagar o esforço que já estava gravado nele.
+    const effortPayload = sessionEffort
+      ? { hr_avg_pct: sessionEffort.hrAvgPct, effort_index: sessionEffort.effortIndex, hr_zone: sessionEffort.hrZone }
+      : {};
     setSubmitting(true);
     try {
       if (existingResultId) {
         const { data, error } = await supabase.from('wod_results')
-          .update({ result, type: category, load_kg: parsedLoadKg })
+          .update({ result, type: category, load_kg: parsedLoadKg, ...effortPayload })
           .eq('id', existingResultId)
           .select('rpe, feeling, sleep_hours, notes')
           .single();
@@ -265,7 +302,8 @@ export default function Wod() {
         setShowFeedback(true);
       } else {
         const { data, error } = await supabase.from('wod_results')
-          .insert({ wod_id: wod.id, user_id: user.id, result, type: category, load_kg: parsedLoadKg }).select().single();
+          .insert({ wod_id: wod.id, user_id: user.id, result, type: category, load_kg: parsedLoadKg, ...effortPayload })
+          .select().single();
         if (error) throw error;
         setExistingResultId(data.id);
 
@@ -293,6 +331,7 @@ export default function Wod() {
           addToast('Resultado salvo!', 'success');
         }
       }
+      if (sessionEffort) setSavedEffort(sessionEffort);
       setSubmitted(true); setEditing(false);
     } catch (err) {
       console.error('Error saving WOD result:', err);
@@ -478,6 +517,18 @@ export default function Wod() {
                     {loadKg && <span className="text-on-surface-variant font-bold"> · {loadKg}kg</span>}
                   </span>
                 </div>
+                {savedEffort && (
+                  <div className="flex items-center gap-2 text-secondary">
+                    <Heart className="w-4 h-4 shrink-0" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">
+                      {[
+                        savedEffort.hrAvgPct != null ? `${savedEffort.hrAvgPct}% FCmáx` : null,
+                        savedEffort.effortIndex != null ? `Esforço ${savedEffort.effortIndex}` : null,
+                        savedEffort.hrZone,
+                      ].filter(Boolean).join(' · ')}
+                    </span>
+                  </div>
+                )}
                 {/* Sem a carga o atleta fica de fora da força relativa. Como o
                     campo vive no formulário, quem já registrou o resultado não
                     o veria — este atalho abre a edição já apontando o que falta. */}
@@ -559,6 +610,27 @@ export default function Wod() {
                     Com seu peso no perfil, mostra quanto do próprio corpo você moveu
                   </p>
                 </div>
+
+                {/* Esforço (FC): não é um campo pra digitar — ou existe uma
+                    medição recente pra anexar, ou o atleta fica sem a barra de
+                    esforço na comparação. Os dois casos são ditos aqui. */}
+                {sessionEffort ? (
+                  <div className="flex items-center gap-2 bg-secondary/10 border border-secondary/20 rounded-2xl px-4 py-2.5">
+                    <Heart className="w-4 h-4 text-secondary shrink-0" />
+                    <span className="text-[10px] font-black text-secondary uppercase tracking-widest leading-snug">
+                      Esforço da sua medição de FC vai junto
+                      {sessionEffort.hrAvgPct != null ? ` — ${sessionEffort.hrAvgPct}% FCmáx` : ''}
+                    </span>
+                  </div>
+                ) : (
+                  <Link to="/frequencia"
+                    className="flex items-center gap-2 bg-surface-container-highest rounded-2xl px-4 py-2.5">
+                    <Heart className="w-4 h-4 text-on-surface-variant shrink-0" />
+                    <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest leading-snug">
+                      Meça a FC em Frequência para entrar na comparação de esforço
+                    </span>
+                  </Link>
+                )}
 
                 <button onClick={handleSubmit} disabled={submitting || !result.trim()}
                   className="w-full py-4 rounded-2xl bg-primary text-background font-black text-base disabled:opacity-40 transition-opacity">

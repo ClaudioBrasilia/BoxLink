@@ -37,7 +37,20 @@ interface WodRankEntry {
   scoreNum: number;   // número puro para ordenação
   pace: number | null; // reps/min — null quando o coach não cadastrou os números
   relStrength: number | null; // carga ÷ peso corporal — null sem carga ou sem peso no perfil
+  // Esforço medido (FC) que veio junto do resultado — null quando o atleta
+  // treinou sem faixa. É a 4ª métrica da comparação, igual à do individual.
+  hrPct: number | null;       // % da FC máxima
+  effortIndex: number | null;
+  hrZone: string | null;
 }
+
+/** Rótulo da barra de esforço — o mesmo texto do recap do duelo. */
+const HR_META = {
+  label: 'Esforço (FC)',
+  unit: '% da FC máx',
+  betterWord: 'menos esforço',
+  worseWord: 'mais esforço',
+};
 
 type WodFilter = 'todos' | 'RX' | 'Scaled';
 type GenderFilter = 'todos' | 'M' | 'F';
@@ -261,6 +274,9 @@ export default function Leaderboard() {
                 timeCapMinutes: wod?.time_cap_minutes,
               }),
               relStrength: computeRelativeStrength(r.load_kg, profile?.weight_kg),
+              hrPct: r.hr_avg_pct ?? null,
+              effortIndex: r.effort_index ?? null,
+              hrZone: r.hr_zone ?? null,
             };
           });
       };
@@ -352,12 +368,22 @@ export default function Leaderboard() {
     </span>
   );
 
-  // Ritmo (reps/min) — só aparece quando o coach cadastrou os números do WOD
+  // Ritmo (reps/min) — só aparece quando o coach cadastrou os números do WOD.
+  // Junto vai o esforço (FC), que só existe pra quem treinou com faixa — as
+  // mesmas duas linhas de apoio do placar do individual.
   const PaceLabel = ({ entry }: { entry: WodRankEntry }) => {
     const label = formatPace(entry.pace);
-    if (!label) return null;
+    const effort = [
+      entry.hrPct != null ? `${entry.hrPct}% FCmáx` : null,
+      entry.effortIndex != null ? `Esforço ${entry.effortIndex}` : null,
+      entry.hrZone,
+    ].filter(Boolean).join(' · ');
+    if (!label && !effort) return null;
     return (
-      <span className="text-[9px] font-bold text-on-surface-variant/70 tracking-widest">{label}</span>
+      <>
+        {label && <span className="block text-[9px] font-bold text-on-surface-variant/70 tracking-widest">{label}</span>}
+        {effort && <span className="block text-[9px] font-bold text-secondary/80 tracking-widest">❤️ {effort}</span>}
+      </>
     );
   };
 
@@ -371,6 +397,7 @@ export default function Leaderboard() {
 
     const paces = wodRanking.map(e => e.pace).filter((v): v is number => v != null);
     const strengths = wodRanking.map(e => e.relStrength).filter((v): v is number => v != null);
+    const hrs = wodRanking.map(e => e.hrPct).filter((v): v is number => v != null);
 
     return {
       athlete: { id: leader.userId, name: leader.name, photoUrl: leader.photoUrl ?? null },
@@ -387,6 +414,9 @@ export default function Leaderboard() {
       // Com um único registro a "média do box" seria o próprio líder — 0% de
       // diferença. Mesma regra da TV.
       avgStrength: strengths.length >= 2 ? avg(strengths) : null,
+      leaderHr: leader.hrPct,
+      avgHr: hrs.length >= 2 ? avg(hrs) : null,
+      hrMeta: HR_META,
     };
   })();
 
@@ -757,6 +787,9 @@ export default function Leaderboard() {
                   avgPace: otherEntry.pace,
                   leaderStrength: winnerEntry.relStrength,
                   avgStrength: otherEntry.relStrength,
+                  leaderHr: winnerEntry.hrPct,
+                  avgHr: otherEntry.hrPct,
+                  hrMeta: HR_META,
                 };
 
                 return (
@@ -813,6 +846,24 @@ export default function Leaderboard() {
                             myWodEntry.relStrength != null && compareTarget.relStrength != null && compareTarget.relStrength > myWodEntry.relStrength
                               ? 'text-primary' : 'text-on-surface')}>
                             {compareTarget.relStrength != null ? `${compareTarget.relStrength.toFixed(2)}x` : '—'}
+                          </span>
+                        </div>
+                      )}
+                      {(myWodEntry.hrPct != null || compareTarget.hrPct != null) && (
+                        <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 items-center">
+                          <span className="text-[9px] font-black text-on-surface-variant/70 uppercase tracking-widest">
+                            Esforço <span className="opacity-60">(% da FC máx)</span>
+                          </span>
+                          {/* Menos esforço para o mesmo WOD é o lado eficiente. */}
+                          <span className={cn('text-xs font-bold text-center',
+                            myWodEntry.hrPct != null && compareTarget.hrPct != null && myWodEntry.hrPct < compareTarget.hrPct
+                              ? 'text-primary' : 'text-on-surface')}>
+                            {myWodEntry.hrPct != null ? `${myWodEntry.hrPct}%` : '—'}
+                          </span>
+                          <span className={cn('text-xs font-bold text-center',
+                            myWodEntry.hrPct != null && compareTarget.hrPct != null && compareTarget.hrPct < myWodEntry.hrPct
+                              ? 'text-primary' : 'text-on-surface')}>
+                            {compareTarget.hrPct != null ? `${compareTarget.hrPct}%` : '—'}
                           </span>
                         </div>
                       )}

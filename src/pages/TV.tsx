@@ -131,7 +131,7 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
   if (!activeWod?.id) return null;
 
   const { data: rows } = await supabase
-    .from('wod_results').select('user_id, result, load_kg').eq('wod_id', activeWod.id);
+    .from('wod_results').select('user_id, result, load_kg, hr_avg_pct').eq('wod_id', activeWod.id);
   if (!rows || rows.length === 0) return null;
 
   const timeBased = isTimeBasedType(activeWod.type);
@@ -144,13 +144,13 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
   };
 
   // Melhor resultado de cada atleta
-  const bestByUser: Record<string, { result: string; score: number; loadKg: number | null }> = {};
+  const bestByUser: Record<string, { result: string; score: number; loadKg: number | null; hrPct: number | null }> = {};
   rows.forEach((r: any) => {
     const score = parseWodScore(r.result, repsPerRound);
     if (score == null) return;
     const prev = bestByUser[r.user_id];
     if (!prev || (timeBased ? score < prev.score : score > prev.score)) {
-      bestByUser[r.user_id] = { result: r.result, score, loadKg: r.load_kg ?? null };
+      bestByUser[r.user_id] = { result: r.result, score, loadKg: r.load_kg ?? null, hrPct: r.hr_avg_pct ?? null };
     }
   });
 
@@ -168,6 +168,10 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
   const strengths = sorted
     .map(([id, v]) => computeRelativeStrength(v.loadKg, profileMap[id]?.weight_kg))
     .filter((v): v is number => v != null);
+  // Esforço gravado junto do resultado (% da FC máx). É o que mantém a barra
+  // de esforço na tela depois que a faixa desconecta — a FC ao vivo, quando
+  // existe, entra por cima disso no painel.
+  const hrs = sorted.map(([, v]) => v.hrPct).filter((v): v is number => v != null);
   const avg = (nums: number[]) => nums.reduce((a, b) => a + b, 0) / nums.length;
 
   return {
@@ -189,6 +193,14 @@ async function buildWodSpotlight(activeWod: any, profileMap: Record<string, any>
     // Com um único atleta a "média do box" seria ele mesmo — comparação vazia
     // (0% de diferença). Só compara quando há pelo menos dois registros.
     avgStrength: strengths.length >= 2 ? avg(strengths) : null,
+    leaderHr: leader.hrPct,
+    avgHr: hrs.length >= 2 ? avg(hrs) : null,
+    hrMeta: {
+      label: 'Esforço (FC)',
+      unit: '% da FC máx',
+      betterWord: 'menos esforço',
+      worseWord: 'mais esforço',
+    },
   };
 }
 
@@ -273,7 +285,15 @@ function TVSpotlightPanel({ spotlight }: { spotlight: WodSpotlightData | null })
   return (
     <motion.section key="spotlight" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
       className="absolute inset-0 bg-[#111] rounded-[3rem] p-8 border border-white/5">
-      <WodSpotlightChart variant="tv" data={{ ...spotlight, leaderHr: hr.mine, avgHr: hr.avg }} />
+      {/* FC ao vivo (bpm) manda enquanto alguém está transmitindo; quando o
+          telão não tem ninguém conectado, a barra continua existindo com o
+          esforço gravado no resultado (% da FC máx), em vez de sumir. */}
+      <WodSpotlightChart
+        variant="tv"
+        data={hr.mine != null && hr.avg != null
+          ? { ...spotlight, leaderHr: hr.mine, avgHr: hr.avg, hrMeta: undefined }
+          : spotlight}
+      />
     </motion.section>
   );
 }

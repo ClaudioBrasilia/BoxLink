@@ -17,6 +17,10 @@ export interface WodTimerResult {
   title: string;
   description: string;
   result: string;   // "12:45", "5+12", "Completo (CAP)"...
+  /** Duração que valeu para este WOD: AMRAP/EMOM = tempo prescrito, FOR TIME =
+   *  time cap (null quando não havia cap). É o que fecha a conta do ritmo do
+   *  AMRAP quando o WOD nasce aqui, sem ter passado pelo "Postar WOD". */
+  timeCapMinutes: number | null;
   effort?: EffortResult | null;   // esforço (FC) medido durante o WOD, se conectado
 }
 
@@ -28,6 +32,9 @@ interface Props {
   initialTitle?: string;
   initialType?: WodTimerType;
   initialDescription?: string;
+  /** Duração já prescrita no WOD do dia (AMRAP/EMOM) ou time cap (FOR TIME) —
+   *  chega pronta do card, então ninguém redigita o "20" do AMRAP. */
+  initialMinutes?: number | null;
 }
 
 const fmt = (totalSec: number) => {
@@ -40,14 +47,15 @@ const fmt = (totalSec: number) => {
 const TABATA_WORK = 20;
 const TABATA_REST = 10;
 
-export default function WodTimer({ onClose, onFinish, userId, initialTitle, initialType, initialDescription }: Props) {
+export default function WodTimer({ onClose, onFinish, userId, initialTitle, initialType, initialDescription, initialMinutes }: Props) {
   // Setup
   const [phase, setPhase] = useState<'setup' | 'run' | 'amrapScore'>('setup');
   const [type, setType] = useState<WodTimerType>(initialType || 'FOR TIME');
   const [title, setTitle] = useState(initialTitle || '');
   const [description, setDescription] = useState(initialDescription || '');
-  const [minutes, setMinutes] = useState(12);   // AMRAP duração / EMOM total / FOR TIME cap
-  const [capEnabled, setCapEnabled] = useState(false);
+  const [minutes, setMinutes] = useState(initialMinutes && initialMinutes > 0 ? initialMinutes : 12);   // AMRAP duração / EMOM total / FOR TIME cap
+  // Time cap do FOR TIME já vem ligado quando o WOD do dia prescreveu um.
+  const [capEnabled, setCapEnabled] = useState(!!(initialMinutes && initialMinutes > 0));
   const [tabataRounds, setTabataRounds] = useState(8);
 
   // Run
@@ -200,6 +208,10 @@ export default function WodTimer({ onClose, onFinish, userId, initialTitle, init
       title: title.trim() || type,
       description: description.trim(),
       result: buildResult(),
+      // TABATA é medido em rounds, não em minutos prescritos — fica de fora.
+      timeCapMinutes: type === 'AMRAP' || type === 'EMOM' ? minutes
+        : type === 'FOR TIME' && capEnabled ? minutes
+        : null,
     });
   };
 

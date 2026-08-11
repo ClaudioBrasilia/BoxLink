@@ -4,17 +4,40 @@ import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { isTimeBasedType, postWodDefinition } from '../lib/dailyWods';
+import { isAmrapType } from '../lib/pace';
 import { useDailyWodRows, WodResultRow } from '../hooks/useDailyWodRows';
 
 const WOD_TYPES = ['FOR TIME', 'AMRAP', 'EMOM', 'TABATA', 'OUTRO'];
+
+/** Tipos que rodam contra o relógio: AMRAP e EMOM têm duração prescrita, FOR
+ *  TIME tem time cap. TABATA fica de fora — a duração dele sai dos rounds. */
+const usesMinutes = (type: string) =>
+  isAmrapType(type) || (type || '').toUpperCase() === 'EMOM' || isTimeBasedType(type);
+
+const minutesLabel = (type: string) =>
+  isAmrapType(type) ? 'Duração (min)'
+    : (type || '').toUpperCase() === 'EMOM' ? 'Total de minutos'
+    : isTimeBasedType(type) ? 'Time cap (min)'
+    : 'Duração (min)';
+
+const parseIntOrNull = (v: string): number | null => {
+  const n = parseInt(v.trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const parseLoadOrNull = (v: string): number | null => {
+  const n = parseFloat(v.trim().replace(',', '.'));
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
 
 interface DailyWodPanelProps {
   /** Muda quando um WOD do dia é postado/atualizado — pai pode reagir. */
   onChange?: () => void;
   /** Muda quando um resultado é gravado por fora deste card — força recarregar. */
   refreshSignal?: number;
-  /** Treinar o WOD abre o cronômetro já carregado com ele. */
-  onStartWod?: (row: { id: string; wod_name: string; wod_type: string; description: string | null; scaling: 'rx' | 'scaled' }) => void;
+  /** Treinar o WOD abre o cronômetro já carregado com ele (inclusive com os
+   *  números: duração do AMRAP, time cap, carga sugerida). */
+  onStartWod?: (row: WodResultRow) => void;
   /** Cronômetro livre, sem WOD pré-carregado. */
   onFreeTrain?: () => void;
   /** Muda quando o pai pede pra abrir o formulário de postar WOD — o botão
@@ -48,6 +71,14 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
   // Total de reps prescritas (FOR TIME) — opcional, mesma conta do Box: com o
   // tempo do resultado vira ritmo (reps/min) no placar.
   const [totalReps, setTotalReps] = useState('');
+  // Números do AMRAP (mesma dupla que o coach preenche no Box): reps de um
+  // round completo + duração. Juntos, transformam o "5+12" do cronômetro em
+  // ritmo (reps/min) no placar.
+  const [repsPerRound, setRepsPerRound] = useState('');
+  const [timeCapMinutes, setTimeCapMinutes] = useState('');
+  // Carga sugerida do WOD — a prescrição ("Thruster 43kg"), não a carga que
+  // o atleta acabou usando (essa entra junto com o resultado).
+  const [targetLoadKg, setTargetLoadKg] = useState('');
   // Cards abertos — fechados por padrão pra caber vários WODs do dia na tela.
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const formRef = useRef<HTMLDivElement>(null);
@@ -58,6 +89,7 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
   const openNewForm = () => {
     setEditingRowId(null);
     setWodName(''); setWodType('FOR TIME'); setDescription(''); setScaling('rx'); setTotalReps('');
+    setRepsPerRound(''); setTimeCapMinutes(''); setTargetLoadKg('');
     setFormOpen(true);
   };
 
@@ -66,6 +98,9 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
     setWodName(row.wod_name); setWodType(row.wod_type);
     setDescription(row.description || ''); setScaling(row.scaling);
     setTotalReps(row.total_reps != null ? String(row.total_reps) : '');
+    setRepsPerRound(row.reps_per_round != null ? String(row.reps_per_round) : '');
+    setTimeCapMinutes(row.time_cap_minutes != null ? String(row.time_cap_minutes) : '');
+    setTargetLoadKg(row.target_load_kg != null ? String(row.target_load_kg) : '');
     setFormOpen(true);
   };
 
@@ -90,7 +125,12 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
       await postWodDefinition({
         userId: user.id, wodName: wodName.trim(), wodType, description: description.trim(), scaling,
         id: editingRowId || undefined,
-        totalReps: isTimeBasedType(wodType) && totalReps.trim() ? parseInt(totalReps, 10) || null : null,
+        // Cada número só é gravado no tipo de WOD em que ele significa algo —
+        // mesma regra do painel do coach no Box.
+        totalReps: isTimeBasedType(wodType) ? parseIntOrNull(totalReps) : null,
+        repsPerRound: isAmrapType(wodType) ? parseIntOrNull(repsPerRound) : null,
+        timeCapMinutes: usesMinutes(wodType) ? parseIntOrNull(timeCapMinutes) : null,
+        targetLoadKg: parseLoadOrNull(targetLoadKg),
       });
       toast.success(editingRowId ? 'WOD atualizado!' : 'WOD postado! Toque nele para treinar.');
       setFormOpen(false);
@@ -127,7 +167,10 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
                 <p className="text-sm font-headline font-black text-on-surface uppercase italic truncate">{row.wod_name}</p>
                 <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest truncate">
                   {row.wod_type} • {row.scaling === 'rx' ? 'RX' : 'Scaled'}
-                  {row.load_kg != null ? ` • ${row.load_kg}kg` : ''}
+                  {row.time_cap_minutes != null ? ` • ${row.time_cap_minutes}min` : ''}
+                  {/* Antes de treinar mostra a carga sugerida; depois, a usada. */}
+                  {row.load_kg != null ? ` • ${row.load_kg}kg`
+                    : row.target_load_kg != null ? ` • ${row.target_load_kg}kg sugerida` : ''}
                 </p>
               </div>
               {trained ? (
@@ -146,6 +189,23 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
                   <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest italic opacity-60">
                     Sem movimentos anotados
                   </p>
+                )}
+                {/* Os números prescritos do WOD — os mesmos que o coach
+                    cadastra no Box e que liberam o ritmo (reps/min) no placar. */}
+                {(row.time_cap_minutes != null || row.reps_per_round != null || row.total_reps != null || row.target_load_kg != null) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      row.time_cap_minutes != null ? [minutesLabel(row.wod_type), `${row.time_cap_minutes} min`] : null,
+                      row.reps_per_round != null ? ['Reps/round', String(row.reps_per_round)] : null,
+                      row.total_reps != null ? ['Total de reps', String(row.total_reps)] : null,
+                      row.target_load_kg != null ? ['Carga sugerida', `${row.target_load_kg} kg`] : null,
+                    ].filter(Boolean).map(([label, value]) => (
+                      <span key={label as string}
+                        className="bg-surface-container-highest/60 rounded-xl px-2.5 py-1.5 text-[9px] font-black text-on-surface-variant uppercase tracking-widest">
+                        {label} <span className="text-primary">{value}</span>
+                      </span>
+                    ))}
+                  </div>
                 )}
                 <div className="flex items-center gap-2">
                   <button
@@ -200,6 +260,9 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
             rows={4}
             className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
           />
+          {/* Números do WOD, por tipo — mesma ficha que o coach preenche no
+              Box. FOR TIME precisa de total de reps (÷ tempo = ritmo); AMRAP,
+              de reps por round + duração (reps completadas ÷ duração). */}
           {isTimeBasedType(wodType) && (
             <div className="flex flex-col gap-1">
               <input
@@ -215,6 +278,51 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
               </p>
             </div>
           )}
+          {isAmrapType(wodType) && (
+            <div className="flex flex-col gap-1">
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="Reps de um round completo (ex: 30)"
+                value={repsPerRound}
+                onChange={e => setRepsPerRound(e.target.value)}
+                className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+              />
+              <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
+                Opcional — com a duração, transforma "5+12" em ritmo (reps/min)
+              </p>
+            </div>
+          )}
+          {usesMinutes(wodType) && (
+            <div className="flex flex-col gap-1">
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder={`${minutesLabel(wodType)} (ex: ${isAmrapType(wodType) ? '20' : '12'})`}
+                value={timeCapMinutes}
+                onChange={e => setTimeCapMinutes(e.target.value)}
+                className="w-full bg-primary/5 border border-primary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+              />
+              <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
+                Opcional — o cronômetro já abre com esse tempo
+                {isAmrapType(wodType) ? ' e ele libera o ritmo do AMRAP' : ''}
+              </p>
+            </div>
+          )}
+          <div className="flex flex-col gap-1">
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="Carga sugerida (kg) — ex: 43"
+              value={targetLoadKg}
+              onChange={e => setTargetLoadKg(e.target.value)}
+              className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+            />
+            <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
+              Opcional — a carga prescrita do WOD (a usada você registra ao treinar)
+            </p>
+          </div>
+
           <div className="flex gap-2">
             {(['rx', 'scaled'] as const).map(s => (
               <button key={s} onClick={() => setScaling(s)}
