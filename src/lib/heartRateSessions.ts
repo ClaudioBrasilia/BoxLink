@@ -55,6 +55,36 @@ export async function fetchHeartRateSessions(
   }
 }
 
+/**
+ * A última sessão de FC do atleta dentro de uma janela de horas — é o que o
+ * Box anexa ao resultado do WOD como esforço do treino.
+ *
+ * A janela existe pra não grudar a corrida da manhã no WOD da noite: fora
+ * dela, o resultado simplesmente vai sem esforço. Quatro horas cobrem com
+ * folga "medi a FC, tomei banho e registrei o resultado" sem alcançar outro
+ * treino do mesmo dia.
+ */
+export async function fetchRecentHeartRateSession(
+  userId: string,
+  withinHours = 4,
+): Promise<StoredHrSession | null> {
+  try {
+    const cutoff = new Date(Date.now() - withinHours * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from('heart_rate_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('created_at', cutoff)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data as StoredHrSession;
+  } catch {
+    return null;
+  }
+}
+
 export async function deleteHeartRateSession(id: string): Promise<boolean> {
   try {
     const { error } = await supabase.from('heart_rate_sessions').delete().eq('id', id);
