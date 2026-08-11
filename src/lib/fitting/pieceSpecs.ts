@@ -131,14 +131,17 @@ const MASCULINO: PieceSpec[] = [
     slot: 'top',
     name: 'Camiseta',
     avatarBase: 'masculina',
-    // Caixa um pouco mais alta que a largura (y1 310, y2 850): artes de
-    // camiseta em foto de produto (mangas retas "manequim fantasma", sem
-    // seguir o ângulo do braço) têm proporção mais alta que larga; uma
-    // caixa mais "quadrada" força compressão vertical forte no encaixe
-    // (stretch), achatando a região do ombro contra o pescoço.
-    box: { x1: 270, x2: 755, y1: 310, y2: 850 },
-    anchor: 'Gola alinhada ao pescoço da base (y ≈ 310); ombros da peça nos ombros da base (y ≈ 400–480); barra cobrindo o cós do short da base (y ≈ 830).',
-    sizeRelative: 'Largura = ombro-a-ombro da base + mangas curtas (≈ 485 px); Altura = pescoço até o cós.',
+    // y1 = 400 (era 310): o encaixe leva o pixel opaco MAIS ALTO da arte para
+    // o topo da caixa, e numa camiseta desenhada chapada esse pixel é a
+    // COSTURA DO OMBRO — a gola é uma concavidade abaixo dele. Com y1=310
+    // (topo do pescoço, medido: pescoço reto vai de y 310 a 368) o ombro da
+    // peça pousava no queixo e a gola no meio do pescoço, tampando-o. Em 400
+    // o ombro da arte cai onde o trapézio da base começa a alargar (largura
+    // 230 px em y 400, ombro cheio em y 485), a gola em ≈ 430 e a bainha da
+    // manga em ≈ 600, onde os braços se separam do corpo.
+    box: { x1: 270, x2: 755, y1: 400, y2: 850 },
+    anchor: 'Costura do ombro da peça no ombro da base (y ≈ 400, onde o pescoço termina e o trapézio alarga); gola caindo logo abaixo, no pescoço (y ≈ 430); barra cobrindo o cós do short da base (y ≈ 830).',
+    sizeRelative: 'Largura = ombro-a-ombro da base + mangas curtas (≈ 485 px); Altura = ombro até o cós (≈ 450 px).',
     cutouts: ['Gola redonda (centro superior)', '2 bocas de manga (esquerda e direita)'],
   },
   {

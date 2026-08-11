@@ -161,18 +161,23 @@ encaixado — mesmo que o formato geral pareça "vestido" e não "produto".
 
 CAIXA EXATA NO CANVAS (crítico — não centralizar):
 - x: 270 → 755   (largura 485 px)
-- y: 310 → 850   (altura 540 px)
+- y: 400 → 850   (altura 450 px)
 - A peça DEVE ocupar exatamente esta caixa.
 - PROIBIDO centralizar no meio do canvas (1024x1536).
 - PROIBIDO escalar para preencher a imagem inteira.
 
 ÂNCORA ANATÔMICA:
-Gola alinhada ao pescoço da base (y ≈ 310); ombros da peça nos ombros da
-base (y 400–480); mangas curtas cobrindo o topo dos braços; barra reta
+O TOPO da peça (costura do ombro, ponto mais alto do desenho) fica no
+ombro da base, y ≈ 400 — onde o pescoço termina e o trapézio começa a
+alargar. A GOLA fica ABAIXO disso, no pescoço (y ≈ 430): ela é uma
+concavidade no contorno superior, nunca o ponto mais alto da arte.
+O pescoço da base (y 310–368) tem que continuar À MOSTRA acima da gola.
+Mangas curtas cobrindo o topo dos braços, bainha em y ≈ 600; barra reta
 na altura do cós do short da base (y ≈ 830–850).
 
 TAMANHO RELATIVO À BASE:
-Largura = ombro-a-ombro + mangas (≈ 485 px); Altura = pescoço até o cós.
+Largura = ombro-a-ombro + mangas (≈ 485 px); Altura = ombro até o cós
+(≈ 450 px) — a peça NÃO sobe pelo pescoço.
 
 ABERTURAS VAZADAS (alpha=0, buraco real no PNG):
 - Gola redonda (centro superior, x ≈ 456–567)
@@ -1127,7 +1132,7 @@ Saída: PNG 1024x1536 transparente, peça posicionada DENTRO da caixa acima.
 
 | ID | Peça | x_min | x_max | y_min | y_max | Base |
 |----|------|-------|-------|-------|-------|------|
-| M-01 | Camiseta | 270 | 755 | 310 | 850 | masculina |
+| M-01 | Camiseta | 270 | 755 | 400 | 850 | masculina |
 | M-02 | Regata | 300 | 725 | 340 | 800 | masculina |
 | M-03 | Jaqueta | 244 | 781 | 345 | 922 | masculina |
 | M-04 | Short | 355 | 670 | 770 | 1020 | masculina |
