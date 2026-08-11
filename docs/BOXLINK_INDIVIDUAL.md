@@ -154,6 +154,24 @@ e item no menu do individual.
 No Diário, o convite por código vira uma **lista de amigos**: grátis chama 1
 (`maxDuelFriends`), premium chama até 8 no mesmo duelo (usa `opponent_ids`).
 
+### Primeiro acesso — aprender a usar (entregue)
+O individual chega numa Início cheia de coisa e sem a mecânica óbvia: aqui
+**quem dá o check-in do dia é o treino registrado**, não um botão de presença.
+Três peças ensinam isso:
+- **Tutorial próprio do individual** (`src/components/Onboarding.tsx`): o app
+  do box e o do individual têm conjuntos de slides diferentes
+  (`BOX_SLIDES` × `INDIVIDUAL_SLIDES`). O do individual explica postar o WOD =
+  check-in + pontos, duelo por código de amigo, PR automático, Liga do mês e
+  loja do avatar. Abre uma vez (`profiles.onboarding_done`).
+- **Checklist "Primeiros passos"** (`src/components/FirstSteps.tsx`) na Início:
+  registrar o primeiro treino → montar o avatar → chamar um amigo pro duelo →
+  entrar na Liga. Cada passo tem um botão que leva à ação e é marcado a partir
+  do **dado real** (diário, avatar equipado, amigos/duelos, posição na Liga) —
+  quem já fez em outro aparelho abre com o passo concluído. Some sozinho ao
+  concluir os quatro (ou no X, lembrado só no aparelho).
+- **"Como funciona"** no Perfil: reabre o tutorial a qualquer momento, para
+  quem pulou ou quer rever.
+
 ### Insights (entregue, premium)
 Página `/insights` (premium via `advancedInsights`): a partir de
 `training_logs` mostra treinos, RPE médio, frequência semanal, distribuição de

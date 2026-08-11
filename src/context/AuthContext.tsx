@@ -13,6 +13,8 @@ interface AuthContextType {
   // Onboarding — controlado aqui para sobreviver a trocas de rota
   showOnboarding: boolean;
   completeOnboarding: () => void;
+  /** Reabre o tutorial sob demanda (botão "Como funciona" no Perfil). */
+  startOnboarding: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -159,6 +161,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateUser = (userData: User) => setUser(userData);
 
+  const startOnboarding = () => setShowOnboarding(true);
+
   const completeOnboarding = () => {
     setShowOnboarding(false);
     if (user?.id) {
@@ -171,7 +175,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider value={{
       user, login, signup, logout, updateUser,
       loading, initializing,
-      showOnboarding, completeOnboarding,
+      showOnboarding, completeOnboarding, startOnboarding,
     }}>
       {children}
     </AuthContext.Provider>

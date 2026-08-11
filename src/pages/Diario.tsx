@@ -42,6 +42,7 @@ import DailyWodPanel from '../components/DailyWodPanel';
 import PremiumCTA from '../components/PremiumCTA';
 import HeartRateWidget from '../components/HeartRateWidget';
 import ShopBanner from '../components/ShopBanner';
+import FirstSteps from '../components/FirstSteps';
 import { AppSponsorBanner, useSponsors } from '../components/SponsorBanner';
 import { postDailyWodResult } from '../lib/dailyWods';
 import { normalizeFriendCode } from '../lib/friendCode';
@@ -196,6 +197,17 @@ export default function Diario() {
 
   const premium = isPremium(user);
   const maxDuelFriends = planLimits(user).maxDuelFriends;
+
+  // Avatar já personalizado: qualquer peça equipada além do visual que a conta
+  // ganha no cadastro (base_outfit = 'default_base', o resto vazio). Usado no
+  // checklist dos primeiros passos.
+  const avatarCustomized = useMemo(() => {
+    const equipped = (user?.avatar?.equipped || {}) as Partial<AvatarSlot>;
+    return Object.entries(equipped).some(([slot, value]) =>
+      slot === 'base_outfit' ? value && value !== 'default_base' : !!value
+    );
+  }, [user?.avatar?.equipped]);
+
   // Dias restantes do Premium (trial automático ou concessão manual com
   // validade) — null quando não é Premium ou não tem data de expiração
   // (concessão vitalícia, sem validade).
@@ -1123,6 +1135,19 @@ export default function Diario() {
           monitor de frequência cardíaca. */}
       {isIndividual && (
         <div className="px-6 mb-6 flex flex-col gap-5">
+          {/* Guia de quem acabou de chegar: some sozinho quando os quatro
+              passos estiverem feitos (ver FirstSteps). */}
+          {!loading && (
+            <FirstSteps
+              hasFirstLog={logs.length > 0}
+              hasAvatar={avatarCustomized}
+              hasFriend={savedFriends.length > 0 || activeDuels.length > 0}
+              inLeague={ligaPosition != null}
+              onPostWod={() => setPlacarFormKey(k => k + 1)}
+              onOpenFriends={() => document.getElementById('amigos-duelos')?.scrollIntoView({ behavior: 'smooth' })}
+            />
+          )}
+
           {/* Mesma dupla do Dashboard do Box: patrocínio e loja lado a lado. */}
           <div className="flex gap-3 items-start">
             <AppSponsorBanner sponsors={sponsors} className="flex-1 min-w-0" />
@@ -1525,7 +1550,7 @@ export default function Diario() {
       {/* Duelo por código é a forma do individual desafiar (sem roster de box).
           Box já cria duelo em Duelos (busca entre atletas do próprio box). */}
       {isIndividual && (
-      <section className="mx-6 mb-6 bg-surface-container rounded-3xl border border-outline-variant/10 p-6 flex flex-col gap-4">
+      <section id="amigos-duelos" className="mx-6 mb-6 bg-surface-container rounded-3xl border border-outline-variant/10 p-6 flex flex-col gap-4 scroll-mt-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center flex-shrink-0">
             <Swords className="w-5 h-5 text-secondary" />
