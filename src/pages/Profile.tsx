@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Zap, Coins, Activity, Trophy, Settings, ChevronRight, Medal, Calendar, LogOut, Clock, History, Plus, X, Award, Download, Share2, Edit2, Save, CalendarCheck, ChevronLeft, BookOpen, Timer, Dumbbell, Flame, StickyNote, Trash2 } from 'lucide-react';
+import { User, Zap, Coins, Activity, Trophy, Settings, ChevronRight, Medal, Calendar, LogOut, Clock, History, Plus, X, Award, Download, Share2, Edit2, Save, CalendarCheck, ChevronLeft, BookOpen, Timer, Dumbbell, Flame, StickyNote, Trash2, HelpCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,6 +11,7 @@ import { calcInactivity, InactivitySettings } from '../utils/inactivity';
 import { LayerAdjustment } from '../lib/avatarLayers';
 import HeartRateHistory from '../components/HeartRateHistory';
 import type { Biometrics } from '../lib/heartRate';
+import { APP_NAME } from '../lib/appMode';
 
 import { supabase } from '../lib/supabase';
 
@@ -33,7 +34,7 @@ const DIARY_FEELINGS: { value: TrainingFeeling; label: string; emoji: string }[]
 ];
 
 export default function Profile() {
-  const { user, logout, updateUser } = useAuth();
+  const { user, logout, updateUser, startOnboarding } = useAuth();
   const navigate = useNavigate();
   const [history, setHistory] = useState<RewardEvent[]>([]);
   const [prs, setPrs] = useState<PersonalRecord[]>([]);
@@ -471,6 +472,26 @@ export default function Profile() {
           </div>
         </div>
       </section>
+
+      {/* O tutorial passa uma vez no primeiro acesso; aqui ele fica sempre
+          disponível para quem pulou ou quer rever como o app funciona. */}
+      <button
+        onClick={startOnboarding}
+        className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex items-center gap-3 text-left hover:border-primary/30 transition-all"
+      >
+        <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
+          <HelpCircle className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-headline font-black text-sm text-on-surface uppercase italic leading-tight">
+            Como funciona o {APP_NAME}
+          </p>
+          <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest">
+            Rever o tutorial de boas-vindas
+          </p>
+        </div>
+        <ChevronRight className="w-5 h-5 text-on-surface-variant shrink-0" />
+      </button>
 
       {/* Stats Grid */}
       <section className="grid grid-cols-3 gap-4">
