@@ -61,9 +61,6 @@ export interface PostWodDefinitionParams {
   timeCapMinutes?: number | null;
   /** Carga sugerida (kg) do WOD — a prescrição, não a carga usada. */
   targetLoadKg?: number | null;
-  /** Aquecimento e skill prescritos — mesmos campos do WOD do Box. */
-  warmup?: string | null;
-  skill?: string | null;
 }
 
 /**
@@ -72,7 +69,7 @@ export interface PostWodDefinitionParams {
  * treinado esta linha, o resultado registrado é preservado.
  */
 export async function postWodDefinition(params: PostWodDefinitionParams): Promise<string> {
-  // A ficha do WOD (nome, tipo, movimentos e números) é sempre gravada
+  // A definição do WOD (nome, tipo, movimentos e números) é sempre gravada
   // inteira: editar um WOD e apagar um campo tem que apagar mesmo, então
   // aqui não há "preserva o que veio antes" — quem preserva é o resultado.
   const definition = {
@@ -84,8 +81,6 @@ export async function postWodDefinition(params: PostWodDefinitionParams): Promis
     reps_per_round: params.repsPerRound ?? null,
     time_cap_minutes: params.timeCapMinutes ?? null,
     target_load_kg: params.targetLoadKg ?? null,
-    warmup: params.warmup ?? null,
-    skill: params.skill ?? null,
   };
 
   if (params.id) {

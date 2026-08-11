@@ -7,9 +7,7 @@ import { isTimeBasedType, postWodDefinition } from '../lib/dailyWods';
 import { isAmrapType } from '../lib/pace';
 import { useDailyWodRows, WodResultRow } from '../hooks/useDailyWodRows';
 
-// Mesmos tipos que o coach posta no Box, mais OUTRO (o atleta individual
-// treina coisa que não cabe em nenhum formato).
-const WOD_TYPES = ['FOR TIME', 'AMRAP', 'EMOM', 'TABATA', 'HERO WOD', 'OUTRO'];
+const WOD_TYPES = ['FOR TIME', 'AMRAP', 'EMOM', 'TABATA', 'OUTRO'];
 
 /** Tipos que rodam contra o relógio: AMRAP e EMOM têm duração prescrita, FOR
  *  TIME tem time cap. TABATA fica de fora — a duração dele sai dos rounds. */
@@ -81,11 +79,6 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
   // Carga sugerida do WOD — a prescrição ("Thruster 43kg"), não a carga que
   // o atleta acabou usando (essa entra junto com o resultado).
   const [targetLoadKg, setTargetLoadKg] = useState('');
-  const [warmup, setWarmup] = useState('');
-  const [skill, setSkill] = useState('');
-  // Aquecimento e skill ficam recolhidos: são a parte da ficha do Box que
-  // nem todo atleta individual prescreve, e abrir tudo polui o formulário.
-  const [extrasOpen, setExtrasOpen] = useState(false);
   // Cards abertos — fechados por padrão pra caber vários WODs do dia na tela.
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const formRef = useRef<HTMLDivElement>(null);
@@ -97,7 +90,6 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
     setEditingRowId(null);
     setWodName(''); setWodType('FOR TIME'); setDescription(''); setScaling('rx'); setTotalReps('');
     setRepsPerRound(''); setTimeCapMinutes(''); setTargetLoadKg('');
-    setWarmup(''); setSkill(''); setExtrasOpen(false);
     setFormOpen(true);
   };
 
@@ -109,9 +101,6 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
     setRepsPerRound(row.reps_per_round != null ? String(row.reps_per_round) : '');
     setTimeCapMinutes(row.time_cap_minutes != null ? String(row.time_cap_minutes) : '');
     setTargetLoadKg(row.target_load_kg != null ? String(row.target_load_kg) : '');
-    setWarmup(row.warmup || ''); setSkill(row.skill || '');
-    // Já preenchidos, aquecimento/skill abrem junto — senão pareceriam perdidos.
-    setExtrasOpen(!!(row.warmup || row.skill));
     setFormOpen(true);
   };
 
@@ -142,8 +131,6 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
         repsPerRound: isAmrapType(wodType) ? parseIntOrNull(repsPerRound) : null,
         timeCapMinutes: usesMinutes(wodType) ? parseIntOrNull(timeCapMinutes) : null,
         targetLoadKg: parseLoadOrNull(targetLoadKg),
-        warmup: warmup.trim() || null,
-        skill: skill.trim() || null,
       });
       toast.success(editingRowId ? 'WOD atualizado!' : 'WOD postado! Toque nele para treinar.');
       setFormOpen(false);
@@ -196,25 +183,8 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
 
             {open && (
               <div className="px-4 pb-4 flex flex-col gap-3 border-t border-outline-variant/10 pt-3">
-                {row.warmup && (
-                  <div>
-                    <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest mb-1 opacity-70">Aquecimento</p>
-                    <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap">{row.warmup}</p>
-                  </div>
-                )}
-                {row.skill && (
-                  <div>
-                    <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest mb-1 opacity-70">Skill</p>
-                    <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap">{row.skill}</p>
-                  </div>
-                )}
                 {row.description ? (
-                  <div>
-                    {(row.warmup || row.skill) && (
-                      <p className="text-[9px] text-primary font-black uppercase tracking-widest mb-1">WOD</p>
-                    )}
-                    <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap">{row.description}</p>
-                  </div>
+                  <p className="text-xs text-on-surface-variant font-medium leading-relaxed whitespace-pre-wrap">{row.description}</p>
                 ) : (
                   <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest italic opacity-60">
                     Sem movimentos anotados
@@ -334,9 +304,8 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
                 className="w-full bg-primary/5 border border-primary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
               />
               <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
-                {isTimeBasedType(wodType) && !isAmrapType(wodType)
-                  ? 'Opcional — o cronômetro já abre com esse time cap'
-                  : 'O cronômetro já abre com esse tempo'}
+                Opcional — o cronômetro já abre com esse tempo
+                {isAmrapType(wodType) ? ' e ele libera o ritmo do AMRAP' : ''}
               </p>
             </div>
           )}
@@ -354,34 +323,6 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
             </p>
           </div>
 
-          {/* Aquecimento e skill: a parte da ficha do Box que fica recolhida
-              até o atleta querer prescrever o treino inteiro. */}
-          <button
-            type="button"
-            onClick={() => setExtrasOpen(o => !o)}
-            className="flex items-center gap-1.5 text-[10px] font-black text-on-surface-variant uppercase tracking-widest hover:text-primary transition-all"
-          >
-            <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', extrasOpen && 'rotate-180')} />
-            Aquecimento e skill (opcional)
-          </button>
-          {extrasOpen && (
-            <>
-              <textarea
-                placeholder="Aquecimento (ex: 3 rounds — 10 air squat + 10 PVC pass through)"
-                value={warmup}
-                onChange={e => setWarmup(e.target.value)}
-                rows={3}
-                className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
-              />
-              <textarea
-                placeholder="Skill (ex: 10 min de técnica de muscle-up)"
-                value={skill}
-                onChange={e => setSkill(e.target.value)}
-                rows={3}
-                className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
-              />
-            </>
-          )}
           <div className="flex gap-2">
             {(['rx', 'scaled'] as const).map(s => (
               <button key={s} onClick={() => setScaling(s)}

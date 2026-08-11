@@ -16,8 +16,6 @@ export interface WodResultRow {
   reps_per_round: number | null;
   time_cap_minutes: number | null;
   target_load_kg: number | null;
-  warmup: string | null;
-  skill: string | null;
   hr_avg_pct: number | null;
   effort_index: number | null;
   hr_zone: string | null;
@@ -71,8 +69,6 @@ export function useDailyWodRows(refreshSignal?: number) {
         reps_per_round: r.reps_per_round ?? null,
         time_cap_minutes: r.time_cap_minutes ?? null,
         target_load_kg: r.target_load_kg ?? null,
-        warmup: r.warmup ?? null,
-        skill: r.skill ?? null,
         hr_avg_pct: r.hr_avg_pct ?? null,
         effort_index: r.effort_index ?? null,
         hr_zone: r.hr_zone ?? null,
