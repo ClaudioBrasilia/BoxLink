@@ -131,17 +131,30 @@ const MASCULINO: PieceSpec[] = [
     slot: 'top',
     name: 'Camiseta',
     avatarBase: 'masculina',
-    // y1 = 400 (era 310): o encaixe leva o pixel opaco MAIS ALTO da arte para
-    // o topo da caixa, e numa camiseta desenhada chapada esse pixel é a
-    // COSTURA DO OMBRO — a gola é uma concavidade abaixo dele. Com y1=310
-    // (topo do pescoço, medido: pescoço reto vai de y 310 a 368) o ombro da
-    // peça pousava no queixo e a gola no meio do pescoço, tampando-o. Em 400
-    // o ombro da arte cai onde o trapézio da base começa a alargar (largura
-    // 230 px em y 400, ombro cheio em y 485), a gola em ≈ 430 e a bainha da
-    // manga em ≈ 600, onde os braços se separam do corpo.
-    box: { x1: 270, x2: 755, y1: 400, y2: 850 },
-    anchor: 'Costura do ombro da peça no ombro da base (y ≈ 400, onde o pescoço termina e o trapézio alarga); gola caindo logo abaixo, no pescoço (y ≈ 430); barra cobrindo o cós do short da base (y ≈ 830).',
-    sizeRelative: 'Largura = ombro-a-ombro da base + mangas curtas (≈ 485 px); Altura = ombro até o cós (≈ 450 px).',
+    // y1 = 365. O encaixe leva o pixel opaco MAIS ALTO da arte para o topo da
+    // caixa, e numa camiseta desenhada chapada esse pixel é a COSTURA DO
+    // OMBRO — a gola é uma concavidade abaixo dele. Histórico dos dois erros
+    // opostos, medidos na base (pescoço reto y 310–368; trapézio alargando a
+    // partir de 370; ombro cheio, 438 px, em y 485):
+    //   y1=310 → ombro da arte no queixo, gola no meio do pescoço: tampava.
+    //   y1=400 → gola certa, mas o ombro descia abaixo do trapézio e deixava
+    //            a pele do ombro à mostra (a caixa também encurtava para 450,
+    //            e cada ponto da peça desce 90·(1−f) da altura, então o topo
+    //            descia os 90 px inteiros enquanto a barra não saía do lugar).
+    // 365 é o meio-termo derivado, não empírico: com altura 485 o ponto de
+    // 24% da peça — onde a arte deve atingir a largura máxima de ombro, ver
+    // abaixo — cai em y ≈ 481, exatamente o ombro cheio da base (485), e a
+    // gola (≈ 9% da altura numa camiseta chapada) cai em ≈ 409, abaixo da
+    // base do pescoço (370), deixando o pescoço à mostra.
+    //
+    // Os 24% saem da própria base: da base do pescoço (370) ao ombro cheio
+    // (485) são 115 px, numa peça que vai de 370 a 850 (480 px) → 115/480.
+    // Arte com ombro caído (largura máxima só aos 35–40% da altura) não cabe
+    // em NENHUM y1: gola e ombro têm distância fixa na arte, e a base exige
+    // uma menor. Nesse caso o acerto sai da arte, não da caixa.
+    box: { x1: 270, x2: 755, y1: 365, y2: 850 },
+    anchor: 'Costura do ombro da peça (ponto mais alto da arte) em y ≈ 365; largura máxima de ombro em y ≈ 481, sobre o ombro cheio da base (485); gola caindo abaixo, no pescoço (y ≈ 409), com o pescoço da base (310–370) à mostra; barra cobrindo o cós do short da base (y ≈ 830).',
+    sizeRelative: 'Largura = ombro-a-ombro da base + mangas curtas (≈ 485 px); Altura = ombro até o cós (≈ 485 px).',
     cutouts: ['Gola redonda (centro superior)', '2 bocas de manga (esquerda e direita)'],
   },
   {
