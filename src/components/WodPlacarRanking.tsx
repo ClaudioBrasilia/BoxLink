@@ -80,6 +80,51 @@ function buildPairSpotlight(group: WodGroup, mine: WodResultRow, target: WodResu
   return { data, otherName, badgeLabel: meBetter ? 'Você na frente' : 'Líder do WOD' };
 }
 
+/**
+ * Destaque do dia: o líder do WOD mais treinado contra a média de quem fez o
+ * mesmo WOD — a versão comunitária do destaque que o Box mostra na TV e no
+ * ranking. Só faz sentido com dois atletas ou mais: sozinho, a "média" seria
+ * o próprio líder e todas as barras dariam 0%.
+ */
+function buildDayHighlight(groups: WodGroup[]): WodSpotlightData | null {
+  // Os grupos já chegam ordenados por quantidade de atletas.
+  const group = groups.find(g => g.ranked.length >= 2);
+  if (!group) return null;
+
+  const leader = group.ranked[0];
+  const avg = (nums: number[]) => nums.reduce((a, b) => a + b, 0) / nums.length;
+  const scores = group.ranked.map(r => parseWodResult(r.result || '', group.timeBased));
+  const paces = group.ranked.map(r => paceOf(r, group.timeBased)).filter((v): v is number => v != null);
+  const strengths = group.ranked
+    .map(r => computeRelativeStrength(r.load_kg, r.weight_kg))
+    .filter((v): v is number => v != null);
+  const hrs = group.ranked.map(r => r.hr_avg_pct).filter((v): v is number => v != null);
+
+  return {
+    athlete: { id: leader.user_id, name: leader.name, photoUrl: leader.photo_url ?? null },
+    wodName: group.name,
+    wodType: leader.wod_type,
+    athleteCount: group.ranked.length,
+    timeBased: group.timeBased,
+    leaderResult: leader.result || '',
+    leaderScore: parseWodResult(leader.result || '', group.timeBased),
+    avgScore: avg(scores),
+    leaderPace: paceOf(leader, group.timeBased),
+    avgPace: paces.length ? avg(paces) : null,
+    leaderStrength: computeRelativeStrength(leader.load_kg, leader.weight_kg),
+    // Mesma regra do Box: com um único registro a "média" é o próprio líder.
+    avgStrength: strengths.length >= 2 ? avg(strengths) : null,
+    leaderHr: leader.hr_avg_pct,
+    avgHr: hrs.length >= 2 ? avg(hrs) : null,
+    hrMeta: {
+      label: 'Esforço (FC)',
+      unit: '% da FC máx',
+      betterWord: 'menos esforço',
+      worseWord: 'mais esforço',
+    },
+  };
+}
+
 type ScalingFilter = 'todos' | 'rx' | 'scaled';
 type GenderFilter = 'todos' | 'M' | 'F';
 
@@ -132,6 +177,10 @@ export default function WodPlacarRanking() {
     return map;
   }, [rows, user?.id]);
 
+  // Destaque do dia sai dos grupos inteiros, não dos filtrados: filtrar o
+  // placar é um recorte da lista, não uma troca do destaque da comunidade.
+  const dayHighlight = useMemo(() => buildDayHighlight(groups), [groups]);
+
   // Filtros aplicados por cima do ranking já ordenado — grupos que ficam sem
   // ninguém no filtro somem da lista, não aparecem vazios.
   const filteredGroups = useMemo(() => {
@@ -177,6 +226,17 @@ export default function WodPlacarRanking() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Destaque do dia — o mesmo gráfico do Box e da TV, com a média da
+          comunidade individual no lugar da média do box. */}
+      {dayHighlight && (
+        <WodSpotlightChart
+          variant="mobile"
+          data={dayHighlight}
+          comparisonName="Média da comunidade"
+          comparisonShortName="MÉDIA"
+        />
+      )}
+
       {/* Filtros — mesma dupla do ranking de WOD do Box */}
       <div className="flex gap-2 flex-wrap">
         {(['todos', 'rx', 'scaled'] as ScalingFilter[]).map(f => (
