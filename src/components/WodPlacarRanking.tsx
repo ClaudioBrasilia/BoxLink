@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { cn, compareBy } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { parseWodResult, isTimeBasedType } from '../lib/dailyWods';
-import { computeRepsPerMinute, formatPace } from '../lib/pace';
+import { computeRepsPerMinute, formatPace, isAmrapType } from '../lib/pace';
 import { computeRelativeStrength, formatRelativeStrength } from '../lib/relativeStrength';
 import { useDailyWodRows, WodResultRow } from '../hooks/useDailyWodRows';
 import AvatarPreview from './AvatarPreview';
@@ -162,12 +162,20 @@ export default function WodPlacarRanking() {
           )}
           {group.ranked.map((r, i) => {
             const isMe = r.user_id === user?.id;
-            // Ritmo só existe pra FOR TIME com total de reps cadastrado (AMRAP
-            // gravado pelo cronômetro vem em "rounds+reps", sem um "reps por
-            // round" fixo pra decompor — decidimos não arriscar um número
-            // errado, então por ora fica de fora).
-            const pace = group.timeBased
-              ? computeRepsPerMinute(r.result || '', { type: r.wod_type, totalReps: r.total_reps })
+            // Ritmo: FOR TIME sai do total de reps ÷ tempo; AMRAP só sai
+            // quando o WOD foi postado com reps por round E duração — sem os
+            // dois, o "5+12" do cronômetro não vira reps totais e a conta é
+            // omitida em vez de chutada.
+            // EMOM/TABATA ficam de fora de propósito: o resultado deles ("12
+            // min completos", "8 rounds") vira um número solto que a conta
+            // aceitaria e transformaria em ritmo sem sentido.
+            const pace = group.timeBased || isAmrapType(r.wod_type)
+              ? computeRepsPerMinute(r.result || '', {
+                  type: r.wod_type,
+                  totalReps: r.total_reps,
+                  repsPerRound: r.reps_per_round,
+                  timeCapMinutes: r.time_cap_minutes,
+                })
               : null;
             const relStrength = computeRelativeStrength(r.load_kg, r.weight_kg);
             return (

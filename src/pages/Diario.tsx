@@ -46,7 +46,7 @@ import FirstSteps from '../components/FirstSteps';
 import { AppSponsorBanner, useSponsors } from '../components/SponsorBanner';
 import { postDailyWodResult } from '../lib/dailyWods';
 import { normalizeFriendCode } from '../lib/friendCode';
-import { useDailyWodRows } from '../hooks/useDailyWodRows';
+import { useDailyWodRows, WodResultRow } from '../hooks/useDailyWodRows';
 import { useNavigate } from 'react-router-dom';
 
 const todayBR = () =>
@@ -138,9 +138,7 @@ export default function Diario() {
   const [placarFormKey, setPlacarFormKey] = useState(0);
   // Qual WOD foi escolhido pra treinar agora (tocado no card do Placar) —
   // usado pra pré-carregar o cronômetro e gravar o resultado na linha certa.
-  const [wodToTrain, setWodToTrain] = useState<{
-    id: string; wod_name: string; wod_type: string; description: string | null; scaling: 'rx' | 'scaled';
-  } | null>(null);
+  const [wodToTrain, setWodToTrain] = useState<WodResultRow | null>(null);
   // Quando definido, o "Novo Registro" está em modo "adicionar detalhes" a um
   // treino que o cronômetro já salvou — o save vira UPDATE, não um INSERT novo.
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
@@ -490,12 +488,14 @@ export default function Diario() {
   // MESMA linha do placar em vez de criar uma segunda entrada.
   const selectPlacarWod = (row: (typeof myOpenPlacarWods)[number]) => {
     if (placarRowId === row.id) {
-      setPlacarRowId(null); setTitle(''); setWodType('FOR TIME'); setDescription('');
+      setPlacarRowId(null); setTitle(''); setWodType('FOR TIME'); setDescription(''); setLoadKg('');
       return;
     }
     setPlacarRowId(row.id);
     setTitle(row.wod_name); setWodType(row.wod_type);
     setDescription(row.description || ''); setPlacarScaling(row.scaling);
+    // Carga sugerida no WOD vira o palpite da carga usada — editável.
+    setLoadKg(row.target_load_kg != null ? String(row.target_load_kg) : '');
     setPostToPlacar(true);
   };
 
@@ -516,9 +516,9 @@ export default function Diario() {
     setDuelName(row.wod_name);
     setDuelType(row.wod_type || 'FOR TIME');
     setDuelDesc(row.description || '');
-    // Total de reps já cadastrado no placar libera o ritmo sem redigitar.
+    // Números já cadastrados no placar liberam o ritmo sem redigitar.
     setDuelTotalReps(row.total_reps != null ? String(row.total_reps) : '');
-    setDuelTimeCapMinutes('');
+    setDuelTimeCapMinutes(row.time_cap_minutes != null ? String(row.time_cap_minutes) : '');
   };
 
   /** Abre/fecha o desafio livre (WOD que não foi postado hoje). */
@@ -671,6 +671,9 @@ export default function Diario() {
       const wodResult = data.result.trim();
       const scaling = wodToTrain?.scaling || 'rx';
       const trainedWodId = wodToTrain?.id;
+      // Carga sugerida no WOD do dia entra como carga usada por padrão — quem
+      // treinou com outra corrige no formulário de detalhes que abre a seguir.
+      const trainedLoadKg = wodToTrain?.target_load_kg ?? null;
       setWodToTrain(null);
 
       const { data: inserted, error } = await supabase.from('training_logs').insert({
@@ -681,6 +684,7 @@ export default function Diario() {
         wod_type: data.wodType,
         description: data.description.trim() || null,
         result: wodResult || null,
+        load_kg: trainedLoadKg,
         hr_avg: eff?.avgBpm ?? null,
         hr_max: eff?.maxBpm ?? null,
         hr_avg_pct: eff?.avgPctMax ?? null,
@@ -698,6 +702,10 @@ export default function Diario() {
             userId: user.id, wodName, wodType: data.wodType, result: wodResult, scaling,
             description: data.description.trim() || undefined,
             id: trainedWodId,
+            loadKg: trainedLoadKg ?? undefined,
+            // Duração usada no cronômetro: é o que fecha o ritmo do AMRAP
+            // quando o WOD nasceu aqui, sem ter passado pelo "Postar WOD".
+            timeCapMinutes: data.timeCapMinutes,
             hrAvgPct: eff?.avgPctMax ?? null,
             effortIndex: eff?.effortIndex ?? null,
             hrZone: eff?.dominantZone ?? null,
@@ -728,7 +736,7 @@ export default function Diario() {
       setTitle(data.title);
       setDescription(data.description);
       setResult(data.result);
-      setLoadKg('');
+      setLoadKg(trainedLoadKg != null ? String(trainedLoadKg) : '');
       setEffortData(data.effort ?? null);
       setPlacarScaling(scaling);
       setShowForm(true);
@@ -1989,6 +1997,7 @@ export default function Diario() {
           initialType={wodToTrain && TIMER_TYPES.includes(wodToTrain.wod_type as WodTimerType)
             ? (wodToTrain.wod_type as WodTimerType) : undefined}
           initialDescription={wodToTrain?.description || undefined}
+          initialMinutes={wodToTrain?.time_cap_minutes ?? undefined}
         />
       )}
     </div>
