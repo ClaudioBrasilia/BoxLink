@@ -972,12 +972,12 @@ export default function Duels() {
                 Como o vencedor é decidido
               </p>
               <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">
-                O placar de cada atleta é <span className="text-primary font-bold">70% desempenho</span> + <span className="text-secondary font-bold">30% esforço</span>.
+                Quem vence é <span className="text-primary font-bold">o desempenho</span> — o resultado do WOD, e só ele.
               </p>
               <ul className="text-[11px] text-on-surface-variant font-medium leading-relaxed list-disc pl-4 flex flex-col gap-1">
                 <li><span className="text-on-surface font-bold">Desempenho:</span> seu resultado comparado ao melhor do duelo (o melhor fica em 100).</li>
-                <li><span className="text-on-surface font-bold">Esforço:</span> sua % da FC máxima, comparada ao seu próprio limite — assim iniciante e avançado competem de forma justa.</li>
-                <li><span className="text-on-surface font-bold">Só conta se todos registrarem a FC:</span> se alguém não tem sensor, o esforço fica de fora e decide só o resultado.</li>
+                <li><span className="text-on-surface font-bold">Esforço (FC):</span> aparece no resumo, mas não pontua. Fazer o mesmo resultado com FC menor mostra quem foi mais eficiente — não quem ganhou.</li>
+                <li><span className="text-on-surface font-bold">Comparação só com todos:</span> se alguém não registrou a FC, o esforço não é comparado — ninguém leva vantagem por ter sensor.</li>
               </ul>
             </motion.div>
           )}
@@ -1504,8 +1504,7 @@ export default function Duels() {
                           )}
                           {entry && (
                             <div className="flex items-center gap-2 mt-1 text-[9px] font-black uppercase tracking-widest text-on-surface-variant/80">
-                              <span>Desemp. {entry.perf}</span>
-                              <span className="text-secondary">❤️ {entry.effort}%</span>
+                              <span className="text-secondary">❤️ {entry.effort}% FC máx</span>
                               <span className="ml-auto text-on-surface">Placar {entry.total}</span>
                             </div>
                           )}
@@ -1514,7 +1513,7 @@ export default function Duels() {
                     })}
                     {outcome?.usedIntensity && (
                       <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest text-center mt-1 italic">
-                        Placar = 70% desempenho + 30% esforço
+                        Placar = desempenho. A FC entra como leitura de esforço
                       </p>
                     )}
                     {duel.status === 'active' && !allSubmitted && (
@@ -1701,8 +1700,8 @@ export default function Duels() {
                       <span className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest">kg</span>
                     </div>
                     <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest leading-snug px-1">
-                      O esforço pesa 30% no resultado — mas só entra se todos registrarem a FC.
-                      A carga não entra no placar: mostra quanto do próprio peso cada um moveu.
+                      Quem vence é o resultado. A FC e a carga não pontuam: mostram com quanto
+                      esforço e com quanto do próprio peso cada um chegou lá.
                     </p>
                   </div>
                 )}
