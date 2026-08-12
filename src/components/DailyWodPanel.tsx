@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { Timer, Hash, Check, Send, Pencil, X, ChevronDown, Play } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Timer, Hash, Check, Send, Pencil, X, ChevronDown, Play, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -29,6 +29,40 @@ const parseLoadOrNull = (v: string): number | null => {
   const n = parseFloat(v.trim().replace(',', '.'));
   return Number.isFinite(n) && n > 0 ? n : null;
 };
+
+/** Data de hoje em dd/MM/aaaa (fuso Brasil), só para mostrar no formulário. */
+const todayLabel = () =>
+  new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+/** Campo com rótulo em cima, como no Painel Coach do Box: o nome do campo
+ *  continua visível depois de preenchido (placeholder some ao digitar). */
+function Field({ label, hint, accent, children }: {
+  label: string;
+  hint?: string;
+  /** Campo que alimenta ranking/ritmo — destacado, igual ao Box. */
+  accent?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className={cn('text-[10px] font-black uppercase tracking-widest leading-snug',
+        accent ? 'text-primary' : 'text-on-surface-variant')}>
+        {label}
+      </label>
+      {children}
+      {hint && (
+        <p className="text-[9px] text-on-surface-variant/80 font-bold uppercase tracking-widest leading-snug">
+          {hint}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const FIELD_CLASS =
+  'w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-headline font-bold text-on-surface outline-none';
+const NUMBER_CLASS =
+  'w-full bg-primary/5 border border-primary/20 rounded-2xl px-4 py-3 text-sm font-headline font-bold text-on-surface outline-none';
 
 interface DailyWodPanelProps {
   /** Muda quando um WOD do dia é postado/atualizado — pai pode reagir. */
@@ -230,114 +264,161 @@ export default function DailyWodPanel({ onChange, refreshSignal, onStartWod, onF
       })}
 
       {formOpen ? (
-        <div ref={formRef} className="bg-surface-container rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-3">
+        <div ref={formRef} className="bg-surface-container rounded-3xl p-5 border border-outline-variant/10 flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-black text-on-surface uppercase tracking-widest">
-              {editingRowId ? 'Editar WOD' : 'Poste um WOD'}
-            </p>
+            <div className="flex items-center gap-2">
+              <Plus className="w-4 h-4 text-primary" />
+              <p className="font-headline font-black text-sm text-on-surface uppercase italic">
+                {editingRowId ? 'Editar WOD' : 'Postar WOD'}
+              </p>
+            </div>
             <button onClick={closeForm} className="text-on-surface-variant hover:text-on-surface transition-all">
               <X className="w-4 h-4" />
             </button>
           </div>
-          <input
-            type="text"
-            placeholder="Nome do WOD (ex: Fran, meu AMRAP)"
-            value={wodName}
-            onChange={e => setWodName(e.target.value)}
-            className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
-          />
-          <select
-            value={wodType}
-            onChange={e => setWodType(e.target.value)}
-            className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
-          >
-            {WOD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <textarea
-            placeholder="Movimentos (ex: 21-15-9 Thruster + Pull-up)"
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            rows={4}
-            className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none resize-none"
-          />
+
+          {/* Data + Tipo lado a lado, como no Painel Coach. A data é fixa em
+              hoje: o placar é do dia e cada atleta posta o próprio treino na
+              hora — quem programa aula com antecedência é o coach, no Box. */}
+          <div className="grid grid-cols-2 gap-3 items-start">
+            <Field label="Data">
+              <div className={cn(FIELD_CLASS, 'text-on-surface-variant')}>{todayLabel()}</div>
+            </Field>
+            <Field label="Tipo">
+              <select
+                value={wodType}
+                onChange={e => setWodType(e.target.value)}
+                className={FIELD_CLASS}
+              >
+                {WOD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Nome do WOD">
+            <input
+              type="text"
+              placeholder="ex: Fran, meu AMRAP"
+              value={wodName}
+              onChange={e => setWodName(e.target.value)}
+              className={FIELD_CLASS}
+            />
+          </Field>
+
           {/* Números do WOD, por tipo — mesma ficha que o coach preenche no
-              Box. FOR TIME precisa de total de reps (÷ tempo = ritmo); AMRAP,
-              de reps por round + duração (reps completadas ÷ duração). */}
-          {isTimeBasedType(wodType) && (
-            <div className="flex flex-col gap-1">
-              <input
-                type="number"
-                inputMode="numeric"
-                placeholder="Total de reps do WOD (ex: 165)"
-                value={totalReps}
-                onChange={e => setTotalReps(e.target.value)}
-                className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
-              />
-              <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
-                Opcional — libera o ritmo (reps/min) no placar
-              </p>
-            </div>
-          )}
+              Box, e no mesmo formato: o par do AMRAP lado a lado. FOR TIME
+              precisa de total de reps (÷ tempo = ritmo); AMRAP, de reps por
+              round + duração (reps completadas ÷ duração). */}
           {isAmrapType(wodType) && (
-            <div className="flex flex-col gap-1">
-              <input
-                type="number"
-                inputMode="numeric"
-                placeholder="Reps de um round completo (ex: 30)"
-                value={repsPerRound}
-                onChange={e => setRepsPerRound(e.target.value)}
-                className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
-              />
-              <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
-                Opcional — com a duração, transforma "5+12" em ritmo (reps/min)
-              </p>
+            <div className="grid grid-cols-2 gap-3 items-start">
+              <Field
+                label="Reps por round completo"
+                accent
+                hint='Vira o ritmo: transforma "5+12" em reps totais'
+              >
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="ex: 30"
+                  value={repsPerRound}
+                  onChange={e => setRepsPerRound(e.target.value)}
+                  className={NUMBER_CLASS}
+                />
+              </Field>
+              <Field label="Duração (min)" accent hint="O cronômetro já abre com esse tempo">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="ex: 20"
+                  value={timeCapMinutes}
+                  onChange={e => setTimeCapMinutes(e.target.value)}
+                  className={NUMBER_CLASS}
+                />
+              </Field>
             </div>
           )}
-          {usesMinutes(wodType) && (
-            <div className="flex flex-col gap-1">
+
+          {isTimeBasedType(wodType) && (
+            <div className="grid grid-cols-2 gap-3 items-start">
+              <Field label="Total de reps do WOD" accent hint="Libera o ritmo (reps/min) no placar">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="ex: 165"
+                  value={totalReps}
+                  onChange={e => setTotalReps(e.target.value)}
+                  className={NUMBER_CLASS}
+                />
+              </Field>
+              <Field label={minutesLabel(wodType)} accent hint="O cronômetro já abre com esse tempo">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="ex: 12"
+                  value={timeCapMinutes}
+                  onChange={e => setTimeCapMinutes(e.target.value)}
+                  className={NUMBER_CLASS}
+                />
+              </Field>
+            </div>
+          )}
+
+          {/* EMOM não tem par: só o total de minutos. */}
+          {usesMinutes(wodType) && !isAmrapType(wodType) && !isTimeBasedType(wodType) && (
+            <Field label={minutesLabel(wodType)} accent hint="O cronômetro já abre com esse tempo">
               <input
                 type="number"
                 inputMode="numeric"
-                placeholder={`${minutesLabel(wodType)} (ex: ${isAmrapType(wodType) ? '20' : '12'})`}
+                placeholder="ex: 12"
                 value={timeCapMinutes}
                 onChange={e => setTimeCapMinutes(e.target.value)}
-                className="w-full bg-primary/5 border border-primary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+                className={NUMBER_CLASS}
               />
-              <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
-                Opcional — o cronômetro já abre com esse tempo
-                {isAmrapType(wodType) ? ' e ele libera o ritmo do AMRAP' : ''}
-              </p>
-            </div>
+            </Field>
           )}
-          <div className="flex flex-col gap-1">
+
+          <Field label="RX" hint="Os movimentos do WOD, como você vai fazer">
+            <textarea
+              placeholder="ex: 21-15-9 Thruster + Pull-up"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={4}
+              className={cn(FIELD_CLASS, 'resize-none font-medium')}
+            />
+          </Field>
+
+          <Field label="Carga sugerida (kg)" hint="A carga prescrita — a usada você registra ao treinar">
             <input
               type="text"
               inputMode="decimal"
-              placeholder="Carga sugerida (kg) — ex: 43"
+              placeholder="ex: 43"
               value={targetLoadKg}
               onChange={e => setTargetLoadKg(e.target.value)}
-              className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+              className={FIELD_CLASS}
             />
-            <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
-              Opcional — a carga prescrita do WOD (a usada você registra ao treinar)
-            </p>
-          </div>
+          </Field>
 
-          <div className="flex gap-2">
-            {(['rx', 'scaled'] as const).map(s => (
-              <button key={s} onClick={() => setScaling(s)}
-                className={cn('flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all',
-                  scaling === s
-                    ? s === 'rx' ? 'bg-primary text-background' : 'bg-secondary text-background'
-                    : 'bg-surface-container-highest text-on-surface-variant')}>
-                {s === 'rx' ? 'RX' : 'Scaled'}
-              </button>
-            ))}
-          </div>
+          {/* Próprio do individual: no Box o coach escreve as duas versões e o
+              aluno escolhe ao enviar o resultado. Aqui é a mesma pessoa, então
+              o que importa é como VOCÊ fez — é o que separa RX de Scaled no placar. */}
+          <Field label="Como você fez">
+            <div className="flex gap-2">
+              {(['rx', 'scaled'] as const).map(s => (
+                <button key={s} onClick={() => setScaling(s)}
+                  className={cn('flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all',
+                    scaling === s
+                      ? s === 'rx' ? 'bg-primary text-background' : 'bg-secondary text-background'
+                      : 'bg-surface-container-highest text-on-surface-variant')}>
+                  {s === 'rx' ? 'RX' : 'Scaled'}
+                </button>
+              ))}
+            </div>
+          </Field>
+
           <button
             onClick={handlePostDefinition}
             disabled={saving || !wodName.trim()}
-            className="w-full bg-primary text-background py-3 rounded-xl font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
+            className="w-full bg-primary text-background py-4 rounded-2xl font-headline font-black text-sm uppercase italic flex items-center justify-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
           >
             {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
               : editingRowId ? <Check className="w-4 h-4" /> : <Send className="w-4 h-4" />}
