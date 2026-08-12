@@ -75,6 +75,14 @@ const brDate = (value?: string) => {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
+  // Portais de parceiro costumam checar a URL com um GET antes de deixar
+  // salvar o webhook (ou pra "testar a conexão"). Respondendo 405 aqui
+  // bloquearia esse passo — o check-in de verdade sempre chega via POST,
+  // então um GET só precisa confirmar "a URL existe e está de pé".
+  if (req.method === 'GET') {
+    return json({ ok: true, service: 'gympass-webhook', status: 'ready' });
+  }
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
