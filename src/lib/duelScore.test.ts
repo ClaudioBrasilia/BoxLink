@@ -62,7 +62,7 @@ describe('computeDuelScore', () => {
     expect(partial.winnerId).toBe(null);
   });
 
-  it('FC não desempata: mesmo resultado é empate, mesmo com esforços diferentes', () => {
+  it('FC não pontua: mesmo resultado dá o mesmo placar', () => {
     const out = computeDuelScore(
       { a: '100', b: '100' },
       { a: 92, b: 80 },
@@ -70,14 +70,15 @@ describe('computeDuelScore', () => {
       false,
       parse,
     );
-    // Os dois registraram → o esforço é comparável e aparece no recap...
     expect(out.usedIntensity).toBe(true);
     expect(out.entries.a.effort).toBe(92);
     expect(out.entries.b.effort).toBe(80);
-    // ...mas não vira ponto: mesmo resultado, mesmo placar, sem vencedor.
+    // Nenhum dos dois ganha ponto pela FC — o placar é o desempenho.
     expect(out.entries.a.total).toBe(100);
     expect(out.entries.b.total).toBe(100);
-    expect(out.winnerId).toBe(null);
+    // Mas o empate é desfeito pelo custo: b entregou o mesmo gastando menos.
+    expect(out.winnerId).toBe('b');
+    expect(out.tiebreak).toBe('effort');
   });
 
   it('FC alta não compra vitória: quem produziu mais vence', () => {
@@ -107,7 +108,7 @@ describe('computeDuelScore', () => {
     expect(out.winnerId).toBe('b');
   });
 
-  it('empate real (mesmo desempenho) → null', () => {
+  it('empate real (mesmo resultado, mesma FC, sem carga) → null', () => {
     const out = computeDuelScore(
       { a: '100', b: '100' },
       { a: 90, b: 90 },
@@ -116,6 +117,59 @@ describe('computeDuelScore', () => {
       parse,
     );
     expect(out.winnerId).toBe(null);
+    expect(out.tiebreak).toBe(null);
+  });
+
+  it('sem FC de todos, o desempate cai na força relativa', () => {
+    const out = computeDuelScore(
+      { a: '100', b: '100' },
+      { a: 90, b: null },
+      ['a', 'b'],
+      false,
+      parse,
+      { a: 0.8, b: 1.1 },
+    );
+    expect(out.winnerId).toBe('b');
+    expect(out.tiebreak).toBe('strength');
+  });
+
+  it('FC igual desce para a força relativa', () => {
+    const out = computeDuelScore(
+      { a: '100', b: '100' },
+      { a: 88, b: 88 },
+      ['a', 'b'],
+      false,
+      parse,
+      { a: 1.4, b: 0.9 },
+    );
+    expect(out.winnerId).toBe('a');
+    expect(out.tiebreak).toBe('strength');
+  });
+
+  it('força relativa só desempata se TODOS os empatados tiverem o número', () => {
+    const out = computeDuelScore(
+      { a: '100', b: '100' },
+      {},
+      ['a', 'b'],
+      false,
+      parse,
+      { a: 1.4, b: null },
+    );
+    expect(out.winnerId).toBe(null);
+    expect(out.tiebreak).toBe(null);
+  });
+
+  it('desempate não cria vencedor quando alguém entregou mais', () => {
+    // b tem FC menor, mas a produziu mais — desempate nem entra em cena.
+    const out = computeDuelScore(
+      { a: '150', b: '100' },
+      { a: 95, b: 60 },
+      ['a', 'b'],
+      false,
+      parse,
+    );
+    expect(out.winnerId).toBe('a');
+    expect(out.tiebreak).toBe(null);
   });
 
   it('nenhum resultado válido → null e sem esforço', () => {
@@ -164,5 +218,11 @@ describe('computeDuelEdge', () => {
     const edge = edgeOf({ a: '150', b: '120' }, { a: 95, b: 75 });
     expect(edge?.summary).toContain('mais esforço');
     expect(edge?.insights[1].kind).toBe('effort');
+  });
+
+  it('vitória por desempate é anunciada como desempate, não como desempenho', () => {
+    const edge = edgeOf({ a: '150', b: '150' }, { a: 70, b: 90 });
+    expect(edge?.summary).toContain('Empate no resultado');
+    expect(edge?.insights.at(-1)?.kind).toBe('tiebreak');
   });
 });
