@@ -1,28 +1,31 @@
 // src/lib/duelScore.ts
-// Score justo do duelo combinando desempenho + esforço (intensidade de FC).
+// Score do duelo: quem venceu é decidido pelo DESEMPENHO. A FC é leitura, não
+// ponto.
 //
 // Justiça:
 //  • Desempenho: resultado de cada um relativo ao MELHOR do duelo (mesmo WOD).
 //    O melhor fica 100; os outros, proporcionais.
-//  • Esforço: % da FC máxima de cada atleta — comparado no PRÓPRIO limite,
-//    então iniciante e avançado competem de forma justa nesse quesito.
-//  • A intensidade só entra no cálculo se TODOS os participantes válidos a
-//    registraram. Caso contrário, decide só o desempenho (ninguém é premiado
-//    nem punido por ter/não ter sensor de FC).
-
-export const PERF_WEIGHT = 0.7;
-export const EFFORT_WEIGHT = 0.3;
+//  • Esforço (% da FC máx): registrado e mostrado no recap — quem entregou o
+//    mesmo resultado com FC menor foi mais eficiente —, mas NÃO soma no placar.
+//    O número é auto-declarável (campo digitado no duelo) e sai de uma FC máx
+//    estimada por idade (220 − idade), frágil demais para escolher vencedor.
+//    Antes ele pesava 30%, o que deixava um resultado PIOR vencer por ter FC
+//    mais alta — e contradizia o gráfico de comparação, que lê FC menor como
+//    vantagem ("mais eficiente").
+//  • `usedIntensity` segue marcando "todos os participantes válidos
+//    registraram a FC", que é a condição para comparar esforço lado a lado.
+//    Sem isso, ninguém é comparado por ter ou não sensor.
 
 export interface DuelScoreEntry {
   id: string;
   perf: number;            // 0..100 (desempenho relativo ao melhor)
-  effort: number | null;   // % da FC máx (null = não usado)
-  total: number;           // score final
+  effort: number | null;   // % da FC máx (null = não comparável)
+  total: number;           // score final — hoje igual ao desempenho
 }
 
 export interface DuelScoreOutcome {
   winnerId: string | null;      // null = empate ou nenhum resultado válido
-  usedIntensity: boolean;       // true = o esforço pesou no resultado
+  usedIntensity: boolean;       // true = todos registraram a FC (dá pra comparar)
   entries: Record<string, DuelScoreEntry>;
 }
 
@@ -63,11 +66,11 @@ export function computeDuelScore(
     return typeof e === 'number' && e > 0;
   });
 
+  // A FC entra só como leitura do recap — `total` continua sendo o desempenho.
   if (allHaveIntensity) {
     for (const id of valid) {
       const effort = Math.max(0, Math.min(100, intensity[id] as number));
       entries[id].effort = Math.round(effort);
-      entries[id].total = round1(PERF_WEIGHT * entries[id].perf + EFFORT_WEIGHT * effort);
     }
   }
 
@@ -83,10 +86,10 @@ export function computeDuelScore(
 }
 
 // ─── Recap pós-duelo ──────────────────────────────────────────────────────
-// Explica em linguagem simples POR QUE o vencedor levou a melhor: se foi
-// desempenho puro, ou se ele venceu sendo mais "eficiente" (mesmo resultado
-// com esforço/FC relativo menor que os oponentes) — o mesmo tipo de leitura
-// dos relatórios "Winning the Margins" do CrossFit Games.
+// Explica em linguagem simples COMO o vencedor levou a melhor. Quem decide é
+// sempre o desempenho; a FC entra como leitura ao lado dele — vencer gastando
+// menos batimento que os oponentes é o lado eficiente da mesma vitória, o
+// mesmo tipo de leitura dos relatórios "Winning the Margins" do CrossFit Games.
 
 export interface DuelEdgeInsight {
   kind: 'performance' | 'effort' | 'efficiency';
@@ -122,7 +125,7 @@ export function computeDuelEdge(
       : `Ficou ${Math.abs(perfGap).toFixed(1)} pts atrás no desempenho`,
   }];
 
-  let summary = 'Venceu no desempenho puro (sem FC registrada por todos).';
+  let summary = 'Venceu no desempenho.';
 
   if (usedIntensity) {
     const effortGap = round1((winner.effort as number) - avg(others.map(o => o.effort as number)));
@@ -131,17 +134,14 @@ export function computeDuelEdge(
     insights.push({
       kind: moreEfficient ? 'efficiency' : 'effort',
       text: moreEfficient
-        ? `Venceu com esforço ${Math.abs(effortGap).toFixed(1)}pp menor — mais eficiente`
+        ? `E com esforço ${Math.abs(effortGap).toFixed(1)}pp menor — mais eficiente`
         : `Esforço ${effortGap.toFixed(1)}pp acima da média dos oponentes`,
     });
 
-    const perfContribution = PERF_WEIGHT * perfGap;
-    const effortContribution = EFFORT_WEIGHT * effortGap;
-    summary = perfContribution >= effortContribution
-      ? 'A vantagem veio do desempenho.'
-      : moreEfficient
-        ? 'A vantagem veio da eficiência — mesmo resultado, menos esforço.'
-        : 'A vantagem veio do esforço extra.';
+    // A FC não muda o vencedor — só conta como ele chegou lá.
+    summary = moreEfficient
+      ? 'Venceu no desempenho, e gastando menos batimento — mais eficiente.'
+      : 'Venceu no desempenho, pagando com mais esforço que a média.';
   }
 
   return { insights, summary };

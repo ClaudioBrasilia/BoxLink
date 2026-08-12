@@ -68,12 +68,9 @@ export default function DuelRecapCard({ wodName, wodType, outcome, participants,
           winnerId={winnerId}
           getValue={p => results[p.id] || '—'}
         />
-        <RecapRow
-          label="Desempenho"
-          participants={participants}
-          winnerId={winnerId}
-          getValue={p => entries[p.id] ? String(entries[p.id].perf) : '—'}
-        />
+        {/* Sem linha de "Desempenho": o placar É o desempenho — as duas
+            mostrariam o mesmo número. O que muda entre elas é o resultado
+            bruto acima e as leituras (ritmo, força, esforço) abaixo. */}
         {hasPace && (
           <RecapRow
             label="Ritmo"

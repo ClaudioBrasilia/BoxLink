@@ -97,8 +97,10 @@ async function generateDuelRecapImage(
   ctx.stroke();
 
   // Cabeçalho da tabela
-  const cols = ['ATLETA', 'RESULTADO', 'DESEMP.', ...(usedIntensity ? ['ESFORÇO'] : []), 'PLACAR'];
-  const colX = [140, 430, 620, ...(usedIntensity ? [800] : []), W - 140];
+  // Sem coluna de desempenho: o placar É o desempenho, então as duas traziam o
+  // mesmo número. O esforço fica ao lado como leitura, quando todos registraram.
+  const cols = ['ATLETA', 'RESULTADO', ...(usedIntensity ? ['ESFORÇO'] : []), 'PLACAR'];
+  const colX = [140, 460, ...(usedIntensity ? [730] : []), W - 140];
   ctx.font = 'bold 24px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
   cols.forEach((c, i) => {
@@ -133,7 +135,6 @@ async function generateDuelRecapImage(
     const values = [
       (isWinner ? '🏆 ' : '') + p.name.split(' ')[0].toUpperCase(),
       results[p.id] || '—',
-      entry ? String(entry.perf) : '—',
       ...(usedIntensity ? [entry?.effort != null ? `${entry.effort}%` : '—'] : []),
       entry ? String(entry.total) : '—',
     ];

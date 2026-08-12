@@ -1,13 +1,13 @@
 // src/lib/duelScore.test.ts
 // ============================================================================
-// Cobertura do placar justo do duelo (desempenho + esforço).
+// Cobertura do placar do duelo.
 // Regras principais:
-//  • Esforço só pesa quando TODOS os participantes válidos registraram a FC.
-//  • Placar = 70% desempenho + 30% esforço.
+//  • Quem vence é o DESEMPENHO — a FC não pontua, só é lida no recap.
 //  • Desempenho é relativo ao melhor do duelo (100 = melhor).
+//  • `usedIntensity` marca que todos registraram a FC (dá pra comparar esforço).
 // ============================================================================
 import { describe, it, expect } from 'vitest';
-import { computeDuelScore, PERF_WEIGHT, EFFORT_WEIGHT } from './duelScore';
+import { computeDuelScore, computeDuelEdge } from './duelScore';
 
 // parser simples: tempo "m:ss" → segundos; senão número puro
 const parse = (r: string, timeBased: boolean): number => {
@@ -62,8 +62,7 @@ describe('computeDuelScore', () => {
     expect(partial.winnerId).toBe(null);
   });
 
-  it('desempate pelo esforço quando ambos registram a FC', () => {
-    // mesmo resultado (perf 100 ambos), mas "a" fez mais esforço
+  it('FC não desempata: mesmo resultado é empate, mesmo com esforços diferentes', () => {
     const out = computeDuelScore(
       { a: '100', b: '100' },
       { a: 92, b: 80 },
@@ -71,15 +70,18 @@ describe('computeDuelScore', () => {
       false,
       parse,
     );
+    // Os dois registraram → o esforço é comparável e aparece no recap...
     expect(out.usedIntensity).toBe(true);
-    expect(out.winnerId).toBe('a');
-    // total = 0.7*100 + 0.3*92 = 97.6
-    expect(out.entries.a.total).toBeCloseTo(PERF_WEIGHT * 100 + EFFORT_WEIGHT * 92, 1);
-    expect(out.entries.b.total).toBeCloseTo(PERF_WEIGHT * 100 + EFFORT_WEIGHT * 80, 1);
+    expect(out.entries.a.effort).toBe(92);
+    expect(out.entries.b.effort).toBe(80);
+    // ...mas não vira ponto: mesmo resultado, mesmo placar, sem vencedor.
+    expect(out.entries.a.total).toBe(100);
+    expect(out.entries.b.total).toBe(100);
+    expect(out.winnerId).toBe(null);
   });
 
-  it('desempenho pode superar esforço (quem produziu mais vence mesmo com menos FC)', () => {
-    // a: melhor resultado mas menos esforço; b: pior resultado e mais esforço
+  it('FC alta não compra vitória: quem produziu mais vence', () => {
+    // b bateu a FC no talo e ainda assim fez menos reps que a.
     const out = computeDuelScore(
       { a: '200', b: '100' },
       { a: 70, b: 100 },
@@ -87,11 +89,25 @@ describe('computeDuelScore', () => {
       false,
       parse,
     );
-    // a: 0.7*100 + 0.3*70 = 91 ; b: 0.7*50 + 0.3*100 = 65 → a vence
     expect(out.winnerId).toBe('a');
+    expect(out.entries.a.total).toBe(100);
+    expect(out.entries.b.total).toBe(50);
   });
 
-  it('empate real (mesmo desempenho e mesmo esforço) → null', () => {
+  it('resultado pior não vence por FC mais alta (o caso que a regra antiga invertia)', () => {
+    // Com o peso de 30% no esforço, "a" (menos reps, FC alta) vencia por 92.3
+    // contra 91 — menos trabalho, mas mais batimento.
+    const out = computeDuelScore(
+      { a: '140', b: '150' },
+      { a: 90, b: 70 },
+      ['a', 'b'],
+      false,
+      parse,
+    );
+    expect(out.winnerId).toBe('b');
+  });
+
+  it('empate real (mesmo desempenho) → null', () => {
     const out = computeDuelScore(
       { a: '100', b: '100' },
       { a: 90, b: 90 },
@@ -125,5 +141,28 @@ describe('computeDuelScore', () => {
     // b não parseável → só a é válido e vence
     expect(out.winnerId).toBe('a');
     expect(out.entries.b).toBeUndefined();
+  });
+});
+
+describe('computeDuelEdge', () => {
+  const edgeOf = (results: Record<string, string>, intensity: Record<string, number | null>) =>
+    computeDuelEdge(computeDuelScore(results, intensity, ['a', 'b'], false, parse), ['a', 'b']);
+
+  it('sem FC de todos, a vitória é lida só pelo desempenho', () => {
+    const edge = edgeOf({ a: '150', b: '120' }, { a: 90, b: null });
+    expect(edge?.summary).toBe('Venceu no desempenho.');
+    expect(edge?.insights).toHaveLength(1);
+  });
+
+  it('venceu gastando menos batimento → leitura de eficiência', () => {
+    const edge = edgeOf({ a: '150', b: '120' }, { a: 70, b: 90 });
+    expect(edge?.summary).toContain('mais eficiente');
+    expect(edge?.insights[1].kind).toBe('efficiency');
+  });
+
+  it('venceu com FC acima da média → esforço, não eficiência', () => {
+    const edge = edgeOf({ a: '150', b: '120' }, { a: 95, b: 75 });
+    expect(edge?.summary).toContain('mais esforço');
+    expect(edge?.insights[1].kind).toBe('effort');
   });
 });
