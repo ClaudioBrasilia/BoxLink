@@ -165,6 +165,8 @@ export default function Diario() {
   // Premium: números do WOD para calcular o ritmo (reps/min) no recap do duelo
   const [duelTotalReps, setDuelTotalReps] = useState('');
   const [duelTimeCapMinutes, setDuelTimeCapMinutes] = useState('');
+  // AMRAP: reps de um round completo — o resultado do duelo vem em "rounds+reps"
+  const [duelRepsPerRound, setDuelRepsPerRound] = useState('');
   // WOD de hoje escolhido como desafio (chip marcado) — só controla a seleção
   // visual; o duelo em si continua guardando nome/tipo/movimentos copiados.
   const [duelFromWodId, setDuelFromWodId] = useState<string | null>(null);
@@ -502,7 +504,7 @@ export default function Diario() {
   const clearDuelWod = () => {
     setDuelFromWodId(null);
     setDuelName(''); setDuelType('FOR TIME'); setDuelDesc('');
-    setDuelTotalReps(''); setDuelTimeCapMinutes('');
+    setDuelTotalReps(''); setDuelTimeCapMinutes(''); setDuelRepsPerRound('');
   };
 
   /** Desafiar com um WOD já postado hoje: o desafio É aquele WOD, então
@@ -519,6 +521,7 @@ export default function Diario() {
     // Números já cadastrados no placar liberam o ritmo sem redigitar.
     setDuelTotalReps(row.total_reps != null ? String(row.total_reps) : '');
     setDuelTimeCapMinutes(row.time_cap_minutes != null ? String(row.time_cap_minutes) : '');
+    setDuelRepsPerRound(row.reps_per_round != null ? String(row.reps_per_round) : '');
   };
 
   /** Abre/fecha o desafio livre (WOD que não foi postado hoje). */
@@ -890,6 +893,11 @@ export default function Diario() {
       const timeCapMinutes = isAmrapType(duelType) && duelTimeCapMinutes.trim()
         ? parseInt(duelTimeCapMinutes, 10) || null
         : null;
+      // AMRAP: reps de um round completo — converte o "rounds+reps" que cada
+      // um envia no duelo em total de reps (ritmo e comparação).
+      const repsPerRound = isAmrapType(duelType) && duelRepsPerRound.trim()
+        ? parseInt(duelRepsPerRound, 10) || null
+        : null;
 
       const { error } = await supabase.from('duels').insert({
         challenger_id: user.id,
@@ -908,6 +916,7 @@ export default function Diario() {
         results,
         total_reps: totalReps,
         time_cap_minutes: timeCapMinutes,
+        reps_per_round: repsPerRound,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
@@ -1763,6 +1772,18 @@ export default function Diario() {
                         onChange={e => duelType === 'FOR TIME' ? setDuelTotalReps(e.target.value) : setDuelTimeCapMinutes(e.target.value)}
                         className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
                       />
+                      {/* AMRAP: o resultado vem em "rounds+reps" — com as reps de
+                          um round completo dá pra virar total de reps (ritmo). */}
+                      {duelType === 'AMRAP' && (
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="Reps de um round completo (ex: 30)"
+                          value={duelRepsPerRound}
+                          onChange={e => setDuelRepsPerRound(e.target.value)}
+                          className="w-full bg-secondary/5 border border-secondary/20 rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+                        />
+                      )}
                       <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-widest px-1">
                         Opcional — libera o ritmo (reps/min) no resultado do duelo
                       </p>
