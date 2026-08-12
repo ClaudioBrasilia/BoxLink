@@ -593,6 +593,7 @@ export default function Diario() {
             setPlacarRefreshKey(k => k + 1);
           } catch (err) {
             console.error('Error syncing placar from details:', err);
+            toast.warning('Detalhes salvos no diário, mas o resultado não entrou no placar.');
           }
         }
 
@@ -740,7 +741,11 @@ export default function Diario() {
           setPlacarRowId(placarOutcome.id);
           setPlacarRefreshKey(k => k + 1);
         } catch (err) {
+          // Falhar aqui deixa o WOD do dia marcado como "falta treinar" mesmo
+          // com o treino salvo no diário — silenciar isso faz o atleta achar
+          // que o app perdeu o resultado. Avisa e diz onde o resultado está.
           console.error('Error posting placar from timer:', err);
+          toast.warning('Treino salvo no diário, mas o resultado não entrou no placar. Toque em "Editar" no WOD para tentar de novo.');
         }
       }
 
