@@ -36,6 +36,8 @@ import { TrainingLog, TrainingLogCategory, TrainingFeeling, AvatarSlot } from '.
 import { isPremium, planLimits, PLAN_LIMITS } from '../lib/plan';
 import { isTimeBasedType, isAmrapType } from '../lib/pace';
 import WodTimer, { WodTimerResult, WodTimerType } from '../components/WodTimer';
+import TimeInput from '../components/TimeInput';
+import AmrapInput from '../components/AmrapInput';
 import PostWorkoutFeedback from '../components/PostWorkoutFeedback';
 import AvatarPreview from '../components/AvatarPreview';
 import DailyWodPanel from '../components/DailyWodPanel';
@@ -70,6 +72,28 @@ const CATEGORIES: { value: TrainingLogCategory; label: string; icon: typeof Time
 const WOD_TYPES = ['FOR TIME', 'AMRAP', 'EMOM', 'TABATA', 'OUTRO'];
 // Tipos que o cronômetro (WodTimer) sabe rodar — "OUTRO" não é um deles.
 const TIMER_TYPES: WodTimerType[] = ['FOR TIME', 'AMRAP', 'EMOM', 'TABATA'];
+
+/** Resultado do WOD no formato do próprio tipo — FOR TIME em mm:ss, AMRAP em
+ *  rounds + reps, o resto em texto livre. É o mesmo formato do cronômetro, do
+ *  placar e do duelo, então o resultado registrado aqui compara com o dos
+ *  outros sem tradução (e "12:45" deixa de ser digitável como "12.45"). */
+function WodResultField({ wodType, value, onChange }: {
+  wodType: string;
+  value: string;
+  onChange: (val: string) => void;
+}) {
+  if (isTimeBasedType(wodType)) return <TimeInput compact value={value} onChange={onChange} />;
+  if (isAmrapType(wodType)) return <AmrapInput compact value={value} onChange={onChange} />;
+  return (
+    <input
+      type="text"
+      placeholder="Resultado (ex: 150 reps)"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
+    />
+  );
+}
 
 const calcStreak = (dates: string[]): number => {
   if (dates.length === 0) return 0;
@@ -1293,21 +1317,17 @@ export default function Diario() {
                 onChange={e => setTitle(e.target.value)}
                 className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
               />
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2">
                 <select
                   value={wodType}
                   onChange={e => setWodType(e.target.value)}
-                  className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+                  className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
                 >
                   {WOD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
-                <input
-                  type="text"
-                  placeholder="Resultado (12:45 ou 150 reps)"
-                  value={result}
-                  onChange={e => setResult(e.target.value)}
-                  className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-bold text-on-surface outline-none"
-                />
+                {/* key = tipo: trocar de FOR TIME pra AMRAP remonta o campo, que
+                    relê o resultado no formato novo em vez de ficar preso ao velho. */}
+                <WodResultField key={wodType} wodType={wodType} value={result} onChange={setResult} />
               </div>
               <input
                 type="text"
@@ -1457,21 +1477,15 @@ export default function Diario() {
                   className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
                 />
                 {category === 'wod' && (
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2">
                     <select
                       value={wodType}
                       onChange={e => setWodType(e.target.value)}
-                      className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
+                      className="w-full bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
                     >
                       {WOD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
-                    <input
-                      type="text"
-                      placeholder="Resultado (12:45 ou 150 reps)"
-                      value={result}
-                      onChange={e => setResult(e.target.value)}
-                      className="flex-1 bg-surface-container-highest rounded-2xl px-4 py-3 text-sm font-medium text-on-surface outline-none"
-                    />
+                    <WodResultField key={wodType} wodType={wodType} value={result} onChange={setResult} />
                   </div>
                 )}
                 {category === 'wod' && (
