@@ -47,6 +47,9 @@ import { normalizeFriendCode } from '../lib/friendCode';
 import { registerDuelWorkout } from '../lib/duelWorkout';
 import TimeInput from '../components/TimeInput';
 import AmrapInput from '../components/AmrapInput';
+import { fetchRecentHeartRateSession } from '../lib/heartRateSessions';
+import { effortFromSession } from '../lib/effort';
+import { useUserBiometrics } from '../hooks/useUserBiometrics';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -212,12 +215,12 @@ export default function Duels() {
 
   // Submissão de resultado por duelo
   const [submission, setSubmission] = useState<Record<string, string>>({});
-  // % da FC máx registrada junto do resultado (opcional, por duelo)
-  const [submissionIntensity, setSubmissionIntensity] = useState<Record<string, string>>({});
   // Carga (kg) informada junto do resultado (opcional, por duelo)
   const [submissionLoad, setSubmissionLoad] = useState<Record<string, string>>({});
-  // % da FC máx do treino de hoje (usado para pré-preencher o esforço)
+  // % da FC máx MEDIDA hoje — é o esforço que vai junto do resultado
   const [todayPct, setTodayPct] = useState<number | null>(null);
+  // Idade/peso do perfil: sem isso não dá pra converter BPM em % da FC máx
+  const bio = useUserBiometrics(user?.id);
   // Meu peso corporal — divide a carga para chegar na força relativa
   const [myWeightKg, setMyWeightKg] = useState<number | null>(null);
 
@@ -340,7 +343,12 @@ export default function Duels() {
       if (wodsRes.data) setWods(wodsRes.data);
       if (settingsRes.data) setBoxSettings(settingsRes.data);
 
-      // % da FC máx do treino de hoje → pré-preenche o esforço no duelo
+      // Esforço do duelo = FC MEDIDA, nunca digitada. Duas fontes, na ordem em
+      // que a medida aparece: o treino de hoje (cronômetro com cinta, ou uma
+      // sessão já anexada ao registro) e, sem isso, a última sessão de FC
+      // recente — o mesmo caminho que a tela do WOD do Box usa pra anexar
+      // esforço a um resultado. Quem treinou sem cinta fica sem esforço, e o
+      // duelo simplesmente não compara FC (regra que já valia).
       const today = new Date().toISOString().slice(0, 10);
       const { data: todayLog } = await supabase
         .from('training_logs')
@@ -351,7 +359,13 @@ export default function Duels() {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      setTodayPct(todayLog?.hr_avg_pct ?? null);
+
+      if (todayLog?.hr_avg_pct != null) {
+        setTodayPct(todayLog.hr_avg_pct);
+      } else {
+        const session = await fetchRecentHeartRateSession(user.id);
+        setTodayPct(effortFromSession(session, bio)?.hrAvgPct ?? null);
+      }
 
       const { data: me } = await supabase
         .from('profiles').select('weight_kg').eq('id', user.id).maybeSingle();
@@ -363,9 +377,11 @@ export default function Duels() {
     }
   };
 
+  // `bio` entra na dependência porque a sessão de FC só vira % da FC máx com a
+  // idade do perfil — ela chega depois do primeiro render.
   useEffect(() => {
     if (user) loadData();
-  }, [user]);
+  }, [user, bio]);
 
   // Realtime
   useEffect(() => {
@@ -715,12 +731,12 @@ export default function Duels() {
       toast.warning('Resultado de AMRAP é em rounds + reps, ex: 5+12.'); return;
     }
 
-    // Esforço (% da FC máx) opcional — só entra no cálculo se TODOS registrarem.
-    // Se o campo estiver vazio, usa o esforço do treino de hoje (se houver).
-    const rawPct = submissionIntensity[duel.id]?.trim();
-    const parsedPct = rawPct ? Number(rawPct.replace(/[^0-9.]/g, '')) : (todayPct ?? null);
-    const myPct = parsedPct != null && !Number.isNaN(parsedPct)
-      ? Math.max(0, Math.min(100, parsedPct))
+    // Esforço = a FC MEDIDA hoje (cinta/sessão). Não há campo pra digitar:
+    // "não medi" e "digitei 85" não podem valer a mesma coisa, ainda mais
+    // depois que a FC virou critério de desempate. Sem medição vai null e o
+    // duelo não compara esforço.
+    const myPct = todayPct != null && !Number.isNaN(todayPct)
+      ? Math.max(0, Math.min(100, todayPct))
       : null;
 
     // Carga (kg) opcional — com o peso corporal do perfil vira força relativa.
@@ -907,7 +923,6 @@ export default function Duels() {
       }
 
       setSubmission(prev => ({ ...prev, [duel.id]: '' }));
-      setSubmissionIntensity(prev => ({ ...prev, [duel.id]: '' }));
       setSubmissionLoad(prev => ({ ...prev, [duel.id]: '' }));
       await loadData();
     } catch (err: any) {
@@ -981,8 +996,8 @@ export default function Duels() {
               </p>
               <ul className="text-[11px] text-on-surface-variant font-medium leading-relaxed list-disc pl-4 flex flex-col gap-1">
                 <li><span className="text-on-surface font-bold">Desempenho:</span> seu resultado comparado ao melhor do duelo (o melhor fica em 100).</li>
-                <li><span className="text-on-surface font-bold">Esforço (FC):</span> aparece no resumo, mas não pontua. Fazer o mesmo resultado com FC menor mostra quem foi mais eficiente — não quem ganhou.</li>
-                <li><span className="text-on-surface font-bold">Comparação só com todos:</span> se alguém não registrou a FC, o esforço não é comparado — ninguém leva vantagem por ter sensor.</li>
+                <li><span className="text-on-surface font-bold">Esforço (FC):</span> vem da FC medida no treino — não dá para digitar. Aparece no resumo, mas não pontua: fazer o mesmo resultado com FC menor mostra quem foi mais eficiente, não quem ganhou.</li>
+                <li><span className="text-on-surface font-bold">Comparação só com todos:</span> se alguém não mediu a FC, o esforço não é comparado — ninguém leva vantagem por ter sensor.</li>
                 <li><span className="text-on-surface font-bold">Resultado igual:</span> desempata quem gastou menos FC; se não der, quem moveu mais carga por quilo de peso. Sem esses dados, empate e apostas devolvidas.</li>
               </ul>
             </motion.div>
@@ -1686,19 +1701,22 @@ export default function Duels() {
                         {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
                       </button>
                     </div>
-                    {/* Esforço opcional: % da FC máx */}
+                    {/* Esforço não é digitado: mostra a FC medida hoje (ou a
+                        falta dela), pra ficar claro o que vai junto do resultado. */}
                     <div className="flex items-center gap-2 bg-surface-container-highest/40 rounded-2xl px-4 py-2.5 border border-outline-variant/10">
                       <span className="text-secondary text-sm">❤️</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        placeholder={todayPct ? `Esforço hoje: ${Math.round(todayPct)}%` : 'Esforço % FC máx (opcional)'}
-                        value={submissionIntensity[duel.id] ?? ''}
-                        onChange={e => setSubmissionIntensity(prev => ({ ...prev, [duel.id]: e.target.value }))}
-                        className="flex-1 bg-transparent text-sm font-bold text-on-surface outline-none placeholder:text-on-surface-variant/40 placeholder:font-medium placeholder:normal-case"
-                      />
-                      <span className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest">% FC máx</span>
+                      {todayPct != null ? (
+                        <>
+                          <span className="flex-1 text-sm font-bold text-on-surface">
+                            Esforço medido hoje: {Math.round(todayPct)}%
+                          </span>
+                          <span className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest">% FC máx</span>
+                        </>
+                      ) : (
+                        <span className="flex-1 text-[11px] font-bold text-on-surface-variant/60 leading-snug">
+                          Sem FC medida hoje — treine com a cinta para o esforço entrar no duelo
+                        </span>
+                      )}
                     </div>
                     {/* Carga opcional: vira força relativa (carga ÷ peso corporal) */}
                     <div className="flex items-center gap-2 bg-surface-container-highest/40 rounded-2xl px-4 py-2.5 border border-outline-variant/10">
@@ -1715,8 +1733,9 @@ export default function Duels() {
                       <span className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest">kg</span>
                     </div>
                     <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest leading-snug px-1">
-                      Quem vence é o resultado. A FC e a carga não pontuam: mostram com quanto
-                      esforço e com quanto do próprio peso cada um chegou lá.
+                      Quem vence é o resultado. A FC vem da medição do treino e a carga é sua:
+                      nenhuma das duas pontua — mostram com quanto esforço e com quanto do
+                      próprio peso cada um chegou lá.
                     </p>
                   </div>
                 )}
