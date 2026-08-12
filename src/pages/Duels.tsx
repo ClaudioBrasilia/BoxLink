@@ -402,11 +402,13 @@ export default function Duels() {
 
   // Força relativa (carga ÷ peso corporal) de cada participante do duelo.
   // Só existe para quem registrou a carga E tem peso no perfil.
-  const getStrengthById = (duel: Duel): Record<string, number | null> => {
+  // `loads` é parametrizável porque na hora de liquidar o duelo a carga que
+  // acabou de ser enviada ainda não está em duel.loads.
+  const getStrengthById = (duel: Duel, loads: DuelLoads = duel.loads): Record<string, number | null> => {
     const out: Record<string, number | null> = {};
     [duel.challengerId, ...duel.opponentIds].forEach(pid => {
       const weight = pid === user?.id ? myWeightKg : users.find(u => u.id === pid)?.weight_kg ?? null;
-      out[pid] = computeRelativeStrength(duel.loads?.[pid], weight);
+      out[pid] = computeRelativeStrength(loads?.[pid], weight);
     });
     return out;
   };
@@ -743,6 +745,8 @@ export default function Duels() {
           allParticipants,
           timeBased,
           (r, tb) => parseResultValue(r, tb, roundWeight),
+          // Desempate por força relativa usa a carga recém-enviada também.
+          getStrengthById(duel, newLoads),
         );
         const winnerId = outcome.winnerId;
         const isTie = winnerId === null;
@@ -755,6 +759,7 @@ export default function Duels() {
           intensity: newIntensity,
           usedIntensity: outcome.usedIntensity,
           entries: outcome.entries,
+          tiebreak: outcome.tiebreak,
           winnerId,
           losers: isTie ? [] : allParticipants.filter(id => id !== winnerId),
           totalPrize: duel.betAmount * allParticipants.length,
@@ -978,6 +983,7 @@ export default function Duels() {
                 <li><span className="text-on-surface font-bold">Desempenho:</span> seu resultado comparado ao melhor do duelo (o melhor fica em 100).</li>
                 <li><span className="text-on-surface font-bold">Esforço (FC):</span> aparece no resumo, mas não pontua. Fazer o mesmo resultado com FC menor mostra quem foi mais eficiente — não quem ganhou.</li>
                 <li><span className="text-on-surface font-bold">Comparação só com todos:</span> se alguém não registrou a FC, o esforço não é comparado — ninguém leva vantagem por ter sensor.</li>
+                <li><span className="text-on-surface font-bold">Resultado igual:</span> desempata quem gastou menos FC; se não der, quem moveu mais carga por quilo de peso. Sem esses dados, empate e apostas devolvidas.</li>
               </ul>
             </motion.div>
           )}
@@ -1291,7 +1297,7 @@ export default function Duels() {
             const timeBased = isTimeBased(duel.wodType);
             const amrap = !timeBased && isAmrapDuel(duel.wodType);
 
-            // Detalhamento do placar (desempenho + esforço) quando finalizado
+            // Detalhamento do placar (desempenho + leituras) quando finalizado
             const duelTimeBased = isTimeBasedDuel(duel.wodType, duel.results);
             const duelRoundWeight = getRoundWeight(duel);
             const parseDuelResult = (r: string, tb: boolean) => parseResultValue(r, tb, duelRoundWeight);
@@ -1302,6 +1308,7 @@ export default function Duels() {
                   allParticipants,
                   duelTimeBased,
                   parseDuelResult,
+                  getStrengthById(duel),
                 )
               : null;
 
@@ -1511,6 +1518,14 @@ export default function Duels() {
                         </div>
                       );
                     })}
+                    {/* Desempate aparece pra todo mundo, não só no recap
+                        Premium: sem isso o card mostra dois resultados
+                        idênticos e um vencedor, sem explicar o porquê. */}
+                    {outcome?.tiebreak && (
+                      <p className="text-[9px] text-secondary font-black uppercase tracking-widest text-center mt-1 italic">
+                        🤝 Mesmo resultado — desempate por {outcome.tiebreak === 'effort' ? 'menor esforço (FC)' : 'força relativa (carga ÷ peso)'}
+                      </p>
+                    )}
                     {outcome?.usedIntensity && (
                       <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest text-center mt-1 italic">
                         Placar = desempenho. A FC entra como leitura de esforço

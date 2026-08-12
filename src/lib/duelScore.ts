@@ -27,7 +27,30 @@ export interface DuelScoreOutcome {
   winnerId: string | null;      // null = empate ou nenhum resultado válido
   usedIntensity: boolean;       // true = todos registraram a FC (dá pra comparar)
   entries: Record<string, DuelScoreEntry>;
+  /** Como o empate foi desfeito, quando foi. Opcional: quem monta um outcome
+   *  na mão (ex: destaque do ranking) não precisa informar. */
+  tiebreak?: DuelTiebreak | null;
 }
+
+/**
+ * Desempate quando dois ou mais entregam EXATAMENTE o mesmo resultado — que é
+ * a única forma de empatar, já que o placar é o desempenho.
+ *
+ * Ritmo (reps/min) não serve: é o mesmo resultado dividido pela mesma duração
+ * do WOD, então empata junto. Sobram as duas leituras que dizem a que custo
+ * cada um chegou no mesmo número:
+ *
+ *   1. 'effort'   — menor % da FC máx vence. Mesmo trabalho pagando menos
+ *                   batimento é o lado eficiente, a mesma direção que o
+ *                   gráfico de comparação já usa. Exige que todos tenham
+ *                   registrado a FC.
+ *   2. 'strength' — maior força relativa (carga ÷ peso corporal) vence. Exige
+ *                   que todos os empatados tenham carga e peso registrados.
+ *
+ * Sem nenhum dos dois, o empate fica de pé (aposta devolvida) — melhor que
+ * inventar um critério.
+ */
+export type DuelTiebreak = 'effort' | 'strength';
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -37,6 +60,8 @@ export function computeDuelScore(
   participantIds: string[],
   timeBased: boolean,
   parseResult: (r: string, timeBased: boolean) => number,
+  /** Força relativa (carga ÷ peso corporal) por atleta — só usada no desempate. */
+  strengthById?: Record<string, number | null | undefined>,
 ): DuelScoreOutcome {
   const entries: Record<string, DuelScoreEntry> = {};
 
@@ -47,7 +72,7 @@ export function computeDuelScore(
     // sentinela de tempo não-parseável
     return !(timeBased && v >= 999999);
   });
-  if (valid.length === 0) return { winnerId: null, usedIntensity: false, entries };
+  if (valid.length === 0) return { winnerId: null, usedIntensity: false, entries, tiebreak: null };
 
   const vals = valid.map(id => parseResult(results[id]!, timeBased));
   const best = timeBased ? Math.min(...vals) : Math.max(...vals);
@@ -74,7 +99,7 @@ export function computeDuelScore(
     }
   }
 
-  // Vencedor = maior score; empate → null
+  // Vencedor = maior score
   let bestTotal = -Infinity;
   let winners: string[] = [];
   for (const id of valid) {
@@ -82,7 +107,53 @@ export function computeDuelScore(
     if (t > bestTotal + 1e-9) { bestTotal = t; winners = [id]; }
     else if (Math.abs(t - bestTotal) <= 1e-9) winners.push(id);
   }
-  return { winnerId: winners.length === 1 ? winners[0] : null, usedIntensity: allHaveIntensity, entries };
+
+  if (winners.length === 1) {
+    return { winnerId: winners[0], usedIntensity: allHaveIntensity, entries, tiebreak: null };
+  }
+
+  // Empatados no resultado: decide pelo custo (ver DuelTiebreak).
+  const decided = breakTie(winners, entries, strengthById);
+  return {
+    winnerId: decided?.id ?? null,
+    usedIntensity: allHaveIntensity,
+    entries,
+    tiebreak: decided?.by ?? null,
+  };
+}
+
+/** Menor esforço primeiro; depois maior força relativa. null = segue empatado. */
+function breakTie(
+  tied: string[],
+  entries: Record<string, DuelScoreEntry>,
+  strengthById?: Record<string, number | null | undefined>,
+): { id: string; by: DuelTiebreak } | null {
+  const byEffort = pickBy(tied, id => entries[id]?.effort ?? null, 'min');
+  if (byEffort) return { id: byEffort, by: 'effort' };
+
+  const byStrength = pickBy(tied, id => strengthById?.[id] ?? null, 'max');
+  if (byStrength) return { id: byStrength, by: 'strength' };
+
+  return null;
+}
+
+/**
+ * Vencedor único por um critério numérico. null quando algum empatado não tem
+ * o número (comparar quem tem contra quem não tem seria premiar o equipamento)
+ * ou quando o próprio critério empata.
+ */
+function pickBy(
+  tied: string[],
+  valueOf: (id: string) => number | null,
+  direction: 'min' | 'max',
+): string | null {
+  const values = tied.map(id => ({ id, value: valueOf(id) }));
+  if (values.some(v => v.value == null)) return null;
+
+  const nums = values.map(v => v.value as number);
+  const target = direction === 'min' ? Math.min(...nums) : Math.max(...nums);
+  const leaders = values.filter(v => Math.abs((v.value as number) - target) <= 1e-9);
+  return leaders.length === 1 ? leaders[0].id : null;
 }
 
 // ─── Recap pós-duelo ──────────────────────────────────────────────────────
@@ -92,7 +163,7 @@ export function computeDuelScore(
 // mesmo tipo de leitura dos relatórios "Winning the Margins" do CrossFit Games.
 
 export interface DuelEdgeInsight {
-  kind: 'performance' | 'effort' | 'efficiency';
+  kind: 'performance' | 'effort' | 'efficiency' | 'tiebreak';
   text: string;
 }
 
@@ -105,7 +176,7 @@ export function computeDuelEdge(
   outcome: DuelScoreOutcome,
   participantIds: string[],
 ): DuelEdge | null {
-  const { winnerId, usedIntensity, entries } = outcome;
+  const { winnerId, usedIntensity, entries, tiebreak } = outcome;
   if (!winnerId) return null;
 
   const winner = entries[winnerId];
@@ -142,6 +213,21 @@ export function computeDuelEdge(
     summary = moreEfficient
       ? 'Venceu no desempenho, e gastando menos batimento — mais eficiente.'
       : 'Venceu no desempenho, pagando com mais esforço que a média.';
+  }
+
+  // Empate no resultado: aí o que decidiu foi o custo, e a frase tem que dizer
+  // isso — senão o card anuncia "venceu no desempenho" num duelo em que os
+  // dois fizeram exatamente o mesmo número.
+  if (tiebreak) {
+    insights.push({
+      kind: 'tiebreak',
+      text: tiebreak === 'effort'
+        ? 'Mesmo resultado: levou no desempate por ter gasto menos FC'
+        : 'Mesmo resultado: levou no desempate por mover mais carga por quilo de peso',
+    });
+    summary = tiebreak === 'effort'
+      ? 'Empate no resultado — venceu por eficiência: mesma entrega, menos esforço.'
+      : 'Empate no resultado — venceu por força relativa: mesma entrega, mais carga por quilo.';
   }
 
   return { insights, summary };
