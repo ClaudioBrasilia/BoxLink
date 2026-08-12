@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Calendar, Timer, Activity, Trophy, ChevronLeft, ChevronRight, Flame, Star, Edit2, CheckCircle2, X, Lock, Dumbbell, Heart } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +14,7 @@ import { addReward, getRewardSettings } from '../utils/rewards';
 import { calcInactivity, InactivitySettings, InactivityState } from '../utils/inactivity';
 import PostWorkoutFeedback from '../components/PostWorkoutFeedback';
 import TimeInput from '../components/TimeInput';
+import AmrapInput from '../components/AmrapInput';
 import { TrainingFeeling } from '../types';
 import { fetchRecentHeartRateSession } from '../lib/heartRateSessions';
 import { effortFromSession, WodEffort } from '../lib/effort';
@@ -48,61 +49,6 @@ function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: 
           </motion.div>
         ))}
       </AnimatePresence>
-    </div>
-  );
-}
-
-// Input especial para AMRAP: rounds + reps
-function AmrapInput({ value, onChange, disabled, repsPerRound }: {
-  value: string; onChange: (val: string) => void; disabled?: boolean; repsPerRound?: number;
-}) {
-  const parseAmrap = (v: string) => {
-    const match = v.match(/^(\d+)\+(\d+)$/);
-    return { rounds: match?.[1] ?? '', reps: match?.[2] ?? '' };
-  };
-  const parsed = parseAmrap(value);
-  const [rounds, setRounds] = useState(parsed.rounds);
-  const [reps, setReps] = useState(parsed.reps);
-  const repsRef = useRef<HTMLInputElement>(null);
-
-  const commit = (r: string, p: string) => {
-    if (r || p) onChange(`${r || '0'}+${p || '0'}`);
-  };
-  const handleRounds = (raw: string) => {
-    const clean = raw.replace(/\D/g, '').slice(0, 3);
-    setRounds(clean); commit(clean, reps);
-    if (clean.length >= 2) repsRef.current?.focus();
-  };
-  const handleReps = (raw: string) => {
-    const clean = raw.replace(/\D/g, '').slice(0, 3);
-    const maxReps = repsPerRound ? repsPerRound - 1 : 999;
-    const num = parseInt(clean, 10);
-    const clamped = isNaN(num) ? clean : String(Math.min(num, maxReps));
-    setReps(clamped); commit(rounds, clamped);
-  };
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3 bg-surface-container-highest rounded-2xl p-4">
-        <div className="flex-1 flex flex-col items-center gap-1">
-          <label className="text-[8px] text-on-surface-variant font-black uppercase tracking-widest">ROUNDS</label>
-          <input type="number" inputMode="numeric" min={0} value={rounds}
-            onChange={(e) => handleRounds(e.target.value)} placeholder="0" disabled={disabled}
-            className="w-full bg-transparent text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none" />
-        </div>
-        <span className="text-3xl font-black text-primary">+</span>
-        <div className="flex-1 flex flex-col items-center gap-1">
-          <label className="text-[8px] text-on-surface-variant font-black uppercase tracking-widest">REPS</label>
-          <input ref={repsRef} type="number" inputMode="numeric" min={0} value={reps}
-            onChange={(e) => handleReps(e.target.value)} placeholder="0" disabled={disabled}
-            className="w-full bg-transparent text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none" />
-        </div>
-      </div>
-      {repsPerRound && (
-        <p className="text-center text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
-          {repsPerRound} reps por round completo
-        </p>
-      )}
     </div>
   );
 }

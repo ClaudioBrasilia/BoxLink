@@ -10,6 +10,8 @@ import {
   computeRepsPerMinute,
   parseTimeToSeconds,
   parseAmrapTotalReps,
+  amrapResultValue,
+  inferRoundWeight,
   formatPace,
 } from './pace';
 
@@ -36,6 +38,28 @@ describe('parseAmrapTotalReps', () => {
   it('sem reps por round não dá para converter', () => {
     expect(parseAmrapTotalReps('5+12', null)).toBeNull();
     expect(parseAmrapTotalReps('5+12', 0)).toBeNull();
+  });
+});
+
+describe('amrapResultValue / inferRoundWeight', () => {
+  it('com reps por round, é o total exato de reps', () => {
+    expect(amrapResultValue('5+12', 30)).toBe(162);
+  });
+
+  it('mais rounds vence mesmo sem reps por round cadastrado', () => {
+    const weight = inferRoundWeight(['4+58', '5+2']);
+    expect(amrapResultValue('5+2', weight)!).toBeGreaterThan(amrapResultValue('4+58', weight)!);
+  });
+
+  it('sobra grande não faz um round a menos ganhar', () => {
+    // Round de 150 reps: "1+120" tem menos trabalho que "2+0".
+    const weight = inferRoundWeight(['1+120', '2+0']);
+    expect(amrapResultValue('2+0', weight)!).toBeGreaterThan(amrapResultValue('1+120', weight)!);
+  });
+
+  it('resultado fora do formato rounds+reps → null', () => {
+    expect(amrapResultValue('150 reps', 30)).toBeNull();
+    expect(amrapResultValue('12:45', 30)).toBeNull();
   });
 });
 
@@ -73,6 +97,10 @@ describe('computeRepsPerMinute', () => {
 
   it('FOR TIME sem total de reps cadastrado → null', () => {
     expect(computeRepsPerMinute('12:30', { type: 'FOR TIME' })).toBeNull();
+  });
+
+  it('AMRAP "rounds+reps" sem reps por round → null (nunca lê "5+12" como 512)', () => {
+    expect(computeRepsPerMinute('5+12', { type: 'AMRAP', timeCapMinutes: 20 })).toBeNull();
   });
 
   it('AMRAP sem time cap cadastrado → null', () => {

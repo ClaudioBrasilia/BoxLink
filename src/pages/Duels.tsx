@@ -31,7 +31,14 @@ import { computeDuelScore, DuelScoreOutcome } from '../lib/duelScore';
 import DuelRecapCard from '../components/DuelRecapCard';
 import ShareDuelButton from '../components/ShareDuelButton';
 import PremiumCTA from '../components/PremiumCTA';
-import { WodPaceMeta, parseTimeToSeconds, computeRepsPerMinute } from '../lib/pace';
+import {
+  WodPaceMeta,
+  parseTimeToSeconds,
+  computeRepsPerMinute,
+  isAmrapType,
+  amrapResultValue,
+  inferRoundWeight,
+} from '../lib/pace';
 import { isPremium } from '../lib/plan';
 import { computeRelativeStrength } from '../lib/relativeStrength';
 import WodSpotlightChart from '../components/WodSpotlightChart';
@@ -39,6 +46,7 @@ import { WodSpotlightData } from '../lib/wodSpotlight';
 import { normalizeFriendCode } from '../lib/friendCode';
 import { registerDuelWorkout } from '../lib/duelWorkout';
 import TimeInput from '../components/TimeInput';
+import AmrapInput from '../components/AmrapInput';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +85,8 @@ interface Duel {
   // sempre null nesse caso, então os números vivem direto no duelo.
   totalReps?: number | null;
   timeCapMinutes?: number | null;
+  /** AMRAP: reps de um round completo — converte "rounds+reps" em total. */
+  repsPerRound?: number | null;
   category: string;
   results: DuelResult;
   intensity: DuelIntensity;
@@ -105,7 +115,7 @@ interface WodOption {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const parseResultValue = (result: string, isTimeBased: boolean): number => {
+const parseResultValue = (result: string, isTimeBased: boolean, roundWeight?: number | null): number => {
   if (!result) return isTimeBased ? 999999 : 0;
   const str = result.trim();
   if (/^\d+:\d+/.test(str)) {
@@ -114,6 +124,10 @@ const parseResultValue = (result: string, isTimeBased: boolean): number => {
       ? parts[0] * 60 + parts[1]
       : parts[0] * 3600 + parts[1] * 60 + parts[2];
   }
+  // AMRAP em "rounds+reps" vira total de reps — sem isso "5+12" perderia o
+  // "+" na limpeza abaixo e viraria 512, esmagando qualquer oponente.
+  const amrap = amrapResultValue(str, roundWeight);
+  if (amrap != null) return amrap;
   return parseFloat(str.replace(/[^0-9.]/g, '')) || (isTimeBased ? 999999 : 0);
 };
 
@@ -141,6 +155,11 @@ const isTimeBasedDuel = (wodType: string | undefined, results: DuelResult): bool
 // Mantido apenas para display dos cards (ícone + label), sem resultados disponíveis
 const isTimeBased = (wodType?: string) =>
   TIME_BASED_KEYWORDS.some(k => (wodType || '').toUpperCase().includes(k));
+
+/** Resultado de AMRAP é "rounds+reps" — o duelo pede os dois campos. */
+const isAmrapDuel = (wodType?: string) => isAmrapType(wodType);
+
+const AMRAP_FORMAT = /^\d+\+\d+$/;
 
 const getVisibleResult = (duel: Duel, userId: string): string => {
   if (duel.status === 'finished') return duel.results[userId] || '—';
@@ -270,6 +289,7 @@ export default function Duels() {
           wodCustom: d.wod_custom,
           totalReps: d.total_reps,
           timeCapMinutes: d.time_cap_minutes,
+          repsPerRound: d.reps_per_round,
           category: d.category ?? 'RX',
           results: d.results ?? {},
           intensity: d.intensity ?? {},
@@ -362,12 +382,23 @@ export default function Duels() {
   // Números para o ritmo (reps/min): duelo de box referencia um WOD real
   // (busca em wodPaceMeta); duelo de WOD personalizado (individual, Premium)
   // guarda os números direto na própria linha do duelo, já que wod_id é null.
-  const getPaceMeta = (duel: Duel) =>
+  const getPaceMeta = (duel: Duel): WodPaceMeta | undefined =>
     duel.wodId
       ? wodPaceMeta[duel.wodId]
-      : (duel.totalReps != null || duel.timeCapMinutes != null)
-        ? { type: duel.wodType, totalReps: duel.totalReps, timeCapMinutes: duel.timeCapMinutes }
+      : (duel.totalReps != null || duel.timeCapMinutes != null || duel.repsPerRound != null)
+        ? {
+            type: duel.wodType,
+            totalReps: duel.totalReps,
+            timeCapMinutes: duel.timeCapMinutes,
+            repsPerRound: duel.repsPerRound,
+          }
         : undefined;
+
+  // Quanto vale um round na hora de comparar resultados AMRAP ("rounds+reps").
+  // Usa o reps_per_round do WOD quando existe; senão infere dos próprios
+  // resultados do duelo — a ordem (mais rounds vence) sai certa de qualquer jeito.
+  const getRoundWeight = (duel: Duel, results: DuelResult = duel.results) =>
+    getPaceMeta(duel)?.repsPerRound ?? inferRoundWeight(Object.values(results));
 
   // Força relativa (carga ÷ peso corporal) de cada participante do duelo.
   // Só existe para quem registrou a carga E tem peso no perfil.
@@ -677,6 +708,10 @@ export default function Duels() {
     if (isTimeBased(duel.wodType) && parseTimeToSeconds(result) == null) {
       toast.warning('Resultado por tempo precisa ser "mm:ss", ex: 12:45.'); return;
     }
+    // AMRAP: o resultado é "rounds+reps" (ex: 5+12) — mesmo formato do placar.
+    if (isAmrapDuel(duel.wodType) && !AMRAP_FORMAT.test(result)) {
+      toast.warning('Resultado de AMRAP é em rounds + reps, ex: 5+12.'); return;
+    }
 
     // Esforço (% da FC máx) opcional — só entra no cálculo se TODOS registrarem.
     // Se o campo estiver vazio, usa o esforço do treino de hoje (se houver).
@@ -701,12 +736,13 @@ export default function Duels() {
 
       if (allSubmitted) {
         const timeBased = isTimeBasedDuel(duel.wodType, newResults);
+        const roundWeight = getRoundWeight(duel, newResults);
         const outcome: DuelScoreOutcome = computeDuelScore(
           newResults,
           newIntensity,
           allParticipants,
           timeBased,
-          parseResultValue,
+          (r, tb) => parseResultValue(r, tb, roundWeight),
         );
         const winnerId = outcome.winnerId;
         const isTie = winnerId === null;
@@ -1253,16 +1289,19 @@ export default function Duels() {
             const mySubmitted = Boolean(duel.results[user?.id || '']);
             const allSubmitted = allParticipants.every(id => duel.results[id]);
             const timeBased = isTimeBased(duel.wodType);
+            const amrap = !timeBased && isAmrapDuel(duel.wodType);
 
             // Detalhamento do placar (desempenho + esforço) quando finalizado
             const duelTimeBased = isTimeBasedDuel(duel.wodType, duel.results);
+            const duelRoundWeight = getRoundWeight(duel);
+            const parseDuelResult = (r: string, tb: boolean) => parseResultValue(r, tb, duelRoundWeight);
             const outcome: DuelScoreOutcome | null = duel.status === 'finished' && allSubmitted
               ? computeDuelScore(
                   duel.results,
                   duel.intensity,
                   allParticipants,
                   duelTimeBased,
-                  parseResultValue,
+                  parseDuelResult,
                 )
               : null;
 
@@ -1284,7 +1323,7 @@ export default function Duels() {
                 const strengthById = getStrengthById(duel);
                 const isGroup = otherIds.length > 1;
 
-                const otherScores = otherIds.map(id => parseResultValue(duel.results[id] || '', duelTimeBased));
+                const otherScores = otherIds.map(id => parseDuelResult(duel.results[id] || '', duelTimeBased));
                 const otherPaces = paceMeta
                   ? otherIds.map(id => computeRepsPerMinute(duel.results[id] || '', paceMeta)).filter((p): p is number => p != null)
                   : [];
@@ -1306,7 +1345,7 @@ export default function Duels() {
                   athleteCount: allParticipants.length,
                   timeBased: duelTimeBased,
                   leaderResult: duel.results[winnerId] || '',
-                  leaderScore: parseResultValue(duel.results[winnerId] || '', duelTimeBased),
+                  leaderScore: parseDuelResult(duel.results[winnerId] || '', duelTimeBased),
                   avgScore: avgOf(otherScores),
                   leaderPace: paceMeta ? computeRepsPerMinute(duel.results[winnerId] || '', paceMeta) : null,
                   avgPace: otherPaces.length ? avgOf(otherPaces) : null,
@@ -1363,7 +1402,7 @@ export default function Duels() {
                       <p className="text-sm font-headline font-black text-on-surface uppercase italic">{duel.wodName}</p>
                       <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">
                         {duel.wodType} • {duel.category}
-                        {timeBased ? ' • Menor tempo vence' : ' • Maior resultado vence'}
+                        {timeBased ? ' • Menor tempo vence' : amrap ? ' • Mais rounds + reps vence' : ' • Maior resultado vence'}
                       </p>
                     </div>
                   </div>
@@ -1600,6 +1639,17 @@ export default function Duels() {
                             onChange={v => setSubmission(prev => ({ ...prev, [duel.id]: v }))}
                           />
                         </div>
+                      ) : amrap ? (
+                        // AMRAP: rounds + reps, como o atleta lê no whiteboard —
+                        // e o mesmo formato do placar/ranking.
+                        <div className="flex-1">
+                          <AmrapInput
+                            compact
+                            value={submission[duel.id] || ''}
+                            onChange={v => setSubmission(prev => ({ ...prev, [duel.id]: v }))}
+                            repsPerRound={getPaceMeta(duel)?.repsPerRound}
+                          />
+                        </div>
                       ) : (
                         <input
                           type="text"
@@ -1611,7 +1661,12 @@ export default function Duels() {
                       )}
                       <button
                         onClick={() => handleSubmitResult(duel)}
-                        disabled={saving || !submission[duel.id]?.trim() || (timeBased && parseTimeToSeconds(submission[duel.id]?.trim() || '') == null)}
+                        disabled={
+                          saving
+                          || !submission[duel.id]?.trim()
+                          || (timeBased && parseTimeToSeconds(submission[duel.id]?.trim() || '') == null)
+                          || (amrap && !AMRAP_FORMAT.test(submission[duel.id]?.trim() || ''))
+                        }
                         className="bg-primary text-background px-5 rounded-2xl font-headline font-black text-sm uppercase italic flex items-center gap-2 disabled:opacity-40 hover:opacity-90 transition-all"
                       >
                         {saving ? <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4" />}

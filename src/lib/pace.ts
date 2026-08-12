@@ -48,13 +48,45 @@ export function parseAmrapTotalReps(result: string, repsPerRound?: number | null
 /**
  * Total de reps digitadas direto, sem formato "rounds+reps" (ex.: duelo em
  * que o atleta digitou "150 reps" ou "150"). null se parecer outra coisa
- * (contém ":" → é tempo) ou não sobrar nenhum dígito.
+ * (contém ":" → é tempo; contém "+" → é rounds+reps, que sem reps_per_round
+ * não dá para converter — "5+12" viraria 512) ou não sobrar nenhum dígito.
  */
 function parsePlainReps(result: string): number | null {
   const str = (result || '').trim();
-  if (!str || str.includes(':')) return null;
+  if (!str || str.includes(':') || str.includes('+')) return null;
   const n = parseFloat(str.replace(/[^0-9.]/g, ''));
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Peso de round usado quando o WOD não tem reps_per_round cadastrado. */
+const FALLBACK_ROUND_WEIGHT = 100;
+
+/**
+ * Peso de um round para comparar resultados AMRAP quando ninguém cadastrou
+ * reps_per_round. As reps extras são sempre de um round INCOMPLETO, então
+ * qualquer peso maior que a maior sobra vista mantém a ordem correta (mais
+ * rounds sempre vence). Piso de 100 para não exagerar a distância entre
+ * resultados quando as sobras são pequenas.
+ */
+export function inferRoundWeight(results: (string | null | undefined)[]): number {
+  const extras = results
+    .map(r => (r || '').trim().match(/^\d+\+(\d+)$/)?.[1])
+    .filter((n): n is string => n != null)
+    .map(n => parseInt(n, 10) + 1);
+  return Math.max(FALLBACK_ROUND_WEIGHT, ...extras);
+}
+
+/**
+ * Valor comparável de um resultado AMRAP "rounds+reps". Com o reps_per_round
+ * do WOD é o total exato de reps; com um peso inferido (ver inferRoundWeight)
+ * a ordem continua certa, só a distância entre os resultados é aproximada.
+ * null quando o resultado não está no formato "rounds+reps".
+ */
+export function amrapResultValue(result: string, roundWeight?: number | null): number | null {
+  const m = (result || '').trim().match(/^(\d+)\+(\d+)$/);
+  if (!m) return null;
+  const weight = roundWeight && roundWeight > 0 ? roundWeight : FALLBACK_ROUND_WEIGHT;
+  return parseInt(m[1], 10) * weight + parseInt(m[2], 10);
 }
 
 /**
