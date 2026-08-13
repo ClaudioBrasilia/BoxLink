@@ -96,10 +96,14 @@ export default function Profile() {
         if (profileData?.photo_url) setPhotoUrl(profileData.photo_url);
 
         // Fetch Duels stats
+        // `opponent_ids` (array) é onde os duelos de hoje guardam quem foi
+        // desafiado; `opponent_id` é a coluna antiga, de quando o duelo era
+        // sempre 1x1. Olhar só a antiga fazia sumir da contagem todo duelo em
+        // que o atleta foi o DESAFIADO — as duas precisam entrar.
         const { data: duelsData } = await supabase
           .from('duels')
           .select('winner_id')
-          .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
+          .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id},opponent_ids.cs.{${user.id}}`)
           .eq('status', 'finished');
         setDuelsTotal((duelsData || []).length);
         setDuelsWon((duelsData || []).filter((d: any) => d.winner_id === user.id).length);
