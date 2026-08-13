@@ -15,6 +15,7 @@ import {
   Globe,
   Copy,
   Share2,
+  Trash2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
@@ -95,6 +96,8 @@ interface Duel {
   intensity: DuelIntensity;
   loads: DuelLoads;
   createdAt: string;
+  /** Última mexida — é quando o duelo foi liquidado, no caso dos finalizados. */
+  updatedAt?: string | null;
 }
 
 interface UserProfile {
@@ -162,6 +165,22 @@ const isTimeBased = (wodType?: string) =>
 /** Resultado de AMRAP é "rounds+reps" — o duelo pede os dois campos. */
 const isAmrapDuel = (wodType?: string) => isAmrapType(wodType);
 
+/**
+ * Duelo finalizado sai da lista depois disso — some da TELA, não do banco.
+ * O perfil conta vitórias lendo a tabela `duels`, então apagar de verdade
+ * encolheria o histórico do atleta (e o do oponente) sozinho. Quem quiser um
+ * duelo fora de vez usa o botão de apagar, que é explícito.
+ */
+const FINISHED_RETENTION_DAYS = 30;
+
+const isOldFinished = (duel: Duel): boolean => {
+  if (duel.status !== 'finished') return false;
+  const closedAt = duel.updatedAt || duel.createdAt;
+  if (!closedAt) return false;
+  const days = (Date.now() - new Date(closedAt).getTime()) / 86_400_000;
+  return days > FINISHED_RETENTION_DAYS;
+};
+
 const AMRAP_FORMAT = /^\d+\+\d+$/;
 
 const getVisibleResult = (duel: Duel, userId: string): string => {
@@ -212,6 +231,8 @@ export default function Duels() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showScoreInfo, setShowScoreInfo] = useState(false);
+  // Duelos finalizados há mais de 30 dias: escondidos até pedirem pra ver.
+  const [showOldFinished, setShowOldFinished] = useState(false);
 
   // Submissão de resultado por duelo
   const [submission, setSubmission] = useState<Record<string, string>>({});
@@ -298,6 +319,7 @@ export default function Duels() {
           intensity: d.intensity ?? {},
           loads: d.loads ?? {},
           createdAt: d.created_at,
+          updatedAt: d.updated_at,
         }));
         // Individual não faz parte de um box: só vê os próprios duelos, nunca
         // o "social feed" de duelos entre atletas do box.
@@ -712,6 +734,39 @@ export default function Duels() {
     }
   };
 
+  /**
+   * Apaga um duelo já finalizado. Some para TODOS os participantes — inclusive
+   * do contador de vitórias do perfil, que lê a tabela `duels` — e o XP/coins
+   * já pagos não voltam. Por isso pede confirmação dizendo as duas coisas.
+   * O treino continua no diário: a FK training_logs.duel_id é ON DELETE SET NULL.
+   */
+  const handleDeleteFinished = async (duel: Duel) => {
+    if (!user) return;
+    const ok = confirm(
+      `Apagar o duelo "${duel.wodName || 'sem nome'}" de vez?\n\n` +
+      '• Some para você e para quem duelou com você\n' +
+      '• Sai da contagem de vitórias do perfil\n' +
+      '• XP e coins já pagos NÃO voltam\n' +
+      '• Seu treino continua no diário\n\n' +
+      'Esta ação não pode ser desfeita.',
+    );
+    if (!ok) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('duels').delete().eq('id', duel.id);
+      if (error) throw error;
+      setDuels(prev => prev.filter(d => d.id !== duel.id));
+      if (expandedId === duel.id) setExpandedId(null);
+      toast.success('Duelo apagado.');
+    } catch (err: any) {
+      console.error('Error deleting finished duel:', err);
+      toast.error('Erro ao apagar duelo: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ─── Submeter resultado ───────────────────────────────────────────────────
 
   const handleSubmitResult = async (duel: Duel) => {
@@ -935,11 +990,20 @@ export default function Duels() {
 
   // ─── Derived ──────────────────────────────────────────────────────────────
 
+  // Finalizado velho fica escondido por padrão; "ver antigos" traz de volta.
+  const oldFinishedCount = useMemo(
+    () => duels.filter(d => isOldFinished(d) && (
+      activeTab !== 'mine' || d.challengerId === user?.id || d.opponentIds.includes(user?.id || '')
+    )).length,
+    [duels, activeTab, user],
+  );
+
   const filteredDuels = useMemo(() => duels.filter(d => {
+    if (!showOldFinished && isOldFinished(d)) return false;
     if (activeTab === 'mine') return d.challengerId === user?.id || d.opponentIds.includes(user?.id || '');
     if (activeTab === 'pending') return d.status === 'pending' && d.opponentIds.includes(user?.id || '') && !d.acceptedBy.includes(user?.id || '');
     return true;
-  }), [duels, activeTab, user]);
+  }), [duels, activeTab, user, showOldFinished]);
 
   const filteredOpponents = boxMates.filter(u =>
     u.name.toLowerCase().includes(opponentSearch.toLowerCase()) &&
@@ -1757,9 +1821,32 @@ export default function Duels() {
                     DESISTIR / CANCELAR <X className="w-3 h-3" />
                   </button>
                 )}
+
+                {/* Finalizado: apagar de vez (some para os dois lados) */}
+                {duel.status === 'finished' && isParticipant && isExpanded && (
+                  <button
+                    onClick={() => handleDeleteFinished(duel)}
+                    disabled={saving}
+                    className="w-full bg-transparent text-on-surface-variant/40 py-3 rounded-xl font-headline font-black text-[10px] uppercase italic flex items-center justify-center gap-2 border border-outline-variant/10 hover:text-error hover:border-error/30 transition-all disabled:opacity-50"
+                  >
+                    APAGAR DUELO <Trash2 className="w-3 h-3" />
+                  </button>
+                )}
               </motion.div>
             );
           })
+        )}
+
+        {/* Finalizados antigos: escondidos, não apagados */}
+        {oldFinishedCount > 0 && (
+          <button
+            onClick={() => setShowOldFinished(o => !o)}
+            className="w-full text-[10px] font-black text-on-surface-variant/50 uppercase tracking-widest py-3 hover:text-primary transition-all"
+          >
+            {showOldFinished
+              ? 'Ocultar duelos antigos'
+              : `Ver ${oldFinishedCount} duelo${oldFinishedCount > 1 ? 's' : ''} de mais de ${FINISHED_RETENTION_DAYS} dias`}
+          </button>
         )}
       </main>
 
