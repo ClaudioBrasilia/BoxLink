@@ -53,9 +53,13 @@ Play Console.
 - Ícone adaptável, splash screen e permissões do `AndroidManifest.xml`
   configurados.
 - Política de privacidade em `public/privacy.html`, publicada em
-  `https://boxlink.vercel.app/privacy.html` (URL corrigida no
+  `https://box-link.vercel.app/privacy.html` (URL corrigida no
   `strings.xml` e no `vercel.json`, que antes reescrevia essa página para o
-  app React em vez de servir o HTML).
+  app React em vez de servir o HTML). ⚠️ O domínio de produção é
+  `box-link.vercel.app` (com hífen) — `boxlink.vercel.app`, sem hífen, é de
+  outra pessoa.
+- Página de exclusão de conta/dados em `public/delete-account.html`,
+  publicada em `https://box-link.vercel.app/delete-account.html`.
 - Ícone de alta resolução para a loja: `public/pwa-512x512.png` (512×512).
 - Screenshots em `marketing/loja/` (7 imagens).
 
