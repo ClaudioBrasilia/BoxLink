@@ -5,5 +5,5 @@
     <string name="package_name">com.crosscity.hub</string>
     <string name="custom_url_scheme">com.crosscity.hub</string>
     <!-- URL da política de privacidade exibida pelo Health Connect. -->
-    <string name="health_connect_privacy_policy_url">https://boxlink.vercel.app/privacy.html</string>
+    <string name="health_connect_privacy_policy_url">https://box-link.vercel.app/privacy.html</string>
 </resources>

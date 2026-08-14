@@ -351,7 +351,7 @@ export default function Profile() {
       // Bottom branding
       ctx.fillStyle = 'rgba(255,255,255,0.2)';
       ctx.font = '24px Arial';
-      ctx.fillText('boxlink.vercel.app', 540, 1030);
+      ctx.fillText('box-link.vercel.app', 540, 1030);
 
       const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png', 1.0));
       if (!blob) return;
