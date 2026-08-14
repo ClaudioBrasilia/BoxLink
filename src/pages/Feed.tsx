@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Heart, MessageCircle, Trophy, Zap, CheckCircle2, Swords, Send, X, Users, RefreshCw } from 'lucide-react';
+import { Heart, MessageCircle, Trophy, Zap, CheckCircle2, Swords, Send, X, Users, RefreshCw, MoreVertical, Flag, UserX } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { createNotification } from '../hooks/useNotifications';
+import { useToast } from '../context/ToastContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface FeedPost {
@@ -57,11 +58,12 @@ function AvatarCircle({ name, size = 36 }: { name: string; size?: number }) {
 }
 
 function CommentSection({
-  post, currentUserId, onAdd,
+  post, currentUserId, onAdd, onReportComment,
 }: {
   post: FeedPost;
   currentUserId: string;
   onAdd: (postId: string, text: string) => Promise<void>;
+  onReportComment: (commentId: string) => void;
 }) {
   const [text, setText]       = useState('');
   const [sending, setSending] = useState(false);
@@ -88,6 +90,15 @@ function CommentSection({
             </span>
             <span className="text-[11px] text-on-surface-variant">{c.content}</span>
           </div>
+          {c.user_id !== currentUserId && (
+            <button
+              onClick={() => onReportComment(c.id)}
+              className="text-on-surface-variant/40 hover:text-red-400 transition-colors flex-shrink-0 mt-1.5"
+              title="Denunciar comentário"
+            >
+              <Flag className="w-3 h-3" />
+            </button>
+          )}
         </div>
       ))}
       {comments.length > 3 && (
@@ -120,16 +131,20 @@ function CommentSection({
 }
 
 function PostCard({
-  post, currentUserId, onLike, onAdd,
+  post, currentUserId, onLike, onAdd, onReportPost, onReportComment, onBlockUser,
 }: {
   post: FeedPost;
   currentUserId: string;
   onLike: (postId: string, liked: boolean) => Promise<void>;
   onAdd: (postId: string, text: string) => Promise<void>;
+  onReportPost: (postId: string) => void;
+  onReportComment: (commentId: string) => void;
+  onBlockUser: (userId: string, userName: string) => void;
 }) {
   const [showComments, setShowComments] = useState(false);
   const [liking, setLiking]             = useState(false);
   const [imgError, setImgError]         = useState(false);
+  const [menuOpen, setMenuOpen]         = useState(false);
 
   const likes    = post.feed_likes    || [];
   const comments = post.feed_comments || [];
@@ -169,6 +184,39 @@ function PostCard({
         <span className="text-[10px] text-on-surface-variant flex-shrink-0">
           {timeAgo(post.created_at)}
         </span>
+        {post.user_id !== currentUserId && (
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => setMenuOpen(v => !v)}
+              className="text-on-surface-variant/60 hover:text-on-surface p-1"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </button>
+            <AnimatePresence>
+              {menuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="absolute right-0 top-8 z-10 bg-surface-container-high border border-outline-variant/20 rounded-2xl shadow-lg overflow-hidden w-44"
+                >
+                  <button
+                    onClick={() => { setMenuOpen(false); onReportPost(post.id); }}
+                    className="w-full flex items-center gap-2 px-4 py-3 text-xs font-bold text-on-surface hover:bg-surface-container-highest text-left"
+                  >
+                    <Flag className="w-3.5 h-3.5" /> Denunciar publicação
+                  </button>
+                  <button
+                    onClick={() => { setMenuOpen(false); onBlockUser(post.user_id, name); }}
+                    className="w-full flex items-center gap-2 px-4 py-3 text-xs font-bold text-red-400 hover:bg-surface-container-highest text-left border-t border-outline-variant/10"
+                  >
+                    <UserX className="w-3.5 h-3.5" /> Bloquear {name.split(' ')[0]}
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
 
       {/* Foto — só renderiza se photo_url existir e não der erro de load */}
@@ -242,6 +290,7 @@ function PostCard({
               post={post}
               currentUserId={currentUserId}
               onAdd={onAdd}
+              onReportComment={onReportComment}
             />
           </motion.div>
         )}
@@ -252,10 +301,12 @@ function PostCard({
 
 export default function Feed() {
   const { user }                      = useAuth();
+  const toast                         = useToast();
   const [posts, setPosts]             = useState<FeedPost[]>([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState<string | null>(null);
   const [refreshing, setRefreshing]   = useState(false);
+  const [blockedIds, setBlockedIds]   = useState<Set<string>>(new Set());
 
   const fetchPosts = useCallback(async () => {
     setError(null);
@@ -292,8 +343,18 @@ export default function Feed() {
     setRefreshing(false);
   };
 
+  const fetchBlocked = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('blocked_users')
+      .select('blocked_id')
+      .eq('blocker_id', user.id);
+    setBlockedIds(new Set((data || []).map(b => b.blocked_id)));
+  }, [user]);
+
   useEffect(() => {
     fetchPosts();
+    fetchBlocked();
 
     // Realtime — novos posts, likes e comentários aparecem automaticamente
     const channel = supabase
@@ -305,7 +366,7 @@ export default function Feed() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [fetchPosts]);
+  }, [fetchPosts, fetchBlocked]);
 
   const handleLike = async (postId: string, alreadyLiked: boolean) => {
     if (!user) return;
@@ -367,6 +428,48 @@ export default function Feed() {
     }
   };
 
+  const handleReportPost = async (postId: string) => {
+    if (!user) return;
+    const { error: err } = await supabase
+      .from('feed_reports')
+      .insert({ reporter_id: user.id, post_id: postId });
+    if (err) {
+      toast.error('Não deu para enviar a denúncia. Tenta de novo.');
+      return;
+    }
+    toast.success('Denúncia enviada. Nossa equipe vai revisar.');
+  };
+
+  const handleReportComment = async (commentId: string) => {
+    if (!user) return;
+    const { error: err } = await supabase
+      .from('feed_reports')
+      .insert({ reporter_id: user.id, comment_id: commentId });
+    if (err) {
+      toast.error('Não deu para enviar a denúncia. Tenta de novo.');
+      return;
+    }
+    toast.success('Denúncia enviada. Nossa equipe vai revisar.');
+  };
+
+  const handleBlockUser = async (userId: string, userName: string) => {
+    if (!user) return;
+    if (!confirm(`Bloquear ${userName}? Você não vai mais ver posts nem comentários dessa pessoa no feed.`)) return;
+    const { error: err } = await supabase
+      .from('blocked_users')
+      .insert({ blocker_id: user.id, blocked_id: userId });
+    if (err) {
+      toast.error('Não deu para bloquear. Tenta de novo.');
+      return;
+    }
+    setBlockedIds(prev => new Set(prev).add(userId));
+    toast.success(`${userName} foi bloqueado.`);
+  };
+
+  const visiblePosts = posts
+    .filter(p => !blockedIds.has(p.user_id))
+    .map(p => ({ ...p, feed_comments: p.feed_comments.filter(c => !blockedIds.has(c.user_id)) }));
+
   return (
     <div className="flex flex-col gap-4 p-4 pt-8 min-h-screen bg-background">
       <header className="flex justify-between items-center">
@@ -417,7 +520,7 @@ export default function Feed() {
       )}
 
       {/* Feed vazio */}
-      {!loading && !error && posts.length === 0 && (
+      {!loading && !error && visiblePosts.length === 0 && (
         <div className="bg-surface-container-low p-12 rounded-3xl border border-outline-variant/10 text-center flex flex-col items-center gap-4 mt-8">
           <Users className="w-12 h-12 text-on-surface-variant opacity-20" />
           <p className="text-on-surface-variant font-headline font-bold uppercase italic tracking-widest text-sm">
@@ -430,13 +533,16 @@ export default function Feed() {
       )}
 
       {/* Posts */}
-      {!loading && !error && posts.map(post => (
+      {!loading && !error && visiblePosts.map(post => (
         <div key={post.id}>
           <PostCard
             post={post}
             currentUserId={user?.id || ''}
             onLike={handleLike}
             onAdd={handleAddComment}
+            onReportPost={handleReportPost}
+            onReportComment={handleReportComment}
+            onBlockUser={handleBlockUser}
           />
         </div>
       ))}
