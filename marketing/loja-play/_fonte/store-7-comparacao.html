@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="app.css" />
+<style>
+  html, body { margin:0; padding:0; }
+  body {
+    width: 1290px; height: 2293px;
+    background: #0a0a0a;
+    overflow: hidden;
+    position: relative;
+    font-family: Inter, "Liberation Sans", system-ui, sans-serif;
+  }
+  /* glow radial igual aos outros slides */
+  .glow {
+    position:absolute; inset:0;
+    background:
+      radial-gradient(120% 60% at 18% 22%, rgba(202,253,0,.20) 0%, rgba(202,253,0,.05) 38%, rgba(0,0,0,0) 68%),
+      radial-gradient(90% 50% at 85% 78%, rgba(202,253,0,.10) 0%, rgba(0,0,0,0) 60%),
+      #0a0a0a;
+  }
+  .vignette {
+    position:absolute; inset:0;
+    background: radial-gradient(120% 80% at 50% 45%, rgba(0,0,0,0) 40%, rgba(0,0,0,.55) 100%);
+  }
+  .wrap { position:relative; width:100%; height:100%; }
+
+  .label {
+    position:absolute; top:160px; left:0; right:0; text-align:center;
+    color:#cafd00; font-weight:800; font-style:italic;
+    font-size:34px; letter-spacing:.22em; text-transform:uppercase;
+  }
+  .title {
+    position:absolute; top:222px; left:0; right:0; text-align:center;
+    color:#fff; font-weight:900; font-style:italic;
+    font-size:112px; line-height:1.07; letter-spacing:-.02em; text-transform:uppercase;
+  }
+  .subtitle {
+    position:absolute; top:488px; left:0; right:0; text-align:center;
+    color:#8d8d8d; font-weight:800; font-size:33px;
+    letter-spacing:.06em; text-transform:uppercase;
+  }
+
+  /* moldura do celular: x 314..974, y 630..1985 nos outros slides */
+  .phone {
+    position:absolute; left:314px; top:630px; width:660px; height:1355px;
+    background:#141414;
+    border:2px solid rgba(202,253,0,.30);
+    border-radius:54px;
+    box-shadow: 0 0 90px rgba(202,253,0,.16), inset 0 0 0 1px rgba(255,255,255,.03);
+    overflow:hidden;
+    padding:26px 22px;
+    box-sizing:border-box;
+  }
+  .foot {
+    position:absolute; bottom:64px; left:0; right:0; text-align:center;
+    font-size:26px; font-weight:800; letter-spacing:.28em; text-transform:uppercase;
+    color:#5a5a5a;
+  }
+  .foot b { color:#cafd00; font-weight:800; }
+
+  /* escala o conteúdo do app dentro do mockup */
+  .screen { transform: scale(1.62); transform-origin: top left; width: 380px; }
+
+  .tabbar {
+    position:absolute; left:0; right:0; bottom:0; height:78px;
+    display:flex; align-items:center; justify-content:space-around;
+    background:#101010; border-top:1px solid rgba(255,255,255,.06);
+  }
+  .tab {
+    display:flex; flex-direction:column; align-items:center; gap:5px;
+    font-size:11px; font-weight:800; letter-spacing:.12em; color:#5f5f5f;
+  }
+  .tab span { font-size:19px; line-height:1; }
+  .tab.on { color:#cafd00; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="glow"></div>
+  <div class="vignette"></div>
+
+  <div class="label">Comparação de atletas</div>
+  <div class="title">Quem levou<br/>a melhor?</div>
+  <div class="subtitle">Tempo, ritmo, força relativa e frequência cardíaca</div>
+
+  <div class="phone">
+    <div class="screen">
+
+      <!-- cabeçalho da tela -->
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:13px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#cafd00" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;">
+          <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/>
+          <line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/>
+        </svg>
+        <div style="line-height:1.15;">
+          <p class="font-headline" style="margin:0;color:#fff;font-weight:900;font-style:italic;text-transform:uppercase;font-size:15px;letter-spacing:-.01em;">Duelo encerrado</p>
+          <p style="margin:0;color:#8a8a8a;font-size:7px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;">Resultado comparado lado a lado</p>
+        </div>
+      </div>
+
+      <!-- DuelRecapCard -->
+      <div class="bg-surface-container-highest/40 rounded-2xl border border-outline-variant/10 overflow-hidden">
+        <div class="px-4 pt-4 pb-3 flex flex-col gap-0.5">
+          <p class="text-[9px] font-black text-on-surface-variant/60 uppercase tracking-widest">Fran • For Time</p>
+          <h3 class="font-headline font-black italic text-lg uppercase bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Bruno levou a melhor</h3>
+        </div>
+
+        <div class="px-4 pb-3 grid gap-y-1 gap-x-2 items-center" style="grid-template-columns: auto repeat(2, minmax(0,1fr));">
+          <div></div>
+          <div class="text-center text-[9px] font-black uppercase tracking-widest truncate pb-1 text-primary">🏆 Bruno</div>
+          <div class="text-center text-[9px] font-black uppercase tracking-widest truncate pb-1 text-on-surface-variant">Carla</div>
+
+          <div class="py-1.5 text-[9px] uppercase tracking-widest whitespace-nowrap pr-2 text-on-surface-variant/70 font-bold">Resultado</div>
+          <div class="py-1.5 text-center font-bold text-xs text-primary">3:42</div>
+          <div class="py-1.5 text-center font-bold text-xs text-on-surface">4:15</div>
+
+          <div class="py-1.5 text-[9px] uppercase tracking-widest whitespace-nowrap pr-2 text-on-surface-variant/70 font-bold">Ritmo</div>
+          <div class="py-1.5 text-center font-bold text-xs text-primary">24.3 reps/min</div>
+          <div class="py-1.5 text-center font-bold text-xs text-on-surface">21.2 reps/min</div>
+
+          <div class="py-1.5 text-[9px] uppercase tracking-widest whitespace-nowrap pr-2 text-on-surface-variant/70 font-bold">Força relativa</div>
+          <div class="py-1.5 text-center font-bold text-xs text-primary">1.35x</div>
+          <div class="py-1.5 text-center font-bold text-xs text-on-surface">1.18x</div>
+
+          <div class="py-1.5 text-[9px] uppercase tracking-widest whitespace-nowrap pr-2 text-on-surface-variant/70 font-bold">Esforço (%FC)</div>
+          <div class="py-1.5 text-center font-bold text-xs text-primary">88%</div>
+          <div class="py-1.5 text-center font-bold text-xs text-on-surface">94%</div>
+
+          <div class="py-1.5 text-[9px] uppercase tracking-widest whitespace-nowrap pr-2 text-on-surface font-black">Placar final</div>
+          <div class="py-1.5 text-center font-bold text-sm text-primary">100</div>
+          <div class="py-1.5 text-center font-bold text-sm text-on-surface">87.1</div>
+        </div>
+
+        <div class="mx-4 mb-4 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 flex flex-col gap-1">
+          <p class="text-[9px] font-black text-primary uppercase tracking-widest">A vantagem de Bruno: venceu no desempenho, e gastando menos batimento — mais eficiente.</p>
+          <ul class="flex flex-col gap-0.5">
+            <li class="text-[10px] text-on-surface-variant font-medium leading-snug">• Desempenho 12.9 pts acima da média dos oponentes</li>
+            <li class="text-[10px] text-on-surface-variant font-medium leading-snug">• E com esforço 6.0pp menor — mais eficiente</li>
+            <li class="text-[10px] text-on-surface-variant font-medium leading-snug">• Maior força relativa: 1.35x contra 1.18x do peso corporal</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- comparação de benchmarks -->
+      <div class="bg-surface-container-highest/40 rounded-2xl border border-outline-variant/10 overflow-hidden" style="margin-top:12px;">
+        <div class="px-4 pt-4 pb-3 flex flex-col gap-0.5">
+          <p class="text-[9px] font-black text-on-surface-variant/60 uppercase tracking-widest">4 exercícios em comum</p>
+          <h3 class="font-headline font-black italic text-lg uppercase bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Bruno vs Carla</h3>
+        </div>
+        <div class="px-4 pb-3 grid grid-cols-[1fr_auto_auto] gap-y-1 gap-x-3 items-center">
+          <div></div>
+          <div class="text-center text-[9px] font-black uppercase tracking-widest text-primary pb-1">Você</div>
+          <div class="text-center text-[9px] font-black uppercase tracking-widest text-on-surface-variant pb-1 truncate max-w-[80px]">Carla</div>
+
+          <div class="py-1.5 text-[10px] uppercase tracking-widest text-on-surface-variant/70 font-bold truncate">Back Squat</div>
+          <div class="py-1.5 text-center min-w-[64px]"><p class="text-xs font-bold text-primary">140 kg</p><p class="text-[8px] text-on-surface-variant/60 font-medium">1.75x peso</p></div>
+          <div class="py-1.5 text-center min-w-[64px]"><p class="text-xs font-bold text-on-surface">95 kg</p><p class="text-[8px] text-on-surface-variant/60 font-medium">1.63x peso</p></div>
+
+          <div class="py-1.5 text-[10px] uppercase tracking-widest text-on-surface-variant/70 font-bold truncate">Clean &amp; Jerk</div>
+          <div class="py-1.5 text-center min-w-[64px]"><p class="text-xs font-bold text-on-surface">92 kg</p><p class="text-[8px] text-on-surface-variant/60 font-medium">1.15x peso</p></div>
+          <div class="py-1.5 text-center min-w-[64px]"><p class="text-xs font-bold text-primary">70 kg</p><p class="text-[8px] text-on-surface-variant/60 font-medium">1.20x peso</p></div>
+
+          <div class="py-1.5 text-[10px] uppercase tracking-widest text-on-surface-variant/70 font-bold truncate">Fran</div>
+          <div class="py-1.5 text-center min-w-[64px]"><p class="text-xs font-bold text-primary">3:42</p></div>
+          <div class="py-1.5 text-center min-w-[64px]"><p class="text-xs font-bold text-on-surface">4:15</p></div>
+
+          <div class="py-1.5 text-[10px] uppercase tracking-widest text-on-surface-variant/70 font-bold truncate">Deadlift</div>
+          <div class="py-1.5 text-center min-w-[64px]"><p class="text-xs font-bold text-primary">180 kg</p><p class="text-[8px] text-on-surface-variant/60 font-medium">2.25x peso</p></div>
+          <div class="py-1.5 text-center min-w-[64px]"><p class="text-xs font-bold text-on-surface">125 kg</p><p class="text-[8px] text-on-surface-variant/60 font-medium">2.14x peso</p></div>
+        </div>
+        <div class="mx-4 mb-4 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 flex flex-col gap-1">
+          <p class="text-[9px] font-black text-primary uppercase tracking-widest">Você está na frente: 3 x 1</p>
+          <p class="text-[10px] text-on-surface-variant font-medium leading-snug">• Você tem maior força relativa (carga ÷ peso corporal) nos exercícios de carga</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- barra de navegação, como nas outras telas -->
+    <div class="tabbar">
+      <div class="tab"><span>◧</span>DIÁRIO</div>
+      <div class="tab on"><span>⚔</span>DUELOS</div>
+      <div class="tab"><span>◆</span>LIGA</div>
+      <div class="tab"><span>◉</span>PERFIL</div>
+      <div class="tab"><span>≡</span>MAIS</div>
+    </div>
+  </div>
+
+  <div class="foot">Box<b>Link</b> · Individual</div>
+</div>
+</body>
+</html>
