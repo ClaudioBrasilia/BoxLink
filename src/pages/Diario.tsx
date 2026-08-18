@@ -54,6 +54,7 @@ import { useNavigate } from 'react-router-dom';
 import { calculateReadiness } from '../lib/readiness';
 import { calculateCardioReadinessSignal, CardioReadinessSignal } from '../lib/cardioReadiness';
 import { fetchHeartRateSessions } from '../lib/heartRateSessions';
+import { calculateFamilyCardioSignal } from '../lib/crossfitReadiness';
 
 const todayBR = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
@@ -441,6 +442,8 @@ export default function Diario() {
 
   const streak = useMemo(() => calcStreak(activityDates), [activityDates]);
   const sustainableStreak = useMemo(() => calcSustainableStreak(activityDates), [activityDates]);
+  const familyCardioSignal = useMemo(() => calculateFamilyCardioSignal(logs), [logs]);
+  const effectiveCardioSignal = familyCardioSignal?.baselineCount >= 3 ? familyCardioSignal : cardioSignal;
 
   const readiness = useMemo(() => {
     const now = Date.now();
@@ -478,11 +481,11 @@ export default function Diario() {
       averageSleepHours: sleepValues.length > 0 ? sleepValues.reduce((sum, value) => sum + value, 0) / sleepValues.length : null,
       consecutiveTired,
       consecutiveHighRpe,
-      cardioLoadDeltaPct: cardioSignal?.deltaPct,
-      cardioBaselineCount: cardioSignal?.baselineCount,
-      cardioConfidence: cardioSignal?.confidence,
+      cardioLoadDeltaPct: effectiveCardioSignal?.deltaPct,
+      cardioBaselineCount: effectiveCardioSignal?.baselineCount,
+      cardioConfidence: effectiveCardioSignal?.confidence,
     });
-  }, [logs, cardioSignal]);
+  }, [logs, effectiveCardioSignal]);
 
   const loggedToday = logs.some(l => l.date === todayBR());
   const checkedInToday = (user?.checkins || []).some(c => c.date === todayBR());
