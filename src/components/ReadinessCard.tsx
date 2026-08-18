@@ -1,8 +1,10 @@
 import { BatteryWarning, Gauge, Info, ShieldCheck } from 'lucide-react';
 import type { ReadinessResult, ReadinessStatus } from '../lib/readiness';
+import type { CrossFitSuggestion } from '../lib/crossfitSuggestions';
 
 interface Props {
   result: ReadinessResult;
+  suggestion?: CrossFitSuggestion;
 }
 
 const CONFIDENCE_LABEL: Record<ReadinessResult['confidence'], string> = {
@@ -56,7 +58,7 @@ const STATUS_CONFIG: Record<ReadinessStatus, {
   },
 };
 
-export default function ReadinessCard({ result }: Props) {
+export default function ReadinessCard({ result, suggestion }: Props) {
   const config = STATUS_CONFIG[result.status];
   const Icon = config.icon;
   const messages = result.messages.slice(0, 2);
@@ -86,6 +88,15 @@ export default function ReadinessCard({ result }: Props) {
         {messages.map((message) => (
           <p key={message} className="text-[11px] text-on-surface-variant font-bold leading-snug">{message}</p>
         ))}
+        {suggestion && (
+          <div className="mt-1 rounded-2xl bg-surface/40 px-3 py-2 text-[10px] text-on-surface-variant leading-relaxed">
+            <p className="text-on-surface font-black uppercase tracking-wider">{suggestion.title}</p>
+            <p className="mt-0.5 font-bold">{suggestion.message}</p>
+            <ul className="mt-1 list-disc pl-4 space-y-0.5 font-bold">
+              {suggestion.actions.slice(0, 2).map((action) => <li key={action}>{action}</li>)}
+            </ul>
+          </div>
+        )}
         <div className="mt-1 rounded-2xl bg-surface/40 px-3 py-2 text-[9px] text-on-surface-variant font-bold leading-relaxed">
           <p>
             <span className="text-on-surface">Baseado em:</span>{' '}

@@ -55,6 +55,7 @@ import { calculateReadiness } from '../lib/readiness';
 import { calculateCardioReadinessSignal, CardioReadinessSignal } from '../lib/cardioReadiness';
 import { fetchHeartRateSessions } from '../lib/heartRateSessions';
 import { calculateFamilyCardioSignal } from '../lib/crossfitReadiness';
+import { buildCrossFitSuggestion } from '../lib/crossfitSuggestions';
 
 const todayBR = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
@@ -489,6 +490,12 @@ export default function Diario() {
       latestDataDate: latest?.date,
     });
   }, [logs, effectiveCardioSignal]);
+
+  const readinessSuggestion = useMemo(() => buildCrossFitSuggestion({
+    status: readiness.status,
+    reasons: readiness.reasons,
+    family: familyCardioSignal?.family,
+  }), [readiness, familyCardioSignal]);
 
   const loggedToday = logs.some(l => l.date === todayBR());
   const checkedInToday = (user?.checkins || []).some(c => c.date === todayBR());
@@ -1208,7 +1215,7 @@ export default function Diario() {
           </div>
         )}
 
-        <ReadinessCard result={readiness} />
+        <ReadinessCard result={readiness} suggestion={readinessSuggestion} />
 
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-surface-container rounded-3xl p-4 border border-outline-variant/10 flex items-center gap-3">
