@@ -103,6 +103,27 @@ export async function fetchHeartRateSessions(
  * folga "medi a FC, tomei banho e registrei o resultado" sem alcançar outro
  * treino do mesmo dia.
  */
+export async function fetchRecentHeartRateSessions(
+  userId: string,
+  withinHours = 4,
+  limit = 5,
+): Promise<StoredHrSession[]> {
+  try {
+    const cutoff = new Date(Date.now() - withinHours * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from('heart_rate_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('created_at', cutoff)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error || !data) return [];
+    return data as StoredHrSession[];
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchRecentHeartRateSession(
   userId: string,
   withinHours = 4,
@@ -121,6 +142,27 @@ export async function fetchRecentHeartRateSession(
     return data as StoredHrSession;
   } catch {
     return null;
+  }
+}
+
+/**
+ * O vínculo é best-effort durante a transição: se a migração ainda não foi
+ * aplicada no ambiente, o resultado principal continua intacto.
+ */
+export async function linkHeartRateSessionToWodResult(resultId: string, sessionId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('wod_results')
+      .update({ hr_session_id: sessionId })
+      .eq('id', resultId);
+    if (error) {
+      console.warn('[HR sessions] vínculo com WOD indisponível:', error.message);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn('[HR sessions] erro ao vincular sessão ao WOD:', e);
+    return false;
   }
 }
 

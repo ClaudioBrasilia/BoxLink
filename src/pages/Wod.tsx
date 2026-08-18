@@ -17,7 +17,7 @@ import PostWorkoutInsight from '../components/PostWorkoutInsight';
 import TimeInput from '../components/TimeInput';
 import AmrapInput from '../components/AmrapInput';
 import { TrainingFeeling } from '../types';
-import { assessHrSessionQuality, fetchRecentHeartRateSession, HrSessionQuality } from '../lib/heartRateSessions';
+import { assessHrSessionQuality, fetchRecentHeartRateSessions, HrSessionQuality, linkHeartRateSessionToWodResult } from '../lib/heartRateSessions';
 import { effortFromSession, WodEffort } from '../lib/effort';
 import { useUserBiometrics } from '../hooks/useUserBiometrics';
 
@@ -123,6 +123,8 @@ export default function Wod() {
   // O que a sessão recente de FC tem a oferecer, ainda não gravado.
   const [sessionEffort, setSessionEffort] = useState<WodEffort | null>(null);
   const [sessionQuality, setSessionQuality] = useState<HrSessionQuality | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionCandidateCount, setSessionCandidateCount] = useState(0);
 
   // Percepção de esforço — aparece a cada vez que o resultado é salvo
   // (registrado ou editado), mesmo padrão do Diário no modo Individual.
@@ -250,14 +252,25 @@ export default function Wod() {
     if (!user?.id || !isSameDay(selectedDate, new Date())) {
       setSessionEffort(null);
       setSessionQuality(null);
+      setSessionId(null);
+      setSessionCandidateCount(0);
       return;
     }
     let cancelled = false;
-    fetchRecentHeartRateSession(user.id).then(session => {
+    fetchRecentHeartRateSessions(user.id).then(sessions => {
       if (cancelled) return;
-      const quality = session ? assessHrSessionQuality(session) : null;
-      setSessionQuality(quality);
-      setSessionEffort(quality?.usableForWod ? effortFromSession(session, bio) : null);
+      const validCandidates = sessions.filter(session => assessHrSessionQuality(session).usableForWod);
+      setSessionCandidateCount(validCandidates.length);
+      if (validCandidates.length === 1) {
+        const candidate = validCandidates[0];
+        setSessionId(candidate.id);
+        setSessionQuality(assessHrSessionQuality(candidate));
+        setSessionEffort(effortFromSession(candidate, bio));
+        return;
+      }
+      setSessionId(null);
+      setSessionEffort(null);
+      setSessionQuality(sessions[0] ? assessHrSessionQuality(sessions[0]) : null);
     });
     return () => { cancelled = true; };
   }, [user?.id, selectedDate, bio]);
@@ -282,6 +295,7 @@ export default function Wod() {
           .select('rpe, feeling, sleep_hours, notes')
           .single();
         if (error) throw error;
+        if (sessionId) await linkHeartRateSessionToWodResult(existingResultId, sessionId);
         addToast('Resultado atualizado!', 'success');
         // Editar também pode mudar como o treino foi — mesmo comportamento
         // do Diário no Individual, onde o card aparece a cada registro. Vem
@@ -298,6 +312,7 @@ export default function Wod() {
           .select().single();
         if (error) throw error;
         setExistingResultId(data.id);
+        if (sessionId) await linkHeartRateSessionToWodResult(data.id, sessionId);
 
         // Resultado já está salvo — mostra a percepção de esforço mesmo que a
         // recompensa (XP/coins) falhe abaixo. Eram a mesma tentativa/catch
@@ -619,6 +634,13 @@ export default function Wod() {
                     <span className="text-[10px] font-black text-secondary uppercase tracking-widest leading-snug">
                       Esforço da sua medição de FC vai junto
                       {sessionEffort.hrAvgPct != null ? ` — ${sessionEffort.hrAvgPct}% FCmáx` : ''}
+                    </span>
+                  </div>
+                ) : sessionCandidateCount > 1 ? (
+                  <div className="flex items-center gap-2 bg-secondary/10 border border-secondary/20 rounded-2xl px-4 py-2.5">
+                    <Heart className="w-4 h-4 text-secondary shrink-0" />
+                    <span className="text-[10px] font-black text-secondary uppercase tracking-widest leading-snug">
+                      {sessionCandidateCount} medições válidas recentes. Nenhuma foi vinculada automaticamente para evitar associação incorreta.
                     </span>
                   </div>
                 ) : sessionQuality ? (
