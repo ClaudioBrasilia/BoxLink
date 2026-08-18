@@ -13,6 +13,7 @@ import { getWodByDate, getLatestWod } from '../lib/wods';
 import { addReward, getRewardSettings } from '../utils/rewards';
 import { calcInactivity, InactivitySettings, InactivityState } from '../utils/inactivity';
 import PostWorkoutFeedback from '../components/PostWorkoutFeedback';
+import PostWorkoutInsight from '../components/PostWorkoutInsight';
 import TimeInput from '../components/TimeInput';
 import AmrapInput from '../components/AmrapInput';
 import { TrainingFeeling } from '../types';
@@ -374,7 +375,13 @@ export default function Wod() {
                 sleepHours={fbSleepHours} onSleepHoursChange={setFbSleepHours}
                 notes={fbNotes} onNotesChange={setFbNotes}
               />
-
+              {(fbRpe > 0 || fbFeeling !== null || fbSleepHours.trim() !== '') && (
+                <PostWorkoutInsight
+                  rpe={fbRpe}
+                  feeling={fbFeeling}
+                  sleepHours={fbSleepHours}
+                />
+              )}
               <button
                 onClick={saveFeedback}
                 disabled={savingFeedback}
