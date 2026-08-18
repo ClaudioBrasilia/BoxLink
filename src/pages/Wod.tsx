@@ -14,10 +14,11 @@ import { addReward, getRewardSettings } from '../utils/rewards';
 import { calcInactivity, InactivitySettings, InactivityState } from '../utils/inactivity';
 import PostWorkoutFeedback from '../components/PostWorkoutFeedback';
 import PostWorkoutInsight from '../components/PostWorkoutInsight';
+import HeartRateSessionPicker from '../components/HeartRateSessionPicker';
 import TimeInput from '../components/TimeInput';
 import AmrapInput from '../components/AmrapInput';
 import { TrainingFeeling } from '../types';
-import { assessHrSessionQuality, fetchRecentHeartRateSessions, HrSessionQuality, linkHeartRateSessionToWodResult } from '../lib/heartRateSessions';
+import { assessHrSessionQuality, fetchRecentHeartRateSessions, HrSessionQuality, linkHeartRateSessionToWodResult, StoredHrSession } from '../lib/heartRateSessions';
 import { effortFromSession, WodEffort } from '../lib/effort';
 import { useUserBiometrics } from '../hooks/useUserBiometrics';
 
@@ -125,6 +126,8 @@ export default function Wod() {
   const [sessionQuality, setSessionQuality] = useState<HrSessionQuality | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionCandidateCount, setSessionCandidateCount] = useState(0);
+  const [sessionCandidates, setSessionCandidates] = useState<StoredHrSession[]>([]);
+  const [showSessionPicker, setShowSessionPicker] = useState(false);
 
   // Percepção de esforço — aparece a cada vez que o resultado é salvo
   // (registrado ou editado), mesmo padrão do Diário no modo Individual.
@@ -254,6 +257,8 @@ export default function Wod() {
       setSessionQuality(null);
       setSessionId(null);
       setSessionCandidateCount(0);
+      setSessionCandidates([]);
+      setShowSessionPicker(false);
       return;
     }
     let cancelled = false;
@@ -261,6 +266,7 @@ export default function Wod() {
       if (cancelled) return;
       const validCandidates = sessions.filter(session => assessHrSessionQuality(session).usableForWod);
       setSessionCandidateCount(validCandidates.length);
+      setSessionCandidates(validCandidates);
       if (validCandidates.length === 1) {
         const candidate = validCandidates[0];
         setSessionId(candidate.id);
@@ -274,6 +280,15 @@ export default function Wod() {
     });
     return () => { cancelled = true; };
   }, [user?.id, selectedDate, bio]);
+
+  const handleSessionSelect = (session: StoredHrSession) => {
+    const quality = assessHrSessionQuality(session);
+    if (!quality.usableForWod) return;
+    setSessionId(session.id);
+    setSessionQuality(quality);
+    setSessionEffort(effortFromSession(session, bio));
+    setShowSessionPicker(false);
+  };
 
   const handleSubmit = async () => {
     if (!user || !wod || !result.trim()) return;
@@ -409,6 +424,14 @@ export default function Wod() {
       <ToastContainer toasts={toasts} onRemove={(id) => setToasts((p) => p.filter((t) => t.id !== id))} />
 
       <AnimatePresence>
+        {showSessionPicker && sessionCandidates.length > 1 && (
+          <HeartRateSessionPicker
+            sessions={sessionCandidates}
+            selectedId={sessionId}
+            onSelect={handleSessionSelect}
+            onSkip={() => setShowSessionPicker(false)}
+          />
+        )}
         {showFeedback && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -637,12 +660,16 @@ export default function Wod() {
                     </span>
                   </div>
                 ) : sessionCandidateCount > 1 ? (
-                  <div className="flex items-center gap-2 bg-secondary/10 border border-secondary/20 rounded-2xl px-4 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowSessionPicker(true)}
+                    className="flex items-center gap-2 bg-secondary/10 border border-secondary/20 rounded-2xl px-4 py-2.5 text-left"
+                  >
                     <Heart className="w-4 h-4 text-secondary shrink-0" />
                     <span className="text-[10px] font-black text-secondary uppercase tracking-widest leading-snug">
-                      {sessionCandidateCount} medições válidas recentes. Nenhuma foi vinculada automaticamente para evitar associação incorreta.
+                      {sessionId ? 'Medição escolhida. Toque para trocar.' : `${sessionCandidateCount} medições válidas recentes. Escolher a medição deste WOD`}
                     </span>
-                  </div>
+                  </button>
                 ) : sessionQuality ? (
                   <div className="flex items-center gap-2 bg-secondary/10 border border-secondary/20 rounded-2xl px-4 py-2.5">
                     <Heart className="w-4 h-4 text-secondary shrink-0" />
