@@ -113,6 +113,31 @@ const calcStreak = (dates: string[]): number => {
   return streak;
 };
 
+/**
+ * Consistência sustentável: conta sessões recentes permitindo até um dia de
+ * descanso entre treinos. O streak diário acima permanece inalterado para não
+ * quebrar a expectativa ou as recompensas existentes.
+ */
+const calcSustainableStreak = (dates: string[]): number => {
+  if (dates.length === 0) return 0;
+  const unique = Array.from(new Set(dates)).sort().reverse();
+  const today = todayBR();
+  const yesterday = new Date(Date.now() - 86400000)
+    .toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const twoDaysAgo = new Date(Date.now() - 2 * 86400000)
+    .toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  if (![today, yesterday, twoDaysAgo].includes(unique[0])) return 0;
+
+  let sessions = 1;
+  for (let i = 1; i < unique.length; i++) {
+    const prev = new Date(unique[i - 1] + 'T00:00:00').getTime();
+    const curr = new Date(unique[i] + 'T00:00:00').getTime();
+    if (prev - curr <= 2 * 86400000) sessions++;
+    else break;
+  }
+  return sessions;
+};
+
 const parseLoad = (value: string): number =>
   parseFloat(String(value).replace(',', '.').replace(/[^0-9.]/g, '')) || 0;
 
@@ -370,13 +395,13 @@ export default function Diario() {
     }
   };
 
-  const streak = useMemo(() => {
-    const dates = [
-      ...logs.map(l => l.date),
-      ...(user?.checkins || []).map(c => c.date),
-    ];
-    return calcStreak(dates);
-  }, [logs, user?.checkins]);
+  const activityDates = useMemo(() => [
+    ...logs.map(l => l.date),
+    ...(user?.checkins || []).map(c => c.date),
+  ], [logs, user?.checkins]);
+
+  const streak = useMemo(() => calcStreak(activityDates), [activityDates]);
+  const sustainableStreak = useMemo(() => calcSustainableStreak(activityDates), [activityDates]);
 
   const loggedToday = logs.some(l => l.date === todayBR());
   const checkedInToday = (user?.checkins || []).some(c => c.date === todayBR());
@@ -1106,6 +1131,11 @@ export default function Diario() {
               <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">
                 {streak === 1 ? 'Dia seguido' : 'Dias seguidos'}
               </p>
+              {sustainableStreak > 0 && (
+                <p className="text-[8px] text-primary/80 font-bold uppercase tracking-wider mt-1">
+                  {sustainableStreak} {sustainableStreak === 1 ? 'sessão' : 'sessões'} · ritmo sustentável
+                </p>
+              )}
             </div>
           </div>
           <div className="bg-surface-container rounded-3xl p-4 border border-outline-variant/10 flex items-center gap-3">
