@@ -484,6 +484,9 @@ export default function Diario() {
       cardioLoadDeltaPct: effectiveCardioSignal?.deltaPct,
       cardioBaselineCount: effectiveCardioSignal?.baselineCount,
       cardioConfidence: effectiveCardioSignal?.confidence,
+      rpeSampleCount: rpeValues.length,
+      sleepSampleCount: sleepValues.length,
+      latestDataDate: latest?.date,
     });
   }, [logs, effectiveCardioSignal]);
 

@@ -5,6 +5,19 @@ interface Props {
   result: ReadinessResult;
 }
 
+const CONFIDENCE_LABEL: Record<ReadinessResult['confidence'], string> = {
+  high: 'Alta',
+  medium: 'Média',
+  low: 'Inicial',
+};
+
+const FRESHNESS_LABEL: Record<ReadinessResult['freshness'], string> = {
+  today: 'dados de hoje',
+  recent: 'dados recentes',
+  stale: 'dados antigos',
+  unknown: 'data não informada',
+};
+
 const STATUS_CONFIG: Record<ReadinessStatus, {
   label: string;
   subtitle: string;
@@ -61,6 +74,11 @@ export default function ReadinessCard({ result }: Props) {
           </div>
           <h2 className="text-lg font-headline font-black text-on-surface uppercase italic leading-tight mt-0.5">{config.label}</h2>
           <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mt-1">{config.subtitle}</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 text-[9px] font-black uppercase tracking-wider text-on-surface-variant">
+            <span>Confiança {CONFIDENCE_LABEL[result.confidence]}</span>
+            <span aria-hidden="true">•</span>
+            <span>{FRESHNESS_LABEL[result.freshness]}</span>
+          </div>
         </div>
       </div>
 
@@ -68,6 +86,16 @@ export default function ReadinessCard({ result }: Props) {
         {messages.map((message) => (
           <p key={message} className="text-[11px] text-on-surface-variant font-bold leading-snug">{message}</p>
         ))}
+        <div className="mt-1 rounded-2xl bg-surface/40 px-3 py-2 text-[9px] text-on-surface-variant font-bold leading-relaxed">
+          <p>
+            <span className="text-on-surface">Baseado em:</span>{' '}
+            {result.signalsUsed.length > 0 ? result.signalsUsed.join(' • ') : 'nenhum feedback registrado'}.
+          </p>
+          <p className="mt-0.5">
+            <span className="text-on-surface">Histórico:</span>{' '}
+            {result.sampleCounts.rpe} RPE · {result.sampleCounts.sleep} registros de sono · {result.sampleCounts.cardio} sessões de FC comparáveis.
+          </p>
+        </div>
       </div>
     </section>
   );

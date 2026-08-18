@@ -17,6 +17,9 @@ export type ReadinessReasonCode =
   | 'no_alerts'
   | 'insufficient_history';
 
+export type ReadinessConfidence = 'high' | 'medium' | 'low';
+export type ReadinessFreshness = 'today' | 'recent' | 'stale' | 'unknown';
+
 export interface ReadinessInput {
   latestFeeling?: TrainingFeeling | null;
   consecutiveTired?: number;
@@ -29,6 +32,9 @@ export interface ReadinessInput {
   cardioLoadDeltaPct?: number | null;
   cardioBaselineCount?: number;
   cardioConfidence?: 'high' | 'medium' | 'low';
+  rpeSampleCount?: number;
+  sleepSampleCount?: number;
+  latestDataDate?: string | null;
 }
 
 export interface ReadinessResult {
@@ -36,6 +42,14 @@ export interface ReadinessResult {
   reasons: ReadinessReasonCode[];
   messages: string[];
   hasEnoughHistory: boolean;
+  confidence: ReadinessConfidence;
+  freshness: ReadinessFreshness;
+  signalsUsed: string[];
+  sampleCounts: {
+    rpe: number;
+    sleep: number;
+    cardio: number;
+  };
 }
 
 function finite(value: number | null | undefined): number | null {
@@ -67,7 +81,21 @@ export function calculateReadiness(input: ReadinessInput): ReadinessResult {
   const cardioDeltaPct = finite(input.cardioLoadDeltaPct);
   const cardioBaselineCount = Math.max(0, input.cardioBaselineCount ?? 0);
   const cardioHasReliableBaseline = cardioBaselineCount >= 3 && input.cardioConfidence === 'high' && cardioDeltaPct != null;
+  const rpeSampleCount = Math.max(0, input.rpeSampleCount ?? (averageRpe != null ? 1 : 0));
+  const sleepSampleCount = Math.max(0, input.sleepSampleCount ?? (averageSleep != null ? 1 : 0));
   const hasEnoughHistory = hasBaseline(averageRpe) || hasBaseline(averageSleep) || consecutiveTired >= 2 || cardioHasReliableBaseline;
+  const signalsUsed = [
+    input.latestFeeling != null ? 'sensação pós-treino' : null,
+    latestRpe != null ? 'RPE' : null,
+    latestSleep != null ? 'sono' : null,
+    cardioHasReliableBaseline ? 'frequência cardíaca' : null,
+  ].filter((signal): signal is string => signal != null);
+  const freshness = dataFreshness(input.latestDataDate);
+  const confidence: ReadinessConfidence =
+    signalsUsed.length === 0 ? 'low' :
+    (hasEnoughHistory && (rpeSampleCount >= 3 || sleepSampleCount >= 3 || cardioHasReliableBaseline)) ? 'high' :
+    'medium';
+  const sampleCounts = { rpe: rpeSampleCount, sleep: sleepSampleCount, cardio: cardioBaselineCount };
 
   const critical: ReadinessReasonCode[] = [];
   if (input.latestFeeling === 'dor') critical.push('pain');
@@ -89,6 +117,10 @@ export function calculateReadiness(input: ReadinessInput): ReadinessResult {
       reasons: critical,
       messages: critical.map(reasonMessage),
       hasEnoughHistory,
+      confidence,
+      freshness,
+      signalsUsed,
+      sampleCounts,
     };
   }
 
@@ -111,6 +143,10 @@ export function calculateReadiness(input: ReadinessInput): ReadinessResult {
       reasons: [...new Set(moderate)],
       messages: [...new Set(moderate)].map(reasonMessage),
       hasEnoughHistory,
+      confidence,
+      freshness,
+      signalsUsed,
+      sampleCounts,
     };
   }
 
@@ -120,7 +156,21 @@ export function calculateReadiness(input: ReadinessInput): ReadinessResult {
     reasons,
     messages: reasons.map(reasonMessage),
     hasEnoughHistory,
+    confidence,
+    freshness,
+    signalsUsed,
+    sampleCounts,
   };
+}
+
+function dataFreshness(date: string | null | undefined): ReadinessFreshness {
+  if (!date) return 'unknown';
+  const timestamp = new Date(`${date.slice(0, 10)}T12:00:00`).getTime();
+  if (!Number.isFinite(timestamp)) return 'unknown';
+  const days = Math.floor(Math.abs(Date.now() - timestamp) / 86400000);
+  if (days === 0) return 'today';
+  if (days <= 3) return 'recent';
+  return 'stale';
 }
 
 function reasonMessage(reason: ReadinessReasonCode): string {

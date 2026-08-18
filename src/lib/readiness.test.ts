@@ -70,4 +70,35 @@ describe('calculateReadiness', () => {
     expect(result.status).toBe('recovery');
     expect(result.reasons).toEqual(['pain']);
   });
+
+  it('retorna confiança alta quando há baseline e amostras suficientes', () => {
+    const result = calculateReadiness({
+      latestFeeling: 'bem',
+      latestRpe: 5,
+      averageRpe: 6,
+      rpeSampleCount: 5,
+      latestSleepHours: 8,
+      averageSleepHours: 7.5,
+      sleepSampleCount: 5,
+      latestDataDate: new Date().toISOString().slice(0, 10),
+    });
+    expect(result.confidence).toBe('high');
+    expect(result.freshness).toBe('today');
+    expect(result.signalsUsed).toEqual(['sensação pós-treino', 'RPE', 'sono']);
+    expect(result.sampleCounts).toEqual({ rpe: 5, sleep: 5, cardio: 0 });
+  });
+
+  it('retorna confiança inicial quando há dados atuais, mas pouco histórico', () => {
+    const result = calculateReadiness({ latestRpe: 5, latestDataDate: new Date().toISOString().slice(0, 10) });
+    expect(result.confidence).toBe('medium');
+    expect(result.freshness).toBe('today');
+    expect(result.signalsUsed).toEqual(['RPE']);
+  });
+
+  it('retorna confiança baixa quando não há feedback', () => {
+    const result = calculateReadiness({ latestFeeling: null, latestRpe: null, latestSleepHours: null });
+    expect(result.confidence).toBe('low');
+    expect(result.freshness).toBe('unknown');
+    expect(result.signalsUsed).toEqual([]);
+  });
 });
