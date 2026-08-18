@@ -17,7 +17,7 @@ import PostWorkoutInsight from '../components/PostWorkoutInsight';
 import TimeInput from '../components/TimeInput';
 import AmrapInput from '../components/AmrapInput';
 import { TrainingFeeling } from '../types';
-import { fetchRecentHeartRateSession } from '../lib/heartRateSessions';
+import { assessHrSessionQuality, fetchRecentHeartRateSession, HrSessionQuality } from '../lib/heartRateSessions';
 import { effortFromSession, WodEffort } from '../lib/effort';
 import { useUserBiometrics } from '../hooks/useUserBiometrics';
 
@@ -122,6 +122,7 @@ export default function Wod() {
   const [savedEffort, setSavedEffort] = useState<WodEffort | null>(null);
   // O que a sessão recente de FC tem a oferecer, ainda não gravado.
   const [sessionEffort, setSessionEffort] = useState<WodEffort | null>(null);
+  const [sessionQuality, setSessionQuality] = useState<HrSessionQuality | null>(null);
 
   // Percepção de esforço — aparece a cada vez que o resultado é salvo
   // (registrado ou editado), mesmo padrão do Diário no modo Individual.
@@ -246,10 +247,17 @@ export default function Wod() {
   // Sessão de FC recente do atleta — só faz sentido no WOD de hoje: registrar
   // o resultado de um treino de terça não deve pegar a FC medida agora.
   useEffect(() => {
-    if (!user?.id || !isSameDay(selectedDate, new Date())) { setSessionEffort(null); return; }
+    if (!user?.id || !isSameDay(selectedDate, new Date())) {
+      setSessionEffort(null);
+      setSessionQuality(null);
+      return;
+    }
     let cancelled = false;
     fetchRecentHeartRateSession(user.id).then(session => {
-      if (!cancelled) setSessionEffort(effortFromSession(session, bio));
+      if (cancelled) return;
+      const quality = session ? assessHrSessionQuality(session) : null;
+      setSessionQuality(quality);
+      setSessionEffort(quality?.usableForWod ? effortFromSession(session, bio) : null);
     });
     return () => { cancelled = true; };
   }, [user?.id, selectedDate, bio]);
@@ -611,6 +619,13 @@ export default function Wod() {
                     <span className="text-[10px] font-black text-secondary uppercase tracking-widest leading-snug">
                       Esforço da sua medição de FC vai junto
                       {sessionEffort.hrAvgPct != null ? ` — ${sessionEffort.hrAvgPct}% FCmáx` : ''}
+                    </span>
+                  </div>
+                ) : sessionQuality ? (
+                  <div className="flex items-center gap-2 bg-secondary/10 border border-secondary/20 rounded-2xl px-4 py-2.5">
+                    <Heart className="w-4 h-4 text-secondary shrink-0" />
+                    <span className="text-[10px] font-black text-secondary uppercase tracking-widest leading-snug">
+                      Medição recente não vinculada: {sessionQuality.reason} Faça uma sessão mais longa para entrar na comparação.
                     </span>
                   </div>
                 ) : (

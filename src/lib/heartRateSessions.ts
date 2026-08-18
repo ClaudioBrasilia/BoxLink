@@ -28,6 +28,45 @@ export interface StoredHrSession {
 
 export type NewHrSession = Omit<StoredHrSession, 'id'> & { user_id: string };
 
+export type HrSessionQualityLevel = 'high' | 'medium' | 'low';
+
+export interface HrSessionQuality {
+  level: HrSessionQualityLevel;
+  validSampleRatio: number;
+  usableForWod: boolean;
+  reason: string | null;
+}
+
+/**
+ * Avalia se uma sessão tem qualidade mínima para ser associada automaticamente
+ * a um WOD. A função é tolerante a sessões antigas sem amostras completas.
+ */
+export function assessHrSessionQuality(session: Pick<StoredHrSession, 'duration_sec' | 'samples'>): HrSessionQuality {
+  const samples = Array.isArray(session.samples) ? session.samples : [];
+  const validSamples = samples.filter(sample => Number.isFinite(sample?.bpm) && sample.bpm >= 30 && sample.bpm <= 240);
+  const validSampleRatio = samples.length ? validSamples.length / samples.length : 0;
+  const durationOk = Number(session.duration_sec) >= 10 * 60;
+  const ratioOk = validSampleRatio >= 0.7;
+
+  if (durationOk && ratioOk) {
+    return { level: 'high', validSampleRatio, usableForWod: true, reason: null };
+  }
+  if (durationOk || ratioOk) {
+    return {
+      level: 'medium',
+      validSampleRatio,
+      usableForWod: false,
+      reason: !durationOk ? 'Medição com menos de 10 minutos.' : 'Medição com muitas amostras inválidas.',
+    };
+  }
+  return {
+    level: 'low',
+    validSampleRatio,
+    usableForWod: false,
+    reason: 'Medição curta e com poucas amostras válidas.',
+  };
+}
+
 export async function saveHeartRateSession(session: NewHrSession): Promise<void> {
   try {
     const { error } = await supabase.from('heart_rate_sessions').insert(session);
