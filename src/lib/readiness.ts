@@ -12,6 +12,8 @@ export type ReadinessReasonCode =
   | 'sleep_below_baseline'
   | 'high_rpe'
   | 'rpe_above_normal'
+  | 'cardio_load_above_baseline'
+  | 'cardio_load_elevated'
   | 'no_alerts'
   | 'insufficient_history';
 
@@ -24,6 +26,9 @@ export interface ReadinessInput {
   averageSleepHours?: number | null;
   consecutiveHighRpe?: number;
   consecutiveTrainingDays?: number;
+  cardioLoadDeltaPct?: number | null;
+  cardioBaselineCount?: number;
+  cardioConfidence?: 'high' | 'medium' | 'low';
 }
 
 export interface ReadinessResult {
@@ -59,7 +64,10 @@ export function calculateReadiness(input: ReadinessInput): ReadinessResult {
   const consecutiveTired = Math.max(0, input.consecutiveTired ?? 0);
   const consecutiveHighRpe = Math.max(0, input.consecutiveHighRpe ?? 0);
   const consecutiveTrainingDays = Math.max(0, input.consecutiveTrainingDays ?? 0);
-  const hasEnoughHistory = hasBaseline(averageRpe) || hasBaseline(averageSleep) || consecutiveTired >= 2;
+  const cardioDeltaPct = finite(input.cardioLoadDeltaPct);
+  const cardioBaselineCount = Math.max(0, input.cardioBaselineCount ?? 0);
+  const cardioHasReliableBaseline = cardioBaselineCount >= 3 && input.cardioConfidence === 'high' && cardioDeltaPct != null;
+  const hasEnoughHistory = hasBaseline(averageRpe) || hasBaseline(averageSleep) || consecutiveTired >= 2 || cardioHasReliableBaseline;
 
   const critical: ReadinessReasonCode[] = [];
   if (input.latestFeeling === 'dor') critical.push('pain');
@@ -71,6 +79,9 @@ export function calculateReadiness(input: ReadinessInput): ReadinessResult {
     critical.push('rpe_above_baseline');
   }
   if (consecutiveHighRpe >= 3) critical.push('consecutive_high_rpe');
+  if (cardioHasReliableBaseline && cardioDeltaPct >= 30 && latestRpe != null && latestRpe >= 8) {
+    critical.push('cardio_load_above_baseline');
+  }
 
   if (critical.length > 0) {
     return {
@@ -92,6 +103,7 @@ export function calculateReadiness(input: ReadinessInput): ReadinessResult {
     moderate.push('rpe_above_normal');
   }
   if (consecutiveTrainingDays >= 6) moderate.push('high_rpe');
+  if (cardioHasReliableBaseline && cardioDeltaPct >= 15) moderate.push('cardio_load_elevated');
 
   if (moderate.length > 0) {
     return {
@@ -123,6 +135,8 @@ function reasonMessage(reason: ReadinessReasonCode): string {
     case 'sleep_below_baseline': return 'O sono ficou pelo menos 1 hora abaixo da sua média recente.';
     case 'high_rpe': return 'O esforço recente foi alto ou houve muitos dias seguidos de treino.';
     case 'rpe_above_normal': return 'O esforço ficou acima do seu padrão recente.';
+    case 'cardio_load_above_baseline': return 'A carga cardiovascular ficou pelo menos 30% acima do seu padrão recente.';
+    case 'cardio_load_elevated': return 'A carga cardiovascular ficou acima do seu padrão recente.';
     case 'no_alerts': return 'Não há sinais relevantes de alerta no seu histórico recente.';
     case 'insufficient_history': return 'Ainda não há histórico suficiente; complete seus feedbacks para personalizar a orientação.';
   }

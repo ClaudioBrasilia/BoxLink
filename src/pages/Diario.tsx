@@ -52,6 +52,8 @@ import { normalizeFriendCode } from '../lib/friendCode';
 import { useDailyWodRows, WodResultRow } from '../hooks/useDailyWodRows';
 import { useNavigate } from 'react-router-dom';
 import { calculateReadiness } from '../lib/readiness';
+import { calculateCardioReadinessSignal, CardioReadinessSignal } from '../lib/cardioReadiness';
+import { fetchHeartRateSessions } from '../lib/heartRateSessions';
 
 const todayBR = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
@@ -169,6 +171,7 @@ export default function Diario() {
   const [showForm, setShowForm] = useState(false);
   const [showTimer, setShowTimer] = useState(false);
   const [effortData, setEffortData] = useState<WodTimerResult['effort']>(null);
+  const [cardioSignal, setCardioSignal] = useState<CardioReadinessSignal | null>(null);
 
   const [category, setCategory] = useState<TrainingLogCategory>('wod');
   const [title, setTitle] = useState('');
@@ -287,6 +290,40 @@ export default function Diario() {
   };
 
   useEffect(() => { if (user) loadLogs(); }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setCardioSignal(null);
+      return;
+    }
+    let cancelled = false;
+    const loadCardioReadiness = async () => {
+      const sessions = await fetchHeartRateSessions(user.id, 30);
+      if (sessions.length === 0) {
+        if (!cancelled) setCardioSignal(null);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from('wod_results')
+          .select('hr_session_id')
+          .eq('user_id', user.id)
+          .not('hr_session_id', 'is', null);
+        if (error) throw error;
+        const linkedIds = new Set<string>(
+          (data || [])
+            .map(row => row.hr_session_id)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0),
+        );
+        if (!cancelled) setCardioSignal(calculateCardioReadinessSignal(sessions, linkedIds));
+      } catch (error) {
+        console.warn('[Readiness] sessões vinculadas indisponíveis:', error);
+        if (!cancelled) setCardioSignal(null);
+      }
+    };
+    loadCardioReadiness();
+    return () => { cancelled = true; };
+  }, [user]);
 
   const loadSavedFriends = async () => {
     if (!user || !isIndividual) return;
@@ -441,8 +478,11 @@ export default function Diario() {
       averageSleepHours: sleepValues.length > 0 ? sleepValues.reduce((sum, value) => sum + value, 0) / sleepValues.length : null,
       consecutiveTired,
       consecutiveHighRpe,
+      cardioLoadDeltaPct: cardioSignal?.deltaPct,
+      cardioBaselineCount: cardioSignal?.baselineCount,
+      cardioConfidence: cardioSignal?.confidence,
     });
-  }, [logs]);
+  }, [logs, cardioSignal]);
 
   const loggedToday = logs.some(l => l.date === todayBR());
   const checkedInToday = (user?.checkins || []).some(c => c.date === todayBR());
