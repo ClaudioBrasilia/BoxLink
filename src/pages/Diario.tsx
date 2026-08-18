@@ -43,6 +43,7 @@ import AvatarPreview from '../components/AvatarPreview';
 import DailyWodPanel from '../components/DailyWodPanel';
 import PremiumCTA from '../components/PremiumCTA';
 import HeartRateWidget from '../components/HeartRateWidget';
+import ReadinessCard from '../components/ReadinessCard';
 import ShopBanner from '../components/ShopBanner';
 import FirstSteps from '../components/FirstSteps';
 import { AppSponsorBanner, useSponsors } from '../components/SponsorBanner';
@@ -50,6 +51,7 @@ import { postDailyWodResult } from '../lib/dailyWods';
 import { normalizeFriendCode } from '../lib/friendCode';
 import { useDailyWodRows, WodResultRow } from '../hooks/useDailyWodRows';
 import { useNavigate } from 'react-router-dom';
+import { calculateReadiness } from '../lib/readiness';
 
 const todayBR = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
@@ -402,6 +404,45 @@ export default function Diario() {
 
   const streak = useMemo(() => calcStreak(activityDates), [activityDates]);
   const sustainableStreak = useMemo(() => calcSustainableStreak(activityDates), [activityDates]);
+
+  const readiness = useMemo(() => {
+    const now = Date.now();
+    const recentLogs = logs.filter(log => {
+      const timestamp = new Date(`${log.date}T12:00:00`).getTime();
+      return Number.isFinite(timestamp) && now - timestamp <= 28 * 86400000;
+    });
+    const feedbackLogs = recentLogs.filter(log =>
+      log.feeling != null || (typeof log.rpe === 'number' && Number.isFinite(log.rpe)) ||
+      (typeof log.sleep_hours === 'number' && log.sleep_hours > 0)
+    );
+    const latest = feedbackLogs[0];
+    const rpeValues = feedbackLogs
+      .map(log => log.rpe)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    const sleepValues = feedbackLogs
+      .map(log => log.sleep_hours)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
+    let consecutiveTired = 0;
+    for (const log of feedbackLogs) {
+      if (log.feeling === 'cansado') consecutiveTired++;
+      else break;
+    }
+    let consecutiveHighRpe = 0;
+    for (const log of feedbackLogs) {
+      if (typeof log.rpe === 'number' && log.rpe >= 8) consecutiveHighRpe++;
+      else break;
+    }
+
+    return calculateReadiness({
+      latestFeeling: latest?.feeling,
+      latestRpe: latest?.rpe,
+      averageRpe: rpeValues.length > 0 ? rpeValues.reduce((sum, value) => sum + value, 0) / rpeValues.length : null,
+      latestSleepHours: latest?.sleep_hours,
+      averageSleepHours: sleepValues.length > 0 ? sleepValues.reduce((sum, value) => sum + value, 0) / sleepValues.length : null,
+      consecutiveTired,
+      consecutiveHighRpe,
+    });
+  }, [logs]);
 
   const loggedToday = logs.some(l => l.date === todayBR());
   const checkedInToday = (user?.checkins || []).some(c => c.date === todayBR());
@@ -1120,6 +1161,8 @@ export default function Diario() {
             {planDaysLeft <= 7 && <PremiumCTA />}
           </div>
         )}
+
+        <ReadinessCard result={readiness} />
 
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-surface-container rounded-3xl p-4 border border-outline-variant/10 flex items-center gap-3">
