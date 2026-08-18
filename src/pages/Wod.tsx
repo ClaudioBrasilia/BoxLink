@@ -131,6 +131,12 @@ export default function Wod() {
   const [fbFeeling, setFbFeeling] = useState<TrainingFeeling | null>(null);
   const [fbSleepHours, setFbSleepHours] = useState('');
   const [fbNotes, setFbNotes] = useState('');
+  const [recentBaseline, setRecentBaseline] = useState<{
+    avgRpe: number;
+    avgSleep: number;
+    rpeCount: number;
+    sleepCount: number;
+  } | null>(null);
 
   const addToast = (message: string, type: ToastType = 'info') => {
     const id = Date.now();
@@ -144,6 +150,37 @@ export default function Wod() {
   }, []);
 
   useEffect(() => { fetchWod(); }, [selectedDate, user]);
+
+  // Baseline opcional dos últimos 28 dias. A consulta é independente do
+  // salvamento do WOD e, se falhar, o cartão continua usando as regras locais.
+  useEffect(() => {
+    if (!user?.id) { setRecentBaseline(null); return; }
+    let cancelled = false;
+    const since = subDays(new Date(), 28).toISOString();
+    supabase
+      .from('wod_results')
+      .select('rpe, sleep_hours')
+      .eq('user_id', user.id)
+      .gte('created_at', since)
+      .limit(50)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const rpeValues = (data || [])
+          .map(row => Number(row.rpe))
+          .filter(value => Number.isFinite(value) && value > 0);
+        const sleepValues = (data || [])
+          .map(row => Number(row.sleep_hours))
+          .filter(value => Number.isFinite(value) && value > 0);
+        setRecentBaseline({
+          avgRpe: rpeValues.length ? rpeValues.reduce((sum, value) => sum + value, 0) / rpeValues.length : 0,
+          avgSleep: sleepValues.length ? sleepValues.reduce((sum, value) => sum + value, 0) / sleepValues.length : 0,
+          rpeCount: rpeValues.length,
+          sleepCount: sleepValues.length,
+        });
+      })
+      .catch(() => { if (!cancelled) setRecentBaseline(null); });
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   // Atualiza em tempo real quando o coach posta ou edita o WOD (sem precisar sair da aba)
   useEffect(() => {
@@ -380,6 +417,7 @@ export default function Wod() {
                   rpe={fbRpe}
                   feeling={fbFeeling}
                   sleepHours={fbSleepHours}
+                  baseline={recentBaseline}
                 />
               )}
               <button
