@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, Share2, Target } from 'lucide-react';
+import { Zap, Coins, MapPin, Timer, ChevronRight, Activity, Trophy, Share2, Target, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wod, User } from '../types';
+import { Wod, User, TrainingLog } from '../types';
 import confetti from 'canvas-confetti';
 import AvatarPreview from '../components/AvatarPreview';
 import { supabase } from '../lib/supabase';
@@ -16,6 +16,12 @@ import { AppSponsorBanner, useSponsors } from '../components/SponsorBanner';
 import ShopBanner from '../components/ShopBanner';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
+import ReadinessCard from '../components/ReadinessCard';
+import { calculateReadiness } from '../lib/readiness';
+import { calculateCardioReadinessSignal, CardioReadinessSignal } from '../lib/cardioReadiness';
+import { fetchHeartRateSessions } from '../lib/heartRateSessions';
+import { calculateFamilyCardioSignal } from '../lib/crossfitReadiness';
+import { buildCrossFitSuggestion } from '../lib/crossfitSuggestions';
 
 export default function Dashboard() {
   const { user, updateUser } = useAuth();
@@ -31,6 +37,9 @@ export default function Dashboard() {
   const [activeChallenges, setActiveChallenges] = useState<any[]>([]);
   const [showShareModal, setShowShareModal] = useState(false);
   const [userRankPosition, setUserRankPosition] = useState<number | null>(null);
+  const [readinessLogs, setReadinessLogs] = useState<TrainingLog[]>([]);
+  const [readinessCardioSignal, setReadinessCardioSignal] = useState<CardioReadinessSignal | null>(null);
+  const [showReadinessDetail, setShowReadinessDetail] = useState(false);
 
   const checkinsList = useMemo(
     () => (user?.checkins || []).map(c => ({ date: c.date })),
@@ -110,6 +119,52 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (!user?.id) {
+      setReadinessLogs([]);
+      setReadinessCardioSignal(null);
+      return;
+    }
+    let cancelled = false;
+    const loadReadinessData = async () => {
+      const [{ data: logs }, sessions] = await Promise.all([
+        supabase
+          .from('training_logs')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('date', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(120),
+        fetchHeartRateSessions(user.id, 30),
+      ]);
+      if (cancelled) return;
+      setReadinessLogs(logs || []);
+      if (sessions.length === 0) {
+        setReadinessCardioSignal(null);
+        return;
+      }
+      try {
+        const { data: linkedRows, error } = await supabase
+          .from('wod_results')
+          .select('hr_session_id')
+          .eq('user_id', user.id)
+          .not('hr_session_id', 'is', null);
+        if (error) throw error;
+        const linkedIds = new Set<string>(
+          (linkedRows || [])
+            .map(row => row.hr_session_id)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0),
+        );
+        if (!cancelled) setReadinessCardioSignal(calculateCardioReadinessSignal(sessions, linkedIds));
+      } catch (error) {
+        console.warn('[Readiness] sessões vinculadas indisponíveis:', error);
+        if (!cancelled) setReadinessCardioSignal(null);
+      }
+    };
+    loadReadinessData().catch((error) => console.warn('[Readiness] dados indisponíveis:', error));
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  useEffect(() => {
     fetchData();
     const channel = supabase.channel('dashboard_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule' }, () => fetchData())
@@ -119,6 +174,57 @@ export default function Dashboard() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
+
+  const familyCardioSignal = useMemo(() => calculateFamilyCardioSignal(readinessLogs), [readinessLogs]);
+  const effectiveCardioSignal = familyCardioSignal?.baselineCount >= 3 ? familyCardioSignal : readinessCardioSignal;
+  const readiness = useMemo(() => {
+    const now = Date.now();
+    const recentLogs = readinessLogs.filter(log => {
+      const timestamp = new Date(`${log.date}T12:00:00`).getTime();
+      return Number.isFinite(timestamp) && now - timestamp <= 28 * 86400000;
+    });
+    const feedbackLogs = recentLogs.filter(log =>
+      log.feeling != null || (typeof log.rpe === 'number' && Number.isFinite(log.rpe)) ||
+      (typeof log.sleep_hours === 'number' && log.sleep_hours > 0)
+    );
+    const latest = feedbackLogs[0];
+    const rpeValues = feedbackLogs
+      .map(log => log.rpe)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    const sleepValues = feedbackLogs
+      .map(log => log.sleep_hours)
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
+    let consecutiveTired = 0;
+    for (const log of feedbackLogs) {
+      if (log.feeling === 'cansado') consecutiveTired++;
+      else break;
+    }
+    let consecutiveHighRpe = 0;
+    for (const log of feedbackLogs) {
+      if (typeof log.rpe === 'number' && log.rpe >= 8) consecutiveHighRpe++;
+      else break;
+    }
+    return calculateReadiness({
+      latestFeeling: latest?.feeling,
+      latestRpe: latest?.rpe,
+      averageRpe: rpeValues.length > 0 ? rpeValues.reduce((sum, value) => sum + value, 0) / rpeValues.length : null,
+      latestSleepHours: latest?.sleep_hours,
+      averageSleepHours: sleepValues.length > 0 ? sleepValues.reduce((sum, value) => sum + value, 0) / sleepValues.length : null,
+      consecutiveTired,
+      consecutiveHighRpe,
+      cardioLoadDeltaPct: effectiveCardioSignal?.deltaPct,
+      cardioBaselineCount: effectiveCardioSignal?.baselineCount,
+      cardioConfidence: effectiveCardioSignal?.confidence,
+      rpeSampleCount: rpeValues.length,
+      sleepSampleCount: sleepValues.length,
+      latestDataDate: latest?.date,
+    });
+  }, [readinessLogs, effectiveCardioSignal]);
+  const readinessSuggestion = useMemo(() => buildCrossFitSuggestion({
+    status: readiness.status,
+    reasons: readiness.reasons,
+    family: familyCardioSignal?.family,
+  }), [readiness, familyCardioSignal]);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371e3;
@@ -310,6 +416,52 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
+
+      <ReadinessCard
+        result={readiness}
+        suggestion={readinessSuggestion}
+        compact
+        onClick={() => setShowReadinessDetail(true)}
+      />
+
+      <AnimatePresence>
+        {showReadinessDetail && (
+          <motion.div
+            className="fixed inset-0 z-[180] flex items-end justify-center bg-black/70 p-4 sm:items-center"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dashboard-readiness-detail-title"
+            onClick={() => setShowReadinessDetail(false)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-background border border-outline-variant/20 p-3 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+              initial={{ y: 32, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 32, opacity: 0 }}
+              transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+            >
+              <div className="flex items-center justify-between px-1 pb-3">
+                <h2 id="dashboard-readiness-detail-title" className="text-sm font-headline font-black text-on-surface uppercase italic">
+                  Detalhes da prontidão
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setShowReadinessDetail(false)}
+                  className="w-9 h-9 rounded-full bg-surface-container-high text-on-surface-variant flex items-center justify-center"
+                  aria-label="Fechar detalhes da prontidão"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <ReadinessCard result={readiness} suggestion={readinessSuggestion} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {announcements.length > 0 && (
         <section className="bg-primary/10 border border-primary/20 rounded-3xl p-4 overflow-hidden relative">
