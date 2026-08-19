@@ -87,6 +87,31 @@ function ErrorBox({ message }: { message: string }) {
   );
 }
 
+function BleDiagnostics({ diagnostics }: { diagnostics: { at: string; code: string; message: string; level: string; detail?: string }[] }) {
+  const [open, setOpen] = useState(false);
+  if (diagnostics.length === 0) return null;
+  const latest = diagnostics[diagnostics.length - 1];
+  const levelClass = latest.level === 'error' ? 'text-red-400' : latest.level === 'warning' ? 'text-yellow-400' : latest.level === 'success' ? 'text-green-400' : 'text-white/50';
+  return (
+    <div className="rounded-xl bg-white/[0.03] border border-white/10 p-3">
+      <button onClick={() => setOpen((value) => !value)} className="w-full flex items-center justify-between gap-2 text-left">
+        <span className="text-white/40 text-[9px] font-black uppercase tracking-widest">Diagnóstico da conexão</span>
+        <span className={cn('text-[9px] font-black uppercase tracking-widest truncate', levelClass)}>{latest.message}</span>
+      </button>
+      {open && (
+        <div className="mt-2 max-h-40 overflow-y-auto flex flex-col gap-1.5">
+          {[...diagnostics].reverse().map((item, index) => (
+            <div key={`${item.at}-${item.code}-${index}`} className="border-t border-white/5 pt-1.5">
+              <p className="text-white/60 text-[9px] font-black uppercase">{item.code} · {item.message}</p>
+              {item.detail && <p className="text-white/30 text-[8px] break-all mt-0.5">{item.detail}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Detecta relógios Garmin pelo nome (transmitem FC só no modo "Transmitir FC").
 function isGarminName(name?: string | null): boolean {
   if (!name) return false;
@@ -119,7 +144,7 @@ function SamsungHint({ platform, onUseHealth }: { platform: string; onUseHealth?
         {platform === 'android' ? (
           <li>Ou use <span className="text-white">"Sincronizar com App de Saúde"</span> (Health Connect): inicie um treino no Samsung Health no relógio. Atenção: a FC chega com atraso de alguns minutos — o Samsung Health não sincroniza em tempo real.</li>
         ) : (
-          <li>Ou use <span className="text-white">"Sincronizar com App de Saúde"</span> (Apple Health) — a FC pode chegar com atraso.</li>
+          <li>No iPhone, o Apple Health só funciona se o relógio ou outro app já tiver sincronizado amostras de FC para o HealthKit; o Galaxy Watch não é automaticamente uma fonte de Apple Health.</li>
         )}
         <li><span className="text-white">Galaxy Fit</span> (pulseira): inicie um treino NA PULSEIRA e feche o app Galaxy Wearable — conectada a ele, ela recusa o BoxLink.</li>
       </ol>
@@ -279,7 +304,7 @@ function ModeSelector({ onPick, platform }: { onPick: (m: Mode) => void; platfor
 // ─── Modo: Conexão Direta (Bluetooth LE) ─────────────────────────────────────
 function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallback: () => void; canFallback: boolean }) {
   const {
-    status, error, devices, connectedDevice, lastDevice, heartRate,
+    status, error, devices, connectedDevice, lastDevice, heartRate, diagnostics,
     scan, stopScan, connect, disconnect, isSupported, isIOSWeb, isNative,
   } = useBluetooth(userId);
   const [hasScanned, setHasScanned] = useState(false);
@@ -341,6 +366,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
           <BpmDisplay bpm={heartRate} deviceName={connectedDevice?.name} waitingLabel="Conectado — aguardando leitura de FC..." />
         )}
         {error && <ErrorBox message={error} />}
+        <BleDiagnostics diagnostics={diagnostics} />
         <button onClick={disconnect}
           className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-black uppercase tracking-widest hover:bg-red-500/20 transition-all">
           <X className="w-4 h-4" /> Encerrar e ver resumo
@@ -421,6 +447,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
       )}
 
       {error && <ErrorBox message={error} />}
+      <BleDiagnostics diagnostics={diagnostics} />
 
       {/* Dica específica de Garmin quando a leitura de FC falha */}
       {error && (devices.some((d) => isGarminName(d.name)) || isGarminName(connectedDevice?.name) || isGarminName(lastDevice?.name)) && (
@@ -528,8 +555,8 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
           <Watch className="w-8 h-8 text-white/20" />
           <p className="text-white/40 text-xs font-black uppercase tracking-wider text-center">
             {platform === 'ios'
-              ? 'Lê direto do Apple Health — funciona com qualquer relógio'
-              : 'Lê do Health Connect — Samsung, Garmin, Fitbit, Amazfit e outros'}
+              ? 'Lê amostras já sincronizadas no Apple Health/HealthKit; não é Bluetooth direto'
+              : 'Lê amostras sincronizadas no Health Connect; Samsung Health precisa ter gravado a FC'}
           </p>
           <p className="text-primary/70 text-[9px] font-black uppercase tracking-wider text-center leading-relaxed mt-1">
             Antes de iniciar, ligue um treino no relógio ({platform === 'ios' ? 'app Treino' : 'Samsung Health / app do relógio'}) para gravar a FC em tempo real.

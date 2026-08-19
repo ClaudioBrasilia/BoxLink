@@ -99,6 +99,16 @@ export interface LastDevice {
   name: string;
 }
 
+export type BleDiagnosticLevel = 'info' | 'success' | 'warning' | 'error';
+
+export interface BleDiagnostic {
+  at: string;
+  code: string;
+  message: string;
+  level: BleDiagnosticLevel;
+  detail?: string;
+}
+
 export type ConnectionStatus =
   | 'disconnected'
   | 'scanning'
@@ -121,6 +131,7 @@ interface UseBluetoothReturn {
   stopScan: () => Promise<void>;
   connect: (deviceId: string) => Promise<void>;
   disconnect: () => Promise<void>;
+  diagnostics: BleDiagnostic[];
 }
 
 // ============================================================================
@@ -223,6 +234,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   const [connectedDevice, setConnectedDevice] = useState<DiscoveredDevice | null>(null);
   const [heartRate, setHeartRate] = useState<number | null>(null);
   const [lastDevice, setLastDevice] = useState<LastDevice | null>(loadLastDevice);
+  const [diagnostics, setDiagnostics] = useState<BleDiagnostic[]>([]);
+  const diagnosticsRef = useRef<BleDiagnostic[]>([]);
 
   const webDeviceRef = useRef<BluetoothDevice | null>(null);
   const webCharRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
@@ -240,6 +253,17 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   const updateStatus = useCallback((s: ConnectionStatus) => {
     statusRef.current = s;
     setStatus(s);
+  }, []);
+
+  const recordDiagnostic = useCallback((code: string, message: string, level: BleDiagnosticLevel = 'info', detail?: string) => {
+    const item: BleDiagnostic = { at: new Date().toISOString(), code, message, level, detail };
+    diagnosticsRef.current = [...diagnosticsRef.current, item].slice(-40);
+    setDiagnostics(diagnosticsRef.current);
+  }, []);
+
+  const clearDiagnostics = useCallback(() => {
+    diagnosticsRef.current = [];
+    setDiagnostics([]);
   }, []);
 
   // true enquanto a desconexão foi pedida pelo usuário (não deve reconectar).
@@ -426,10 +450,16 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     []
   );
 
-  const noHeartRateError = () => {
-    const err = new Error(
-      'Dispositivo conectado, mas nenhuma leitura de FC chegou. Ative o modo "transmissão de FC" no dispositivo (ou inicie um treino nele) e tente novamente.'
-    );
+  const noHeartRateError = (deviceName?: string | null) => {
+    const name = deviceName || '';
+    const message = /garmin|forerunner|fenix|venu|vivoactive|vivosmart|instinct|epix|enduro/i.test(name)
+      ? 'Garmin conectado, mas sem FC. No relógio, ative “Transmitir FC”/“Broadcast Heart Rate”, inicie uma atividade e feche o Garmin Connect antes de tentar novamente.'
+      : /polar|tickr|wahoo|h10|h9|verity/i.test(name)
+        ? 'Sensor conectado, mas sem FC. Vista e umedeça a cinta, feche Polar Flow/Beat ou outro app que esteja usando o sensor e, no H10, habilite duas conexões BLE se precisar mantê-lo conectado a outro aparelho.'
+        : /galaxy|samsung|gear|sm-r/i.test(name)
+          ? 'Samsung conectado, mas sem FC. Inicie um treino no relógio e verifique se ele está transmitindo por BLE; caso contrário, use Samsung Health/Health Connect ou um app transmissor no relógio.'
+          : 'Dispositivo conectado, mas nenhuma leitura de FC chegou. Ative a transmissão de FC ou inicie um treino no dispositivo e tente novamente.';
+    const err = new Error(message);
     err.name = 'NoHeartRateError';
     return err;
   };
@@ -469,7 +499,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           });
       });
 
+      recordDiagnostic('gatt_connected', `Conectado ao GATT de ${deviceName || deviceId}.`, 'success');
       const services = await Ble.getServices(deviceId);
+      recordDiagnostic('services_discovered', `${services.length} serviço(s) BLE descoberto(s).`, 'info', services.map((s) => s.uuid).join(', '));
       console.log('[BLE] Serviços descobertos:', services.map((s) => s.uuid));
 
       const candidates = buildCandidates(
@@ -498,6 +530,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
             resolve(v);
           };
           const timer = setTimeout(() => finish(false), waitMs);
+          recordDiagnostic('notification_subscribe', `Tentando receber notificações de ${cand.characteristic}.`, 'info', cand.service);
           Ble.startNotifications(deviceId, cand.service, cand.characteristic, (value) => {
             const bpm = parseCandidateBpm(value, cand);
             // 0x2A37 padrão: qualquer notificação confirma o canal de FC
@@ -508,6 +541,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
               lastBpmAtRef.current = Date.now();
             } else if (bpm !== null) {
               pushHeartRate(bpm);
+              recordDiagnostic('heart_rate_received', `Leitura válida recebida: ${bpm} BPM.`, 'success', `${cand.service}/${cand.characteristic}`);
             }
             if (bpm !== null || cand.standard) finish(true);
           }).catch(() => finish(false));
@@ -532,9 +566,11 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       } catch {
         /* noop */
       }
-      throw noHeartRateError();
+      const noReadingError = noHeartRateError(deviceName);
+      recordDiagnostic('no_heart_rate', noReadingError.message, 'warning', deviceName || deviceId);
+      throw noReadingError;
     },
-    [buildCandidates, parseCandidateBpm, pushHeartRate]
+    [buildCandidates, parseCandidateBpm, pushHeartRate, recordDiagnostic]
   );
 
   const connectNative = useCallback(
@@ -603,6 +639,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     async (device: BluetoothDevice): Promise<void> => {
       const gen = sessionGenRef.current;
       const server = await device.gatt!.connect();
+      recordDiagnostic('gatt_connected', `Conectado ao GATT de ${device.name || 'dispositivo'}.`, 'success');
 
       let services: BluetoothRemoteGATTService[];
       try {
@@ -631,6 +668,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           /* serviço sem characteristics acessíveis */
         }
       }
+
+      recordDiagnostic('services_discovered', `${withChars.length} serviço(s) BLE acessível(is).`, 'info', withChars.map((s) => s.uuid).join(', '));
 
       const candidates = buildCandidates(
         withChars.map((s) => ({
@@ -665,9 +704,11 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
             lastBpmAtRef.current = Date.now();
           } else if (bpm !== null) {
             pushHeartRate(bpm);
+            recordDiagnostic('heart_rate_received', `Leitura válida recebida: ${bpm} BPM.`, 'success', `${cand.service}/${cand.characteristic}`);
           }
         };
 
+        recordDiagnostic('notification_subscribe', `Tentando receber notificações de ${cand.characteristic}.`, 'info', cand.service);
         const ok = await new Promise<boolean>((resolve) => {
           let settled = false;
           const finish = (v: boolean) => {
@@ -704,9 +745,11 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       } catch {
         /* noop */
       }
-      throw noHeartRateError();
+      const noReadingError = noHeartRateError(device.name);
+      recordDiagnostic('no_heart_rate', noReadingError.message, 'warning', device.name || 'dispositivo');
+      throw noReadingError;
     },
-    [buildCandidates, parseCandidateBpm, pushHeartRate]
+    [buildCandidates, parseCandidateBpm, pushHeartRate, recordDiagnostic]
   );
 
   const connectWeb = useCallback(async (): Promise<void> => {
@@ -870,17 +913,20 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   const connect = useCallback(
     async (deviceId: string) => {
       setError(null);
+      recordDiagnostic('connect_start', 'Iniciando conexão com o dispositivo selecionado.', 'info', deviceId);
       updateStatus('connecting');
       try {
         if (isNative) await connectNative(deviceId);
         else await connectWeb();
       } catch (err: any) {
         console.error('[BLE] connect erro', err);
-        setError(err?.name === 'AbortError' ? 'Operação cancelada.' : friendlyBleError(err));
+        const message = err?.name === 'AbortError' ? 'Operação cancelada.' : friendlyBleError(err);
+        recordDiagnostic('connection_error', message, 'error', err?.message || String(err));
+        setError(message);
         updateStatus('error');
       }
     },
-    [isNative, connectNative, connectWeb, updateStatus]
+    [isNative, connectNative, connectWeb, recordDiagnostic, updateStatus]
   );
 
   // --------------------------------------------------------------------------
@@ -892,6 +938,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   const scan = useCallback(
     async (opts?: { showAll?: boolean }) => {
       const showAll = !!opts?.showAll;
+      clearDiagnostics();
+      recordDiagnostic('scan_start', 'Iniciando busca por dispositivos BLE.', 'info', showAll ? 'filtros ampliados' : 'filtro de frequência cardíaca');
       setError(null);
       setDevices([]);
       updateStatus('scanning');
@@ -956,6 +1004,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
                 existing?.hasHeartRateService ||
                 false;
               const displayName = name || existing?.name || `Desconhecido ${id.slice(-5)}`;
+              if (!existing) {
+                recordDiagnostic('device_found', `Dispositivo encontrado: ${displayName}.`, 'info', serviceUUIDs.join(', ') || 'sem UUID anunciado');
+              }
               const likelyHR =
                 hasHR || isLikelyHRDeviceName(displayName) || existing?.likelyHR || false;
 
@@ -1028,6 +1079,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         await connectWeb();
       } catch (err: any) {
         console.error('[BLE] scan erro', err);
+        const message = friendlyBleError(err);
+        recordDiagnostic('scan_error', message, 'error', err?.message || String(err));
         if (err?.name === 'NotFoundError') {
           // Chooser cancelado ou sem resultados nos filtros.
           if (!isNative && !showAll) {
@@ -1040,7 +1093,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         }
       }
     },
-    [isNative, isIOSWeb, hasWebBluetooth, ensureNativeReady, connectWeb, updateStatus]
+    [clearDiagnostics, isNative, isIOSWeb, hasWebBluetooth, ensureNativeReady, connectWeb, recordDiagnostic, updateStatus]
   );
 
   // --------------------------------------------------------------------------
@@ -1116,5 +1169,6 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     stopScan,
     connect,
     disconnect,
+    diagnostics,
   };
 }
