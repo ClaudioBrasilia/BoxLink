@@ -1236,7 +1236,7 @@ export default function Diario() {
               exit={{ opacity: 0 }}
             >
               <motion.div
-                className="w-full max-w-lg max-h-[90vh] overflow-y-auto"
+                className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-background border border-outline-variant/20 p-3 shadow-2xl"
                 onClick={(event) => event.stopPropagation()}
                 initial={{ y: 32, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}

@@ -35,7 +35,7 @@ const STATUS_CONFIG: Record<ReadinessStatus, {
     label: 'Pronto para treinar',
     subtitle: 'Sem sinais relevantes de alerta',
     icon: ShieldCheck,
-    container: 'bg-primary/10 border-primary/20',
+    container: 'bg-surface-container-high border-primary/35',
     iconBox: 'bg-primary/15',
     iconColor: 'text-primary',
     labelColor: 'text-primary',
@@ -44,7 +44,7 @@ const STATUS_CONFIG: Record<ReadinessStatus, {
     label: 'Treine com controle',
     subtitle: 'Ajuste a intensidade se precisar',
     icon: Gauge,
-    container: 'bg-secondary/10 border-secondary/20',
+    container: 'bg-surface-container-high border-secondary/35',
     iconBox: 'bg-secondary/15',
     iconColor: 'text-secondary',
     labelColor: 'text-secondary',
@@ -53,7 +53,7 @@ const STATUS_CONFIG: Record<ReadinessStatus, {
     label: 'Priorize recuperação',
     subtitle: 'Converse com o coach antes de forçar',
     icon: BatteryWarning,
-    container: 'bg-red-500/10 border-red-500/25',
+    container: 'bg-surface-container-high border-red-500/45',
     iconBox: 'bg-red-500/15',
     iconColor: 'text-red-400',
     labelColor: 'text-red-300',
@@ -97,7 +97,7 @@ export default function ReadinessCard({ result, suggestion, compact = false, onC
             <p key={message} className="text-[11px] text-on-surface-variant font-bold leading-snug">{message}</p>
           ))}
           {suggestion && (
-            <div className="mt-1 rounded-2xl bg-surface/40 px-3 py-2 text-[10px] text-on-surface-variant leading-relaxed">
+            <div className="mt-1 rounded-2xl bg-surface-container-highest px-3 py-2 text-[10px] text-on-surface-variant leading-relaxed">
               <p className="text-on-surface font-black uppercase tracking-wider">{suggestion.title}</p>
               <p className="mt-0.5 font-bold">{suggestion.message}</p>
               <ul className="mt-1 list-disc pl-4 space-y-0.5 font-bold">
@@ -105,7 +105,7 @@ export default function ReadinessCard({ result, suggestion, compact = false, onC
               </ul>
             </div>
           )}
-          <div className="mt-1 rounded-2xl bg-surface/40 px-3 py-2 text-[9px] text-on-surface-variant font-bold leading-relaxed">
+          <div className="mt-1 rounded-2xl bg-surface-container-highest px-3 py-2 text-[9px] text-on-surface-variant font-bold leading-relaxed">
             <p>
               <span className="text-on-surface">Baseado em:</span>{' '}
               {result.signalsUsed.length > 0 ? result.signalsUsed.join(' • ') : 'nenhum feedback registrado'}.
