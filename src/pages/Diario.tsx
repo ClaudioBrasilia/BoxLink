@@ -174,6 +174,7 @@ export default function Diario() {
   const [showTimer, setShowTimer] = useState(false);
   const [effortData, setEffortData] = useState<WodTimerResult['effort']>(null);
   const [cardioSignal, setCardioSignal] = useState<CardioReadinessSignal | null>(null);
+  const [showReadinessDetail, setShowReadinessDetail] = useState(false);
 
   const [category, setCategory] = useState<TrainingLogCategory>('wod');
   const [title, setTitle] = useState('');
@@ -1215,7 +1216,51 @@ export default function Diario() {
           </div>
         )}
 
-        <ReadinessCard result={readiness} suggestion={readinessSuggestion} />
+        <ReadinessCard
+          result={readiness}
+          suggestion={readinessSuggestion}
+          compact
+          onClick={() => setShowReadinessDetail(true)}
+        />
+
+        <AnimatePresence>
+          {showReadinessDetail && (
+            <motion.div
+              className="fixed inset-0 z-[180] flex items-end justify-center bg-black/70 p-4 sm:items-center"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="readiness-detail-title"
+              onClick={() => setShowReadinessDetail(false)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <motion.div
+                className="w-full max-w-lg max-h-[90vh] overflow-y-auto"
+                onClick={(event) => event.stopPropagation()}
+                initial={{ y: 32, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 32, opacity: 0 }}
+                transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+              >
+                <div className="flex items-center justify-between px-1 pb-3">
+                  <h2 id="readiness-detail-title" className="text-sm font-headline font-black text-on-surface uppercase italic">
+                    Detalhes da prontidão
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowReadinessDetail(false)}
+                    className="w-9 h-9 rounded-full bg-surface-container-high text-on-surface-variant flex items-center justify-center"
+                    aria-label="Fechar detalhes da prontidão"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <ReadinessCard result={readiness} suggestion={readinessSuggestion} />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-surface-container rounded-3xl p-4 border border-outline-variant/10 flex items-center gap-3">
