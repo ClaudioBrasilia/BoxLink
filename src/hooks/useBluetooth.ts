@@ -402,9 +402,21 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         return 0;
       });
 
+      const standardOnly = isStandardOnlyBrand(deviceName);
+
       const candidates: ProbeCandidate[] = [];
       for (const service of sortedServices) {
-        const notifiable = service.characteristics.filter((c) => c.notifiable);
+        // Navegadores-ponte (ex.: Bluefy no iOS, que expõe Web Bluetooth sobre
+        // CoreBluetooth) às vezes reportam `properties` incompletas e o 0x2A37
+        // chega sem a flag de notify — some do probe e o relógio nunca é lido.
+        // Só para marcas padrão-only o canal PADRÃO entra mesmo sem a flag: se
+        // realmente não for notificável, startNotifications() rejeita e o erro
+        // é registrado. Em aparelhos genéricos manter o filtro estrito importa —
+        // eles dependem dos canais proprietários e um 0x2A37 mudo consumiria o
+        // orçamento do probe antes de chegar no canal que funciona.
+        const notifiable = service.characteristics.filter(
+          (c) => c.notifiable || (standardOnly && c.uuid.toLowerCase() === HEART_RATE_MEASUREMENT)
+        );
         const prioritized = [...notifiable].sort((a, b) => {
           const aKnown = isLikelyHRCharacteristic(a.uuid);
           const bKnown = isLikelyHRCharacteristic(b.uuid);
@@ -432,12 +444,39 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       // conectar. Ordena: padrão(ões) primeiro, resto depois (ordem preservada).
       const standard = candidates.filter((c) => c.standard);
       const rest = candidates.filter((c) => !c.standard);
-      // Marca padrão-only (Garmin/Polar/Wahoo/etc.) COM canal 0x2A37 presente:
-      // usa SÓ o padrão. Nunca cai num canal proprietário — que geraria BPM falso.
-      if (standard.length > 0 && isStandardOnlyBrand(deviceName)) return standard;
-      return [...standard, ...rest];
+
+      // Marca padrão-only (Garmin/Polar/Wahoo/etc.): usa SÓ o canal padrão,
+      // MESMO QUE ele não tenha aparecido. Sondar os canais proprietários desses
+      // relógios não só desperdiça todo o orçamento do probe (o GFDI da Garmin,
+      // 6A4E…, é protocolo do Garmin Connect e nunca carrega FC) como é PERIGOSO:
+      // o parser tolerante varre o buffer atrás de um byte "plausível" e pode
+      // exibir uma FREQUÊNCIA FALSA a partir de bytes de protocolo.
+      if (standardOnly && standard.length === 0) {
+        const hasHrService = services.some((s) => s.uuid.toLowerCase() === HEART_RATE_SERVICE);
+        recordDiagnostic(
+          'standard_channel_missing',
+          hasHrService
+            ? 'O serviço de FC (0x180D) existe, mas o relógio não expôs o canal padrão 0x2A37 — sinal de que a transmissão de FC não está ativa.'
+            : 'O relógio não expôs o serviço de FC (0x180D) — sinal de que a transmissão de FC não está ativa.',
+          'warning',
+          services.map((s) => s.uuid).join(', ') || undefined
+        );
+      }
+
+      const result = standardOnly ? standard : [...standard, ...rest];
+
+      recordDiagnostic(
+        'probe_plan',
+        result.length > 0
+          ? `${result.length} canal(is) serão testados para receber FC.`
+          : 'Nenhum canal de FC compatível foi encontrado neste dispositivo.',
+        result.length > 0 ? 'info' : 'warning',
+        result.map((c) => `${c.characteristic}${c.standard ? ' (padrão 0x2A37)' : ''}`).join(', ') || undefined
+      );
+
+      return result;
     },
-    []
+    [recordDiagnostic]
   );
 
   // Parser por candidato: no canal PADRÃO (0x2A37) usa SEMPRE o parser estrito
@@ -523,13 +562,24 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         const waitMs = cand.standard ? PROBE_STANDARD_MS : cand.known ? PROBE_KNOWN_MS : PROBE_GENERIC_MS;
         const ok = await new Promise<boolean>((resolve) => {
           let settled = false;
+          let noContactLogged = false;
           const finish = (v: boolean) => {
             if (settled) return;
             settled = true;
             clearTimeout(timer);
             resolve(v);
           };
-          const timer = setTimeout(() => finish(false), waitMs);
+          // Timeout = assinatura aceita, mas NENHUM pacote chegou. Diferente de
+          // uma falha de startNotifications (abaixo) — registramos separado.
+          const timer = setTimeout(() => {
+            recordDiagnostic(
+              'notification_timeout',
+              `Nenhum pacote chegou por ${cand.characteristic} em ${Math.round(waitMs / 1000)}s.`,
+              'warning',
+              cand.service
+            );
+            finish(false);
+          }, waitMs);
           recordDiagnostic('notification_subscribe', `Tentando receber notificações de ${cand.characteristic}.`, 'info', cand.service);
           Ble.startNotifications(deviceId, cand.service, cand.characteristic, (value) => {
             const bpm = parseCandidateBpm(value, cand);
@@ -539,12 +589,32 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
             // watchdog sem exibir/latchar um BPM falso.
             if (cand.standard && hasNoSensorContact(value)) {
               lastBpmAtRef.current = Date.now();
+              // Registra uma única vez por inscrição: a notificação se repete ~1x/s.
+              if (!noContactLogged) {
+                noContactLogged = true;
+                recordDiagnostic(
+                  'sensor_no_contact',
+                  'O dispositivo está transmitindo, mas sem contato com a pele. Ajuste-o no pulso (ou umedeça a cinta) para a leitura começar.',
+                  'warning',
+                  `${cand.service}/${cand.characteristic}`
+                );
+              }
             } else if (bpm !== null) {
               pushHeartRate(bpm);
               recordDiagnostic('heart_rate_received', `Leitura válida recebida: ${bpm} BPM.`, 'success', `${cand.service}/${cand.characteristic}`);
             }
             if (bpm !== null || cand.standard) finish(true);
-          }).catch(() => finish(false));
+          }).catch((e: any) => {
+            // Assinatura RECUSADA pelo dispositivo/plataforma — causa distinta
+            // de "assinou mas não chegou pacote".
+            recordDiagnostic(
+              'notification_error',
+              `Não foi possível assinar ${cand.characteristic}.`,
+              'error',
+              String(e?.message || e)
+            );
+            finish(false);
+          });
         });
 
         if (ok) {
@@ -695,6 +765,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
 
         // O listener do probe é o mesmo que fica ativo após a conexão — em caso
         // de sucesso ele permanece registrado; em falha é removido.
+        let noContactLogged = false;
         const listener = (e: any) => {
           const value: DataView = e.target.value;
           const bpm = parseCandidateBpm(value, cand);
@@ -702,6 +773,16 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           // watchdog sem exibir/latchar um BPM falso.
           if (cand.standard && hasNoSensorContact(value)) {
             lastBpmAtRef.current = Date.now();
+            // Registra uma única vez por inscrição: a notificação se repete ~1x/s.
+            if (!noContactLogged) {
+              noContactLogged = true;
+              recordDiagnostic(
+                'sensor_no_contact',
+                'O dispositivo está transmitindo, mas sem contato com a pele. Ajuste-o no pulso (ou umedeça a cinta) para a leitura começar.',
+                'warning',
+                `${cand.service}/${cand.characteristic}`
+              );
+            }
           } else if (bpm !== null) {
             pushHeartRate(bpm);
             recordDiagnostic('heart_rate_received', `Leitura válida recebida: ${bpm} BPM.`, 'success', `${cand.service}/${cand.characteristic}`);
@@ -724,9 +805,29 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
             const bpm = parseCandidateBpm(value, cand);
             if (bpm !== null || cand.standard) finish(true);
           };
-          const timer = setTimeout(() => finish(false), waitMs);
+          // Timeout = assinatura aceita, mas NENHUM pacote chegou. Diferente de
+          // uma falha de startNotifications (abaixo) — registramos separado.
+          const timer = setTimeout(() => {
+            recordDiagnostic(
+              'notification_timeout',
+              `Nenhum pacote chegou por ${cand.characteristic} em ${Math.round(waitMs / 1000)}s.`,
+              'warning',
+              cand.service
+            );
+            finish(false);
+          }, waitMs);
           char.addEventListener('characteristicvaluechanged', probeListener);
-          char.startNotifications().catch(() => finish(false));
+          char.startNotifications().catch((e: any) => {
+            // Assinatura RECUSADA pelo dispositivo/plataforma — causa distinta
+            // de "assinou mas não chegou pacote".
+            recordDiagnostic(
+              'notification_error',
+              `Não foi possível assinar ${cand.characteristic}.`,
+              'error',
+              String(e?.message || e)
+            );
+            finish(false);
+          });
         });
 
         if (ok) {
