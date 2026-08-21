@@ -17,27 +17,37 @@ export default function ResetPassword() {
   const navigate = useNavigate();
 
   // O Supabase redireciona com um token na URL (hash ou query param).
-  // Precisamos detectar a sessão de recuperação antes de exibir o form.
+  // O cliente tem detectSessionInUrl: false (necessário para Capacitor), então
+  // o token não é lido automaticamente — precisamos processá-lo manualmente aqui.
   useEffect(() => {
-    const checkSession = async () => {
-      // Supabase Auth v2 processa o token automaticamente via onAuthStateChange
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        setValidSession(true);
+    const applyRecoverySession = async () => {
+      const hashParams = new URLSearchParams(window.location.hash.slice(1));
+      const queryParams = new URLSearchParams(window.location.search);
+      const type = hashParams.get('type') || queryParams.get('type');
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+      const code = queryParams.get('code');
+
+      if (type === 'recovery' && accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (!error) {
+          setValidSession(true);
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      } else if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (!error) {
+          setValidSession(true);
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      } else {
+        const { data } = await supabase.auth.getSession();
+        if (data.session) setValidSession(true);
       }
       setChecking(false);
     };
 
-    // Escuta o evento PASSWORD_RECOVERY que o Supabase dispara ao abrir o link
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setValidSession(true);
-        setChecking(false);
-      }
-    });
-
-    checkSession();
-    return () => subscription.unsubscribe();
+    applyRecoverySession();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
