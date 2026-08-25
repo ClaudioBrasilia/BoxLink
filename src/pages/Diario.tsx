@@ -35,6 +35,7 @@ import { createNotification } from '../hooks/useNotifications';
 import { TrainingLog, TrainingLogCategory, TrainingFeeling, AvatarSlot } from '../types';
 import { isPremium, planLimits, PLAN_LIMITS } from '../lib/plan';
 import { isTimeBasedType, isAmrapType } from '../lib/pace';
+import { APP_NAME } from '../lib/appMode';
 import WodTimer, { WodTimerResult, WodTimerType } from '../components/WodTimer';
 import TimeInput from '../components/TimeInput';
 import AmrapInput from '../components/AmrapInput';
@@ -931,8 +932,8 @@ export default function Diario() {
 
   const handleShareCode = () => {
     if (!user?.friendCode) return;
-    const text = `⚔️ Me desafie para um duelo no BoxLink! Meu código de atleta: ${user.friendCode} — ${window.location.origin}`;
-    if (navigator.share) navigator.share({ title: 'BoxLink — Duelo', text }).catch(() => {});
+    const text = `⚔️ Me desafie para um duelo no ${APP_NAME}! Meu código de atleta: ${user.friendCode} — ${window.location.origin}`;
+    if (navigator.share) navigator.share({ title: `${APP_NAME} — Duelo`, text }).catch(() => {});
     else handleCopyCode();
   };
 

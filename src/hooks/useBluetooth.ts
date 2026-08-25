@@ -39,6 +39,7 @@ import {
 } from '../lib/heartRate';
 import { calculateHrvMetrics, parseStandardHeartRateMeasurement } from '../lib/hrv';
 import { validateBleHrvCapture, type HrvQualityReport, type HrvPlatform } from '../lib/hrvValidation';
+import { APP_NAME } from '../lib/appMode';
 
 // ─── Carregador dinâmico do plugin nativo (só executa em plataforma nativa) ──
 type BleClientType = typeof import('@capacitor-community/bluetooth-le').BleClient;
@@ -191,7 +192,7 @@ function isStandardOnlyBrand(name?: string | null): boolean {
 function friendlyBleError(err: unknown): string {
   const msg = String((err as any)?.message || err || '');
   if (/permission|denied|not granted|autoriz/i.test(msg)) {
-    return 'Permissão de Bluetooth negada. Vá em Configurações → Apps → BoxLink → Permissões e permita "Dispositivos por perto" (ou Bluetooth).';
+    return `Permissão de Bluetooth negada. Vá em Configurações → Apps → ${APP_NAME} → Permissões e permita "Dispositivos por perto" (ou Bluetooth).`;
   }
   if (/bluetooth.*(off|disabled|unavailable)|adapter/i.test(msg)) {
     return 'O Bluetooth está desligado. Ative o Bluetooth do aparelho e tente novamente.';
@@ -1118,7 +1119,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         // Com Bluefy (navigator.bluetooth presente), seguimos normalmente.
         if (isIOSWeb && !hasWebBluetooth) {
           throw new Error(
-            'Este navegador do iPhone não suporta Bluetooth Web. Abra o BoxLink pelo navegador "Bluefy" (grátis na App Store) ou instale o app nativo.'
+            `Este navegador do iPhone não suporta Bluetooth Web. Abra o ${APP_NAME} pelo navegador "Bluefy" (grátis na App Store) ou instale o app nativo.`
           );
         }
 

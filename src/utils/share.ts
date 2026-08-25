@@ -1,6 +1,7 @@
 /**
  * Utilitário para compartilhamento em redes sociais
  */
+import { APP_NAME } from '../lib/appMode';
 
 export interface ShareOptions {
   title: string;
@@ -70,7 +71,7 @@ export const getAppShareUrl = (): string => {
  * Gerar mensagem de compartilhamento do app
  */
 export const getAppShareMessage = (): string => {
-  return `🏋️ Junte-se a mim no BoxLink! 💪\n\nAcompanhe seus treinos, participe de duelos com apostas, ganhe XP e suba no ranking!\n\nBaixe agora e comece sua jornada fitness!`;
+  return `🏋️ Junte-se a mim no ${APP_NAME}! 💪\n\nAcompanhe seus treinos, participe de duelos com apostas, ganhe XP e suba no ranking!\n\nBaixe agora e comece sua jornada fitness!`;
 };
 
 /**

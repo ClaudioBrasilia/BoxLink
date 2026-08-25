@@ -8,9 +8,12 @@
     "dev:solo": "VITE_APP_MODE=individual vite",
     "build": "vite build",
     "build:solo": "VITE_APP_MODE=individual vite build",
+    "cap:sync:box": "node scripts/sync-native.mjs box",
+    "cap:sync:solo": "node scripts/sync-native.mjs individual",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:separation": "node scripts/audit-app-separation.mjs",
     "test:e2e": "npm run build && node scripts/e2e-smoke.mjs",
     "check:perf": "npm run build && node scripts/e2e-smoke.mjs"
   },

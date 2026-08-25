@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LogIn, UserPlus, Shield, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { APP_NAME, isIndividualApp } from '../lib/appMode';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -46,8 +47,12 @@ export default function Login() {
           <div className="w-24 h-24 bg-surface-container-low rounded-[2rem] border border-outline-variant/10 flex items-center justify-center mx-auto mb-6 shadow-2xl">
             <Shield className="w-12 h-12 text-primary" />
           </div>
-          <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter uppercase italic">BOX<span className="text-primary">LINK</span></h1>
-          <p className="text-on-surface-variant text-xs font-bold tracking-widest uppercase mt-2 italic">A Arena Espera Por Você</p>
+          <h1 className="text-4xl font-headline font-black text-on-surface tracking-tighter uppercase italic">
+            {APP_NAME === 'BoxLeague' ? <>BOX<span className="text-primary">LEAGUE</span></> : <>BOX<span className="text-primary">LINK</span></>}
+          </h1>
+          <p className="text-on-surface-variant text-xs font-bold tracking-widest uppercase mt-2 italic">
+            {isIndividualApp ? 'Treine no seu ritmo' : 'A Arena Espera Por Você'}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -88,25 +93,31 @@ export default function Login() {
             disabled={loading}
             className="w-full bg-primary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-[0_10px_30px_rgba(202,253,0,0.2)] hover:scale-[0.98] active:scale-95 transition-all uppercase italic tracking-tight flex items-center justify-center gap-2 mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'ENTRANDO...' : 'ENTRAR NA ARENA'} <ChevronRight className="w-5 h-5" />
+            {loading ? 'ENTRANDO...' : (isIndividualApp ? 'ENTRAR NO BOXLEAGUE' : 'ENTRAR NA ARENA')} <ChevronRight className="w-5 h-5" />
           </button>
         </form>
 
-        {/* Aviso do modo Individual */}
         <div className="bg-surface-container-low border border-primary/20 rounded-2xl p-4 flex flex-col gap-2 text-center">
-          <p className="text-[11px] font-black text-primary uppercase tracking-widest italic">Treina sem box?</p>
+          <p className="text-[11px] font-black text-primary uppercase tracking-widest italic">
+            {isIndividualApp ? 'Treina por conta própria?' : 'Treina sem box?'}
+          </p>
           <p className="text-[10px] text-on-surface-variant font-bold tracking-wide leading-relaxed">
-            Crie uma conta <span className="text-primary">Individual</span> e use sozinho: diário de treino,
-            check-in com pontos, duelos com amigos por código e liga de atletas. Acesso imediato, sem aprovação.
+            {isIndividualApp
+              ? 'Crie seu perfil e registre seus treinos, sua evolução e sua prontidão sem depender de uma academia.'
+              : <>Crie uma conta <span className="text-primary">Individual</span> e use sozinho: diário de treino,
+                check-in com pontos, duelos com amigos por código e liga de atletas. Acesso imediato, sem aprovação.</>}
           </p>
           <Link to="/signup" className="text-[10px] text-primary font-black uppercase tracking-widest hover:underline mt-1">
-            Criar conta individual →
+            {isIndividualApp ? 'Criar conta no BoxLeague →' : 'Criar conta individual →'}
           </Link>
         </div>
 
         <div className="text-center">
           <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest">
-            Novo no box? <Link to="/signup" className="text-primary hover:underline">Solicitar Acesso</Link>
+            {isIndividualApp ? 'Ainda não tem conta?' : 'Novo no box?'}{' '}
+            <Link to="/signup" className="text-primary hover:underline">
+              {isIndividualApp ? 'Criar conta' : 'Solicitar Acesso'}
+            </Link>
           </p>
         </div>
       </motion.div>

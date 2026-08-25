@@ -1,6 +1,7 @@
 import { Share2 } from 'lucide-react';
 import { computeDuelEdge, DuelScoreOutcome } from '../lib/duelScore';
 import { computeRepsPerMinute, formatPace, WodPaceMeta } from '../lib/pace';
+import { APP_NAME } from '../lib/appMode';
 
 interface ShareDuelParticipant {
   id: string;
@@ -188,7 +189,7 @@ async function generateDuelRecapImage(
   ctx.font = 'bold 32px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
   ctx.letterSpacing = '4px';
-  ctx.fillText('BOXLINK APP', W / 2, brandY);
+  ctx.fillText(APP_NAME.toUpperCase(), W / 2, brandY);
   ctx.letterSpacing = '0px';
 
   return new Promise(resolve => canvas.toBlob(b => resolve(b!), 'image/png', 1));
@@ -211,7 +212,7 @@ export default function ShareDuelButton({ wodName, wodType, outcome, participant
         await navigator.share({
           files: [file],
           title: 'Resumo do Duelo',
-          text: `⚔️ Confira o resumo do duelo — ${wodName || 'BoxLink'}!`,
+          text: `⚔️ Confira o resumo do duelo — ${wodName || APP_NAME}!`,
         });
         return;
       } catch {

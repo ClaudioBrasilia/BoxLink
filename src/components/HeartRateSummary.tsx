@@ -19,6 +19,7 @@ import { calculateHrvMetrics, hrvMetricLabel, type HrvMetric } from '../lib/hrv'
 import { hrvValidationLabel, hrvValidationReason, type HrvQualityReport } from '../lib/hrvValidation';
 import { saveHeartRateSession } from '../lib/heartRateSessions';
 import { cn } from '../lib/utils';
+import { APP_NAME } from '../lib/appMode';
 
 interface Props {
   samples: HrSample[];
@@ -312,7 +313,7 @@ export default function HeartRateSummary({
         </p>
       ) : stats.hrvMs == null && (
         <p className="text-white/30 text-[8px] font-black uppercase tracking-widest leading-relaxed">
-          HRV exige intervalos entre batimentos. Se o dispositivo enviar somente BPM, o BoxLink mantém a carga por FC/RPE sem estimar HRV.
+          HRV exige intervalos entre batimentos. Se o dispositivo enviar somente BPM, o {APP_NAME} mantém a carga por FC/RPE sem estimar HRV.
         </p>
       )}
 

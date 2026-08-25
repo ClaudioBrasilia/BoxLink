@@ -3,6 +3,7 @@ import { Share2, MessageCircle, Copy, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { shareToWhatsApp, getAppShareUrl, getAppShareMessage, copyToClipboard } from '../utils/share';
 import { motion, AnimatePresence } from 'framer-motion';
+import { APP_NAME } from '../lib/appMode';
 
 export default function ShareAppButton() {
   const [isOpen, setIsOpen] = useState(false);
@@ -10,7 +11,7 @@ export default function ShareAppButton() {
 
   const handleShareWhatsApp = () => {
     shareToWhatsApp({
-      title: '🏋️ BoxLink - Arena de Fitness',
+      title: `🏋️ ${APP_NAME} - Arena de Fitness`,
       text: getAppShareMessage(),
       url: getAppShareUrl(),
     });
