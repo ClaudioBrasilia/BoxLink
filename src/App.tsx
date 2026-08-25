@@ -1,34 +1,34 @@
-import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
-import Dashboard from './pages/Dashboard';
-import Wod from './pages/Wod';
-import Challenges from './pages/Challenges';
-import Leaderboard from './pages/Leaderboard';
-import Duels from './pages/Duels';
-import MyBox from './pages/MyBox';
-import Profile from './pages/Profile';
-import Progress from './pages/Progress';
-import AvatarCustomization from './pages/AvatarCustomization';
-import Admin from './pages/Admin';
-import Coach from './pages/Coach';
-import TV from './pages/TV';
-import Clans from './pages/Clans';
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import DebugFlow from './pages/DebugFlow';
-import Benchmarks from './pages/Benchmarks';
-import Diario from './pages/Diario';
-import Liga from './pages/Liga';
-import Insights from './pages/Insights';
-import Frequencia from './pages/Frequencia';
-import Install from './pages/Install';
-import Feed from './pages/Feed';
-import Shop from './pages/Shop';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Wod = lazy(() => import('./pages/Wod'));
+const Challenges = lazy(() => import('./pages/Challenges'));
+const Leaderboard = lazy(() => import('./pages/Leaderboard'));
+const Duels = lazy(() => import('./pages/Duels'));
+const MyBox = lazy(() => import('./pages/MyBox'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Progress = lazy(() => import('./pages/Progress'));
+const AvatarCustomization = lazy(() => import('./pages/AvatarCustomization'));
+const Admin = lazy(() => import('./pages/Admin'));
+const Coach = lazy(() => import('./pages/Coach'));
+const TV = lazy(() => import('./pages/TV'));
+const Clans = lazy(() => import('./pages/Clans'));
+const Login = lazy(() => import('./pages/Login'));
+const Signup = lazy(() => import('./pages/Signup'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const Benchmarks = lazy(() => import('./pages/Benchmarks'));
+const Diario = lazy(() => import('./pages/Diario'));
+const Liga = lazy(() => import('./pages/Liga'));
+const Insights = lazy(() => import('./pages/Insights'));
+const Frequencia = lazy(() => import('./pages/Frequencia'));
+const Install = lazy(() => import('./pages/Install'));
+const Feed = lazy(() => import('./pages/Feed'));
+const Shop = lazy(() => import('./pages/Shop'));
 import { Shield, Lock, Building2 } from 'lucide-react';
 import { isIndividualApp, isBoxApp } from './lib/appMode';
 import Onboarding from './components/Onboarding';
@@ -36,6 +36,7 @@ import { ToastProvider } from './context/ToastContext';
 import { NotificationsProvider } from './hooks/useNotifications';
 import { supabase } from './lib/supabase';
 import { VisitorPermissions } from './types';
+import { reportRouteView } from './lib/observability';
 
 const VisitorBlockedPage = () => {
   const { logout } = useAuth();
@@ -56,6 +57,18 @@ const VisitorBlockedPage = () => {
       </button>
     </div>
   );
+};
+
+const RouteLoading = () => (
+  <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse" role="status" aria-live="polite">
+    CARREGANDO...
+  </div>
+);
+
+const RouteTelemetry = () => {
+  const location = useLocation();
+  useEffect(() => reportRouteView(location.pathname), [location.pathname]);
+  return null;
 };
 
 const VisitorGuard = ({ children, page }: { children: React.ReactNode; page: keyof VisitorPermissions }) => {
@@ -160,7 +173,9 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?
 function AppRoutes() {
   return (
     <BrowserRouter>
-      <Routes>
+      <RouteTelemetry />
+      <Suspense fallback={<RouteLoading />}>
+        <Routes>
         <Route path="/login"           element={<Login />} />
         <Route path="/signup"          element={<Signup />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -196,7 +211,8 @@ function AppRoutes() {
           </>}
         </Route>
         <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

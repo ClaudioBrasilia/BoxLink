@@ -61,6 +61,20 @@ export default defineConfig(({ mode }) => {
         '~': path.resolve(__dirname, 'src'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-motion': ['framer-motion'],
+            'vendor-charts': ['recharts'],
+            'vendor-icons': ['lucide-react'],
+            'vendor-data': ['@supabase/supabase-js'],
+          },
+        },
+      },
+      chunkSizeWarningLimit: 500,
+    },
     server: {
       host: '0.0.0.0',
       port: 3000,
