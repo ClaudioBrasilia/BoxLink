@@ -18,7 +18,7 @@ import { upsertLiveHeartRate, clearLiveHeartRate } from '../lib/liveHeartRate';
 import { isPlausibleBpm } from '../lib/heartRate';
 
 // Tipos mínimos do plugin (evita acoplar o build a ele)
-type HealthDataType = 'heartRate' | 'calories' | 'steps';
+type HealthDataType = 'heartRate' | 'calories' | 'steps' | 'heartRateVariability';
 interface AvailabilityResult { available: boolean; platform?: string; reason?: string }
 interface AuthorizationStatus {
   readAuthorized: HealthDataType[];
@@ -54,6 +54,9 @@ export type NativeHealthStatus = 'idle' | 'requesting' | 'active' | 'error';
 
 interface UseNativeHealthReturn {
   bpm: number | null;
+  hrvMs: number | null;
+  hrvMetric: 'rmssd' | 'sdnn' | null;
+  hrvAt: string | null;
   status: NativeHealthStatus;
   errorMessage: string | null;
   isAvailablePlatform: boolean;
@@ -64,9 +67,12 @@ interface UseNativeHealthReturn {
 
 const POLL_INTERVAL_MS = 5000;        // leitura a cada 5s
 const LOOKBACK_MS = 10 * 60 * 1000;   // janela de 10 min (relógios sincronizam com atraso)
+const HRV_LOOKBACK_MS = 24 * 60 * 60 * 1000; // HRV de repouso costuma ser sincronizada fora do treino
 
 export function useNativeHealth(userId: string | undefined): UseNativeHealthReturn {
   const [bpm, setBpm] = useState<number | null>(null);
+  const [hrvMs, setHrvMs] = useState<number | null>(null);
+  const [hrvAt, setHrvAt] = useState<string | null>(null);
   const [status, setStatus] = useState<NativeHealthStatus>('idle');
   const [errorMessage, setError] = useState<string | null>(null);
 
@@ -114,6 +120,8 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
   const startReading = useCallback(async () => {
     setStatus('requesting');
     setError(null);
+    setHrvMs(null);
+    setHrvAt(null);
 
     if (!isAvailablePlatform) {
       setError('A leitura por app de saúde só está disponível no aplicativo instalado (Android/iOS).');
@@ -139,7 +147,7 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
       // 2. Autorização — FC é obrigatória; calorias/passos são opcionais
       //    (para enriquecer o resumo com dados reais do relógio, sem bloquear).
       const authOpts = {
-        read: ['heartRate', 'calories', 'steps'] as HealthDataType[],
+        read: ['heartRate', 'calories', 'steps', 'heartRateVariability'] as HealthDataType[],
         write: [] as HealthDataType[],
       };
       let authStatus: AuthorizationStatus | null = null;
@@ -175,6 +183,7 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
         try {
           const endDate = new Date().toISOString();
           const startDate = new Date(Date.now() - LOOKBACK_MS).toISOString();
+          const hrvStartDate = new Date(Date.now() - HRV_LOOKBACK_MS).toISOString();
 
           const { samples } = await Health.readSamples({
             dataType: 'heartRate',
@@ -193,6 +202,27 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
             if (isPlausibleBpm(value)) {
               setBpm(value);
               syncToSupabase(value);
+            }
+          }
+
+          // HRV é opcional: alguns dispositivos sincronizam apenas durante a
+          // noite e outros não oferecem esse tipo de dado ao sistema de saúde.
+          const hrvResult = await Health.readSamples({
+            dataType: 'heartRateVariability',
+            startDate: hrvStartDate,
+            endDate,
+            limit: 5,
+            ascending: false,
+          }).catch(() => ({ samples: [] as HealthSample[] }));
+          const hrvSamples = hrvResult.samples || [];
+          if (hrvSamples.length > 0) {
+            const latestHrv = hrvSamples.reduce((a, b) =>
+              new Date(b.endDate).getTime() > new Date(a.endDate).getTime() ? b : a
+            );
+            const value = Number(latestHrv.value);
+            if (Number.isFinite(value) && value > 0) {
+              setHrvMs(value);
+              setHrvAt(latestHrv.endDate || latestHrv.startDate || null);
             }
           }
         } catch (err) {
@@ -218,5 +248,16 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
     }
   }, [platform, isAvailablePlatform, syncToSupabase]);
 
-  return { bpm, status, errorMessage, isAvailablePlatform, startReading, stopReading, openSettings };
+  return {
+    bpm,
+    hrvMs,
+    hrvMetric: platform === 'ios' ? 'sdnn' : platform === 'android' ? 'rmssd' : null,
+    hrvAt,
+    status,
+    errorMessage,
+    isAvailablePlatform,
+    startReading,
+    stopReading,
+    openSettings,
+  };
 }

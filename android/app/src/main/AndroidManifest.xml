@@ -77,8 +77,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Health Connect: leitura de Frequência Cardíaca -->
+    <!-- Health Connect: leitura de Frequência Cardíaca e HRV -->
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" />
 
     <!-- Health Connect: passos e calorias do relógio (enriquecem o resumo) -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
@@ -90,10 +91,10 @@
 
     <!-- @capgo/capacitor-health declara ~40 permissões de Health Connect no manifesto
          dele (peso, sono, pressão, glicose, mindfulness, saúde reprodutiva etc.), mas o
-         app só lê heartRate/calories/steps (ver src/hooks/useNativeHealth.ts) e nunca
-         escreve nada. Remove tudo que a lib injeta e o app não usa, para a declaração de
-         apps de saúde da Play Store refletir a realidade e não pedir acesso a dados
-         sensíveis sem uso. -->
+         app só lê heartRate/heartRateVariability/calories/steps (ver
+         src/hooks/useNativeHealth.ts) e nunca escreve nada. Remove tudo que a lib injeta
+         e o app não usa, para a declaração de apps de saúde da Play Store refletir a
+         realidade e não pedir acesso a dados sensíveis sem uso. -->
     <uses-permission android:name="android.permission.health.WRITE_STEPS" tools:node="remove" />
     <uses-permission android:name="android.permission.health.READ_DISTANCE" tools:node="remove" />
     <uses-permission android:name="android.permission.health.WRITE_DISTANCE" tools:node="remove" />
@@ -112,7 +113,6 @@
     <uses-permission android:name="android.permission.health.WRITE_OXYGEN_SATURATION" tools:node="remove" />
     <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" tools:node="remove" />
     <uses-permission android:name="android.permission.health.WRITE_RESTING_HEART_RATE" tools:node="remove" />
-    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" tools:node="remove" />
     <uses-permission android:name="android.permission.health.WRITE_HEART_RATE_VARIABILITY" tools:node="remove" />
     <uses-permission android:name="android.permission.health.READ_VO2_MAX" tools:node="remove" />
     <uses-permission android:name="android.permission.health.WRITE_VO2_MAX" tools:node="remove" />

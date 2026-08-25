@@ -1,6 +1,7 @@
 # 💓 Frequência Cardíaca em Tempo Real — BoxLink
 
 Sistema unificado de monitoramento de FC dos alunos, exibido no app e na TV do box.
+Além do BPM, o BoxLink aproveita **HRV/VFC** quando o dispositivo fornece intervalos RR ou quando Apple Health/Health Connect sincroniza uma métrica de HRV.
 Suporta **dois caminhos de conexão** com fallback automático:
 
 1. **Conexão Direta (Bluetooth LE)** — baixa latência, relógio/cinta conectam direto ao app.
@@ -18,6 +19,11 @@ Aluno no app ────┤                                 ├─→ heart_rat
                                                 → BPM + zona de todos os atletas
 ```
 
+HRV não é derivada das amostras de BPM de 2s. No canal BLE padrão 0x2A37,
+o BoxLink lê a flag RR e guarda os intervalos em milissegundos; ao encerrar,
+calcula RMSSD/SDNN somente quando há intervalos suficientes. Dispositivos que
+entregam apenas BPM continuam funcionando sem HRV estimada.
+
 - **Web (Chrome/Edge/Android):** conexão direta via **Web Bluetooth API**.
 - **iPhone (Safari):** Web Bluetooth **não é suportado pela Apple** → usar **Bluefy** ou o **app nativo** (ver abaixo).
 - **App nativo (Android/iOS):** conexão direta via BLE **ou** leitura pelo app de saúde.
@@ -30,6 +36,7 @@ Aluno no app ────┤                                 ├─→ heart_rat
 | Arquivo                              | Papel                                                        |
 |--------------------------------------|-------------------------------------------------------------|
 | `src/lib/heartRate.ts`               | Catálogo central de UUIDs (padrão + proprietários), parsers e zonas |
+| `src/lib/hrv.ts`                      | Parser de RR, RMSSD/SDNN e baseline individual de HRV             |
 | `src/hooks/useBluetooth.ts`          | Conexão direta BLE (nativo + Web Bluetooth), import dinâmico |
 | `src/hooks/useNativeHealth.ts`       | Ponte Apple Health / Health Connect (import dinâmico)        |
 | `src/components/HeartRateWidget.tsx` | Widget unificado com seleção de modo + fallback             |
@@ -77,7 +84,7 @@ Duas formas de conectar:
 ### App nativo (Android/iOS)
 1. Card **"Frequência Cardíaca"** → escolha o modo:
    - **Conexão Direta** — busca e conecta a cinta/relógio por Bluetooth.
-   - **Sincronizar com App de Saúde** — autoriza a leitura de FC e lê a cada 5s.
+   - **Sincronizar com App de Saúde** — autoriza a leitura de FC e HRV e lê a cada 5s; a HRV pode ser uma medição sincronizada das últimas 24h.
 2. Se a busca direta não achar nada, o app oferece o botão de fallback para o App de Saúde.
 
 ---
@@ -115,7 +122,8 @@ Duas formas de conectar:
 Já incluída no projeto:
 
 - **Android** (`android/app/src/main/AndroidManifest.xml`): permissões de Bluetooth,
-  `android.permission.health.READ_HEART_RATE`, `BODY_SENSORS`, `<queries>` do Health Connect
+  `android.permission.health.READ_HEART_RATE`, `android.permission.health.READ_HEART_RATE_VARIABILITY`,
+  `BODY_SENSORS`, `<queries>` do Health Connect
   e os `intent-filter` de justificativa de permissões.
 - **iOS** (`ios/App/App/Info.plist`): `NSBluetoothAlwaysUsageDescription`,
   `NSHealthShareUsageDescription` e afins.
@@ -127,7 +135,7 @@ npm run build
 npx cap sync android   # ou: npx cap sync ios
 ```
 
-No Android, confirme em **Health Connect → Permissões de apps** que o BoxLink tem acesso à Frequência Cardíaca.
+No Android, confirme em **Health Connect → Permissões de apps** que o BoxLink tem acesso à Frequência Cardíaca e à Variabilidade da Frequência Cardíaca. A permissão pode não existir em versões antigas ou em fontes que não sincronizam HRV.
 
 ---
 

@@ -56,6 +56,7 @@ import { calculateCardioReadinessSignal, CardioReadinessSignal } from '../lib/ca
 import { fetchHeartRateSessions } from '../lib/heartRateSessions';
 import { calculateFamilyCardioSignal } from '../lib/crossfitReadiness';
 import { buildCrossFitSuggestion } from '../lib/crossfitSuggestions';
+import { calculateHrvReadinessSignal, hrvRecordsFromHealthSessions, type HrvReadinessSignal } from '../lib/hrv';
 
 const todayBR = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
@@ -174,6 +175,7 @@ export default function Diario() {
   const [showTimer, setShowTimer] = useState(false);
   const [effortData, setEffortData] = useState<WodTimerResult['effort']>(null);
   const [cardioSignal, setCardioSignal] = useState<CardioReadinessSignal | null>(null);
+  const [hrvSignal, setHrvSignal] = useState<HrvReadinessSignal | null>(null);
   const [showReadinessDetail, setShowReadinessDetail] = useState(false);
 
   const [category, setCategory] = useState<TrainingLogCategory>('wod');
@@ -297,11 +299,13 @@ export default function Diario() {
   useEffect(() => {
     if (!user) {
       setCardioSignal(null);
+      setHrvSignal(null);
       return;
     }
     let cancelled = false;
     const loadCardioReadiness = async () => {
       const sessions = await fetchHeartRateSessions(user.id, 30);
+      if (!cancelled) setHrvSignal(calculateHrvReadinessSignal(hrvRecordsFromHealthSessions(sessions)));
       if (sessions.length === 0) {
         if (!cancelled) setCardioSignal(null);
         return;
@@ -486,11 +490,14 @@ export default function Diario() {
       cardioLoadDeltaPct: effectiveCardioSignal?.deltaPct,
       cardioBaselineCount: effectiveCardioSignal?.baselineCount,
       cardioConfidence: effectiveCardioSignal?.confidence,
+      hrvDeltaPct: hrvSignal?.deltaPct,
+      hrvBaselineCount: hrvSignal?.baselineCount,
+      hrvConfidence: hrvSignal?.confidence,
       rpeSampleCount: rpeValues.length,
       sleepSampleCount: sleepValues.length,
-      latestDataDate: latest?.date,
+      latestDataDate: latest?.date ?? hrvSignal?.latestAt?.slice(0, 10),
     });
-  }, [logs, effectiveCardioSignal]);
+  }, [logs, effectiveCardioSignal, hrvSignal]);
 
   const readinessSuggestion = useMemo(() => buildCrossFitSuggestion({
     status: readiness.status,
