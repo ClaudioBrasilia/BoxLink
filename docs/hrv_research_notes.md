@@ -43,3 +43,11 @@ Observação de compatibilidade: o plugin unificado usa o nome `heartRateVariabi
 ## Verificação da versão instalada
 
 A versão travada `@capgo/capacitor-health@8.6.0` declara e implementa `heartRateVariability`: no adaptador iOS ela mapeia para `HKQuantityTypeIdentifier.heartRateVariabilitySDNN`; no Android ela mapeia para `HeartRateVariabilityRmssdRecord`. Assim, a distinção de métrica adicionada ao modelo do BoxLink é necessária e compatível com a dependência já instalada.
+
+## Critérios oficiais para validação
+
+A especificação Bluetooth Heart Rate Service confirma que o RR-Interval é opcional, que a flag RR é o bit 4 do campo Flags, que podem existir vários intervalos em uma notificação e que cada intervalo é codificado em 16 bits com unidade de 1/1024 segundo. O RR representa o intervalo entre duas ondas R consecutivas no ECG. Fonte: https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/HRS_v1.0/out/en/index-en.html
+
+A Apple documenta `heartRateVariabilitySDNN` como um tipo de amostra de quantidade calculado a partir da variação entre batimentos individuais. O HealthKit usa SDNN sobre intervalos RR de batimentos normais, normalmente em milissegundos, e registra amostras automaticamente no Apple Watch. Fonte: https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/heartratevariabilitysdnn
+
+A referência oficial do Android descreve `HeartRateVariabilityRmssdRecord` como uma classe que captura HRV RMSSD, com cada registro representando uma medição instantânea. A página indica que o tipo foi adicionado na API 34. Fonte: https://developer.android.com/reference/android/health/connect/datatypes/HeartRateVariabilityRmssdRecord

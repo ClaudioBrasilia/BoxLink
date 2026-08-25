@@ -16,6 +16,7 @@ import {
 } from '../lib/heartRate';
 import { readWorkoutMetrics, type WorkoutDeviceMetrics } from '../lib/healthMetrics';
 import { calculateHrvMetrics, hrvMetricLabel, type HrvMetric } from '../lib/hrv';
+import { hrvValidationLabel, hrvValidationReason, type HrvQualityReport } from '../lib/hrvValidation';
 import { saveHeartRateSession } from '../lib/heartRateSessions';
 import { cn } from '../lib/utils';
 
@@ -41,6 +42,8 @@ interface Props {
   hrvMsOverride?: number | null;
   hrvMetricOverride?: HrvMetric | null;
   hrvAtOverride?: string | null;
+  /** Relatório de qualidade da fonte; opcional para reabrir sessões antigas. */
+  hrvQuality?: HrvQualityReport | null;
   /** Origem das calorias salvas (histórico) — controla o rótulo "do relógio"/"estimativa". */
   caloriesSourceOverride?: 'device' | 'estimate' | null;
   /** Texto do botão de fechar (padrão "Novo Treino"). */
@@ -103,7 +106,7 @@ function ChartTooltip({ active, payload }: any) {
 
 export default function HeartRateSummary({
   samples, rrIntervalsMs = [], deviceName, bio = {}, startedAt, enableDeviceMetrics,
-  persist, userId, source, deviceOverride, hrvMsOverride, hrvMetricOverride, hrvAtOverride,
+  persist, userId, source, deviceOverride, hrvMsOverride, hrvMetricOverride, hrvAtOverride, hrvQuality,
   caloriesSourceOverride, closeLabel, onClose,
 }: Props) {
   const stats = useMemo(() => {
@@ -132,16 +135,18 @@ export default function HeartRateSummary({
     const calculatedHrv = calculateHrvMetrics(rrIntervalsMs);
     const hrvMetric: HrvMetric | null = hrvMetricOverride ?? (calculatedHrv.rmssdMs != null ? 'rmssd' : null);
     const hasHrvOverride = hrvMsOverride !== undefined;
-    const hrvMs = hasHrvOverride
+    const rawHrvMs = hasHrvOverride
       ? hrvMsOverride
       : hrvMetric === 'sdnn' ? calculatedHrv.sdnnMs : calculatedHrv.rmssdMs;
+    const hrvMs = hrvQuality && hrvQuality.status !== 'valid' ? null : rawHrvMs;
 
     return {
       avg, max, min, durationSec, zoneSecs, totalZoneSec, dominant, effort, estCalories, avgPctMax,
-      hrvMs, hrvMetric, hrvAt: hrvAtOverride ?? null,
+      hrvMs, hrvMetric, hrvAt: hrvAtOverride ?? hrvQuality?.at ?? null,
       hrvValidIntervals: calculatedHrv.validIntervals, hrvQuality: calculatedHrv.quality,
+      hrvValidation: hrvQuality ?? null,
     };
-  }, [samples, bio, rrIntervalsMs, hrvMsOverride, hrvMetricOverride, hrvAtOverride]);
+  }, [samples, bio, rrIntervalsMs, hrvMsOverride, hrvMetricOverride, hrvAtOverride, hrvQuality]);
 
   // Métricas REAIS do relógio (calorias/passos) via Health Connect / Apple Health.
   // No histórico (deviceOverride) usamos o valor salvo, sem refazer a leitura.
@@ -194,14 +199,27 @@ export default function HeartRateSummary({
       hrv_sdnn_ms: stats.hrvMetric === 'sdnn' ? stats.hrvMs : null,
       hrv_metric: stats.hrvMetric,
       hrv_at: stats.hrvAt,
+      hrv_validation_status: hrvQuality?.status ?? (stats.hrvMs != null ? 'valid' : 'no_data'),
+      hrv_validation_reason: hrvQuality?.reasons?.join(',') ?? null,
+      hrv_valid_intervals: hrvQuality?.validIntervals ?? stats.hrvValidIntervals,
+      hrv_total_intervals: hrvQuality?.totalIntervals ?? null,
+      hrv_valid_ratio: hrvQuality?.validRatio ?? null,
+      hrv_age_sec: hrvQuality?.ageSec ?? null,
+      hrv_source_kind: hrvQuality?.sourceKind ?? (source === 'ble' ? 'ble' : source === 'health' ? (deviceName === 'Apple Health' ? 'apple_health' : 'health_connect') : null),
+      hrv_source_name: hrvQuality?.sourceName ?? deviceName ?? null,
+      hrv_source_id: hrvQuality?.sourceId ?? null,
+      hrv_platform: hrvQuality?.platform ?? null,
+      hrv_device_id: hrvQuality?.deviceId ?? null,
     }).catch(() => {});
   }, [persist, userId, metricsSettled]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hrvSub = stats.hrvMs != null
-    ? `${hrvMetricLabel(stats.hrvMetric)}${stats.hrvValidIntervals > 0 ? ` · ${stats.hrvValidIntervals} RR` : ''}`
-    : stats.hrvValidIntervals > 0
-      ? 'RR insuficientes'
-      : 'sem RR/HRV disponível';
+  const hrvSub = stats.hrvValidation && stats.hrvValidation.status !== 'valid'
+    ? hrvValidationLabel(stats.hrvValidation.status)
+    : stats.hrvMs != null
+      ? `${hrvMetricLabel(stats.hrvMetric)}${stats.hrvValidIntervals > 0 ? ` · ${stats.hrvValidIntervals} RR` : ''}`
+      : stats.hrvValidIntervals > 0
+        ? 'RR insuficientes'
+        : 'sem RR/HRV disponível';
   const yDomain: [number, number] = [Math.max(30, stats.min - 8), stats.max + 8];
 
   return (
@@ -287,8 +305,12 @@ export default function HeartRateSummary({
         />
       </div>
 
-      {/* HRV só é interpretável quando há RR ou uma amostra nativa do app de saúde. */}
-      {stats.hrvMs == null && (
+      {/* HRV só é interpretável quando há RR ou uma amostra nativa validada. */}
+      {stats.hrvValidation && stats.hrvValidation.status !== 'valid' ? (
+        <p className="text-yellow-300/70 text-[8px] font-black uppercase tracking-widest leading-relaxed">
+          {hrvValidationReason(stats.hrvValidation.status, stats.hrvValidation.reasons)}
+        </p>
+      ) : stats.hrvMs == null && (
         <p className="text-white/30 text-[8px] font-black uppercase tracking-widest leading-relaxed">
           HRV exige intervalos entre batimentos. Se o dispositivo enviar somente BPM, o BoxLink mantém a carga por FC/RPE sem estimar HRV.
         </p>

@@ -6,6 +6,7 @@
 // ============================================================================
 import { supabase } from './supabase';
 import type { HrSample } from '../hooks/useHeartRateSession';
+import type { HrvPlatform, HrvSourceKind, HrvValidationStatus } from './hrvValidation';
 
 export interface StoredHrSession {
   id: string;
@@ -30,6 +31,17 @@ export interface StoredHrSession {
   hrv_sdnn_ms?: number | null;
   hrv_metric?: 'rmssd' | 'sdnn' | null;
   hrv_at?: string | null;
+  hrv_validation_status?: HrvValidationStatus | null;
+  hrv_validation_reason?: string | null;
+  hrv_valid_intervals?: number | null;
+  hrv_total_intervals?: number | null;
+  hrv_valid_ratio?: number | null;
+  hrv_age_sec?: number | null;
+  hrv_source_kind?: HrvSourceKind | null;
+  hrv_source_name?: string | null;
+  hrv_source_id?: string | null;
+  hrv_platform?: HrvPlatform;
+  hrv_device_id?: string | null;
 }
 
 export type NewHrSession = Omit<StoredHrSession, 'id'> & { user_id: string };
@@ -73,10 +85,51 @@ export function assessHrSessionQuality(session: Pick<StoredHrSession, 'duration_
   };
 }
 
+function isSchemaMismatch(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return ['PGRST204', '42703', '42P01'].includes(error.code ?? '')
+    || /column|schema cache|does not exist|could not find/i.test(error.message ?? '');
+}
+
+function withoutValidationMetadata(session: NewHrSession): Omit<NewHrSession,
+  'hrv_validation_status' | 'hrv_validation_reason' | 'hrv_valid_intervals' | 'hrv_total_intervals'
+  | 'hrv_valid_ratio' | 'hrv_age_sec' | 'hrv_source_kind' | 'hrv_source_name' | 'hrv_source_id'
+  | 'hrv_platform' | 'hrv_device_id'
+> {
+  const legacy = { ...session } as Record<string, unknown>;
+  delete legacy.hrv_validation_status;
+  delete legacy.hrv_validation_reason;
+  delete legacy.hrv_valid_intervals;
+  delete legacy.hrv_total_intervals;
+  delete legacy.hrv_valid_ratio;
+  delete legacy.hrv_age_sec;
+  delete legacy.hrv_source_kind;
+  delete legacy.hrv_source_name;
+  delete legacy.hrv_source_id;
+  delete legacy.hrv_platform;
+  delete legacy.hrv_device_id;
+  return legacy as Omit<NewHrSession,
+    'hrv_validation_status' | 'hrv_validation_reason' | 'hrv_valid_intervals' | 'hrv_total_intervals'
+    | 'hrv_valid_ratio' | 'hrv_age_sec' | 'hrv_source_kind' | 'hrv_source_name' | 'hrv_source_id'
+    | 'hrv_platform' | 'hrv_device_id'
+  >;
+}
+
 export async function saveHeartRateSession(session: NewHrSession): Promise<void> {
   try {
     const { error } = await supabase.from('heart_rate_sessions').insert(session);
-    if (error) console.warn('[HR sessions] insert falhou:', error.message);
+    if (!error) return;
+    if (isSchemaMismatch(error)) {
+      const legacy = withoutValidationMetadata(session);
+      const retry = await supabase.from('heart_rate_sessions').insert(legacy);
+      if (!retry.error) {
+        console.info('[HR sessions] Sessão salva sem metadados novos; aplique a migração de validação de HRV.');
+        return;
+      }
+      console.warn('[HR sessions] insert legado falhou:', retry.error.message);
+      return;
+    }
+    console.warn('[HR sessions] insert falhou:', error.message);
   } catch (e) {
     console.warn('[HR sessions] insert erro:', e);
   }

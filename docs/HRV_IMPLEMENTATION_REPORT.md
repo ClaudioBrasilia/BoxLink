@@ -48,15 +48,25 @@ No Android, revisar a declaração de dados de saúde no Play Console, pois o ap
 
 ## Validação executada
 
-A suíte existente e os novos testes passaram: **15 arquivos de teste, 162 testes aprovados**. Também passaram `npx tsc --noEmit`, `npm run build` e `git diff --check`. O build exibiu apenas o aviso já conhecido de chunk JavaScript acima de 500 kB; não houve erro de compilação.
+A suíte existente e os novos testes passaram: **16 arquivos de teste, 175 testes aprovados**. Também passaram `npx tsc --noEmit`, `npm run build` e `git diff --check`. O build exibiu apenas o aviso já conhecido de chunk JavaScript acima de 500 kB; não houve erro de compilação.
 
-Os novos testes cobrem o formato uint8 e uint16 do BPM, Energy Expended, múltiplos RR, ausência da flag RR, filtragem fisiológica, insuficiência de intervalos, RMSSD/SDNN, separação entre RMSSD e SDNN, baseline individual, agrupamento por fuso horário e lacunas na série histórica.
+Os novos testes cobrem o formato uint8 e uint16 do BPM, Energy Expended, múltiplos RR, ausência da flag RR, contagem de RR inválidos, payload truncado, filtragem fisiológica, insuficiência de intervalos, RMSSD/SDNN, separação entre RMSSD e SDNN, baseline individual, estados nativos por plataforma, frescor, agrupamento por fuso horário e lacunas na série histórica.
 
 ## Gráficos de tendência na tela Insights
 
 A tela `/insights` agora inclui a seção **Tendências de recuperação** com dois gráficos responsivos para os últimos 28 dias. A verificação local confirmou que a rota redireciona corretamente para `/login` quando não há sessão; a conferência visual dos gráficos com dados reais requer uma conta de teste e as variáveis do Supabase configuradas. O gráfico **HRV/VFC** exibe RMSSD ou SDNN em milissegundos e uma linha pontilhada com o baseline individual. O gráfico **Prontidão diária** exibe a evolução categórica entre “Pronto”, “Controle” e “Recuperação”; ele não apresenta um score médico ou uma pontuação clínica. Os tooltips mostram data, métrica, baseline, variação percentual, confiança e os dados de RPE/sono disponíveis naquele dia.
 
 Dias sem medição real permanecem como lacunas. Se o banco ainda não tiver as colunas da migração, a tela faz fallback para a consulta antiga de sessões de FC e continua funcionando; depois da migração, os gráficos passam a usar os campos de HRV automaticamente. O acesso normal é pelo menu **Insights** ou diretamente por `/insights`.
+
+## Fases 1 e 2 — validação de entrada e qualidade por fonte
+
+Foi adicionada a camada `src/lib/hrvValidation.ts`, que normaliza a qualidade de HRV em estados `valid`, `insufficient`, `invalid`, `stale`, `unsupported`, `permission_denied` e `no_data`. O parser BLE agora preserva a presença da flag RR, o total de intervalos observados, a quantidade rejeitada e payloads truncados. O hook BLE acumula esses dados por conexão e mantém o timestamp do último pacote, o identificador e o nome do dispositivo.
+
+O hook nativo agora mantém a distinção entre Apple Health e Health Connect: Apple Health é armazenado como SDNN e Health Connect como RMSSD. A camada nativa diferencia indisponibilidade da plataforma, permissão específica de HRV, falha de leitura, ausência de amostra, valor inválido e amostra antiga, sem interromper a leitura de BPM quando a HRV não estiver disponível.
+
+A persistência recebeu metadados opcionais para status, motivo, quantidade e proporção de RR válidos, idade, plataforma, fonte e dispositivo. Se a migração nova ainda não estiver aplicada, `saveHeartRateSession` repete a gravação removendo somente os campos novos, preservando o fallback para o schema antigo. O baseline e os gráficos de tendência ignoram sessões nativas cujo status persistido não seja `valid`; sessões legadas sem status continuam compatíveis.
+
+A cobertura automatizada passou a **16 arquivos de teste e 175 testes aprovados** após incluir casos de RR inválido, payload truncado, frescor, métrica por plataforma, permissão/suporte e filtragem do baseline. Também passaram `npx tsc --noEmit`, `npm run build` e `git diff --check`.
 
 ## Limitações e próximo passo recomendado
 

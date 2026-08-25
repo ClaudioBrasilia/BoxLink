@@ -18,7 +18,7 @@
 // ⚠️ O plugin nativo é carregado por IMPORT DINÂMICO — nunca é avaliado no
 //    build/execução web puro, evitando quebrar Vercel/Netlify.
 // ============================================================================
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import type { ScanResult } from '@capacitor-community/bluetooth-le';
 import { upsertLiveHeartRate, clearLiveHeartRate } from '../lib/liveHeartRate';
@@ -37,7 +37,8 @@ import {
   isLikelyHRService,
   isLikelyHRCharacteristic,
 } from '../lib/heartRate';
-import { parseStandardHeartRateMeasurement } from '../lib/hrv';
+import { calculateHrvMetrics, parseStandardHeartRateMeasurement } from '../lib/hrv';
+import { validateBleHrvCapture, type HrvQualityReport, type HrvPlatform } from '../lib/hrvValidation';
 
 // ─── Carregador dinâmico do plugin nativo (só executa em plataforma nativa) ──
 type BleClientType = typeof import('@capacitor-community/bluetooth-le').BleClient;
@@ -130,6 +131,8 @@ interface UseBluetoothReturn {
   heartRate: number | null;
   /** Intervalos RR em ms recebidos no canal padrão, acumulados na conexão. */
   rrIntervalsMs: number[];
+  /** Relatório de qualidade da HRV da conexão atual. */
+  hrvQuality: HrvQualityReport;
   scan: (opts?: { showAll?: boolean }) => Promise<void>;
   stopScan: () => Promise<void>;
   connect: (deviceId: string) => Promise<void>;
@@ -237,6 +240,13 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   const [connectedDevice, setConnectedDevice] = useState<DiscoveredDevice | null>(null);
   const [heartRate, setHeartRate] = useState<number | null>(null);
   const [rrIntervalsMs, setRrIntervalsMs] = useState<number[]>([]);
+  const [rrQualityStats, setRrQualityStats] = useState({
+    totalIntervals: 0,
+    invalidIntervals: 0,
+    lastPacketAt: null as number | null,
+    rrAdvertised: false,
+    rrPayloadTruncated: false,
+  });
   const [lastDevice, setLastDevice] = useState<LastDevice | null>(loadLastDevice);
   const [diagnostics, setDiagnostics] = useState<BleDiagnostic[]>([]);
   const diagnosticsRef = useRef<BleDiagnostic[]>([]);
@@ -314,11 +324,42 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     if (rr.length > 0) setRrIntervalsMs((prev) => [...prev, ...rr]);
   }, []);
 
+  const recordBleHrvMeasurement = useCallback((measurement: ReturnType<typeof parseStandardHeartRateMeasurement>) => {
+    setRrQualityStats((prev) => ({
+      totalIntervals: prev.totalIntervals + measurement.rrTotal,
+      invalidIntervals: prev.invalidIntervals + measurement.rrInvalid,
+      lastPacketAt: Date.now(),
+      rrAdvertised: prev.rrAdvertised || measurement.rrPresent,
+      rrPayloadTruncated: prev.rrPayloadTruncated || measurement.rrPayloadTruncated,
+    }));
+  }, []);
+
+  const hrvQuality = useMemo<HrvQualityReport>(() => {
+    const platform = Capacitor.getPlatform();
+    const normalizedPlatform: HrvPlatform = platform === 'ios' || platform === 'android' ? platform : 'web';
+    const metrics = calculateHrvMetrics(rrIntervalsMs);
+    return validateBleHrvCapture({
+      rrIntervalsMs,
+      totalIntervals: rrQualityStats.totalIntervals,
+      invalidIntervals: rrQualityStats.invalidIntervals,
+      rrAdvertised: rrQualityStats.rrAdvertised,
+      rrPayloadTruncated: rrQualityStats.rrPayloadTruncated,
+      lastPacketAt: rrQualityStats.lastPacketAt,
+      sourceName: connectedDevice?.name ?? lastDevice?.name,
+      sourceId: connectedDevice?.id ?? lastDevice?.id,
+      deviceId: connectedDevice?.id ?? lastDevice?.id,
+      platform: normalizedPlatform,
+      metric: 'rmssd',
+      valueMs: metrics.rmssdMs,
+    });
+  }, [connectedDevice, lastDevice, rrIntervalsMs, rrQualityStats]);
+
   const resetToDisconnected = useCallback(() => {
     updateStatus('disconnected');
     setConnectedDevice(null);
     setHeartRate(null);
-    setRrIntervalsMs([]);
+    // RR e seu relatório permanecem disponíveis para o resumo da sessão.
+    // A próxima chamada de connect() inicia um acumulador novo.
     lastBpmRef.current = null;
     lastBpmAtRef.current = null;
     nativeDeviceIdRef.current = null;
@@ -589,7 +630,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           recordDiagnostic('notification_subscribe', `Tentando receber notificações de ${cand.characteristic}.`, 'info', cand.service);
           Ble.startNotifications(deviceId, cand.service, cand.characteristic, (value) => {
             const standardMeasurement = cand.standard ? parseStandardHeartRateMeasurement(value) : null;
-          const bpm = standardMeasurement?.bpm ?? parseCandidateBpm(value, cand);
+            if (standardMeasurement) recordBleHrvMeasurement(standardMeasurement);
+            const bpm = standardMeasurement?.bpm ?? parseCandidateBpm(value, cand);
           const rrIntervalsMs = standardMeasurement?.rrIntervalsMs ?? [];
             // 0x2A37 padrão: qualquer notificação confirma o canal de FC
             // (cinta sem contato com a pele manda 0 bpm até "pegar").
@@ -777,6 +819,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         const listener = (e: any) => {
           const value: DataView = e.target.value;
           const standardMeasurement = cand.standard ? parseStandardHeartRateMeasurement(value) : null;
+          if (standardMeasurement) recordBleHrvMeasurement(standardMeasurement);
           const bpm = standardMeasurement?.bpm ?? parseCandidateBpm(value, cand);
           const rrIntervalsMs = standardMeasurement?.rrIntervalsMs ?? [];
           // Sensor sem contato (flags do 0x2A37): sinal de vida — reseta
@@ -1026,6 +1069,14 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   const connect = useCallback(
     async (deviceId: string) => {
       setError(null);
+      setRrIntervalsMs([]);
+      setRrQualityStats({
+        totalIntervals: 0,
+        invalidIntervals: 0,
+        lastPacketAt: null,
+        rrAdvertised: false,
+        rrPayloadTruncated: false,
+      });
       recordDiagnostic('connect_start', 'Iniciando conexão com o dispositivo selecionado.', 'info', deviceId);
       updateStatus('connecting');
       try {
@@ -1284,5 +1335,6 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     connect,
     disconnect,
     diagnostics,
+    hrvQuality,
   };
 }
