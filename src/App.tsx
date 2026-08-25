@@ -4,19 +4,37 @@ import { AnimatePresence } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
 
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Wod = lazy(() => import('./pages/Wod'));
-const Challenges = lazy(() => import('./pages/Challenges'));
-const Leaderboard = lazy(() => import('./pages/Leaderboard'));
+const Dashboard = import.meta.env.VITE_APP_MODE !== 'individual'
+  ? lazy(() => import('./pages/Dashboard'))
+  : null;
+const Wod = import.meta.env.VITE_APP_MODE !== 'individual'
+  ? lazy(() => import('./pages/Wod'))
+  : null;
+const Challenges = import.meta.env.VITE_APP_MODE !== 'individual'
+  ? lazy(() => import('./pages/Challenges'))
+  : null;
+const Leaderboard = import.meta.env.VITE_APP_MODE !== 'individual'
+  ? lazy(() => import('./pages/Leaderboard'))
+  : null;
 const Duels = lazy(() => import('./pages/Duels'));
-const MyBox = lazy(() => import('./pages/MyBox'));
+const MyBox = import.meta.env.VITE_APP_MODE !== 'individual'
+  ? lazy(() => import('./pages/MyBox'))
+  : null;
 const Profile = lazy(() => import('./pages/Profile'));
 const Progress = lazy(() => import('./pages/Progress'));
 const AvatarCustomization = lazy(() => import('./pages/AvatarCustomization'));
-const Admin = lazy(() => import('./pages/Admin'));
-const Coach = lazy(() => import('./pages/Coach'));
-const TV = lazy(() => import('./pages/TV'));
-const Clans = lazy(() => import('./pages/Clans'));
+const Admin = import.meta.env.VITE_APP_MODE !== 'individual'
+  ? lazy(() => import('./pages/Admin'))
+  : null;
+const Coach = import.meta.env.VITE_APP_MODE !== 'individual'
+  ? lazy(() => import('./pages/Coach'))
+  : null;
+const TV = import.meta.env.VITE_APP_MODE !== 'individual'
+  ? lazy(() => import('./pages/TV'))
+  : null;
+const Clans = import.meta.env.VITE_APP_MODE !== 'individual'
+  ? lazy(() => import('./pages/Clans'))
+  : null;
 const Login = lazy(() => import('./pages/Login'));
 const Signup = lazy(() => import('./pages/Signup'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
@@ -27,7 +45,9 @@ const Liga = lazy(() => import('./pages/Liga'));
 const Insights = lazy(() => import('./pages/Insights'));
 const Frequencia = lazy(() => import('./pages/Frequencia'));
 const Install = lazy(() => import('./pages/Install'));
-const Feed = lazy(() => import('./pages/Feed'));
+const Feed = import.meta.env.VITE_APP_MODE !== 'individual'
+  ? lazy(() => import('./pages/Feed'))
+  : null;
 const Shop = lazy(() => import('./pages/Shop'));
 import { Shield, Lock, Building2 } from 'lucide-react';
 import { isIndividualApp, isBoxApp } from './lib/appMode';
@@ -103,6 +123,7 @@ const HomeRoute = () => {
   if (isIndividualApp || user?.accountType === 'individual') {
     return <Navigate to="/diario" replace />;
   }
+  if (!Dashboard) return <Navigate to="/diario" replace />;
   return <Dashboard />;
 };
 
@@ -182,7 +203,7 @@ function AppRoutes() {
         <Route path="/reset-password"  element={<ResetPassword />} />
         <Route path="/install"         element={<Install />} />
         {/* TV é telão de academia — não existe no app do individual. */}
-        {isBoxApp && <Route path="/tv" element={<TV />} />}
+        {isBoxApp && TV && <Route path="/tv" element={<TV />} />}
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<HomeRoute />} />
           {/* Comuns aos dois apps */}
@@ -199,7 +220,7 @@ function AppRoutes() {
 
           {/* Só o app do box: no build do individual estas rotas não existem,
               então nem o código delas entra no bundle publicado. */}
-          {isBoxApp && <>
+          {isBoxApp && Wod && Leaderboard && Challenges && MyBox && Clans && Feed && Admin && Coach && <>
             <Route path="wod"         element={<BoxOnlyGuard><VisitorGuard page="wod"><Wod /></VisitorGuard></BoxOnlyGuard>} />
             <Route path="leaderboard" element={<BoxOnlyGuard><VisitorGuard page="leaderboard"><Leaderboard /></VisitorGuard></BoxOnlyGuard>} />
             <Route path="challenges"  element={<BoxOnlyGuard><VisitorGuard page="challenges"><Challenges /></VisitorGuard></BoxOnlyGuard>} />

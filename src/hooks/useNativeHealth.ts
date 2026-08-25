@@ -22,6 +22,7 @@ import {
   type HrvQualityReport,
   type HrvSourceKind,
 } from '../lib/hrvValidation';
+import { APP_NAME } from '../lib/appMode';
 
 // Tipos mínimos do plugin (evita acoplar o build a ele)
 type HealthDataType = 'heartRate' | 'calories' | 'steps' | 'heartRateVariability';
@@ -183,7 +184,7 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
           : false;
         if (!authorized) {
           setError(
-            'Permissão de Frequência Cardíaca negada no Health Connect. Toque em "Abrir configurações" e habilite o acesso do BoxLink.'
+            `Permissão de Frequência Cardíaca negada no Health Connect. Toque em "Abrir configurações" e habilite o acesso do ${APP_NAME}.`
           );
           setHrvQuality(noNativeHrvReport(hrvSourceKind, hrvPlatform, 'permission_denied', 'heart_rate_permission_denied'));
           setStatus('error');
@@ -289,8 +290,8 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
       if (msg.includes('denied') || msg.includes('not authorized') || msg.includes('authoriz')) {
         setError(
           platform === 'ios'
-            ? 'Permissão negada. Vá em Ajustes → Saúde → Acesso a Dados → BoxLink e autorize a Frequência Cardíaca.'
-            : 'Permissão negada. Abra as configurações do Health Connect e habilite o acesso do BoxLink.'
+            ? `Permissão negada. Vá em Ajustes → Saúde → Acesso a Dados → ${APP_NAME} e autorize a Frequência Cardíaca.`
+            : `Permissão negada. Abra as configurações do Health Connect e habilite o acesso do ${APP_NAME}.`
         );
       } else {
         setError(err?.message ?? 'Erro ao acessar dados de saúde.');

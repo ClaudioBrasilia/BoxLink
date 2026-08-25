@@ -306,11 +306,11 @@ export default function Profile() {
       ctx.lineWidth = 2;
       ctx.strokeRect(35, 35, 1010, 1010);
 
-      // BOXLINK label top
+      // Identidade do aplicativo ativo
       ctx.fillStyle = 'rgba(202,253,0,0.6)';
       ctx.font = 'bold 28px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText('BOXLINK', 540, 90);
+      ctx.fillText(APP_NAME.toUpperCase(), 540, 90);
 
       // Achievement icon (emoji)
       ctx.font = '220px serif';
@@ -351,15 +351,15 @@ export default function Profile() {
       // Bottom branding
       ctx.fillStyle = 'rgba(255,255,255,0.2)';
       ctx.font = '24px Arial';
-      ctx.fillText('box-link.vercel.app', 540, 1030);
+      ctx.fillText(window.location.host, 540, 1030);
 
       const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png', 1.0));
       if (!blob) return;
 
       if (navigator.share && navigator.canShare?.({ files: [new File([blob], 'conquista.png')] })) {
         await navigator.share({
-          title: `${achievement.name} — BoxLink`,
-          text: `Desbloqueei a conquista "${achievement.name}" no BoxLink! 💪`,
+          title: `${achievement.name} — ${APP_NAME}`,
+          text: `Desbloqueei a conquista "${achievement.name}" no ${APP_NAME}! 💪`,
           files: [new File([blob], 'conquista.png', { type: 'image/png' })],
         });
       } else {

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Download, Share, Smartphone, Monitor, Apple, Chrome, CheckCircle, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { APP_NAME } from '../lib/appMode';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -57,7 +58,7 @@ export default function Install() {
         <div className="text-center">
           <div className="text-6xl mb-4">📲</div>
           <h1 className="text-4xl font-headline font-black text-on-surface uppercase italic tracking-tight">
-            INSTALAR <span className="text-primary">BOXLINK</span>
+            INSTALAR <span className="text-primary">{APP_NAME.toUpperCase()}</span>
           </h1>
           <p className="text-on-surface-variant text-sm font-bold uppercase tracking-widest mt-2">
             Tenha o app na tela inicial do seu celular
@@ -85,7 +86,7 @@ export default function Install() {
             <CheckCircle className="w-16 h-16 text-primary" />
             <h2 className="text-2xl font-headline font-black text-on-surface uppercase italic">App Instalado!</h2>
             <p className="text-on-surface-variant text-sm font-bold uppercase tracking-widest">
-              Abra o BoxLink pela tela inicial do seu dispositivo.
+              Abra o {APP_NAME} pela tela inicial do seu dispositivo.
             </p>
           </div>
         ) : (

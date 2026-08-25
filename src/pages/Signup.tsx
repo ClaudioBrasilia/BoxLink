@@ -133,13 +133,13 @@ export default function Signup() {
             disabled={loading}
             className="w-full bg-secondary text-background py-5 rounded-2xl font-headline font-black text-lg shadow-[0_10px_30px_rgba(255,116,57,0.2)] hover:scale-[0.98] active:scale-95 transition-all uppercase italic tracking-tight flex items-center justify-center gap-2 mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'SOLICITANDO...' : 'SOLICITAR ACESSO'} <ChevronRight className="w-5 h-5" />
+            {loading ? (isIndividualApp ? 'CRIANDO...' : 'SOLICITANDO...') : (isIndividualApp ? 'CRIAR CONTA' : 'SOLICITAR ACESSO')} <ChevronRight className="w-5 h-5" />
           </button>
         </form>
 
         <div className="text-center">
           <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest">
-            Já é um atleta? <Link to="/login" className="text-secondary hover:underline">Fazer Login</Link>
+            {isIndividualApp ? 'Já tem uma conta?' : 'Já é um atleta?'} <Link to="/login" className="text-secondary hover:underline">Fazer Login</Link>
           </p>
         </div>
       </motion.div>

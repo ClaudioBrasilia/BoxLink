@@ -32,6 +32,7 @@ import { computeDuelScore, DuelScoreOutcome } from '../lib/duelScore';
 import DuelRecapCard from '../components/DuelRecapCard';
 import ShareDuelButton from '../components/ShareDuelButton';
 import PremiumCTA from '../components/PremiumCTA';
+import { APP_NAME } from '../lib/appMode';
 import {
   WodPaceMeta,
   parseTimeToSeconds,
@@ -478,8 +479,8 @@ export default function Duels() {
 
   const handleShareMyCode = () => {
     if (!user?.friendCode) return;
-    const text = `⚔️ Me desafie para um duelo no BoxLink! Meu código de atleta: ${user.friendCode} — ${window.location.origin}`;
-    if (navigator.share) navigator.share({ title: 'BoxLink — Duelo', text }).catch(() => {});
+    const text = `⚔️ Me desafie para um duelo no ${APP_NAME}! Meu código de atleta: ${user.friendCode} — ${window.location.origin}`;
+    if (navigator.share) navigator.share({ title: `${APP_NAME} — Duelo`, text }).catch(() => {});
     else handleCopyMyCode();
   };
 

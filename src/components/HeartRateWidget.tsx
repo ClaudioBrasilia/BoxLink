@@ -21,6 +21,7 @@ import { useUserBiometrics } from '../hooks/useUserBiometrics';
 import HeartRateSummary from './HeartRateSummary';
 import { getHeartRateZone, intensityPct } from '../lib/heartRate';
 import { cn } from '../lib/utils';
+import { APP_NAME } from '../lib/appMode';
 
 const MIN_SUMMARY_SAMPLES = 2;
 
@@ -32,8 +33,8 @@ const DEVICE_TIPS: { name: string; tip: string }[] = [
   { name: 'Polar / Wahoo / cintas',   tip: 'Umedeça os eletrodos antes de vestir. Aparecem como "Polar H10", "TICKR" etc.' },
   { name: 'Garmin (relógio)',         tip: 'Inicie uma atividade → Configurações → Transmitir FC. Depois busque aqui.' },
   { name: 'Samsung Galaxy Watch',     tip: 'Não transmite FC por Bluetooth direto. Para FC em tempo real, instale "Heart for Bluetooth" (grátis) na Play Store do relógio e deixe transmitindo. Alternativa: "Sincronizar com App de Saúde" (Health Connect) — mas a FC chega com atraso.' },
-  { name: 'Samsung Galaxy Fit (pulseira)', tip: 'Conecta direto: inicie um treino NA PULSEIRA (medição contínua de FC) e busque aqui. Se falhar, feche o app Galaxy Wearable — conectada ao celular, ela recusa o BoxLink.' },
-  { name: 'iPhone (navegador)',       tip: 'Safari e Chrome do iPhone não têm Bluetooth. Abra o BoxLink pelo navegador Bluefy (grátis na App Store) para conectar sem o app nativo.' },
+  { name: 'Samsung Galaxy Fit (pulseira)', tip: `Conecta direto: inicie um treino NA PULSEIRA (medição contínua de FC) e busque aqui. Se falhar, feche o app Galaxy Wearable — conectada ao celular, ela recusa o ${APP_NAME}.` },
+  { name: 'iPhone (navegador)',       tip: `Safari e Chrome do iPhone não têm Bluetooth. Abra o ${APP_NAME} pelo navegador Bluefy (grátis na App Store) para conectar sem o app nativo.` },
   { name: 'Apple Watch',              tip: 'Não transmite FC por Bluetooth. Use "Sincronizar com App de Saúde" (Apple Health) ou um app broadcaster (ex.: HeartCast) aberto no Bluefy.' },
   { name: 'Huawei / Xiaomi / genéricos', tip: 'Muitos usam UUID proprietário (0x3802) — já suportado. Se aparecer só como "Watch", confira pelo endereço/RSSI.' },
   { name: 'Mi Band / Amazfit',        tip: 'Não deixe conectado ao app Mi Fitness / Zepp ao mesmo tempo.' },
@@ -146,7 +147,7 @@ function SamsungHint({ platform, onUseHealth }: { platform: string; onUseHealth?
         ) : (
           <li>No iPhone, o Apple Health só funciona se o relógio ou outro app já tiver sincronizado amostras de FC para o HealthKit; o Galaxy Watch não é automaticamente uma fonte de Apple Health.</li>
         )}
-        <li><span className="text-white">Galaxy Fit</span> (pulseira): inicie um treino NA PULSEIRA e feche o app Galaxy Wearable — conectada a ele, ela recusa o BoxLink.</li>
+        <li><span className="text-white">Galaxy Fit</span> (pulseira): inicie um treino NA PULSEIRA e feche o app Galaxy Wearable — conectada a ele, ela recusa o {APP_NAME}.</li>
       </ol>
       {platform === 'android' && onUseHealth && (
         <button onClick={onUseHealth}
@@ -221,7 +222,7 @@ function IOSWebGuide() {
 
   const steps = [
     'Baixe o navegador Bluefy (grátis) na App Store',
-    'Copie o link do BoxLink e abra no Bluefy',
+    `Copie o link do ${APP_NAME} e abra no Bluefy`,
     'Toque em "Buscar Dispositivos" e conecte seu monitor',
   ];
 
@@ -258,7 +259,7 @@ function IOSWebGuide() {
       <button onClick={copyLink}
         className="flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl bg-white/5 border border-white/10 text-white/60 text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all">
         {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-        {copied ? 'Link copiado!' : 'Copiar link do BoxLink'}
+        {copied ? 'Link copiado!' : `Copiar link do ${APP_NAME}`}
       </button>
 
       <p className="text-white/30 text-[9px] leading-relaxed text-center">
