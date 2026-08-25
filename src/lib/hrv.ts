@@ -13,6 +13,11 @@ export type HrvConfidence = 'high' | 'medium' | 'low';
 export interface ParsedHeartRateMeasurement {
   bpm: number | null;
   rrIntervalsMs: number[];
+  rrTotal: number;
+  rrInvalid: number;
+  rrPresent: boolean;
+  energyExpendedPresent: boolean;
+  rrPayloadTruncated: boolean;
 }
 
 export interface HrvMetrics {
@@ -35,6 +40,7 @@ export interface HealthHrvSessionLike {
   hrv_sdnn_ms?: number | null;
   hrv_metric?: HrvMetric | null;
   hrv_at?: string | null;
+  hrv_validation_status?: 'valid' | 'insufficient' | 'invalid' | 'stale' | 'unsupported' | 'permission_denied' | 'no_data' | null;
   ended_at?: string | null;
   started_at?: string | null;
 }
@@ -47,6 +53,7 @@ export interface HealthHrvSessionLike {
 export function hrvRecordsFromHealthSessions(sessions: HealthHrvSessionLike[]): HrvReadinessRecord[] {
   return (Array.isArray(sessions) ? sessions : []).flatMap((session) => {
     if (session.source !== 'health') return [];
+    if (session.hrv_validation_status && session.hrv_validation_status !== 'valid') return [];
     const at = session.hrv_at ?? session.ended_at ?? session.started_at ?? null;
     const metric = session.hrv_metric;
     if (metric === 'sdnn' && Number.isFinite(session.hrv_sdnn_ms) && session.hrv_sdnn_ms! > 0) {
@@ -101,7 +108,17 @@ export function isPlausibleRrIntervalMs(value: number): boolean {
  * Cada RR-Interval é UINT16 little-endian em unidades de 1/1024 segundo.
  */
 export function parseStandardHeartRateMeasurement(value: DataView): ParsedHeartRateMeasurement {
-  if (value.byteLength < 2) return { bpm: null, rrIntervalsMs: [] };
+  if (value.byteLength < 2) {
+    return {
+      bpm: null,
+      rrIntervalsMs: [],
+      rrTotal: 0,
+      rrInvalid: 0,
+      rrPresent: false,
+      energyExpendedPresent: false,
+      rrPayloadTruncated: true,
+    };
+  }
 
   const flags = value.getUint8(0);
   const is16BitBpm = (flags & 0x01) !== 0;
@@ -111,7 +128,17 @@ export function parseStandardHeartRateMeasurement(value: DataView): ParsedHeartR
 
   let bpm: number;
   if (is16BitBpm) {
-    if (value.byteLength < offset + 2) return { bpm: null, rrIntervalsMs: [] };
+    if (value.byteLength < offset + 2) {
+      return {
+        bpm: null,
+        rrIntervalsMs: [],
+        rrTotal: 0,
+        rrInvalid: 0,
+        rrPresent,
+        energyExpendedPresent,
+        rrPayloadTruncated: true,
+      };
+    }
     bpm = value.getUint16(offset, true);
     offset += 2;
   } else {
@@ -123,19 +150,54 @@ export function parseStandardHeartRateMeasurement(value: DataView): ParsedHeartR
   // do RR quando o dispositivo envia um BPM inválido/transitório.
   const parsedBpm = isFiniteNumber(bpm) && bpm >= 30 && bpm <= 250 ? bpm : null;
 
-  if (energyExpendedPresent) offset += 2;
+  if (energyExpendedPresent) {
+    if (value.byteLength < offset + 2) {
+      return {
+        bpm: parsedBpm,
+        rrIntervalsMs: [],
+        rrTotal: 0,
+        rrInvalid: 0,
+        rrPresent,
+        energyExpendedPresent,
+        rrPayloadTruncated: true,
+      };
+    }
+    offset += 2;
+  }
   if (!rrPresent || offset >= value.byteLength) {
-    return { bpm: parsedBpm, rrIntervalsMs: [] };
+    return {
+      bpm: parsedBpm,
+      rrIntervalsMs: [],
+      rrTotal: 0,
+      rrInvalid: 0,
+      rrPresent,
+      energyExpendedPresent,
+      rrPayloadTruncated: false,
+    };
   }
 
   const rrIntervalsMs: number[] = [];
+  let rrTotal = 0;
+  let rrInvalid = 0;
   for (; offset + 1 < value.byteLength; offset += 2) {
     const raw = value.getUint16(offset, true);
     const milliseconds = (raw * 1000) / 1024;
+    rrTotal += 1;
     if (isPlausibleRrIntervalMs(milliseconds)) rrIntervalsMs.push(milliseconds);
+    else rrInvalid += 1;
   }
+  const rrPayloadTruncated = offset < value.byteLength;
+  if (rrPayloadTruncated) rrInvalid += 1;
 
-  return { bpm: parsedBpm, rrIntervalsMs };
+  return {
+    bpm: parsedBpm,
+    rrIntervalsMs,
+    rrTotal,
+    rrInvalid,
+    rrPresent,
+    energyExpendedPresent,
+    rrPayloadTruncated,
+  };
 }
 
 function cleanIntervals(rrIntervalsMs: number[]): number[] {

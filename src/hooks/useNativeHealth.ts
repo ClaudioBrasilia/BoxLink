@@ -16,6 +16,12 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { upsertLiveHeartRate, clearLiveHeartRate } from '../lib/liveHeartRate';
 import { isPlausibleBpm } from '../lib/heartRate';
+import {
+  noNativeHrvReport,
+  validateNativeHrvSample,
+  type HrvQualityReport,
+  type HrvSourceKind,
+} from '../lib/hrvValidation';
 
 // Tipos mínimos do plugin (evita acoplar o build a ele)
 type HealthDataType = 'heartRate' | 'calories' | 'steps' | 'heartRateVariability';
@@ -57,6 +63,7 @@ interface UseNativeHealthReturn {
   hrvMs: number | null;
   hrvMetric: 'rmssd' | 'sdnn' | null;
   hrvAt: string | null;
+  hrvQuality: HrvQualityReport;
   status: NativeHealthStatus;
   errorMessage: string | null;
   isAvailablePlatform: boolean;
@@ -73,12 +80,15 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
   const [bpm, setBpm] = useState<number | null>(null);
   const [hrvMs, setHrvMs] = useState<number | null>(null);
   const [hrvAt, setHrvAt] = useState<string | null>(null);
+  const [hrvQuality, setHrvQuality] = useState<HrvQualityReport | null>(null);
   const [status, setStatus] = useState<NativeHealthStatus>('idle');
   const [errorMessage, setError] = useState<string | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const platform = Capacitor.getPlatform(); // 'ios' | 'android' | 'web'
   const isAvailablePlatform = platform === 'ios' || platform === 'android';
+  const hrvSourceKind: HrvSourceKind = platform === 'ios' ? 'apple_health' : 'health_connect';
+  const hrvPlatform = platform === 'ios' ? 'ios' : 'android';
 
   // Limpa o polling ao desmontar
   useEffect(() => {
@@ -122,9 +132,11 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
     setError(null);
     setHrvMs(null);
     setHrvAt(null);
+    setHrvQuality(noNativeHrvReport(hrvSourceKind, hrvPlatform, 'no_data', 'reading_started'));
 
     if (!isAvailablePlatform) {
       setError('A leitura por app de saúde só está disponível no aplicativo instalado (Android/iOS).');
+      setHrvQuality(noNativeHrvReport(hrvSourceKind, hrvPlatform, 'unsupported', 'platform_unavailable'));
       setStatus('error');
       return;
     }
@@ -140,6 +152,7 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
             ? 'Apple Health não está disponível neste dispositivo.'
             : `Health Connect indisponível${availability?.reason ? `: ${availability.reason}` : ''}. Instale/atualize o app Health Connect.`
         );
+        setHrvQuality(noNativeHrvReport(hrvSourceKind, hrvPlatform, 'unsupported', 'health_unavailable'));
         setStatus('error');
         return;
       }
@@ -163,6 +176,7 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
 
       // No Android conseguimos confirmar a permissão de leitura; no iOS o HealthKit
       // oculta o status por privacidade, então não bloqueamos por ele.
+      let hrvPermissionDenied = false;
       if (platform === 'android') {
         const authorized = Array.isArray(authStatus?.readAuthorized)
           ? authStatus!.readAuthorized.includes('heartRate')
@@ -171,8 +185,17 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
           setError(
             'Permissão de Frequência Cardíaca negada no Health Connect. Toque em "Abrir configurações" e habilite o acesso do BoxLink.'
           );
+          setHrvQuality(noNativeHrvReport(hrvSourceKind, hrvPlatform, 'permission_denied', 'heart_rate_permission_denied'));
           setStatus('error');
           return;
+        }
+        hrvPermissionDenied = Array.isArray(authStatus?.readDenied)
+          ? authStatus!.readDenied.includes('heartRateVariability')
+          : false;
+        if (hrvPermissionDenied) {
+          setHrvQuality(noNativeHrvReport(hrvSourceKind, hrvPlatform, 'permission_denied', 'hrv_permission_denied'));
+        } else if (authStatus && !authStatus.readAuthorized.includes('heartRateVariability')) {
+          setHrvQuality(noNativeHrvReport(hrvSourceKind, hrvPlatform, 'unsupported', 'hrv_not_authorized_or_supported'));
         }
       }
 
@@ -207,22 +230,50 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
 
           // HRV é opcional: alguns dispositivos sincronizam apenas durante a
           // noite e outros não oferecem esse tipo de dado ao sistema de saúde.
-          const hrvResult = await Health.readSamples({
-            dataType: 'heartRateVariability',
-            startDate: hrvStartDate,
-            endDate,
-            limit: 5,
-            ascending: false,
-          }).catch(() => ({ samples: [] as HealthSample[] }));
-          const hrvSamples = hrvResult.samples || [];
-          if (hrvSamples.length > 0) {
-            const latestHrv = hrvSamples.reduce((a, b) =>
-              new Date(b.endDate).getTime() > new Date(a.endDate).getTime() ? b : a
-            );
-            const value = Number(latestHrv.value);
-            if (Number.isFinite(value) && value > 0) {
-              setHrvMs(value);
-              setHrvAt(latestHrv.endDate || latestHrv.startDate || null);
+          if (!hrvPermissionDenied) {
+            let hrvResult: { samples: HealthSample[] };
+            try {
+              hrvResult = await Health.readSamples({
+                dataType: 'heartRateVariability',
+                startDate: hrvStartDate,
+                endDate,
+                limit: 5,
+                ascending: false,
+              });
+            } catch (hrvErr: any) {
+              const message = String(hrvErr?.message || hrvErr || '').toLowerCase();
+              const failedStatus = message.includes('denied') || message.includes('authoriz')
+                ? 'permission_denied'
+                : 'unsupported';
+              setHrvQuality(noNativeHrvReport(hrvSourceKind, hrvPlatform, failedStatus, 'hrv_read_failed'));
+              hrvResult = { samples: [] };
+            }
+            const hrvSamples = hrvResult.samples || [];
+            if (hrvSamples.length === 0) {
+              setHrvQuality((current) => current && current.status !== 'no_data'
+                ? current
+                : noNativeHrvReport(hrvSourceKind, hrvPlatform, 'no_data', 'hrv_sample_not_found'));
+            } else {
+              const latestHrv = hrvSamples.reduce((a, b) =>
+                new Date(b.endDate).getTime() > new Date(a.endDate).getTime() ? b : a
+              );
+              const latestAt = latestHrv.endDate || latestHrv.startDate || null;
+              const validation = validateNativeHrvSample({
+                valueMs: Number(latestHrv.value),
+                metric: platform === 'ios' ? 'sdnn' : 'rmssd',
+                at: latestAt,
+                sourceKind: hrvSourceKind,
+                sourceName: platform === 'ios' ? 'Apple Health' : 'Health Connect',
+                platform: hrvPlatform,
+              });
+              setHrvQuality(validation);
+              if (validation.status === 'valid') {
+                setHrvMs(validation.valueMs);
+                setHrvAt(validation.at);
+              } else {
+                setHrvMs(null);
+                setHrvAt(latestAt);
+              }
             }
           }
         } catch (err) {
@@ -246,13 +297,19 @@ export function useNativeHealth(userId: string | undefined): UseNativeHealthRetu
       }
       setStatus('error');
     }
-  }, [platform, isAvailablePlatform, syncToSupabase]);
+  }, [platform, isAvailablePlatform, syncToSupabase, hrvSourceKind, hrvPlatform]);
 
   return {
     bpm,
     hrvMs,
     hrvMetric: platform === 'ios' ? 'sdnn' : platform === 'android' ? 'rmssd' : null,
     hrvAt,
+    hrvQuality: hrvQuality ?? noNativeHrvReport(
+      hrvSourceKind,
+      hrvPlatform,
+      'no_data',
+      'not_started',
+    ),
     status,
     errorMessage,
     isAvailablePlatform,

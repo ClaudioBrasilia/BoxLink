@@ -11,6 +11,7 @@ import {
   fetchHeartRateSessions, deleteHeartRateSession, type StoredHrSession,
 } from '../lib/heartRateSessions';
 import type { Biometrics } from '../lib/heartRate';
+import { hrvValidationLabel } from '../lib/hrvValidation';
 
 interface Props {
   userId: string | undefined;
@@ -117,7 +118,9 @@ export default function HeartRateHistory({ userId, bio }: Props) {
                       {fmtDate(s.ended_at || s.started_at)}
                       {s.max_bpm ? ` · máx ${s.max_bpm}` : ''}
                       {s.calories ? ` · ${s.calories} kcal` : ''}
-                      {s.hrv_metric ? ` · HRV ${Math.round((s.hrv_metric === 'sdnn' ? s.hrv_sdnn_ms : s.hrv_rmssd_ms) || 0)} ms` : ''}
+                      {s.hrv_validation_status && s.hrv_validation_status !== 'valid'
+                        ? ` · ${hrvValidationLabel(s.hrv_validation_status)}`
+                        : s.hrv_metric ? ` · HRV ${Math.round((s.hrv_metric === 'sdnn' ? s.hrv_sdnn_ms : s.hrv_rmssd_ms) || 0)} ms` : ''}
                     </p>
                   </div>
                   {s.calories ? <Flame className="w-3.5 h-3.5 text-orange-400/70 shrink-0" /> : null}

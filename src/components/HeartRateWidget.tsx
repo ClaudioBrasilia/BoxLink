@@ -304,7 +304,7 @@ function ModeSelector({ onPick, platform }: { onPick: (m: Mode) => void; platfor
 // ─── Modo: Conexão Direta (Bluetooth LE) ─────────────────────────────────────
 function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallback: () => void; canFallback: boolean }) {
   const {
-    status, error, devices, connectedDevice, lastDevice, heartRate, rrIntervalsMs, diagnostics,
+    status, error, devices, connectedDevice, lastDevice, heartRate, rrIntervalsMs, hrvQuality, diagnostics,
     scan, stopScan, connect, disconnect, isSupported, isIOSWeb, isNative,
   } = useBluetooth(userId);
   const [hasScanned, setHasScanned] = useState(false);
@@ -345,7 +345,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
 
   // Resumo de treino ao encerrar
   if (finished && samples.length >= MIN_SUMMARY_SAMPLES) {
-    return <HeartRateSummary samples={samples} rrIntervalsMs={sessionRrIntervalsMs} deviceName={connectedDevice?.name} bio={bio} startedAt={startedAt} persist userId={userId} source="ble" onClose={closeSummary} />;
+    return <HeartRateSummary samples={samples} rrIntervalsMs={sessionRrIntervalsMs} hrvQuality={hrvQuality} deviceName={connectedDevice?.name ?? lastDevice?.name} bio={bio} startedAt={startedAt} persist userId={userId} source="ble" onClose={closeSummary} />;
   }
 
   if (isSessionActive) {
@@ -510,7 +510,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
 
 // ─── Modo: App de Saúde (HealthKit / Health Connect) ─────────────────────────
 function HealthMode({ userId, platform }: { userId?: string; platform: string }) {
-  const { bpm, hrvMs, hrvMetric, hrvAt, status, errorMessage, startReading, stopReading, openSettings, isAvailablePlatform } =
+  const { bpm, hrvMs, hrvMetric, hrvAt, hrvQuality, status, errorMessage, startReading, stopReading, openSettings, isAvailablePlatform } =
     useNativeHealth(userId);
 
   const appName = platform === 'ios' ? 'Apple Health' : 'Health Connect';
@@ -536,7 +536,7 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
   };
 
   if (finished && samples.length >= MIN_SUMMARY_SAMPLES) {
-    return <HeartRateSummary samples={samples} deviceName={appName} bio={bio} startedAt={startedAt} hrvMsOverride={hrvMs} hrvMetricOverride={hrvMetric} hrvAtOverride={hrvAt} enableDeviceMetrics persist userId={userId} source="health" onClose={closeSummary} />;
+    return <HeartRateSummary samples={samples} deviceName={appName} bio={bio} startedAt={startedAt} hrvMsOverride={hrvMs} hrvMetricOverride={hrvMetric} hrvAtOverride={hrvAt} hrvQuality={hrvQuality} enableDeviceMetrics persist userId={userId} source="health" onClose={closeSummary} />;
   }
 
   return (
