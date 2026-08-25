@@ -13,10 +13,20 @@ export interface HrSample {
   bpm: number;
 }
 
+export interface HeartRateSessionData {
+  samples: HrSample[];
+  rrIntervalsMs: number[];
+}
+
 const SAMPLE_INTERVAL_MS = 2000;
 
-export function useHeartRateSession(bpm: number | null, active: boolean) {
+export function useHeartRateSession(
+  bpm: number | null,
+  active: boolean,
+  rrIntervalsMs: number[] = [],
+) {
   const [samples, setSamples] = useState<HrSample[]>([]);
+  const [sessionRrIntervalsMs, setSessionRrIntervalsMs] = useState<number[]>([]);
   const [startedAt, setStartedAt] = useState<number | null>(null); // ms (epoch) do início
   const bpmRef = useRef<number | null>(bpm);
   bpmRef.current = bpm;
@@ -26,6 +36,7 @@ export function useHeartRateSession(bpm: number | null, active: boolean) {
     const start = Date.now();
     setStartedAt(start);
     setSamples([]); // nova sessão
+    setSessionRrIntervalsMs([]); // nova sessão
 
     const id = setInterval(() => {
       const b = bpmRef.current;
@@ -37,10 +48,16 @@ export function useHeartRateSession(bpm: number | null, active: boolean) {
     return () => clearInterval(id);
   }, [active]);
 
+  useEffect(() => {
+    if (!active || rrIntervalsMs.length === 0) return;
+    setSessionRrIntervalsMs(rrIntervalsMs);
+  }, [active, rrIntervalsMs]);
+
   const reset = useCallback(() => {
     setSamples([]);
+    setSessionRrIntervalsMs([]);
     setStartedAt(null);
   }, []);
 
-  return { samples, reset, startedAt };
+  return { samples, rrIntervalsMs: sessionRrIntervalsMs, reset, startedAt };
 }

@@ -59,7 +59,7 @@
 
 	<!-- HEALTHKIT (Apple Watch) -->
 	<key>NSHealthShareUsageDescription</key>
-	<string>O BoxLink lê sua frequência cardíaca do Apple Health para exibir durante o treino em tempo real.</string>
+		<string>O BoxLink lê sua frequência cardíaca e sua HRV do Apple Health para personalizar o resumo e a orientação de treino.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>O BoxLink registra sessões de treino no Apple Health quando você autorizar.</string>
 </dict>

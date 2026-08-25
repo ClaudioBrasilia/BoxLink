@@ -24,6 +24,12 @@ export interface StoredHrSession {
   samples: HrSample[];
   device_name: string | null;
   source: 'ble' | 'health' | null;
+  /** Campos opcionais para compatibilidade com sessões gravadas antes da HRV. */
+  rr_intervals_ms?: number[] | null;
+  hrv_rmssd_ms?: number | null;
+  hrv_sdnn_ms?: number | null;
+  hrv_metric?: 'rmssd' | 'sdnn' | null;
+  hrv_at?: string | null;
 }
 
 export type NewHrSession = Omit<StoredHrSession, 'id'> & { user_id: string };

@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext';
 import { isPremium } from '../lib/plan';
 import { TrainingLog, TrainingFeeling } from '../types';
 import PremiumCTA from '../components/PremiumCTA';
+import ReadinessTrendCharts from '../components/ReadinessTrendCharts';
+import { buildReadinessTrend } from '../lib/readinessTrend';
 
 const FEELINGS: { value: TrainingFeeling; label: string; emoji: string }[] = [
   { value: 'otimo',   label: 'Ótimo',   emoji: '🔥' },
@@ -50,6 +52,13 @@ interface HrSessionRow {
   created_at: string;
   avg_bpm: number | null;
   zone_secs: number[] | null;
+  source?: 'ble' | 'health' | null;
+  rr_intervals_ms?: number[] | null;
+  hrv_rmssd_ms?: number | null;
+  hrv_sdnn_ms?: number | null;
+  hrv_metric?: 'rmssd' | 'sdnn' | null;
+  hrv_at?: string | null;
+  ended_at?: string | null;
 }
 
 export default function Insights() {
@@ -67,13 +76,32 @@ export default function Insights() {
   // pelo resumo ao terminar o "Meu WOD". Independe do tipo de conta.
   useEffect(() => {
     if (!user || !premium) return;
-    supabase
-      .from('heart_rate_sessions')
-      .select('id, started_at, created_at, avg_bpm, zone_secs')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(200)
-      .then(({ data }) => setHrSessions((data as HrSessionRow[]) || []));
+    let cancelled = false;
+    const loadHeartRateSessions = async () => {
+      const modern = await supabase
+        .from('heart_rate_sessions')
+        .select('id, started_at, ended_at, created_at, avg_bpm, zone_secs, source, rr_intervals_ms, hrv_rmssd_ms, hrv_sdnn_ms, hrv_metric, hrv_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (cancelled) return;
+      if (!modern.error) {
+        setHrSessions((modern.data as HrSessionRow[]) || []);
+        return;
+      }
+
+      // Compatibilidade durante a janela entre publicar o frontend e aplicar a
+      // migração HRV no Supabase: Insights antigo continua funcionando.
+      const legacy = await supabase
+        .from('heart_rate_sessions')
+        .select('id, started_at, created_at, avg_bpm, zone_secs')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (!cancelled) setHrSessions((legacy.data as HrSessionRow[]) || []);
+    };
+    loadHeartRateSessions().catch(() => { if (!cancelled) setHrSessions([]); });
+    return () => { cancelled = true; };
   }, [user, premium]);
 
   useEffect(() => {
@@ -239,6 +267,11 @@ export default function Insights() {
     };
   }, [logs]);
 
+  const readinessTrend = useMemo(
+    () => buildReadinessTrend(logs, hrSessions, 28),
+    [logs, hrSessions],
+  );
+
   const hrStats = useMemo(() => {
     const withAvg = hrSessions.filter(s => typeof s.avg_bpm === 'number' && s.avg_bpm! > 0);
     const avgBpm = withAvg.length
@@ -303,7 +336,7 @@ export default function Insights() {
     <div className="min-h-screen bg-background flex items-center justify-center text-primary font-headline font-black text-2xl italic animate-pulse">CARREGANDO...</div>
   );
 
-  const hasData = stats.total > 0 || hrStats.sessions > 0;
+  const hasData = stats.total > 0 || hrStats.sessions > 0 || readinessTrend.hrvPointCount > 0 || readinessTrend.readinessPointCount > 0;
   const maxFeeling = Math.max(1, ...Object.values(stats.feelingCount));
   const todayStr = dateKey(new Date());
 
@@ -444,6 +477,8 @@ export default function Insights() {
               </div>
             </Card>
           )}
+
+          <ReadinessTrendCharts trend={readinessTrend} />
 
           {/* Frequência cardíaca */}
           {hrStats.sessions > 0 && (

@@ -14,6 +14,8 @@ export type ReadinessReasonCode =
   | 'rpe_above_normal'
   | 'cardio_load_above_baseline'
   | 'cardio_load_elevated'
+  | 'hrv_below_baseline'
+  | 'hrv_suppressed'
   | 'no_alerts'
   | 'insufficient_history';
 
@@ -32,6 +34,10 @@ export interface ReadinessInput {
   cardioLoadDeltaPct?: number | null;
   cardioBaselineCount?: number;
   cardioConfidence?: 'high' | 'medium' | 'low';
+  /** Variação percentual da HRV em relação ao baseline da mesma métrica. */
+  hrvDeltaPct?: number | null;
+  hrvBaselineCount?: number;
+  hrvConfidence?: 'high' | 'medium' | 'low';
   rpeSampleCount?: number;
   sleepSampleCount?: number;
   latestDataDate?: string | null;
@@ -49,6 +55,7 @@ export interface ReadinessResult {
     rpe: number;
     sleep: number;
     cardio: number;
+    hrv: number;
   };
 }
 
@@ -81,21 +88,25 @@ export function calculateReadiness(input: ReadinessInput): ReadinessResult {
   const cardioDeltaPct = finite(input.cardioLoadDeltaPct);
   const cardioBaselineCount = Math.max(0, input.cardioBaselineCount ?? 0);
   const cardioHasReliableBaseline = cardioBaselineCount >= 3 && input.cardioConfidence === 'high' && cardioDeltaPct != null;
+  const hrvDeltaPct = finite(input.hrvDeltaPct);
+  const hrvBaselineCount = Math.max(0, input.hrvBaselineCount ?? 0);
+  const hrvHasReliableBaseline = hrvBaselineCount >= 3 && input.hrvConfidence === 'high' && hrvDeltaPct != null;
   const rpeSampleCount = Math.max(0, input.rpeSampleCount ?? (averageRpe != null ? 1 : 0));
   const sleepSampleCount = Math.max(0, input.sleepSampleCount ?? (averageSleep != null ? 1 : 0));
-  const hasEnoughHistory = hasBaseline(averageRpe) || hasBaseline(averageSleep) || consecutiveTired >= 2 || cardioHasReliableBaseline;
+  const hasEnoughHistory = hasBaseline(averageRpe) || hasBaseline(averageSleep) || consecutiveTired >= 2 || cardioHasReliableBaseline || hrvHasReliableBaseline;
   const signalsUsed = [
     input.latestFeeling != null ? 'sensação pós-treino' : null,
     latestRpe != null ? 'RPE' : null,
     latestSleep != null ? 'sono' : null,
     cardioHasReliableBaseline ? 'frequência cardíaca' : null,
+    hrvHasReliableBaseline ? 'HRV individual' : null,
   ].filter((signal): signal is string => signal != null);
   const freshness = dataFreshness(input.latestDataDate);
   const confidence: ReadinessConfidence =
     signalsUsed.length === 0 ? 'low' :
-    (hasEnoughHistory && (rpeSampleCount >= 3 || sleepSampleCount >= 3 || cardioHasReliableBaseline)) ? 'high' :
+    (hasEnoughHistory && (rpeSampleCount >= 3 || sleepSampleCount >= 3 || cardioHasReliableBaseline || hrvHasReliableBaseline)) ? 'high' :
     'medium';
-  const sampleCounts = { rpe: rpeSampleCount, sleep: sleepSampleCount, cardio: cardioBaselineCount };
+  const sampleCounts = { rpe: rpeSampleCount, sleep: sleepSampleCount, cardio: cardioBaselineCount, hrv: hrvBaselineCount };
 
   const critical: ReadinessReasonCode[] = [];
   if (input.latestFeeling === 'dor') critical.push('pain');
@@ -109,6 +120,13 @@ export function calculateReadiness(input: ReadinessInput): ReadinessResult {
   if (consecutiveHighRpe >= 3) critical.push('consecutive_high_rpe');
   if (cardioHasReliableBaseline && cardioDeltaPct >= 30 && latestRpe != null && latestRpe >= 8) {
     critical.push('cardio_load_above_baseline');
+  }
+  if (
+    hrvHasReliableBaseline &&
+    hrvDeltaPct <= -30 &&
+    (input.latestFeeling === 'cansado' || (latestSleep != null && latestSleep < 7) || (latestRpe != null && latestRpe >= 7))
+  ) {
+    critical.push('hrv_below_baseline');
   }
 
   if (critical.length > 0) {
@@ -136,6 +154,7 @@ export function calculateReadiness(input: ReadinessInput): ReadinessResult {
   }
   if (consecutiveTrainingDays >= 6) moderate.push('high_rpe');
   if (cardioHasReliableBaseline && cardioDeltaPct >= 15) moderate.push('cardio_load_elevated');
+  if (hrvHasReliableBaseline && hrvDeltaPct <= -15) moderate.push('hrv_suppressed');
 
   if (moderate.length > 0) {
     return {
@@ -187,6 +206,8 @@ function reasonMessage(reason: ReadinessReasonCode): string {
     case 'rpe_above_normal': return 'O esforço ficou acima do seu padrão recente.';
     case 'cardio_load_above_baseline': return 'A carga cardiovascular ficou pelo menos 30% acima do seu padrão recente.';
     case 'cardio_load_elevated': return 'A carga cardiovascular ficou acima do seu padrão recente.';
+    case 'hrv_below_baseline': return 'A HRV ficou pelo menos 30% abaixo do seu padrão; reduza a intensidade e observe como você se sente.';
+    case 'hrv_suppressed': return 'A HRV ficou abaixo do seu padrão recente; prefira um ritmo controlado e observe como você se sente.';
     case 'no_alerts': return 'Não há sinais relevantes de alerta no seu histórico recente.';
     case 'insufficient_history': return 'Ainda não há histórico suficiente; complete seus feedbacks para personalizar a orientação.';
   }

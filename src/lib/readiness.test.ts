@@ -85,7 +85,43 @@ describe('calculateReadiness', () => {
     expect(result.confidence).toBe('high');
     expect(result.freshness).toBe('today');
     expect(result.signalsUsed).toEqual(['sensação pós-treino', 'RPE', 'sono']);
-    expect(result.sampleCounts).toEqual({ rpe: 5, sleep: 5, cardio: 0 });
+    expect(result.sampleCounts).toEqual({ rpe: 5, sleep: 5, cardio: 0, hrv: 0 });
+  });
+
+  it('reduz para treino controlado quando a HRV cai pelo menos 15% do baseline', () => {
+    const result = calculateReadiness({
+      latestFeeling: 'bem',
+      latestRpe: 5,
+      hrvDeltaPct: -18,
+      hrvBaselineCount: 3,
+      hrvConfidence: 'high',
+    });
+    expect(result.status).toBe('control');
+    expect(result.reasons).toContain('hrv_suppressed');
+    expect(result.signalsUsed).toContain('HRV individual');
+  });
+
+  it('prioriza recuperação quando HRV cai muito e há outro sinal de fadiga', () => {
+    const result = calculateReadiness({
+      latestFeeling: 'cansado',
+      latestRpe: 7,
+      hrvDeltaPct: -35,
+      hrvBaselineCount: 3,
+      hrvConfidence: 'high',
+    });
+    expect(result.status).toBe('recovery');
+    expect(result.reasons).toContain('hrv_below_baseline');
+  });
+
+  it('não reage a HRV sem baseline individual confiável', () => {
+    const result = calculateReadiness({
+      latestFeeling: 'bem',
+      hrvDeltaPct: -50,
+      hrvBaselineCount: 2,
+      hrvConfidence: 'medium',
+    });
+    expect(result.status).toBe('ready');
+    expect(result.reasons).toEqual(['insufficient_history']);
   });
 
   it('retorna confiança inicial quando há dados atuais, mas pouco histórico', () => {

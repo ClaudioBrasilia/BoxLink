@@ -112,7 +112,7 @@ export default function ReadinessCard({ result, suggestion, compact = false, onC
             </p>
             <p className="mt-0.5">
               <span className="text-on-surface">Histórico:</span>{' '}
-              {result.sampleCounts.rpe} RPE · {result.sampleCounts.sleep} registros de sono · {result.sampleCounts.cardio} sessões de FC comparáveis.
+              {result.sampleCounts.rpe} RPE · {result.sampleCounts.sleep} registros de sono · {result.sampleCounts.cardio} sessões de FC comparáveis · {result.sampleCounts.hrv} medições de HRV.
             </p>
           </div>
         </div>

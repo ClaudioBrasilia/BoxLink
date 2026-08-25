@@ -37,6 +37,7 @@ import {
   isLikelyHRService,
   isLikelyHRCharacteristic,
 } from '../lib/heartRate';
+import { parseStandardHeartRateMeasurement } from '../lib/hrv';
 
 // ─── Carregador dinâmico do plugin nativo (só executa em plataforma nativa) ──
 type BleClientType = typeof import('@capacitor-community/bluetooth-le').BleClient;
@@ -127,6 +128,8 @@ interface UseBluetoothReturn {
   connectedDevice: DiscoveredDevice | null;
   lastDevice: LastDevice | null;
   heartRate: number | null;
+  /** Intervalos RR em ms recebidos no canal padrão, acumulados na conexão. */
+  rrIntervalsMs: number[];
   scan: (opts?: { showAll?: boolean }) => Promise<void>;
   stopScan: () => Promise<void>;
   connect: (deviceId: string) => Promise<void>;
@@ -233,6 +236,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
   const [connectedDevice, setConnectedDevice] = useState<DiscoveredDevice | null>(null);
   const [heartRate, setHeartRate] = useState<number | null>(null);
+  const [rrIntervalsMs, setRrIntervalsMs] = useState<number[]>([]);
   const [lastDevice, setLastDevice] = useState<LastDevice | null>(loadLastDevice);
   const [diagnostics, setDiagnostics] = useState<BleDiagnostic[]>([]);
   const diagnosticsRef = useRef<BleDiagnostic[]>([]);
@@ -303,16 +307,18 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     };
   }, [userId, status, connectedDevice]);
 
-  const pushHeartRate = useCallback((bpm: number) => {
+  const pushHeartRate = useCallback((bpm: number, rr: number[] = []) => {
     lastBpmRef.current = bpm;
     lastBpmAtRef.current = Date.now();
     setHeartRate(bpm);
+    if (rr.length > 0) setRrIntervalsMs((prev) => [...prev, ...rr]);
   }, []);
 
   const resetToDisconnected = useCallback(() => {
     updateStatus('disconnected');
     setConnectedDevice(null);
     setHeartRate(null);
+    setRrIntervalsMs([]);
     lastBpmRef.current = null;
     lastBpmAtRef.current = null;
     nativeDeviceIdRef.current = null;
@@ -582,7 +588,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           }, waitMs);
           recordDiagnostic('notification_subscribe', `Tentando receber notificações de ${cand.characteristic}.`, 'info', cand.service);
           Ble.startNotifications(deviceId, cand.service, cand.characteristic, (value) => {
-            const bpm = parseCandidateBpm(value, cand);
+            const standardMeasurement = cand.standard ? parseStandardHeartRateMeasurement(value) : null;
+          const bpm = standardMeasurement?.bpm ?? parseCandidateBpm(value, cand);
+          const rrIntervalsMs = standardMeasurement?.rrIntervalsMs ?? [];
             // 0x2A37 padrão: qualquer notificação confirma o canal de FC
             // (cinta sem contato com a pele manda 0 bpm até "pegar").
             // Sensor sem contato (flags do 0x2A37): sinal de vida — reseta
@@ -600,7 +608,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
                 );
               }
             } else if (bpm !== null) {
-              pushHeartRate(bpm);
+              pushHeartRate(bpm, rrIntervalsMs);
               recordDiagnostic('heart_rate_received', `Leitura válida recebida: ${bpm} BPM.`, 'success', `${cand.service}/${cand.characteristic}`);
             }
             if (bpm !== null || cand.standard) finish(true);
@@ -768,7 +776,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         let noContactLogged = false;
         const listener = (e: any) => {
           const value: DataView = e.target.value;
-          const bpm = parseCandidateBpm(value, cand);
+          const standardMeasurement = cand.standard ? parseStandardHeartRateMeasurement(value) : null;
+          const bpm = standardMeasurement?.bpm ?? parseCandidateBpm(value, cand);
+          const rrIntervalsMs = standardMeasurement?.rrIntervalsMs ?? [];
           // Sensor sem contato (flags do 0x2A37): sinal de vida — reseta
           // watchdog sem exibir/latchar um BPM falso.
           if (cand.standard && hasNoSensorContact(value)) {
@@ -784,7 +794,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
               );
             }
           } else if (bpm !== null) {
-            pushHeartRate(bpm);
+            pushHeartRate(bpm, rrIntervalsMs);
             recordDiagnostic('heart_rate_received', `Leitura válida recebida: ${bpm} BPM.`, 'success', `${cand.service}/${cand.characteristic}`);
           }
         };
@@ -802,7 +812,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           const probeListener = (e: any) => {
             listener(e);
             const value: DataView = e.target.value;
-            const bpm = parseCandidateBpm(value, cand);
+            const standardMeasurement = cand.standard ? parseStandardHeartRateMeasurement(value) : null;
+          const bpm = standardMeasurement?.bpm ?? parseCandidateBpm(value, cand);
+          const rrIntervalsMs = standardMeasurement?.rrIntervalsMs ?? [];
             if (bpm !== null || cand.standard) finish(true);
           };
           // Timeout = assinatura aceita, mas NENHUM pacote chegou. Diferente de
@@ -1266,6 +1278,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     connectedDevice,
     lastDevice,
     heartRate,
+    rrIntervalsMs,
     scan,
     stopScan,
     connect,

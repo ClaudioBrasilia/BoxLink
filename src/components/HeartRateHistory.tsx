@@ -62,14 +62,18 @@ export default function HeartRateHistory({ userId, bio }: Props) {
           className="flex items-center gap-1 text-on-surface-variant/70 text-[10px] font-black uppercase tracking-widest hover:text-primary transition-colors w-fit">
           <ArrowLeft className="w-3.5 h-3.5" /> Voltar ao histórico
         </button>
-        <HeartRateSummary
+          <HeartRateSummary
           samples={selected.samples || []}
+          rrIntervalsMs={selected.rr_intervals_ms || []}
           deviceName={selected.device_name}
           bio={bio}
           deviceOverride={{
             calories: selected.calories ?? undefined,
             steps: selected.steps ?? undefined,
           }}
+          hrvMsOverride={selected.hrv_metric === 'sdnn' ? selected.hrv_sdnn_ms : selected.hrv_metric === 'rmssd' ? selected.hrv_rmssd_ms : undefined}
+          hrvMetricOverride={selected.hrv_metric ?? undefined}
+          hrvAtOverride={selected.hrv_at ?? undefined}
           caloriesSourceOverride={selected.calories_source ?? null}
           closeLabel="Voltar ao histórico"
           onClose={() => setSelected(null)}
@@ -113,6 +117,7 @@ export default function HeartRateHistory({ userId, bio }: Props) {
                       {fmtDate(s.ended_at || s.started_at)}
                       {s.max_bpm ? ` · máx ${s.max_bpm}` : ''}
                       {s.calories ? ` · ${s.calories} kcal` : ''}
+                      {s.hrv_metric ? ` · HRV ${Math.round((s.hrv_metric === 'sdnn' ? s.hrv_sdnn_ms : s.hrv_rmssd_ms) || 0)} ms` : ''}
                     </p>
                   </div>
                   {s.calories ? <Flame className="w-3.5 h-3.5 text-orange-400/70 shrink-0" /> : null}
