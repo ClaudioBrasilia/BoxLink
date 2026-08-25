@@ -4,15 +4,9 @@ import App from './App.tsx';
 import { AuthProvider } from './context/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './index.css';
+import { initObservability } from './lib/observability';
 
-window.addEventListener('unhandledrejection', (event) => {
-  console.error('[UnhandledRejection]', event.reason);
-  event.preventDefault();
-});
-
-window.addEventListener('error', (event) => {
-  console.error('[GlobalError]', event.error);
-});
+initObservability();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
