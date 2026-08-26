@@ -62,9 +62,29 @@ public final class HrBleForegroundService extends Service {
 
     private static final String CHANNEL_ID = "heart_rate_session";
     private static final int NOTIFICATION_ID = 4101;
-    private static final long[] RECONNECT_DELAYS_MS = {1000L, 2000L, 4000L};
+    private static final long[] RECONNECT_DELAYS_MS = {1000L, 2000L, 4000L, 8000L, 15000L};
     private static final long STALE_TIMEOUT_MS = 10000L;
     private static final long STALE_CHECK_MS = 2000L;
+    // Timeout do connectGatt. Sem ele, uma tentativa que nunca recebe callback
+    // (relógio fora de alcance, ou autoConnect esperando o próximo anúncio)
+    // deixa o serviço parado em "reconectando" para sempre.
+    private static final long DIRECT_CONNECT_TIMEOUT_MS = 12000L;
+    private static final long AUTO_CONNECT_TIMEOUT_MS = 25000L;
+    // O Android falha a descoberta de serviços com frequência quando ela é
+    // disparada no mesmo instante do callback de conexão — sintoma clássico em
+    // aparelhos Samsung e em relógios Wear OS.
+    private static final long DISCOVERY_DELAY_MS = 600L;
+    // Nunca chegou a assinar o canal de FC nesta sessão: insistir para sempre só
+    // mantém o usuário olhando um spinner. Falha determinística vira mensagem.
+    private static final int MAX_COLD_ATTEMPTS = 5;
+    // Já recebeu FC: a queda é de sinal e vale insistir bem mais antes de parar.
+    private static final int MAX_WARM_ATTEMPTS = 20;
+    // A partir da 3ª tentativa usamos autoConnect: o próprio stack do Android
+    // passa a esperar o dispositivo reaparecer, contornando o status 133 crônico
+    // de relógios que anunciam de forma intermitente (Galaxy Watch).
+    private static final int AUTO_CONNECT_FROM_ATTEMPT = 2;
+    // Janela para o usuário confirmar o pareamento antes de reabrir o GATT.
+    private static final long BOND_WAIT_MS = 12000L;
 
     private static final UUID HR_SERVICE = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb");
     private static final UUID HR_MEASUREMENT = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb");
@@ -113,10 +133,19 @@ public final class HrBleForegroundService extends Service {
     private String deviceName;
     private boolean stopping;
     private boolean subscribed;
+    /** Já assinou o canal de FC ao menos uma vez nesta sessão (queda ≠ falha inicial). */
+    private boolean everSubscribed;
+    /** Evita repetir o diagnóstico de "primeira leitura" a cada notificação. */
+    private boolean firstSampleLogged;
+    /** Pareamento já solicitado nesta sessão — não insiste a cada tentativa. */
+    private boolean bondRequested;
+    /** Quantas vezes o discovery terminou sem canal de FC (cache velho vs. real). */
+    private int missingChannelCount;
     private int reconnectAttempt;
     private long lastSampleAtMs;
     private Runnable reconnectRunnable;
     private Runnable staleRunnable;
+    private Runnable connectTimeoutRunnable;
 
     private static Set<UUID> unmodifiableUuidSet(String... values) {
         Set<UUID> result = new HashSet<>();
@@ -175,6 +204,10 @@ public final class HrBleForegroundService extends Service {
         stopping = false;
         reconnectAttempt = 0;
         subscribed = false;
+        firstSampleLogged = false;
+        bondRequested = false;
+        missingChannelCount = 0;
+        if (!sameSession) everSubscribed = false;
 
         if (!sameSession) {
             closeGatt();
@@ -243,17 +276,18 @@ public final class HrBleForegroundService extends Service {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-            emitError("bluetooth_permission", "Permissão de dispositivos por perto não foi concedida.");
-            emitStatus("error", "bluetooth_permission");
+            String message = "Permissão de \u201cDispositivos por perto\u201d não concedida. "
+                + "Autorize-a em Configurações → Apps → Permissões e conecte novamente.";
+            emitError("bluetooth_permission", message);
+            emitStatus("error", message);
             return;
         }
 
         BluetoothManager manager = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
         BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
         if (adapter == null || !adapter.isEnabled()) {
-            emitError("bluetooth_off", "O Bluetooth está desligado.");
-            emitStatus("error", "bluetooth_off");
-            scheduleReconnect();
+            emitError("bluetooth_off", "O Bluetooth está desligado. Ative-o para retomar a leitura de FC.");
+            scheduleReconnect("bluetooth_off");
             return;
         }
 
@@ -261,18 +295,35 @@ public final class HrBleForegroundService extends Service {
             BluetoothDevice device = adapter.getRemoteDevice(deviceId);
             closeGatt();
             subscribed = false;
+            firstSampleLogged = false;
             emitStatus(reconnectAttempt == 0 ? "connecting" : "reconnecting", null);
+
+            // autoConnect só a partir da 3ª tentativa: direto é mais rápido
+            // quando o relógio está anunciando; autoConnect é o que resolve o
+            // caso em que ele anuncia de forma intermitente (status 133 em loop).
+            boolean autoConnect = reconnectAttempt >= AUTO_CONNECT_FROM_ATTEMPT;
+            emitDiagnostic(
+                "gatt_connecting",
+                autoConnect
+                    ? "Aguardando o dispositivo anunciar para conectar (tentativa " + (reconnectAttempt + 1) + ")."
+                    : "Abrindo conexão GATT com " + safeDeviceName() + " (tentativa " + (reconnectAttempt + 1) + ").",
+                "info"
+            );
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                gatt = device.connectGatt(this, false, callback, BluetoothDevice.TRANSPORT_LE);
+                gatt = device.connectGatt(this, autoConnect, callback, BluetoothDevice.TRANSPORT_LE);
             } else {
-                gatt = device.connectGatt(this, false, callback);
+                gatt = device.connectGatt(this, autoConnect, callback);
             }
+            scheduleConnectTimeout(autoConnect);
         } catch (IllegalArgumentException error) {
-            emitError("invalid_device", "Identificador BLE inválido para este Android.");
-            emitStatus("error", "invalid_device");
+            String message = "Identificador BLE inválido para este Android. Refaça a busca por dispositivos.";
+            emitError("invalid_device", message);
+            emitStatus("error", message);
         } catch (SecurityException error) {
-            emitError("bluetooth_permission", "O Android recusou o acesso ao dispositivo Bluetooth.");
-            emitStatus("error", "bluetooth_permission");
+            String message = "O Android recusou o acesso ao dispositivo Bluetooth. "
+                + "Verifique a permissão de \u201cDispositivos por perto\u201d do app.";
+            emitError("bluetooth_permission", message);
+            emitStatus("error", message);
         }
     }
 
@@ -281,35 +332,76 @@ public final class HrBleForegroundService extends Service {
         public void onConnectionStateChange(BluetoothGatt bluetoothGatt, int status, int newState) {
             if (bluetoothGatt != gatt || stopping) return;
             if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
-                reconnectAttempt = 0;
+                cancelConnectTimeout();
+                // reconnectAttempt NÃO é zerado aqui: um relógio que conecta e
+                // cai em seguida (padrão comum no Galaxy Watch) manteria o loop
+                // infinito. O contador só zera quando a assinatura dá certo.
+                emitDiagnostic("gatt_connected", "Conectado ao GATT de " + safeDeviceName() + ".", "success");
                 emitStatus("discovering", null);
-                boolean started = bluetoothGatt.discoverServices();
-                if (!started) scheduleReconnect();
+                handler.postDelayed(() -> {
+                    if (stopping || bluetoothGatt != gatt) return;
+                    if (!bluetoothGatt.discoverServices()) {
+                        emitDiagnostic("service_discovery", "O Android recusou a descoberta de serviços do monitor.", "error");
+                        scheduleReconnect("service_discovery");
+                    }
+                }, DISCOVERY_DELAY_MS);
                 return;
             }
             subscribed = false;
             activeCharacteristic = null;
-            if (!stopping) {
-                emitStatus("reconnecting", "gatt_disconnected");
-                scheduleReconnect();
-            }
+            if (stopping) return;
+            cancelConnectTimeout();
+            // Fecha já: cada BluetoothGatt aberto consome um "client interface"
+            // do Android (limite baixo). Vazá-los faz TODA tentativa seguinte
+            // falhar com status 133, mesmo com o relógio ao alcance.
+            closeGatt();
+            emitDiagnostic(
+                "gatt_disconnected",
+                "A conexão BLE caiu " + gattStatusLabel(status) + ".",
+                status == BluetoothGatt.GATT_SUCCESS ? "info" : "warning"
+            );
+            scheduleReconnect("gatt_disconnected");
         }
 
         @Override
         public void onServicesDiscovered(BluetoothGatt bluetoothGatt, int status) {
             if (bluetoothGatt != gatt || stopping) return;
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                emitError("service_discovery", "Não foi possível descobrir os serviços do monitor.");
-                scheduleReconnect();
+                emitDiagnostic("service_discovery", "Não foi possível descobrir os serviços do monitor " + gattStatusLabel(status) + ".", "error");
+                scheduleReconnect("service_discovery");
                 return;
             }
-            BluetoothGattCharacteristic characteristic = chooseCharacteristic(bluetoothGatt.getServices());
+            List<BluetoothGattService> services = bluetoothGatt.getServices();
+            emitDiagnostic(
+                "services_discovered",
+                services.size() + " serviço(s) BLE descoberto(s).",
+                "info",
+                describeServices(services)
+            );
+            BluetoothGattCharacteristic characteristic = chooseCharacteristic(services);
             if (characteristic == null) {
-                emitError("hr_characteristic_missing", "Nenhum canal notificável de frequência cardíaca foi encontrado.");
-                scheduleReconnect();
+                missingChannelCount++;
+                if (missingChannelCount < 2) {
+                    // O Android às vezes entrega um cache antigo de serviços na
+                    // primeira descoberta. Uma reconexão limpa refaz a leitura.
+                    emitDiagnostic(
+                        "hr_characteristic_missing",
+                        "Nenhum canal de FC nos serviços lidos — refazendo a descoberta.",
+                        "warning",
+                        describeServices(services)
+                    );
+                    scheduleReconnect("hr_characteristic_missing");
+                    return;
+                }
+                // Determinístico: o link está de pé e os serviços foram lidos
+                // duas vezes — o relógio não expõe FC por BLE. Reconectar em
+                // loop nunca muda esse resultado; vira mensagem acionável.
+                failTerminal("hr_characteristic_missing", noHeartRateAdvice(), describeServices(services));
                 return;
             }
+            missingChannelCount = 0;
             activeCharacteristic = characteristic;
+            emitDiagnostic("notification_subscribe", "Assinando o canal " + characteristic.getUuid() + ".", "info");
             enableNotifications(bluetoothGatt, characteristic);
         }
 
@@ -318,14 +410,18 @@ public final class HrBleForegroundService extends Service {
             if (bluetoothGatt != gatt || activeCharacteristic == null || descriptor == null) return;
             if (!CCCD.equals(descriptor.getUuid())) return;
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                subscribed = true;
-                lastSampleAtMs = System.currentTimeMillis();
-                emitStatus("connected", null);
-                scheduleStaleCheck();
-            } else {
-                emitError("notification_descriptor", "O monitor recusou a ativação das notificações BLE.");
-                scheduleReconnect();
+                markSubscribed();
+                return;
             }
+            // 5/15/137 = a característica exige vínculo criptografado. Relógios
+            // Samsung costumam devolver isso quando o app não está pareado com
+            // eles — pedir o bond é o que destrava, não repetir a conexão.
+            if ((status == 5 || status == 15 || status == 137) && requestBondIfPossible()) {
+                scheduleReconnect("bonding_required");
+                return;
+            }
+            emitDiagnostic("notification_descriptor", "O monitor recusou a ativação das notificações BLE " + gattStatusLabel(status) + ".", "error");
+            scheduleReconnect("notification_descriptor");
         }
 
         @Override
@@ -377,17 +473,15 @@ public final class HrBleForegroundService extends Service {
     private void enableNotifications(BluetoothGatt bluetoothGatt, BluetoothGattCharacteristic characteristic) {
         boolean enabled = bluetoothGatt.setCharacteristicNotification(characteristic, true);
         if (!enabled) {
-            emitError("notification_enable", "Não foi possível assinar o canal de frequência cardíaca.");
-            scheduleReconnect();
+            emitDiagnostic("notification_enable", "Não foi possível assinar o canal de frequência cardíaca.", "error");
+            scheduleReconnect("notification_enable");
             return;
         }
 
         BluetoothGattDescriptor descriptor = characteristic.getDescriptor(CCCD);
         if (descriptor == null) {
             // Alguns dispositivos notificam sem expor o CCCD no discovery.
-            subscribed = true;
-            emitStatus("connected", null);
-            scheduleStaleCheck();
+            markSubscribed();
             return;
         }
 
@@ -411,6 +505,10 @@ public final class HrBleForegroundService extends Service {
 
         long capturedAt = System.currentTimeMillis();
         lastSampleAtMs = capturedAt;
+        if (!firstSampleLogged) {
+            firstSampleLogged = true;
+            emitDiagnostic("heart_rate_received", "Leitura válida recebida: " + measurement.bpm + " BPM.", "success");
+        }
         try {
             store.addSample(
                 sessionId,
@@ -510,9 +608,9 @@ public final class HrBleForegroundService extends Service {
                 if (stopping || !subscribed) return;
                 if (lastSampleAtMs > 0 && System.currentTimeMillis() - lastSampleAtMs > STALE_TIMEOUT_MS) {
                     subscribed = false;
-                    emitStatus("reconnecting", "heart_rate_stale");
+                    emitDiagnostic("heart_rate_stale", "O canal ficou em silêncio por mais de " + (STALE_TIMEOUT_MS / 1000) + "s — reassinando.", "warning");
                     closeGatt();
-                    scheduleReconnect();
+                    scheduleReconnect("heart_rate_stale");
                     return;
                 }
                 handler.postDelayed(this, STALE_CHECK_MS);
@@ -521,18 +619,180 @@ public final class HrBleForegroundService extends Service {
         handler.postDelayed(staleRunnable, STALE_CHECK_MS);
     }
 
+    private void markSubscribed() {
+        cancelConnectTimeout();
+        subscribed = true;
+        everSubscribed = true;
+        bondRequested = false;
+        // Só aqui o contador zera: uma conexão que não chega a assinar o canal
+        // continua consumindo o orçamento de tentativas.
+        reconnectAttempt = 0;
+        lastSampleAtMs = System.currentTimeMillis();
+        emitDiagnostic("notification_ready", "Canal de FC assinado — aguardando leituras.", "success");
+        emitStatus("connected", null);
+        scheduleStaleCheck();
+    }
+
+    private void scheduleConnectTimeout(boolean autoConnect) {
+        cancelConnectTimeout();
+        long timeout = autoConnect ? AUTO_CONNECT_TIMEOUT_MS : DIRECT_CONNECT_TIMEOUT_MS;
+        connectTimeoutRunnable = () -> {
+            connectTimeoutRunnable = null;
+            if (stopping || subscribed) return;
+            emitDiagnostic(
+                "connect_timeout",
+                "O dispositivo não respondeu em " + (timeout / 1000) + "s.",
+                "warning"
+            );
+            // Sem fechar o GATT pendente, a conexão continua em andamento em
+            // segundo plano e a próxima tentativa encontra o rádio ocupado.
+            closeGatt();
+            scheduleReconnect("connect_timeout");
+        };
+        handler.postDelayed(connectTimeoutRunnable, timeout);
+    }
+
+    private void cancelConnectTimeout() {
+        if (connectTimeoutRunnable != null) handler.removeCallbacks(connectTimeoutRunnable);
+        connectTimeoutRunnable = null;
+    }
+
     private void scheduleReconnect() {
+        scheduleReconnect(null);
+    }
+
+    private void scheduleReconnect(@Nullable String cause) {
         if (stopping || deviceId == null) return;
         if (reconnectRunnable != null) handler.removeCallbacks(reconnectRunnable);
-        int index = Math.min(reconnectAttempt, RECONNECT_DELAYS_MS.length - 1);
-        long delay = RECONNECT_DELAYS_MS[index];
-        reconnectAttempt = Math.min(reconnectAttempt + 1, RECONNECT_DELAYS_MS.length - 1);
-        emitStatus("reconnecting", null);
+        cancelConnectTimeout();
+
+        int maxAttempts = everSubscribed ? MAX_WARM_ATTEMPTS : MAX_COLD_ATTEMPTS;
+        if (reconnectAttempt >= maxAttempts) {
+            failTerminal(
+                everSubscribed ? "reconnect_exhausted" : "connection_failed",
+                everSubscribed ? signalLostAdvice() : linkFailureAdvice(),
+                cause
+            );
+            return;
+        }
+
+        long delay = "bonding_required".equals(cause)
+            ? BOND_WAIT_MS
+            : RECONNECT_DELAYS_MS[Math.min(reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];
+        reconnectAttempt++;
+        emitDiagnostic(
+            "reconnect_scheduled",
+            "Nova tentativa em " + Math.round(delay / 1000.0) + "s (" + reconnectAttempt + "/" + maxAttempts + ").",
+            "info",
+            cause
+        );
+        emitStatus("reconnecting", cause);
         reconnectRunnable = () -> {
             reconnectRunnable = null;
             if (!stopping) connectIfNeeded();
         };
         handler.postDelayed(reconnectRunnable, delay);
+    }
+
+    /**
+     * Encerra a sessão com uma mensagem acionável em vez de reconectar sem fim.
+     * O WebView recebe o texto em `reason` e o exibe (com a dica da marca) na
+     * tela de dispositivos — o que o loop silencioso nunca fazia.
+     */
+    private void failTerminal(String code, String message, @Nullable String detail) {
+        if (stopping) return;
+        if (reconnectRunnable != null) handler.removeCallbacks(reconnectRunnable);
+        reconnectRunnable = null;
+        cancelConnectTimeout();
+        emitDiagnostic(code, message, "error", detail);
+        emitStatus("error", message);
+        closeGatt();
+        // stopForeground/stopSelf a partir da main thread: failTerminal é
+        // chamado de callbacks do GATT, que rodam em thread do binder.
+        handler.post(() -> stopSession(code));
+    }
+
+    /** Pede o pareamento quando o relógio exige vínculo criptografado. */
+    private boolean requestBondIfPossible() {
+        if (bondRequested || gatt == null) return false;
+        BluetoothDevice device = gatt.getDevice();
+        if (device == null || device.getBondState() != BluetoothDevice.BOND_NONE) return false;
+        bondRequested = true;
+        boolean started = device.createBond();
+        emitDiagnostic(
+            "bonding_required",
+            started
+                ? "O dispositivo exige pareamento. Confirme o pedido que aparecer na tela do celular ou do relógio."
+                : "O dispositivo exige pareamento, mas o Android recusou o pedido. Pareie-o em Configurações → Bluetooth.",
+            "warning"
+        );
+        return started;
+    }
+
+    private String safeDeviceName() {
+        return deviceName == null || deviceName.trim().isEmpty() ? "dispositivo" : deviceName;
+    }
+
+    private boolean isSamsungDevice() {
+        return deviceName != null &&
+            deviceName.toLowerCase(Locale.US).matches(".*(galaxy|samsung|gear|sm-r).*");
+    }
+
+    private boolean isGarminDevice() {
+        return deviceName != null &&
+            deviceName.toLowerCase(Locale.US).matches(".*(garmin|forerunner|fenix|f\u00e9nix|venu|vivoactive|vivosmart|instinct|epix|enduro).*");
+    }
+
+    /** Conectou e leu os serviços, mas nenhum canal de FC — orientação por marca. */
+    private String noHeartRateAdvice() {
+        if (isSamsungDevice()) {
+            return "O Galaxy Watch conectou, mas não expõe frequência cardíaca por Bluetooth. "
+                + "Relógios Samsung só transmitem FC por BLE com um app transmissor instalado no relógio; "
+                + "sem ele, sincronize pelo Health Connect / Samsung Health.";
+        }
+        if (isGarminDevice()) {
+            return "Garmin conectado, mas sem FC. No relógio, ative \u201cTransmitir FC\u201d, inicie uma atividade "
+                + "e feche o Garmin Connect antes de tentar novamente.";
+        }
+        return "O dispositivo conectou, mas não expõe um canal de frequência cardíaca por BLE. "
+            + "Ative a transmissão de FC ou inicie um treino nele e tente de novo.";
+    }
+
+    /** Nunca conseguiu subir o link GATT. */
+    private String linkFailureAdvice() {
+        if (isSamsungDevice()) {
+            return "Não foi possível conectar ao " + safeDeviceName() + ". Relógios Samsung recusam novas conexões BLE "
+                + "enquanto estão ocupados: deixe o relógio no pulso e desbloqueado, feche o Galaxy Wearable/Samsung Health, "
+                + "aproxime-o do celular e tente de novo. Se persistir, sincronize pelo Health Connect.";
+        }
+        return "Não foi possível conectar ao " + safeDeviceName() + ". Aproxime o dispositivo, verifique se ele não está "
+            + "conectado a outro app e tente novamente.";
+    }
+
+    /** Estava lendo FC e o sinal caiu de vez. */
+    private String signalLostAdvice() {
+        return "O sinal de " + safeDeviceName() + " foi perdido e não voltou. Aproxime o dispositivo do celular e "
+            + "conecte novamente para seguir com o treino.";
+    }
+
+    private String describeServices(List<BluetoothGattService> services) {
+        StringBuilder builder = new StringBuilder();
+        for (BluetoothGattService service : services) {
+            if (builder.length() > 0) builder.append(", ");
+            builder.append(service.getUuid());
+        }
+        return builder.length() == 0 ? "nenhum serviço exposto" : builder.toString();
+    }
+
+    private String gattStatusLabel(int status) {
+        switch (status) {
+            case BluetoothGatt.GATT_SUCCESS: return "(encerrada normalmente)";
+            case 8: return "(código 8 — o dispositivo saiu de alcance ou desligou o rádio)";
+            case 19: return "(código 19 — o próprio dispositivo encerrou a conexão)";
+            case 22: return "(código 22 — falha de sincronia do link)";
+            case 133: return "(código 133 — o dispositivo não aceitou a conexão; costuma ser rádio ocupado ou anúncio intermitente)";
+            default: return "(código " + status + ")";
+        }
     }
 
     private void closeGatt() {
@@ -549,6 +809,7 @@ public final class HrBleForegroundService extends Service {
         stopping = true;
         if (reconnectRunnable != null) handler.removeCallbacks(reconnectRunnable);
         if (staleRunnable != null) handler.removeCallbacks(staleRunnable);
+        cancelConnectTimeout();
         closeGatt();
         if (sessionId != null && store != null) store.markEnded(sessionId, System.currentTimeMillis());
         emitStatus("disconnected", reason);
@@ -573,7 +834,15 @@ public final class HrBleForegroundService extends Service {
     }
 
     private void emitError(String code, String message) {
-        JSBridgeSample.emitDiagnostic(sessionId, code, message, deviceId, deviceName);
+        emitDiagnostic(code, message, "error");
+    }
+
+    private void emitDiagnostic(String code, String message, String level) {
+        emitDiagnostic(code, message, level, null);
+    }
+
+    private void emitDiagnostic(String code, String message, String level, @Nullable String detail) {
+        JSBridgeSample.emitDiagnostic(sessionId, code, message, level, detail, deviceId, deviceName);
     }
 
     @Override
@@ -589,6 +858,7 @@ public final class HrBleForegroundService extends Service {
             closeGatt();
             if (staleRunnable != null) handler.removeCallbacks(staleRunnable);
             if (reconnectRunnable != null) handler.removeCallbacks(reconnectRunnable);
+            cancelConnectTimeout();
         }
         if (store != null) store.close();
         super.onDestroy();
@@ -659,13 +929,15 @@ public final class HrBleForegroundService extends Service {
             } catch (JSONException ignored) {}
         }
 
-        static void emitDiagnostic(String sessionId, String code, String message, String deviceId, String deviceName) {
+        static void emitDiagnostic(String sessionId, String code, String message, String level,
+                                   @Nullable String detail, String deviceId, String deviceName) {
             try {
                 JSONObject data = new JSONObject();
                 data.put("sessionId", sessionId);
                 data.put("code", code);
                 data.put("message", message);
-                data.put("level", "warning");
+                data.put("level", level);
+                if (detail != null) data.put("detail", detail);
                 data.put("deviceId", deviceId);
                 data.put("deviceName", deviceName);
                 BleForegroundPlugin.emitEvent("diagnostic", data);

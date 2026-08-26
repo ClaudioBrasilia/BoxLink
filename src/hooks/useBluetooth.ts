@@ -502,7 +502,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
 
     const handleDiagnostic = (event: BleForegroundDiagnosticEvent) => {
       if (disposed) return;
-      recordDiagnostic(event.code, event.message, event.level, event.deviceName || undefined);
+      recordDiagnostic(event.code, event.message, event.level, event.detail || event.deviceName || undefined);
     };
 
     const subscriptions = Promise.all([
@@ -1219,6 +1219,27 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
 
   const connectForeground = useCallback(
     async (deviceId: string) => {
+      const Ble = await getBleClient();
+      // Pré-checagem (Bluetooth ligado) ANTES de entregar a sessão ao serviço
+      // nativo: falhar aqui dá um erro imediato em vez de um ciclo de retentativas.
+      await ensureNativeReady(Ble);
+
+      // ⚠️ O scan LE PRECISA parar antes do connectGatt. Um scan ativo (ainda
+      // mais com allowDuplicates) disputa o rádio com a conexão e é a causa
+      // clássica do status 133 no Android — em aparelhos Samsung a conexão
+      // simplesmente cai em loop, sem erro nenhum. Antes desta parada o scan
+      // de 15s continuava rodando por baixo de toda a tentativa de conexão.
+      if (scanTimerRef.current) {
+        clearTimeout(scanTimerRef.current);
+        scanTimerRef.current = null;
+      }
+      try {
+        await Ble.stopLEScan();
+        recordDiagnostic('scan_stopped', 'Busca interrompida para liberar o rádio para a conexão.', 'info');
+      } catch {
+        /* nenhum scan em andamento */
+      }
+
       const device = devices.find((item) => item.id === deviceId);
       const name = device?.name || (lastDevice?.id === deviceId ? lastDevice.name : `Dispositivo ${deviceId.slice(-5)}`);
       const sessionId = makeBleSessionId();
@@ -1227,7 +1248,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       setSessionSamples([]);
       await BleForeground.startSession({ deviceId, deviceName: name, sessionId });
     },
-    [devices, lastDevice]
+    [devices, ensureNativeReady, lastDevice, recordDiagnostic]
   );
 
   // --------------------------------------------------------------------------

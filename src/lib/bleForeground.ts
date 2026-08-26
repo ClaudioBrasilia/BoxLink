@@ -45,6 +45,8 @@ export interface BleForegroundDiagnosticEvent {
   code: string;
   message: string;
   level: 'info' | 'success' | 'warning' | 'error';
+  /** Contexto extra (UUIDs descobertos, causa da reconexão, código GATT). */
+  detail?: string | null;
   deviceId?: string | null;
   deviceName?: string | null;
 }
