@@ -255,7 +255,7 @@ interface ProbeCandidate {
 // ============================================================================
 export function useBluetooth(userId?: string): UseBluetoothReturn {
   const isNative = Capacitor.isNativePlatform();
-  const isAndroidNative = isNative && Capacitor.getPlatform() === 'android';
+  const isForegroundNative = isNative && ['android', 'ios'].includes(Capacitor.getPlatform());
   const isIOSWeb = detectIOSWeb();
   // O Safari/Chrome/Edge do iPhone NÃO expõem navigator.bluetooth (Apple bloqueia
   // no WebKit). Porém navegadores como o Bluefy implementam Web Bluetooth via
@@ -410,10 +410,10 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       .catch((e) => console.warn('[BLE] initialize falhou', e));
   }, [isNative]);
 
-  // Android: o serviço nativo é o dono do GATT. O WebView apenas espelha
+  // Android/iOS: o serviço nativo é o dono do GATT. O WebView apenas espelha
   // eventos e recupera as amostras persistidas quando volta ao foreground.
   useEffect(() => {
-    if (!isAndroidNative) return;
+    if (!isForegroundNative) return;
     let disposed = false;
 
     const hydrate = async () => {
@@ -524,7 +524,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   // Os callbacks pushHeartRate/resetToDisconnected são declarados abaixo; o
   // efeito só executa depois da renderização completa, portanto não entram na
   // lista para evitar acesso à TDZ durante a avaliação das dependências.
-  }, [isAndroidNative, recordDiagnostic, rememberDevice, updateStatus]);
+  }, [isForegroundNative, recordDiagnostic, rememberDevice, updateStatus]);
 
   // --------------------------------------------------------------------------
   // Pré-checagens do ambiente nativo (Bluetooth ligado, Localização no Android)
@@ -1175,9 +1175,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   // travado e re-armamos a inscrição via reconexão (retoma o fluxo de leituras).
   // --------------------------------------------------------------------------
   useEffect(() => {
-    // No Android, o watchdog vive no Foreground Service para continuar ativo
+    // No Android/iOS, o watchdog vive no serviço nativo para continuar ativo
     // quando o WebView é pausado em segundo plano.
-    if (status !== 'connected' || isAndroidNative) return;
+    if (status !== 'connected' || isForegroundNative) return;
     const id = setInterval(() => {
       const at = lastBpmAtRef.current;
       if (at == null) return; // ainda aguardando a 1ª leitura — não é "travado"
@@ -1211,7 +1211,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       void autoReconnect(deviceId);
     }, HR_STALE_CHECK_MS);
     return () => clearInterval(id);
-  }, [status, isAndroidNative, isNative, autoReconnect, updateStatus]);
+  }, [status, isForegroundNative, isNative, autoReconnect, updateStatus]);
 
   const connectForeground = useCallback(
     async (deviceId: string) => {
@@ -1243,7 +1243,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       recordDiagnostic('connect_start', 'Iniciando conexão com o dispositivo selecionado.', 'info', deviceId);
       updateStatus('connecting');
       try {
-        if (isAndroidNative) await connectForeground(deviceId);
+        if (isForegroundNative) await connectForeground(deviceId);
         else if (isNative) await connectNative(deviceId);
         else await connectWeb();
       } catch (err: any) {
@@ -1254,7 +1254,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         updateStatus('error');
       }
     },
-    [isAndroidNative, connectForeground, isNative, connectNative, connectWeb, recordDiagnostic, updateStatus]
+    [isForegroundNative, connectForeground, isNative, connectNative, connectWeb, recordDiagnostic, updateStatus]
   );
 
   // --------------------------------------------------------------------------
@@ -1432,7 +1432,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     sessionGenRef.current++;
 
     try {
-      if (isAndroidNative && nativeSessionIdRef.current) {
+      if (isForegroundNative && nativeSessionIdRef.current) {
         await BleForeground.stopSession({ sessionId: nativeSessionIdRef.current });
       } else if (isNative && nativeDeviceIdRef.current) {
         const Ble = await getBleClient();
@@ -1459,7 +1459,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     setSessionSamples([]);
     nativeSessionIdRef.current = null;
     resetToDisconnected();
-  }, [isAndroidNative, isNative, resetToDisconnected]);
+  }, [isForegroundNative, isNative, resetToDisconnected]);
 
   // --------------------------------------------------------------------------
   // Auto-reconexão Web (Chrome 122+)
