@@ -40,6 +40,12 @@ import {
 import { calculateHrvMetrics, parseStandardHeartRateMeasurement } from '../lib/hrv';
 import { validateBleHrvCapture, type HrvQualityReport, type HrvPlatform } from '../lib/hrvValidation';
 import { APP_NAME } from '../lib/appMode';
+import {
+  BleForeground,
+  type BleForegroundDiagnosticEvent,
+  type BleForegroundSample,
+  type BleForegroundStatusEvent,
+} from '../lib/bleForeground';
 
 // ─── Carregador dinâmico do plugin nativo (só executa em plataforma nativa) ──
 type BleClientType = typeof import('@capacitor-community/bluetooth-le').BleClient;
@@ -139,6 +145,8 @@ interface UseBluetoothReturn {
   connect: (deviceId: string) => Promise<void>;
   disconnect: () => Promise<void>;
   diagnostics: BleDiagnostic[];
+  /** Amostras persistidas pelo serviço Android durante a sessão atual. */
+  sessionSamples: BleForegroundSample[];
 }
 
 // ============================================================================
@@ -153,6 +161,26 @@ function detectIOSWeb(): boolean {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function makeBleSessionId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch {
+    /* fallback abaixo */
+  }
+  return `ble-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function mergeBleSamples(current: BleForegroundSample[], incoming: BleForegroundSample[]): BleForegroundSample[] {
+  const byTimestamp = new Map<number, BleForegroundSample>();
+  for (const sample of [...current, ...incoming]) {
+    if (!Number.isFinite(sample.capturedAtMs) || !Number.isFinite(sample.bpm)) continue;
+    byTimestamp.set(sample.capturedAtMs, sample);
+  }
+  return Array.from(byTimestamp.values()).sort((a, b) => a.capturedAtMs - b.capturedAtMs);
 }
 
 function loadLastDevice(): LastDevice | null {
@@ -227,6 +255,7 @@ interface ProbeCandidate {
 // ============================================================================
 export function useBluetooth(userId?: string): UseBluetoothReturn {
   const isNative = Capacitor.isNativePlatform();
+  const isForegroundNative = isNative && ['android', 'ios'].includes(Capacitor.getPlatform());
   const isIOSWeb = detectIOSWeb();
   // O Safari/Chrome/Edge do iPhone NÃO expõem navigator.bluetooth (Apple bloqueia
   // no WebKit). Porém navegadores como o Bluefy implementam Web Bluetooth via
@@ -250,6 +279,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   });
   const [lastDevice, setLastDevice] = useState<LastDevice | null>(loadLastDevice);
   const [diagnostics, setDiagnostics] = useState<BleDiagnostic[]>([]);
+  const [sessionSamples, setSessionSamples] = useState<BleForegroundSample[]>([]);
+  const nativeSessionIdRef = useRef<string | null>(null);
   const diagnosticsRef = useRef<BleDiagnostic[]>([]);
 
   const webDeviceRef = useRef<BluetoothDevice | null>(null);
@@ -378,6 +409,122 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       .then((Ble) => Ble.initialize({ androidNeverForLocation: true }))
       .catch((e) => console.warn('[BLE] initialize falhou', e));
   }, [isNative]);
+
+  // Android/iOS: o serviço nativo é o dono do GATT. O WebView apenas espelha
+  // eventos e recupera as amostras persistidas quando volta ao foreground.
+  useEffect(() => {
+    if (!isForegroundNative) return;
+    let disposed = false;
+
+    const hydrate = async () => {
+      try {
+        const active = await BleForeground.getActiveSession();
+        if (disposed || !active.active || !active.sessionId || !active.deviceId) return;
+        nativeSessionIdRef.current = active.sessionId;
+        nativeDeviceIdRef.current = active.deviceId;
+        setConnectedDevice({
+          id: active.deviceId,
+          name: active.deviceName || `Dispositivo ${active.deviceId.slice(-5)}`,
+          hasHeartRateService: true,
+          likelyHR: true,
+        });
+        if (active.deviceName) rememberDevice({ id: active.deviceId, name: active.deviceName });
+        updateStatus('connected');
+
+        const response = await BleForeground.listSamples({ sessionId: active.sessionId });
+        if (disposed) return;
+        const samples = response.samples || [];
+        setSessionSamples((prev) => mergeBleSamples(prev, samples));
+        const rr = samples.flatMap((sample) => sample.rrIntervalsMs || []);
+        if (rr.length > 0) setRrIntervalsMs((prev) => [...prev, ...rr]);
+        if (active.lastBpm != null) {
+          setHeartRate(active.lastBpm);
+          lastBpmRef.current = active.lastBpm;
+          lastBpmAtRef.current = active.lastSampleMs ?? Date.now();
+        }
+        setRrQualityStats({
+          totalIntervals: samples.reduce((sum, sample) => sum + (sample.quality?.rrTotal || 0), 0),
+          invalidIntervals: samples.reduce((sum, sample) => sum + (sample.quality?.rrInvalid || 0), 0),
+          lastPacketAt: active.lastSampleMs ?? null,
+          rrAdvertised: samples.some((sample) => !!sample.quality?.rrAdvertised),
+          rrPayloadTruncated: samples.some((sample) => !!sample.quality?.rrPayloadTruncated),
+        });
+      } catch (error) {
+        console.warn('[BLE] sessão nativa não pôde ser recuperada', error);
+      }
+    };
+
+    const handleStatus = (event: BleForegroundStatusEvent) => {
+      if (disposed) return;
+      if (event.sessionId && nativeSessionIdRef.current && event.sessionId !== nativeSessionIdRef.current) return;
+      if (event.sessionId) nativeSessionIdRef.current = event.sessionId;
+      if (event.deviceId) nativeDeviceIdRef.current = event.deviceId;
+      if (event.deviceName && event.deviceId) rememberDevice({ id: event.deviceId, name: event.deviceName });
+
+      if (event.status === 'connected' || event.status === 'discovering' || event.status === 'connecting') {
+        if (event.deviceId) {
+          setConnectedDevice((current) => current || {
+            id: event.deviceId!,
+            name: event.deviceName || `Dispositivo ${event.deviceId!.slice(-5)}`,
+            hasHeartRateService: true,
+            likelyHR: true,
+          });
+        }
+        updateStatus(event.status === 'connected' ? 'connected' : 'connecting');
+      } else if (event.status === 'reconnecting') {
+        updateStatus('reconnecting');
+      } else if (event.status === 'error') {
+        setError(event.reason || 'A conexão BLE encontrou um erro.');
+        updateStatus('error');
+      } else if (event.status === 'disconnected') {
+        resetToDisconnected();
+      }
+    };
+
+    const handleSample = (sample: BleForegroundSample) => {
+      if (disposed) return;
+      if (sample.sessionId && nativeSessionIdRef.current && sample.sessionId !== nativeSessionIdRef.current) return;
+      nativeSessionIdRef.current = sample.sessionId;
+      setSessionSamples((prev) => mergeBleSamples(prev, [sample]));
+      pushHeartRate(sample.bpm, sample.rrIntervalsMs || []);
+      if (sample.quality) {
+        setRrQualityStats((prev) => ({
+          totalIntervals: prev.totalIntervals + (sample.quality.rrTotal || 0),
+          invalidIntervals: prev.invalidIntervals + (sample.quality.rrInvalid || 0),
+          lastPacketAt: sample.capturedAtMs,
+          rrAdvertised: prev.rrAdvertised || !!sample.quality.rrAdvertised,
+          rrPayloadTruncated: prev.rrPayloadTruncated || !!sample.quality.rrPayloadTruncated,
+        }));
+      }
+    };
+
+    const handleDiagnostic = (event: BleForegroundDiagnosticEvent) => {
+      if (disposed) return;
+      recordDiagnostic(event.code, event.message, event.level, event.deviceName || undefined);
+    };
+
+    const subscriptions = Promise.all([
+      BleForeground.addListener('status', handleStatus),
+      BleForeground.addListener('heartRate', handleSample),
+      BleForeground.addListener('diagnostic', handleDiagnostic),
+    ]);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void hydrate();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    void subscriptions.catch((error) => console.warn('[BLE] listeners nativos falharam', error));
+    void hydrate();
+
+    return () => {
+      disposed = true;
+      document.removeEventListener('visibilitychange', onVisible);
+      void subscriptions.then((handles) => Promise.all(handles.map((handle) => handle.remove()))).catch(() => {});
+    };
+  // Os callbacks pushHeartRate/resetToDisconnected são declarados abaixo; o
+  // efeito só executa depois da renderização completa, portanto não entram na
+  // lista para evitar acesso à TDZ durante a avaliação das dependências.
+  }, [isForegroundNative, recordDiagnostic, rememberDevice, updateStatus]);
 
   // --------------------------------------------------------------------------
   // Pré-checagens do ambiente nativo (Bluetooth ligado, Localização no Android)
@@ -1028,7 +1175,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   // travado e re-armamos a inscrição via reconexão (retoma o fluxo de leituras).
   // --------------------------------------------------------------------------
   useEffect(() => {
-    if (status !== 'connected') return;
+    // No Android/iOS, o watchdog vive no serviço nativo para continuar ativo
+    // quando o WebView é pausado em segundo plano.
+    if (status !== 'connected' || isForegroundNative) return;
     const id = setInterval(() => {
       const at = lastBpmAtRef.current;
       if (at == null) return; // ainda aguardando a 1ª leitura — não é "travado"
@@ -1062,7 +1211,20 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       void autoReconnect(deviceId);
     }, HR_STALE_CHECK_MS);
     return () => clearInterval(id);
-  }, [status, isNative, autoReconnect, updateStatus]);
+  }, [status, isForegroundNative, isNative, autoReconnect, updateStatus]);
+
+  const connectForeground = useCallback(
+    async (deviceId: string) => {
+      const device = devices.find((item) => item.id === deviceId);
+      const name = device?.name || (lastDevice?.id === deviceId ? lastDevice.name : `Dispositivo ${deviceId.slice(-5)}`);
+      const sessionId = makeBleSessionId();
+      nativeSessionIdRef.current = sessionId;
+      nativeDeviceIdRef.current = deviceId;
+      setSessionSamples([]);
+      await BleForeground.startSession({ deviceId, deviceName: name, sessionId });
+    },
+    [devices, lastDevice]
+  );
 
   // --------------------------------------------------------------------------
   // CONNECT — dispatcher
@@ -1081,7 +1243,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       recordDiagnostic('connect_start', 'Iniciando conexão com o dispositivo selecionado.', 'info', deviceId);
       updateStatus('connecting');
       try {
-        if (isNative) await connectNative(deviceId);
+        if (isForegroundNative) await connectForeground(deviceId);
+        else if (isNative) await connectNative(deviceId);
         else await connectWeb();
       } catch (err: any) {
         console.error('[BLE] connect erro', err);
@@ -1091,7 +1254,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         updateStatus('error');
       }
     },
-    [isNative, connectNative, connectWeb, recordDiagnostic, updateStatus]
+    [isForegroundNative, connectForeground, isNative, connectNative, connectWeb, recordDiagnostic, updateStatus]
   );
 
   // --------------------------------------------------------------------------
@@ -1269,7 +1432,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     sessionGenRef.current++;
 
     try {
-      if (isNative && nativeDeviceIdRef.current) {
+      if (isForegroundNative && nativeSessionIdRef.current) {
+        await BleForeground.stopSession({ sessionId: nativeSessionIdRef.current });
+      } else if (isNative && nativeDeviceIdRef.current) {
         const Ble = await getBleClient();
         const sub = activeSubRef.current;
         if (sub) {
@@ -1291,8 +1456,10 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       clearInterval(syncTimerRef.current);
       syncTimerRef.current = null;
     }
+    setSessionSamples([]);
+    nativeSessionIdRef.current = null;
     resetToDisconnected();
-  }, [isNative, resetToDisconnected]);
+  }, [isForegroundNative, isNative, resetToDisconnected]);
 
   // --------------------------------------------------------------------------
   // Auto-reconexão Web (Chrome 122+)
@@ -1337,5 +1504,6 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     disconnect,
     diagnostics,
     hrvQuality,
+    sessionSamples,
   };
 }

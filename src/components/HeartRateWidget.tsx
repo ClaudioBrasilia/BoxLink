@@ -305,7 +305,7 @@ function ModeSelector({ onPick, platform }: { onPick: (m: Mode) => void; platfor
 // ─── Modo: Conexão Direta (Bluetooth LE) ─────────────────────────────────────
 function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallback: () => void; canFallback: boolean }) {
   const {
-    status, error, devices, connectedDevice, lastDevice, heartRate, rrIntervalsMs, hrvQuality, diagnostics,
+    status, error, devices, connectedDevice, lastDevice, heartRate, rrIntervalsMs, sessionSamples, hrvQuality, diagnostics,
     scan, stopScan, connect, disconnect, isSupported, isIOSWeb, isNative,
   } = useBluetooth(userId);
   const [hasScanned, setHasScanned] = useState(false);
@@ -319,7 +319,7 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
   // Sessão segue ativa durante a auto-reconexão — queda de sinal não encerra o treino.
   const isSessionActive = isConnected || isReconnecting;
 
-  const { samples, rrIntervalsMs: sessionRrIntervalsMs, reset, startedAt } = useHeartRateSession(heartRate, isSessionActive, rrIntervalsMs);
+  const { samples, rrIntervalsMs: sessionRrIntervalsMs, reset, startedAt } = useHeartRateSession(heartRate, isSessionActive, rrIntervalsMs, sessionSamples);
   useKeepScreenAwake(isSessionActive); // não deixa a tela dormir durante o treino
   const bio = useUserBiometrics(userId);
 

@@ -1,6 +1,6 @@
 # Arquitetura de produto — BoxLink e BoxLeague
 
-**Data da auditoria:** 25 de agosto de 2026
+**Data da auditoria:** 26 de agosto de 2026
 
 **Repositório:** `ClaudioBrasilia/BoxLink`
 
@@ -10,7 +10,7 @@
 
 O repositório produz dois aplicativos a partir do mesmo código. O **BoxLink** é o produto para academias e boxes, com turmas, WOD administrado, ranking do box, Feed, TV, coach e administração. O **BoxLeague** é o produto individual, para quem treina sem vínculo necessário a uma academia, com Diário, registro do próprio WOD, Liga, Duelos, Perfil, Insights, Frequência, evolução, benchmarks e loja.
 
-A separação web/PWA está implementada no nível correto: `VITE_APP_MODE=individual` altera rotas, guards, navegação, textos, manifest e o conjunto de chunks emitidos. A separação nativa foi reforçada nesta auditoria: o modo individual agora usa `com.crosscity.boxleague` e `BoxLeague`, enquanto o BoxLink preserva `com.crosscity.hub` e `BoxLink`. O backend Supabase permanece compartilhado por intenção, porque essa é a ponte que permite a um atleta individual entrar em um box levando sua conta, XP, PRs e diário.
+A separação web/PWA está implementada no nível correto: `VITE_APP_MODE=individual` altera rotas, guards, navegação, textos, manifest e o conjunto de chunks emitidos. A separação nativa usa `com.crosscity.boxleague` e `BoxLeague` no Individual, enquanto o BoxLink preserva `com.crosscity.hub` e `BoxLink`. A captura BLE em segundo plano foi implementada nos dois sistemas: Android usa `connectedDevice` Foreground Service e iOS usa Core Bluetooth com state restoration e persistência local. O backend Supabase permanece compartilhado por intenção, porque essa é a ponte que permite a um atleta individual entrar em um box levando sua conta, XP, PRs e diário.
 
 O resultado é **apto para seguir para uma esteira de release separada**, mas não equivale, sozinho, à publicação nas lojas. Ainda é necessário configurar registros de aplicativo, assinatura, ícones, links/deep links, domínios e políticas de cada canal, além de validar a segurança do Supabase em produção.
 
@@ -27,6 +27,7 @@ O resultado é **apto para seguir para uma esteira de release separada**, mas n�
 | PWA | Manifest e título BoxLink | Manifest e título BoxLeague | Implementada em `vite.config.ts` |
 | App Android | `com.crosscity.hub`, nome BoxLink | `com.crosscity.boxleague`, nome BoxLeague | Implementada via `cap:sync:box` e `cap:sync:solo` |
 | App iOS | Bundle ID `com.crosscity.hub`, nome BoxLink | Bundle ID `com.crosscity.boxleague`, nome BoxLeague | Implementada via os mesmos comandos |
+| Captura BLE em segundo plano | Core Bluetooth/serviço nativo compartilhado | Core Bluetooth/serviço nativo compartilhado | Implementada; Android com Foreground Service e iOS com state restoration |
 | Domínio de produção | Não há domínio definitivo versionado | Não há domínio próprio versionado | Pendente de decisão de distribuição |
 | Ícones e assets de loja | Usa os assets nativos existentes | Ainda compartilha os assets existentes | Pendente de arte e configuração de loja próprias |
 
@@ -88,7 +89,7 @@ A origem pública ainda não está separada no repositório. O código usa `wind
 
 | Estado | Itens |
 |---|---|
-| **Já separado e validado** | Rotas, guards, menu, onboarding, cadastro individual, cópia de login/instalação, manifest PWA, code splitting, chunks do Individual, HRV, validação, Insights, tendências, prontidão, performance, smoke E2E, observabilidade e identificadores nativos por modo |
+| **Já separado e validado** | Rotas, guards, menu, onboarding, cadastro individual, cópia de login/instalação, manifest PWA, code splitting, chunks do Individual, HRV, validação, Insights, tendências, prontidão, performance, smoke E2E, observabilidade, identificadores nativos por modo e captura BLE nativa Android/iOS |
 | **Compartilhado por intenção** | Código de domínio, Supabase, autenticação, economia de XP/recompensas, parte dos componentes de FC/HRV e estrutura Capacitor |
 | **Ainda pendente para publicação independente** | Domínio/deploy próprio, arte e ícones de loja do BoxLeague, contas de loja e assinatura, links/deep links, revisão de RLS/privacidade no Supabase de produção e testes manuais em Android/iOS reais |
 | **Bloqueador de processo** | `npm run lint` não é um gate disponível porque o repositório não possui configuração ESLint; typecheck e testes unitários continuam aprovados |
@@ -106,3 +107,4 @@ A recomendação é tratar o BoxLeague como produto de release separado a partir
 7. [`scripts/e2e-smoke.mjs`](../scripts/e2e-smoke.mjs) — smoke E2E de preview e Chromium.
 8. [`public/privacy.html`](../public/privacy.html) e [`public/delete-account.html`](../public/delete-account.html) — páginas públicas duais.
 9. [`supabase/verify_hrv_migrations.sql`](../supabase/verify_hrv_migrations.sql) — consulta de verificação das migrações de HRV.
+10. [`docs/ANDROID-BLE-FOREGROUND-SERVICE.md`](ANDROID-BLE-FOREGROUND-SERVICE.md) e [`docs/IOS-BLE-BACKGROUND.md`](IOS-BLE-BACKGROUND.md) — captura BLE nativa, persistência, state restoration e limites por plataforma.
