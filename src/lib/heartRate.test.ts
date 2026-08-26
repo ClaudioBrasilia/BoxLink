@@ -5,7 +5,16 @@
 // leituras de FC "aleatórias" quando o canal errado é lido com o tolerante.
 // ============================================================================
 import { describe, it, expect } from 'vitest';
-import { parseStandardHeartRate, parseHeartRateFallback } from './heartRate';
+import {
+  parseStandardHeartRate,
+  parseHeartRateFallback,
+  normalizeUuid,
+  isSameUuid,
+  isLikelyHRService,
+  isLikelyHRCharacteristic,
+  HEART_RATE_SERVICE,
+  HEART_RATE_MEASUREMENT,
+} from './heartRate';
 
 function dv(bytes: number[]): DataView {
   return new DataView(new Uint8Array(bytes).buffer);
@@ -52,5 +61,59 @@ describe('parseHeartRateFallback vs. estrito', () => {
     const garbage = dv([0x5a, 0x00, 0x12, 0x34]);
     expect(parseStandardHeartRate(garbage)).toBeNull();
     expect(parseHeartRateFallback(garbage)).toBe(90);
+  });
+});
+
+// ============================================================================
+// Normalização de UUID. O CoreBluetooth (iOS) devolve a forma CURTA para UUIDs
+// da Bluetooth SIG ("180D", "2A37") e a longa para proprietários — navegadores
+// que expõem Web Bluetooth por cima dele (ex.: Bluefy) repassam isso cru.
+// Sem normalizar, o canal padrão de FC fica invisível e o relógio nunca é lido.
+// ============================================================================
+describe('normalizeUuid', () => {
+  it('expande a forma curta de 16 bits para a Base UUID da SIG', () => {
+    expect(normalizeUuid('180D')).toBe(HEART_RATE_SERVICE);
+    expect(normalizeUuid('2A37')).toBe(HEART_RATE_MEASUREMENT);
+  });
+
+  it('expande a forma de 32 bits', () => {
+    expect(normalizeUuid('0000180d')).toBe(HEART_RATE_SERVICE);
+  });
+
+  it('preserva UUIDs proprietários de 128 bits', () => {
+    const garminGfdi = '6a4e2800-667b-11e3-949a-0800200c9a66';
+    expect(normalizeUuid(garminGfdi.toUpperCase())).toBe(garminGfdi);
+  });
+
+  it('tolera prefixo 0x, espaços e ausência de valor', () => {
+    expect(normalizeUuid('0x180D')).toBe(HEART_RATE_SERVICE);
+    expect(normalizeUuid('  180d  ')).toBe(HEART_RATE_SERVICE);
+    expect(normalizeUuid(null)).toBe('');
+    expect(normalizeUuid(undefined)).toBe('');
+  });
+});
+
+describe('isSameUuid', () => {
+  it('casa forma curta com forma longa — o bug do Forerunner', () => {
+    expect(isSameUuid('180D', HEART_RATE_SERVICE)).toBe(true);
+    expect(isSameUuid('2A37', HEART_RATE_MEASUREMENT)).toBe(true);
+  });
+
+  it('não confunde serviços diferentes', () => {
+    expect(isSameUuid('1814', HEART_RATE_SERVICE)).toBe(false);
+    expect(isSameUuid('6a4e2800-667b-11e3-949a-0800200c9a66', HEART_RATE_SERVICE)).toBe(false);
+  });
+});
+
+describe('detecção de FC com UUIDs na forma curta', () => {
+  it('reconhece o serviço e a characteristic padrão vindos curtos', () => {
+    expect(isLikelyHRService('180D')).toBe(true);
+    expect(isLikelyHRCharacteristic('2A37')).toBe(true);
+  });
+
+  it('não classifica os canais GFDI da Garmin como FC', () => {
+    // Protocolo do Garmin Connect — nunca carrega frequência cardíaca.
+    expect(isLikelyHRCharacteristic('6a4e2810-667b-11e3-949a-0800200c9a66')).toBe(false);
+    expect(isLikelyHRCharacteristic('6a4e2830-667b-11e3-949a-0800200c9a66')).toBe(false);
   });
 });

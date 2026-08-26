@@ -33,6 +33,8 @@ import {
   parseHeartRateFallback,
   parseStandardHeartRate,
   hasNoSensorContact,
+  normalizeUuid,
+  isSameUuid,
   isLikelyHRDeviceName,
   isLikelyHRService,
   isLikelyHRCharacteristic,
@@ -588,8 +590,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       deviceName?: string | null
     ): ProbeCandidate[] => {
       const sortedServices = [...services].sort((a, b) => {
-        const aHR = a.uuid.toLowerCase() === HEART_RATE_SERVICE;
-        const bHR = b.uuid.toLowerCase() === HEART_RATE_SERVICE;
+        const aHR = isSameUuid(a.uuid, HEART_RATE_SERVICE);
+        const bHR = isSameUuid(b.uuid, HEART_RATE_SERVICE);
         if (aHR !== bHR) return aHR ? -1 : 1;
         const aLikely = isLikelyHRService(a.uuid);
         const bLikely = isLikelyHRService(b.uuid);
@@ -610,7 +612,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         // eles dependem dos canais proprietários e um 0x2A37 mudo consumiria o
         // orçamento do probe antes de chegar no canal que funciona.
         const notifiable = service.characteristics.filter(
-          (c) => c.notifiable || (standardOnly && c.uuid.toLowerCase() === HEART_RATE_MEASUREMENT)
+          (c) => c.notifiable || (standardOnly && isSameUuid(c.uuid, HEART_RATE_MEASUREMENT))
         );
         const prioritized = [...notifiable].sort((a, b) => {
           const aKnown = isLikelyHRCharacteristic(a.uuid);
@@ -619,12 +621,14 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           return 0;
         });
         for (const char of prioritized) {
-          const uuid = char.uuid.toLowerCase();
+          // `service`/`characteristic` guardam o UUID COMO A PLATAFORMA ENTREGOU:
+          // é essa string que volta para startNotifications() e para o mapa de
+          // characteristics. Só as COMPARAÇÕES são normalizadas.
           candidates.push({
             service: service.uuid,
             characteristic: char.uuid,
-            known: isLikelyHRCharacteristic(uuid) || service.uuid.toLowerCase() === HEART_RATE_SERVICE,
-            standard: uuid === HEART_RATE_MEASUREMENT,
+            known: isLikelyHRCharacteristic(char.uuid) || isSameUuid(service.uuid, HEART_RATE_SERVICE),
+            standard: isSameUuid(char.uuid, HEART_RATE_MEASUREMENT),
           });
         }
       }
@@ -647,7 +651,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       // o parser tolerante varre o buffer atrás de um byte "plausível" e pode
       // exibir uma FREQUÊNCIA FALSA a partir de bytes de protocolo.
       if (standardOnly && standard.length === 0) {
-        const hasHrService = services.some((s) => s.uuid.toLowerCase() === HEART_RATE_SERVICE);
+        const hasHrService = services.some((s) => isSameUuid(s.uuid, HEART_RATE_SERVICE));
         recordDiagnostic(
           'standard_channel_missing',
           hasHrService
@@ -930,7 +934,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           const chars = await service.getCharacteristics();
           withChars.push({
             uuid: service.uuid,
-            chars: new Map(chars.map((c) => [c.uuid.toLowerCase(), c])),
+            chars: new Map(chars.map((c) => [normalizeUuid(c.uuid), c])),
           });
         } catch {
           /* serviço sem characteristics acessíveis */
@@ -955,8 +959,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         if (sessionGenRef.current !== gen) throw new Error('Operação cancelada.');
         if (Date.now() - probeStart > PROBE_TOTAL_BUDGET_MS) break;
 
-        const svc = withChars.find((s) => s.uuid === cand.service);
-        const char = svc?.chars.get(cand.characteristic.toLowerCase());
+        const svc = withChars.find((s) => isSameUuid(s.uuid, cand.service));
+        const char = svc?.chars.get(normalizeUuid(cand.characteristic));
         if (!char) continue;
 
         const waitMs = cand.standard ? PROBE_STANDARD_MS : cand.known ? PROBE_KNOWN_MS : PROBE_GENERIC_MS;
@@ -1324,7 +1328,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
 
               const existing = found.get(id);
               const existingUUIDs = new Set(existing?.serviceUUIDs || []);
-              (result.uuids || []).forEach((u) => existingUUIDs.add(u.toLowerCase()));
+              (result.uuids || []).forEach((u) => existingUUIDs.add(normalizeUuid(u)));
 
               const serviceUUIDs = Array.from(existingUUIDs);
               const hasHR =
