@@ -205,15 +205,40 @@ export function isLikelyHRDeviceName(name: string | undefined | null): boolean {
   );
 }
 
+/** Sufixo da Base UUID da Bluetooth SIG — completa UUIDs de 16/32 bits. */
+const BLUETOOTH_BASE_UUID_SUFFIX = '-0000-1000-8000-00805f9b34fb';
+
+/**
+ * Normaliza um UUID para a forma canônica de 128 bits, em minúsculas.
+ *
+ * ⚠️ Nem toda plataforma entrega o UUID já expandido. O CoreBluetooth (iOS)
+ * devolve `CBUUID.uuidString` na forma CURTA para UUIDs atribuídos pela SIG
+ * ("180D", "2A37") e só usa a forma longa nos proprietários — e navegadores
+ * que expõem Web Bluetooth por cima dele (ex.: Bluefy) repassam isso cru.
+ * Sem normalizar, `'180d' === '0000180d-...'` é FALSO e o canal padrão de FC
+ * fica invisível para o app, que então nunca lê o relógio.
+ */
+export function normalizeUuid(uuid: string | null | undefined): string {
+  const raw = String(uuid ?? '').trim().toLowerCase().replace(/^0x/, '');
+  if (/^[0-9a-f]{4}$/.test(raw)) return `0000${raw}${BLUETOOTH_BASE_UUID_SUFFIX}`;
+  if (/^[0-9a-f]{8}$/.test(raw)) return `${raw}${BLUETOOTH_BASE_UUID_SUFFIX}`;
+  return raw;
+}
+
+/** Compara dois UUIDs independente de virem na forma curta ou longa. */
+export function isSameUuid(a: string | null | undefined, b: string | null | undefined): boolean {
+  return normalizeUuid(a) === normalizeUuid(b);
+}
+
 export function isLikelyHRService(uuid: string): boolean {
-  const lower = uuid.toLowerCase();
+  const lower = normalizeUuid(uuid);
   if (lower === HEART_RATE_SERVICE) return true;
   return HR_SERVICE_PATTERNS.some((p) => p.test(lower));
 }
 
 export function isLikelyHRCharacteristic(uuid: string): boolean {
-  const lower = uuid.toLowerCase();
-  if (HR_CHARACTERISTIC_UUIDS.some((k) => k.toLowerCase() === lower)) return true;
+  const lower = normalizeUuid(uuid);
+  if (HR_CHARACTERISTIC_UUIDS.some((k) => normalizeUuid(k) === lower)) return true;
   if (/fff[1-9a-f]/i.test(lower)) return true;
   if (/ffe[1-9a-f]/i.test(lower)) return true;
   if (/fef[5-9a-f]/i.test(lower)) return true;
