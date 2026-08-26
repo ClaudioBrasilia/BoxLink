@@ -76,13 +76,13 @@ export default function WodTimer({ onClose, onFinish, userId, initialTitle, init
 
   // ── Frequência cardíaca (opcional) ──
   const {
-    status: hrStatus, devices: hrDevices, connectedDevice, heartRate,
+    status: hrStatus, devices: hrDevices, connectedDevice, heartRate, sessionSamples: hrSessionSamples,
     scan: hrScan, connect: hrConnect, disconnect: hrDisconnect, isSupported: hrSupported,
   } = useBluetooth(userId);
   const bio = useUserBiometrics(userId);
   const hrConnected = hrStatus === 'connected' || hrStatus === 'reconnecting';
   // Coleta amostras enquanto o WOD roda E a FC está conectada
-  const { samples: hrSamples } = useHeartRateSession(heartRate, running && hrConnected);
+  const { samples: hrSamples } = useHeartRateSession(heartRate, running && hrConnected, [], hrSessionSamples);
   const [showHrPanel, setShowHrPanel] = useState(false);
 
   // ── Áudio ──
