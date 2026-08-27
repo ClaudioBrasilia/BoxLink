@@ -27,11 +27,17 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
         strategies: 'generateSW',
-        injectRegister: 'auto',
+        // O registro é feito em src/lib/pwa.ts: no app nativo o service worker
+        // precisa ser removido, não registrado — dentro do WebView ele só
+        // consegue servir a casca da versão anterior do APK.
+        injectRegister: null,
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
           navigateFallback: 'index.html',
           navigateFallbackDenylist: [/^\/api/],
+          cleanupOutdatedCaches: true,
+          skipWaiting: true,
+          clientsClaim: true,
         },
         manifest: {
           name: appName,

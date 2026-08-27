@@ -2,6 +2,7 @@ import * as React from 'react';
 import { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { reportClientError } from '../lib/observability';
+import { clearCachedShell, isBundleLoadError } from '../lib/pwa';
 
 interface Props {
   children: ReactNode;
@@ -35,9 +36,32 @@ export class ErrorBoundary extends React.Component<Props, State> {
     const { children } = (this as any).props;
 
     if (hasError) {
-      const isFetchError = error?.message.includes('fetch') || 
-                           error?.message.includes('NetworkError') ||
-                           error?.message.includes('credentials');
+      // Versão desatualizada vem primeiro: a mensagem dela também contém
+      // "fetch" ("Failed to fetch dynamically imported module") e, tratada
+      // como falha de rede, mandava o usuário conferir a internet quando o
+      // problema era o cache do app.
+      const isStaleBundle = isBundleLoadError(error);
+      const isFetchError = !isStaleBundle && (
+        error?.message.includes('fetch') ||
+        error?.message.includes('NetworkError') ||
+        error?.message.includes('credentials')
+      );
+
+      const title = isStaleBundle
+        ? 'Atualize o aplicativo'
+        : isFetchError ? 'Erro de Conexão' : 'Algo deu errado';
+
+      const description = isStaleBundle
+        ? 'Esta versão do app ficou desatualizada. Toque abaixo para recarregar com a versão mais nova.'
+        : isFetchError
+          ? 'Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.'
+          : 'Ocorreu um erro inesperado na aplicação.';
+
+      // Recarregar sozinho não resolve bundle velho: o cache devolveria a
+      // mesma casca quebrada. Limpa antes, depois recarrega.
+      const retry = () => {
+        void clearCachedShell().finally(() => window.location.reload());
+      };
 
       return (
         <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
@@ -46,13 +70,11 @@ export class ErrorBoundary extends React.Component<Props, State> {
           </div>
           
           <h1 className="text-2xl font-headline font-black text-on-surface uppercase italic mb-2">
-            {isFetchError ? 'Erro de Conexão' : 'Algo deu errado'}
+            {title}
           </h1>
-          
+
           <p className="text-on-surface-variant text-xs font-bold uppercase tracking-widest max-w-xs leading-relaxed mb-8">
-            {isFetchError 
-              ? 'Não foi possível conectar ao servidor. Verifique sua internet e as configurações do Supabase no menu Settings.'
-              : 'Ocorreu um erro inesperado na aplicação.'}
+            {description}
           </p>
 
           <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 mb-8 w-full max-w-md overflow-auto">
@@ -62,11 +84,11 @@ export class ErrorBoundary extends React.Component<Props, State> {
           </div>
 
           <button 
-            onClick={() => window.location.reload()}
+            onClick={retry}
             className="flex items-center gap-2 bg-primary text-on-primary px-8 py-4 rounded-2xl font-headline font-black uppercase italic shadow-lg shadow-primary/20 hover:scale-105 transition-transform"
           >
             <RefreshCw className="w-5 h-5" />
-            Tentar Novamente
+            {isStaleBundle ? 'Recarregar' : 'Tentar Novamente'}
           </button>
         </div>
       );

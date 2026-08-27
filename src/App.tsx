@@ -1,54 +1,55 @@
-import React, { lazy, Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
+import { lazyRoute } from './lib/lazyRoute';
 
 const Dashboard = import.meta.env.VITE_APP_MODE !== 'individual'
-  ? lazy(() => import('./pages/Dashboard'))
+  ? lazyRoute(() => import('./pages/Dashboard'))
   : null;
 const Wod = import.meta.env.VITE_APP_MODE !== 'individual'
-  ? lazy(() => import('./pages/Wod'))
+  ? lazyRoute(() => import('./pages/Wod'))
   : null;
 const Challenges = import.meta.env.VITE_APP_MODE !== 'individual'
-  ? lazy(() => import('./pages/Challenges'))
+  ? lazyRoute(() => import('./pages/Challenges'))
   : null;
 const Leaderboard = import.meta.env.VITE_APP_MODE !== 'individual'
-  ? lazy(() => import('./pages/Leaderboard'))
+  ? lazyRoute(() => import('./pages/Leaderboard'))
   : null;
-const Duels = lazy(() => import('./pages/Duels'));
+const Duels = lazyRoute(() => import('./pages/Duels'));
 const MyBox = import.meta.env.VITE_APP_MODE !== 'individual'
-  ? lazy(() => import('./pages/MyBox'))
+  ? lazyRoute(() => import('./pages/MyBox'))
   : null;
-const Profile = lazy(() => import('./pages/Profile'));
-const Progress = lazy(() => import('./pages/Progress'));
-const AvatarCustomization = lazy(() => import('./pages/AvatarCustomization'));
+const Profile = lazyRoute(() => import('./pages/Profile'));
+const Progress = lazyRoute(() => import('./pages/Progress'));
+const AvatarCustomization = lazyRoute(() => import('./pages/AvatarCustomization'));
 const Admin = import.meta.env.VITE_APP_MODE !== 'individual'
-  ? lazy(() => import('./pages/Admin'))
+  ? lazyRoute(() => import('./pages/Admin'))
   : null;
 const Coach = import.meta.env.VITE_APP_MODE !== 'individual'
-  ? lazy(() => import('./pages/Coach'))
+  ? lazyRoute(() => import('./pages/Coach'))
   : null;
 const TV = import.meta.env.VITE_APP_MODE !== 'individual'
-  ? lazy(() => import('./pages/TV'))
+  ? lazyRoute(() => import('./pages/TV'))
   : null;
 const Clans = import.meta.env.VITE_APP_MODE !== 'individual'
-  ? lazy(() => import('./pages/Clans'))
+  ? lazyRoute(() => import('./pages/Clans'))
   : null;
-const Login = lazy(() => import('./pages/Login'));
-const Signup = lazy(() => import('./pages/Signup'));
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
-const ResetPassword = lazy(() => import('./pages/ResetPassword'));
-const Benchmarks = lazy(() => import('./pages/Benchmarks'));
-const Diario = lazy(() => import('./pages/Diario'));
-const Liga = lazy(() => import('./pages/Liga'));
-const Insights = lazy(() => import('./pages/Insights'));
-const Frequencia = lazy(() => import('./pages/Frequencia'));
-const Install = lazy(() => import('./pages/Install'));
+const Login = lazyRoute(() => import('./pages/Login'));
+const Signup = lazyRoute(() => import('./pages/Signup'));
+const ForgotPassword = lazyRoute(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazyRoute(() => import('./pages/ResetPassword'));
+const Benchmarks = lazyRoute(() => import('./pages/Benchmarks'));
+const Diario = lazyRoute(() => import('./pages/Diario'));
+const Liga = lazyRoute(() => import('./pages/Liga'));
+const Insights = lazyRoute(() => import('./pages/Insights'));
+const Frequencia = lazyRoute(() => import('./pages/Frequencia'));
+const Install = lazyRoute(() => import('./pages/Install'));
 const Feed = import.meta.env.VITE_APP_MODE !== 'individual'
-  ? lazy(() => import('./pages/Feed'))
+  ? lazyRoute(() => import('./pages/Feed'))
   : null;
-const Shop = lazy(() => import('./pages/Shop'));
+const Shop = lazyRoute(() => import('./pages/Shop'));
 import { Shield, Lock, Building2 } from 'lucide-react';
 import { isIndividualApp, isBoxApp } from './lib/appMode';
 import Onboarding from './components/Onboarding';
