@@ -27,6 +27,14 @@ O `src/lib/pwa.ts` cuida disso em três frentes:
 
 O reload de recuperação espera o documento terminar de carregar: recarregar no meio do carregamento faz o Chrome trazer a página nova sem executar os scripts dela, o que deixaria o app em branco justamente na hora de se recuperar.
 
+## Onde fica a fronteira de Suspense
+
+A página tem a sua própria fronteira de Suspense, dentro do `Layout` (`src/components/Layout.tsx`), e não uma única em volta de todas as rotas.
+
+Com a fronteira única, qualquer rota que precisasse baixar o seu chunk fazia o React esconder o app inteiro — o `Layout` junto — para mostrar o "CARREGANDO...". O painel do menu MAIS ficava nesse trecho escondido no meio da animação de saída; efeitos não rodam em árvore escondida, então o framer-motion nunca concluía a saída e nunca removia o painel. Ao reaparecer, ele voltava por cima da página, opaco e com `pointer-events` ativo: a rota tinha carregado atrás, invisível, e todo toque seguinte batia no painel. Para quem usava, era "cliquei no Coach e não carrega nada" — e, a partir dali, nenhum botão respondia.
+
+Com a fronteira dentro do `Layout`, só a área da página espera pelo chunk. O menu e a barra inferior continuam montados, a animação de saída conclui e o painel some. De quebra, some também o piscar de tela cheia a cada primeira visita a uma rota.
+
 ## Verificação das migrações de HRV
 
 O arquivo `supabase/verify_hrv_migrations.sql` contém uma consulta somente leitura. Execute-o no SQL Editor do Supabase. O grupo `base_hrv` deve retornar `READY` para as colunas da primeira migração, e `validation_hrv` deve retornar `READY` para as colunas da segunda migração. Se algum resultado for `MISSING`, execute a migration correspondente antes de testar os gráficos e a persistência de qualidade.

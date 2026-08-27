@@ -2,10 +2,16 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, LineChart, Activity, Users, BookOpen, Flame, Heart, ShoppingBag, BarChart3 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNotifications } from '../hooks/useNotifications';
 import { isIndividualApp } from '../lib/appMode';
+
+const PageLoading = () => (
+  <div className="min-h-screen flex items-center justify-center text-primary font-headline font-black text-xl italic animate-pulse" role="status" aria-live="polite">
+    CARREGANDO...
+  </div>
+);
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -110,13 +116,25 @@ export default function Layout() {
         </div>
       )}
 
+      {/*
+        A página tem a sua própria fronteira de Suspense, dentro do Layout.
+        Com uma fronteira única em volta de todas as rotas, o React escondia o
+        app inteiro — este Layout junto — enquanto o chunk da rota era baixado.
+        O painel do menu ficava nesse trecho escondido no meio da animação de
+        saída; efeitos não rodam em árvore escondida, então o framer-motion
+        nunca concluía a saída e o painel voltava por cima da página, opaco e
+        capturando todo toque. A página carregava atrás sem ninguém ver.
+      */}
       <main className="max-w-md mx-auto min-h-screen relative pb-24 overflow-y-auto">
-        <Outlet />
+        <Suspense fallback={<PageLoading />}>
+          <Outlet />
+        </Suspense>
       </main>
 
       <AnimatePresence>
         {isMenuOpen && (
           <motion.div
+            key="more-menu"
             initial={{ opacity: 0, y: 100 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 100 }}
