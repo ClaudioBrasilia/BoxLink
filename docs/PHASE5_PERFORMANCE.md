@@ -15,6 +15,18 @@ npm run check:perf
 
 O teste requer Chromium no ambiente. Para usar outro binário, defina `CHROMIUM_BIN`. O limite padrão é 700 KiB por arquivo JavaScript e pode ser ajustado com `MAX_JS_ASSET_BYTES`.
 
+## Chunks de rota e versão em cache
+
+Com as rotas divididas em arquivos com hash no nome, um deploy novo troca esses nomes e os arquivos antigos deixam de existir. Se a casca do app que está aberta veio do cache do service worker (a versão anterior), todo `import()` de rota passa a pedir um arquivo que não existe mais e falha com `Failed to fetch dynamically imported module` — na web isso aparecia como "Erro de Conexão" e, no aplicativo nativo, como um menu em que nenhum botão levava a lugar nenhum.
+
+O `src/lib/pwa.ts` cuida disso em três frentes:
+
+- **Nativo**: o service worker é removido e os caches apagados. Dentro do WebView os arquivos já vêm dentro do APK, então ele não traz nada além do risco de servir a casca da versão anterior depois de uma atualização.
+- **Web**: o registro é feito pelo app (não mais pelo script injetado pelo plugin) e, quando um service worker novo assume o controle de uma página que já estava sendo controlada, a página recarrega sozinha — antes que algum `import()` peça um arquivo já removido.
+- **Nos dois**: `src/lib/lazyRoute.ts` envolve cada rota. Se o chunk não carrega, ele tenta de novo, e só então limpa caches e recarrega uma vez por sessão. Persistindo a falha, a ErrorBoundary explica que a versão está desatualizada em vez de falar em internet ou Supabase.
+
+O reload de recuperação espera o documento terminar de carregar: recarregar no meio do carregamento faz o Chrome trazer a página nova sem executar os scripts dela, o que deixaria o app em branco justamente na hora de se recuperar.
+
 ## Verificação das migrações de HRV
 
 O arquivo `supabase/verify_hrv_migrations.sql` contém uma consulta somente leitura. Execute-o no SQL Editor do Supabase. O grupo `base_hrv` deve retornar `READY` para as colunas da primeira migração, e `validation_hrv` deve retornar `READY` para as colunas da segunda migração. Se algum resultado for `MISSING`, execute a migration correspondente antes de testar os gráficos e a persistência de qualidade.
