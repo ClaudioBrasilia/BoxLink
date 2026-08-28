@@ -584,10 +584,15 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
               prev.rrPayloadTruncated || samples.some((sample) => !!sample.quality?.rrPayloadTruncated),
           }));
         }
-        if (active.lastBpm != null) {
-          setHeartRate(active.lastBpm);
-          lastBpmRef.current = active.lastBpm;
-          lastBpmAtRef.current = active.lastSampleMs ?? Date.now();
+        // Os metadados da sessão são gravados com folga no iOS (a cada 5s), então
+        // podem estar atrás das amostras; a última amostra recuperada é a fonte
+        // mais fresca de BPM.
+        const newest = samples.length > 0 ? samples[samples.length - 1] : null;
+        const lastBpm = newest?.bpm ?? active.lastBpm ?? null;
+        if (lastBpm != null) {
+          setHeartRate(lastBpm);
+          lastBpmRef.current = lastBpm;
+          lastBpmAtRef.current = newest?.capturedAtMs ?? active.lastSampleMs ?? Date.now();
         }
       } catch (error) {
         console.warn('[BLE] sessão nativa não pôde ser recuperada', error);

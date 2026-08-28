@@ -4,15 +4,30 @@
 
 O BoxLink e o BoxLeague agora usam o plugin Capacitor `BleForeground` também no iOS. Como o iOS não possui Android Foreground Service, a implementação usa `CBCentralManager` com `CBCentralManagerOptionRestoreIdentifierKey`, `CBPeripheralDelegate`, modo `bluetooth-central` no `Info.plist` e persistência local em JSON dentro de Application Support.
 
-O código nativo está em `ios/App/App/BleForegroundPlugin.swift`. O registro é feito por `MainViewController.swift`, uma subclasse de `CAPBridgeViewController` ligada à cena principal do storyboard. O mesmo contrato TypeScript usado pelo Android continua em `src/lib/bleForeground.ts`, e `useBluetooth` seleciona o backend nativo para Android e iOS, mantendo Web Bluetooth/Bluefy separado.
+O código nativo está em `ios/App/App/BleForegroundPlugin.swift`. O registro do plugin é feito por `MainViewController.swift`, uma subclasse de `CAPBridgeViewController` ligada à cena principal do storyboard. O mesmo contrato TypeScript usado pelo Android continua em `src/lib/bleForeground.ts`, e `useBluetooth` seleciona o backend nativo para Android e iOS, mantendo Web Bluetooth/Bluefy separado.
+
+O coordenador é um singleton criado pelo `AppDelegate` dentro de `didFinishLaunchingWithOptions`, e não pelo plugin. A Apple exige que o `CBCentralManager` com `restoreIdentifier` exista antes daquela função retornar [1]; se ele nascesse junto com o plugin, no ciclo de vida da view, o iOS não entregaria `willRestoreState` ao relançar o app em segundo plano por um evento Core Bluetooth — e a restauração de estado, que é o que sustenta a sessão no iPhone, nunca aconteceria. O plugin apenas se registra como ouvinte fraco do coordenador, então o WebView pode nascer e morrer sem afetar a captura.
 
 | Camada | Responsabilidade |
 |---|---|
 | `IosBleSessionCoordinator` | Criar o central manager, conectar, descobrir serviços, assinar notificações e reconectar |
-| `BleSessionStore` | Persistir uma sessão ativa e amostras de BPM, RR e qualidade |
+| `BleSessionStore` | Persistir os metadados da sessão e anexar amostras de BPM, RR e qualidade |
 | `BleForeground` | Expor `startSession`, `stopSession`, `getActiveSession`, `getSnapshot` e `listSamples` ao React |
 | `MainViewController` | Registrar o plugin no bridge Capacitor |
+| `AppDelegate` | Criar o coordenador no lançamento, antes de `didFinishLaunchingWithOptions` retornar |
 | `useBluetooth` | Espelhar eventos, hidratar a sessão ao retornar ao app e entregar amostras ao fluxo de HRV |
+
+## Descoberta de serviços
+
+A escolha do canal de FC varre todos os serviços candidatos, como no Android, em vez de apostar no primeiro serviço que casa com a heurística. Os serviços são ordenados por preferência — 180D padrão, depois os proprietários conhecidos, depois o resto — e as características notificáveis de todos eles são reunidas antes da escolha, que prefere a `2A37` padrão. Assim um serviço proprietário que apareça antes do 180D e não tenha canal notificável deixa de impedir a conexão.
+
+## Persistência
+
+Os metadados da sessão ficam em `ble-session-v2.json`, um arquivo pequeno reescrito só em mudanças de estado e, durante a captura, no máximo a cada cinco segundos. As amostras vão para `ble-samples.ndjson`, uma linha por batimento, anexadas por um `FileHandle` mantido aberto.
+
+O formato anterior guardava sessão e amostras no mesmo JSON e o reescrevia inteiro a cada notificação BLE: numa hora de treino a um hertz, as últimas gravações reescreviam centenas de kilobytes por batimento, um custo quadrático em bateria e CPU justamente com o app em segundo plano. O arquivo antigo é removido na primeira execução; uma sessão interrompida por atualização do app já terminou e não há o que migrar.
+
+Como os metadados são gravados com folga, `sampleCount` e `lastBpm` podem ficar até cinco segundos atrás do arquivo de amostras se o app for encerrado pelo sistema. O `listSamples` sempre lê o NDJSON completo, então nenhuma amostra se perde, e a hidratação no React prefere o BPM da última amostra recuperada ao valor dos metadados.
 
 ## Continuidade e restauração
 
@@ -28,7 +43,9 @@ O `Info.plist` já contém `bluetooth-central` e `NSBluetoothAlwaysUsageDescript
 
 O iOS pode acordar o aplicativo para eventos Core Bluetooth e restaurar estado, mas não garante a execução contínua de timers JavaScript nem a execução indefinida do processo. O serviço nativo precisa receber e armazenar as notificações BLE; depender de polling no WebView não é suficiente. O sistema ou o usuário ainda podem interromper a sessão ao fazer force-stop, desligar Bluetooth, remover permissões ou encerrar o app de forma explícita.
 
-A Apple documenta que state preservation/restoration é opt-in e que o app deve recriar o central manager com o mesmo identificador de restauração [1] [2]. A implementação segue esse desenho. A validação final de background ainda exige um iPhone físico, pois o ambiente atual não possui Xcode, xcodebuild, CocoaPods nem um periférico BLE real.
+A Apple documenta que state preservation/restoration é opt-in, que o app deve recriar o central manager com o mesmo identificador de restauração e que essa recriação precisa acontecer durante o lançamento [1] [2]. A implementação segue esse desenho.
+
+Duas limitações conhecidas seguem em aberto. Não há detecção de silêncio equivalente à do Android: um sensor que permanece conectado mas para de notificar não dispara reconexão no iPhone, só a desconexão explícita dispara. E a busca de reconexão usa `scanForPeripherals(withServices: nil)`, que o iOS ignora em segundo plano; o caminho principal, `retrievePeripherals(withIdentifiers:)`, cobre o monitor já pareado, mas o fallback de varredura não funciona com o app minimizado. A validação final de background ainda exige um iPhone físico, pois o ambiente atual não possui Xcode, xcodebuild, CocoaPods nem um periférico BLE real.
 
 ## Teste no iPhone
 
