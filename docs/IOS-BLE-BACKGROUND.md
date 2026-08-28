@@ -20,6 +20,8 @@ A sessão é iniciada por ação do usuário enquanto o app está visível. O co
 
 O `willRestoreState` usa o identificador persistente do central manager para recuperar periféricos que o iOS mantinha associados a solicitações BLE pendentes. Ao receber uma notificação, o coordenador salva a amostra antes de emitir o evento ao WebView. Quando o app volta ao foreground, `useBluetooth` chama `getActiveSession` e `listSamples`, reconstrói BPM/RR e deixa o resumo existente calcular HRV e validação.
 
+A reconciliação é a mesma do Android e está descrita em `docs/ANDROID-BLE-FOREGROUND-SERVICE.md`: sessão inativa volta a UI para desconectado, sessão ativa sem leituras há mais de dois minutos é encerrada como órfã, e `listSamples` recebe sempre o `afterMs` da última amostra já aplicada para não reanexar intervalos RR.
+
 O `Info.plist` já contém `bluetooth-central` e `NSBluetoothAlwaysUsageDescription`. O modo `bluetooth-peripheral` existente foi preservado porque pertence à configuração anterior do projeto; ele não é necessário para a captura do monitor cardíaco e pode ser removido em uma revisão posterior se nenhum recurso do app atuar como periférico.
 
 ## Limites do iOS

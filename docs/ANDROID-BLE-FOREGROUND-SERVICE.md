@@ -19,6 +19,16 @@ O serviço é promovido imediatamente com `ServiceCompat.startForeground`, usand
 | Silêncio superior a 10 segundos | Fecha GATT, informa reconexão e tenta reconectar com backoff | Estado `reconnecting`, sem encerrar a sessão visual |
 | Minimização, câmera ou Activity recriada | Serviço continua ativo; o WebView deixa de ser requisito para a captura | Ao retornar, lista amostras desde o início e reconstrói o gráfico |
 | Encerrar conexão ou treino | Para notificações, marca a sessão como encerrada, remove a notificação e chama `stopSelf` | Mostra o resumo existente e encerra a coleta |
+| Encerrar pela notificação com o app fechado | Marca a sessão como encerrada mesmo sem estado em memória | Ao voltar, `hydrate` percebe a sessão inativa e reconcilia a UI para desconectado |
+| Serviço morto por force-stop ou reboot | O registro fica `active=1` sem ninguém alimentando | A primeira hidratação detecta a sessão órfã, encerra no nativo e registra um diagnóstico |
+
+## Reconciliação ao voltar para o app
+
+O WebView não pode confiar apenas nos eventos: eles são emitidos sem retenção e se perdem enquanto o app está pausado. Por isso `hydrate` é a fonte da verdade ao retornar ao primeiro plano e trata três casos.
+
+Quando o registro nativo já não está ativo — o usuário encerrou pela notificação — o hook desfaz o estado de sessão em vez de continuar exibindo "conectado". Quando o registro está ativo mas sem leituras há mais de dois minutos, ele é tratado como órfão de um serviço que já morreu: o app chama `stopSession` para fechar a linha no banco e informa o usuário por diagnóstico. Nos demais casos, a hidratação segue adiante.
+
+A recuperação de amostras é incremental. O hook guarda o `capturedAtMs` da última amostra já aplicada e passa esse valor como `afterMs` para `listSamples`, tanto na hidratação quanto nos eventos ao vivo. Pedir a sessão inteira a cada retorno reanexaria os mesmos intervalos RR e distorceria o RMSSD do resumo. As regras puras dessa reconciliação ficam em `src/lib/bleSession.ts`, com testes em `src/lib/bleSession.test.ts`.
 
 ## Persistência e HRV
 
@@ -36,6 +46,8 @@ O manifesto declara `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CONNECTED_DEVICE`,
 | BoxLeague | `com.crosscity.boxleague` | BoxLeague — treino ativo |
 
 A permissão de notificação é solicitada para transparência, mas uma recusa isolada não impede a sessão iniciada pelo usuário. Já a permissão de Bluetooth é obrigatória no Android 12+ para acessar o dispositivo e, se recusada, o serviço informa o erro sem abrir o GATT.
+
+O `startForeground` pode ser recusado pelo sistema por mais de um motivo: falta de permissão (`SecurityException`) ou bloqueio de início em segundo plano (`ForegroundServiceStartNotAllowedException` no Android 12+ e as exceções de tipo inválido no Android 14+, todas descendentes de `IllegalStateException`). O serviço trata as duas famílias, encerra a sessão de forma limpa e emite `disconnected`; sem isso, o reinício via `START_STICKY` com o app em segundo plano derrubaria o processo.
 
 ## Limitações importantes
 

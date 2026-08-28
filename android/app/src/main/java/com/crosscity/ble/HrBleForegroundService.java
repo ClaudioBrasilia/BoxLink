@@ -196,7 +196,15 @@ public final class HrBleForegroundService extends Service {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type);
         } catch (SecurityException error) {
             emitError("foreground_permission", "Permissão para manter a conexão BLE em segundo plano não foi concedida.");
-            stopSelf();
+            stopSession("foreground_permission");
+            return false;
+        } catch (RuntimeException error) {
+            // Android 12+ lança ForegroundServiceStartNotAllowedException e o 14+
+            // Invalid/MissingForegroundServiceTypeException — todas descendem de
+            // IllegalStateException, não de SecurityException. Sem este catch, o
+            // reinício via START_STICKY com o app em segundo plano derruba o processo.
+            emitError("foreground_start_blocked", "O Android bloqueou o início da sessão BLE em segundo plano.");
+            stopSession("foreground_start_blocked");
             return false;
         }
         return true;
@@ -550,7 +558,21 @@ public final class HrBleForegroundService extends Service {
         if (reconnectRunnable != null) handler.removeCallbacks(reconnectRunnable);
         if (staleRunnable != null) handler.removeCallbacks(staleRunnable);
         closeGatt();
-        if (sessionId != null && store != null) store.markEnded(sessionId, System.currentTimeMillis());
+        // ACTION_STOP pode chegar a uma instância recém-criada (a notificação
+        // sobreviveu ao processo, ou o app está limpando uma sessão órfã). Sem
+        // resolver o registro ativo aqui, a linha ficaria active=1 para sempre e
+        // o app voltaria a exibir uma sessão que ninguém está alimentando.
+        if (store != null) {
+            if (sessionId == null) {
+                HrSessionStore.SessionRecord active = store.getActiveSession();
+                if (active != null) {
+                    sessionId = active.sessionId;
+                    if (deviceId == null) deviceId = active.deviceId;
+                    if (deviceName == null) deviceName = active.deviceName;
+                }
+            }
+            if (sessionId != null) store.markEnded(sessionId, System.currentTimeMillis());
+        }
         emitStatus("disconnected", reason);
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
         stopSelf();
