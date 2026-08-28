@@ -44,9 +44,32 @@ function TVHeartRatePanel() {
 
   useEffect(() => {
     fetchHR();
-    const channel = supabase.channel('tv-heart-rate').on('postgres_changes', { event: '*', schema: 'public', table: 'heart_rate_live' }, fetchHR).subscribe();
+    // O realtime é o caminho rápido; o intervalo abaixo é só rede de segurança.
+    // Sem religar o canal após uma queda, a TV degradava silenciosamente para os
+    // 5s do polling — o mesmo retry já usado no canal 'tv-realtime'.
+    let channel: ReturnType<typeof supabase.channel>;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+    const subscribeHR = () => {
+      channel = supabase
+        .channel('tv-heart-rate')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'heart_rate_live' }, fetchHR)
+        .subscribe((status) => {
+          if (cancelled) return;
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            supabase.removeChannel(channel);
+            retryTimer = setTimeout(subscribeHR, 5000);
+          }
+        });
+    };
+    subscribeHR();
     const interval = setInterval(fetchHR, 5000);
-    return () => { supabase.removeChannel(channel); clearInterval(interval); };
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
   }, [fetchHR]);
 
   if (athletes.length === 0) return null;

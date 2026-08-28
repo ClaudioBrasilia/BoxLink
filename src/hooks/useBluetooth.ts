@@ -87,6 +87,14 @@ const RECONNECT_DELAYS_MS = [1000, 2000, 4000];
 // re-armamos a inscrição (reconexão) para retomar o fluxo.
 const HR_STALE_TIMEOUT_MS = 10000;
 const HR_STALE_CHECK_MS = 2000;
+// Broadcast para a TV. A TV escuta postgres_changes em heart_rate_live, então o
+// que ela mostra é limitado pelo instante em que ESCREVEMOS — um tick fixo somava
+// o intervalo inteiro de atraso a cada leitura. O envio passa a ser disparado
+// pela leitura, com um piso entre escritas (a FC não muda mais rápido que isso e
+// não adianta gravar além do que a TV renderiza) e um heartbeat que mantém o
+// updated_at fresco enquanto o BPM fica estável.
+const LIVE_SYNC_MIN_INTERVAL_MS = 2000;
+const LIVE_SYNC_HEARTBEAT_MS = 5000;
 
 const LAST_DEVICE_KEY = 'boxlink:lastBleDevice';
 
@@ -295,6 +303,13 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   // leitura travada. null = nenhuma leitura fresca no momento.
   const lastBpmAtRef = useRef<number | null>(null);
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Estado do broadcast para a TV (ver LIVE_SYNC_*).
+  const userIdRef = useRef<string | undefined>(userId);
+  const deviceNameRef = useRef<string | null>(null);
+  const liveSyncAtRef = useRef(0);
+  const liveSyncBpmRef = useRef<number | null>(null);
+  const liveSyncInFlightRef = useRef(false);
+  const liveSyncTrailingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Espelho síncrono do status (callbacks de desconexão chegam fora do React).
   const statusRef = useRef<ConnectionStatus>('disconnected');
@@ -327,36 +342,95 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   }, []);
 
   // --------------------------------------------------------------------------
-  // Broadcast do BPM para o Supabase (TV ao vivo). Throttle de 5s.
+  // Broadcast do BPM para o Supabase (TV ao vivo).
   // --------------------------------------------------------------------------
   const removeFromSupabase = useCallback(() => {
     if (!userId) return;
     clearLiveHeartRate(userId).catch(() => {});
   }, [userId]);
 
+  // Espelhos síncronos: mantêm os callbacks de envio estáveis (deps vazias),
+  // evitando recriar os handlers de BLE a cada troca de dispositivo/usuário.
+  useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
+
+  useEffect(() => {
+    deviceNameRef.current = connectedDevice?.name ?? null;
+  }, [connectedDevice]);
+
+  const flushLiveHeartRate = useCallback(async () => {
+    const uid = userIdRef.current;
+    if (!uid) return;
+    if (statusRef.current !== 'connected') return;
+
+    const bpm = lastBpmRef.current;
+    if (!bpm) return;
+    // Não retransmite um valor travado para a TV: só envia leituras frescas.
+    const at = lastBpmAtRef.current;
+    if (at == null || Date.now() - at > HR_STALE_TIMEOUT_MS) return;
+    // Uma escrita por vez: numa rede lenta, enfileirar upserts só atrasaria mais.
+    if (liveSyncInFlightRef.current) return;
+
+    liveSyncInFlightRef.current = true;
+    liveSyncAtRef.current = Date.now();
+    liveSyncBpmRef.current = bpm;
+    try {
+      await upsertLiveHeartRate(uid, bpm, deviceNameRef.current ?? 'Bluetooth');
+    } catch {
+      /* rede instável — a próxima leitura tenta de novo */
+    } finally {
+      liveSyncInFlightRef.current = false;
+    }
+  }, []);
+
+  const scheduleLiveHeartRate = useCallback(
+    (bpm: number) => {
+      if (!userIdRef.current || statusRef.current !== 'connected') return;
+      // BPM idêntico ao último enviado: não há novidade para a TV, o heartbeat
+      // cuida de manter o registro fresco.
+      if (liveSyncBpmRef.current === bpm) return;
+
+      const elapsed = Date.now() - liveSyncAtRef.current;
+      if (elapsed >= LIVE_SYNC_MIN_INTERVAL_MS) {
+        void flushLiveHeartRate();
+        return;
+      }
+      // Dentro do piso: agenda o envio para o fim da janela. O disparo lê
+      // lastBpmRef, então sempre publica a leitura MAIS RECENTE, não esta.
+      if (liveSyncTrailingRef.current) return;
+      liveSyncTrailingRef.current = setTimeout(() => {
+        liveSyncTrailingRef.current = null;
+        void flushLiveHeartRate();
+      }, LIVE_SYNC_MIN_INTERVAL_MS - elapsed);
+    },
+    [flushLiveHeartRate]
+  );
+
   useEffect(() => {
     if (!userId) return;
     if (status !== 'connected') return;
+    // Heartbeat: só cobre o caso do BPM estável (a TV filtra por janela de
+    // tempo). Mudança de BPM sai na hora, por pushHeartRate.
     syncTimerRef.current = setInterval(() => {
-      const bpm = lastBpmRef.current;
-      if (!bpm) return;
-      // Não retransmite um valor travado para a TV: só envia leituras frescas.
-      const at = lastBpmAtRef.current;
-      if (at == null || Date.now() - at > HR_STALE_TIMEOUT_MS) return;
-      upsertLiveHeartRate(userId, bpm, connectedDevice?.name ?? 'Bluetooth').catch(() => {});
-    }, 5000);
+      void flushLiveHeartRate();
+    }, LIVE_SYNC_HEARTBEAT_MS);
     return () => {
       if (syncTimerRef.current) clearInterval(syncTimerRef.current);
       syncTimerRef.current = null;
     };
-  }, [userId, status, connectedDevice]);
+  }, [userId, status, flushLiveHeartRate]);
 
-  const pushHeartRate = useCallback((bpm: number, rr: number[] = []) => {
-    lastBpmRef.current = bpm;
-    lastBpmAtRef.current = Date.now();
-    setHeartRate(bpm);
-    if (rr.length > 0) setRrIntervalsMs((prev) => [...prev, ...rr]);
-  }, []);
+  const pushHeartRate = useCallback(
+    (bpm: number, rr: number[] = []) => {
+      lastBpmRef.current = bpm;
+      lastBpmAtRef.current = Date.now();
+      setHeartRate(bpm);
+      if (rr.length > 0) setRrIntervalsMs((prev) => [...prev, ...rr]);
+      scheduleLiveHeartRate(bpm);
+    },
+    [scheduleLiveHeartRate]
+  );
 
   const recordBleHrvMeasurement = useCallback((measurement: ReturnType<typeof parseStandardHeartRateMeasurement>) => {
     setRrQualityStats((prev) => ({
@@ -396,6 +470,14 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     // A próxima chamada de connect() inicia um acumulador novo.
     lastBpmRef.current = null;
     lastBpmAtRef.current = null;
+    // Cancela um envio agendado e zera o último BPM publicado, para que a
+    // próxima conexão volte a transmitir já na primeira leitura.
+    if (liveSyncTrailingRef.current) {
+      clearTimeout(liveSyncTrailingRef.current);
+      liveSyncTrailingRef.current = null;
+    }
+    liveSyncBpmRef.current = null;
+    liveSyncAtRef.current = 0;
     nativeDeviceIdRef.current = null;
     activeSubRef.current = null;
     webCharRef.current = null;
