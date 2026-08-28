@@ -7,7 +7,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // O CBCentralManager com restoreIdentifier precisa existir antes desta
+        // função retornar. Se ele só nascesse junto com o plugin (no ciclo de
+        // vida da view), o iOS não entregaria willRestoreState ao relançar o
+        // app em segundo plano por um evento Core Bluetooth — e a restauração
+        // de estado, que é o que sustenta a sessão de FC no iPhone, nunca
+        // aconteceria. Ver docs/IOS-BLE-BACKGROUND.md.
+        IosBleSessionCoordinator.shared.prepare()
         return true
     }
 

@@ -48,6 +48,12 @@ import {
   type BleForegroundSample,
   type BleForegroundStatusEvent,
 } from '../lib/bleForeground';
+import {
+  isNativeSessionStale,
+  latestSampleAt,
+  mergeBleSamples,
+  selectNewBleSamples,
+} from '../lib/bleSession';
 
 // ─── Carregador dinâmico do plugin nativo (só executa em plataforma nativa) ──
 type BleClientType = typeof import('@capacitor-community/bluetooth-le').BleClient;
@@ -184,15 +190,6 @@ function makeBleSessionId(): string {
   return `ble-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function mergeBleSamples(current: BleForegroundSample[], incoming: BleForegroundSample[]): BleForegroundSample[] {
-  const byTimestamp = new Map<number, BleForegroundSample>();
-  for (const sample of [...current, ...incoming]) {
-    if (!Number.isFinite(sample.capturedAtMs) || !Number.isFinite(sample.bpm)) continue;
-    byTimestamp.set(sample.capturedAtMs, sample);
-  }
-  return Array.from(byTimestamp.values()).sort((a, b) => a.capturedAtMs - b.capturedAtMs);
-}
-
 function loadLastDevice(): LastDevice | null {
   try {
     const raw = localStorage.getItem(LAST_DEVICE_KEY);
@@ -291,6 +288,10 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   const [diagnostics, setDiagnostics] = useState<BleDiagnostic[]>([]);
   const [sessionSamples, setSessionSamples] = useState<BleForegroundSample[]>([]);
   const nativeSessionIdRef = useRef<string | null>(null);
+  // capturedAtMs da última amostra nativa já aplicada ao estado React. Impede
+  // que uma nova hidratação reprocesse amostras que já foram contabilizadas
+  // (o que duplicaria os intervalos RR e distorceria a HRV).
+  const lastNativeSampleAtRef = useRef(0);
   const diagnosticsRef = useRef<BleDiagnostic[]>([]);
 
   const webDeviceRef = useRef<BluetoothDevice | null>(null);
@@ -499,11 +500,57 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
   useEffect(() => {
     if (!isForegroundNative) return;
     let disposed = false;
+    // O hydrate do mount e o do visibilitychange podem se cruzar: sem esta
+    // trava os dois leriam o mesmo afterMs e aplicariam as mesmas amostras.
+    let hydrating = false;
+
+    // Só reconcilia a UI se ela ainda estiver mostrando uma sessão em curso.
+    // Durante o 'connecting' inicial o registro nativo pode ainda não existir,
+    // e derrubar o estado ali cancelaria uma conexão que está dando certo.
+    const showsLiveSession = () => statusRef.current === 'connected' || statusRef.current === 'reconnecting';
+
+    const forgetNativeSession = () => {
+      nativeSessionIdRef.current = null;
+      lastNativeSampleAtRef.current = 0;
+      setSessionSamples([]);
+      resetToDisconnected();
+    };
 
     const hydrate = async () => {
+      if (hydrating) return;
+      hydrating = true;
       try {
         const active = await BleForeground.getActiveSession();
-        if (disposed || !active.active || !active.sessionId || !active.deviceId) return;
+        if (disposed) return;
+
+        // A sessão pode ter sido encerrada pela ação da notificação enquanto o
+        // WebView estava pausado — o evento 'disconnected' não é retido e se
+        // perde. Sem esta reconciliação a UI ficaria presa em "conectado".
+        if (!active.active || !active.sessionId || !active.deviceId) {
+          if (nativeSessionIdRef.current && showsLiveSession()) forgetNativeSession();
+          return;
+        }
+
+        // Primeira hidratação do hook: uma sessão marcada como ativa há muito
+        // tempo sem amostras é um registro órfão de um serviço que já morreu.
+        // Encerra no nativo para não reaparecer a cada abertura do app.
+        if (nativeSessionIdRef.current == null) {
+          if (isNativeSessionStale(active, Date.now())) {
+            await BleForeground.stopSession({ sessionId: active.sessionId }).catch(() => {});
+            if (disposed) return;
+            recordDiagnostic(
+              'native_session_stale',
+              'Uma sessão de FC anterior ficou aberta sem leituras e foi encerrada.',
+              'warning',
+              active.deviceName || undefined,
+            );
+            return;
+          }
+          lastNativeSampleAtRef.current = 0;
+        } else if (active.sessionId !== nativeSessionIdRef.current) {
+          lastNativeSampleAtRef.current = 0;
+        }
+
         nativeSessionIdRef.current = active.sessionId;
         nativeDeviceIdRef.current = active.deviceId;
         setConnectedDevice({
@@ -515,26 +562,42 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         if (active.deviceName) rememberDevice({ id: active.deviceId, name: active.deviceName });
         updateStatus('connected');
 
-        const response = await BleForeground.listSamples({ sessionId: active.sessionId });
+        // Busca apenas o que ainda não foi aplicado: pedir a sessão inteira a
+        // cada retorno ao app reanexaria os mesmos intervalos RR várias vezes.
+        const afterMs = lastNativeSampleAtRef.current;
+        const response = await BleForeground.listSamples({ sessionId: active.sessionId, afterMs });
         if (disposed) return;
-        const samples = response.samples || [];
-        setSessionSamples((prev) => mergeBleSamples(prev, samples));
-        const rr = samples.flatMap((sample) => sample.rrIntervalsMs || []);
-        if (rr.length > 0) setRrIntervalsMs((prev) => [...prev, ...rr]);
-        if (active.lastBpm != null) {
-          setHeartRate(active.lastBpm);
-          lastBpmRef.current = active.lastBpm;
-          lastBpmAtRef.current = active.lastSampleMs ?? Date.now();
+        const samples = selectNewBleSamples(response.samples || [], afterMs);
+        if (samples.length > 0) {
+          lastNativeSampleAtRef.current = latestSampleAt(samples, afterMs);
+          setSessionSamples((prev) => mergeBleSamples(prev, samples));
+          const rr = samples.flatMap((sample) => sample.rrIntervalsMs || []);
+          if (rr.length > 0) setRrIntervalsMs((prev) => [...prev, ...rr]);
+          setRrQualityStats((prev) => ({
+            totalIntervals:
+              prev.totalIntervals + samples.reduce((sum, sample) => sum + (sample.quality?.rrTotal || 0), 0),
+            invalidIntervals:
+              prev.invalidIntervals + samples.reduce((sum, sample) => sum + (sample.quality?.rrInvalid || 0), 0),
+            lastPacketAt: active.lastSampleMs ?? prev.lastPacketAt,
+            rrAdvertised: prev.rrAdvertised || samples.some((sample) => !!sample.quality?.rrAdvertised),
+            rrPayloadTruncated:
+              prev.rrPayloadTruncated || samples.some((sample) => !!sample.quality?.rrPayloadTruncated),
+          }));
         }
-        setRrQualityStats({
-          totalIntervals: samples.reduce((sum, sample) => sum + (sample.quality?.rrTotal || 0), 0),
-          invalidIntervals: samples.reduce((sum, sample) => sum + (sample.quality?.rrInvalid || 0), 0),
-          lastPacketAt: active.lastSampleMs ?? null,
-          rrAdvertised: samples.some((sample) => !!sample.quality?.rrAdvertised),
-          rrPayloadTruncated: samples.some((sample) => !!sample.quality?.rrPayloadTruncated),
-        });
+        // Os metadados da sessão são gravados com folga no iOS (a cada 5s), então
+        // podem estar atrás das amostras; a última amostra recuperada é a fonte
+        // mais fresca de BPM.
+        const newest = samples.length > 0 ? samples[samples.length - 1] : null;
+        const lastBpm = newest?.bpm ?? active.lastBpm ?? null;
+        if (lastBpm != null) {
+          setHeartRate(lastBpm);
+          lastBpmRef.current = lastBpm;
+          lastBpmAtRef.current = newest?.capturedAtMs ?? active.lastSampleMs ?? Date.now();
+        }
       } catch (error) {
         console.warn('[BLE] sessão nativa não pôde ser recuperada', error);
+      } finally {
+        hydrating = false;
       }
     };
 
@@ -561,6 +624,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         setError(event.reason || 'A conexão BLE encontrou um erro.');
         updateStatus('error');
       } else if (event.status === 'disconnected') {
+        nativeSessionIdRef.current = null;
+        lastNativeSampleAtRef.current = 0;
         resetToDisconnected();
       }
     };
@@ -569,6 +634,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       if (disposed) return;
       if (sample.sessionId && nativeSessionIdRef.current && sample.sessionId !== nativeSessionIdRef.current) return;
       nativeSessionIdRef.current = sample.sessionId;
+      if (Number.isFinite(sample.capturedAtMs)) {
+        lastNativeSampleAtRef.current = Math.max(lastNativeSampleAtRef.current, sample.capturedAtMs);
+      }
       setSessionSamples((prev) => mergeBleSamples(prev, [sample]));
       pushHeartRate(sample.bpm, sample.rrIntervalsMs || []);
       if (sample.quality) {
@@ -605,9 +673,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       document.removeEventListener('visibilitychange', onVisible);
       void subscriptions.then((handles) => Promise.all(handles.map((handle) => handle.remove()))).catch(() => {});
     };
-  // Os callbacks pushHeartRate/resetToDisconnected são declarados abaixo; o
-  // efeito só executa depois da renderização completa, portanto não entram na
-  // lista para evitar acesso à TDZ durante a avaliação das dependências.
+  // pushHeartRate/resetToDisconnected ficam fora das dependências de propósito:
+  // eles são lidos apenas dentro dos handlers e incluí-los faria o efeito
+  // reinscrever os listeners nativos no meio de uma sessão de treino.
   }, [isForegroundNative, recordDiagnostic, rememberDevice, updateStatus]);
 
   // --------------------------------------------------------------------------
@@ -1306,6 +1374,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       const sessionId = makeBleSessionId();
       nativeSessionIdRef.current = sessionId;
       nativeDeviceIdRef.current = deviceId;
+      lastNativeSampleAtRef.current = 0;
       setSessionSamples([]);
       await BleForeground.startSession({ deviceId, deviceName: name, sessionId });
     },
@@ -1544,6 +1613,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
     }
     setSessionSamples([]);
     nativeSessionIdRef.current = null;
+    lastNativeSampleAtRef.current = 0;
     resetToDisconnected();
   }, [isForegroundNative, isNative, resetToDisconnected]);
 

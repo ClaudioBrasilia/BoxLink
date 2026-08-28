@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Capacitor
 import CoreBluetooth
 
@@ -19,6 +20,8 @@ private struct StoredSample: Codable {
     let sourceName: String?
 }
 
+/// Metadados da sessão. As amostras vivem em arquivo próprio: mantê-las aqui
+/// obrigava a reescrever o JSON inteiro a cada batimento.
 private struct StoredSession: Codable {
     let sessionId: String
     let deviceId: String
@@ -26,29 +29,103 @@ private struct StoredSession: Codable {
     let startedAtMs: Int64
     var endedAtMs: Int64?
     var active: Bool
-    var samples: [StoredSample]
+    var sampleCount: Int
+    var lastBpm: Int?
+    var lastSampleMs: Int64?
 }
 
+/**
+ Persistência local da sessão de FC.
+
+ Os metadados ficam num JSON pequeno, reescrito só em mudanças de estado. As
+ amostras são anexadas linha a linha (NDJSON) por um `FileHandle` mantido
+ aberto, o que torna a gravação de cada batimento O(1) — o formato anterior
+ recarregava, re-serializava e reescrevia a sessão inteira a cada notificação
+ BLE, um custo quadrático justamente com o app em segundo plano.
+ */
 private final class BleSessionStore {
-    private let fileURL: URL
+    private let sessionURL: URL
+    private let samplesURL: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private var handle: FileHandle?
 
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let directory = support.appendingPathComponent("BoxLink", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        fileURL = directory.appendingPathComponent("ble-session.json")
+        sessionURL = directory.appendingPathComponent("ble-session-v2.json")
+        samplesURL = directory.appendingPathComponent("ble-samples.ndjson")
+        // Formato antigo (sessão e amostras num arquivo só). Não há o que
+        // migrar: uma sessão interrompida por atualização do app já terminou.
+        try? FileManager.default.removeItem(at: directory.appendingPathComponent("ble-session.json"))
     }
 
-    func load() -> StoredSession? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+    deinit {
+        closeHandle()
+    }
+
+    // MARK: Metadados
+
+    func loadSession() -> StoredSession? {
+        guard let data = try? Data(contentsOf: sessionURL) else { return nil }
         return try? decoder.decode(StoredSession.self, from: data)
     }
 
-    func save(_ session: StoredSession) {
+    func saveSession(_ session: StoredSession) {
         guard let data = try? encoder.encode(session) else { return }
-        try? data.write(to: fileURL, options: [.atomic])
+        try? data.write(to: sessionURL, options: [.atomic])
+    }
+
+    // MARK: Amostras
+
+    /// Zera o arquivo de amostras — usado no início de uma sessão nova.
+    func resetSamples() {
+        closeHandle()
+        try? FileManager.default.removeItem(at: samplesURL)
+        FileManager.default.createFile(atPath: samplesURL.path, contents: nil)
+    }
+
+    func appendSample(_ sample: StoredSample) {
+        guard var data = try? encoder.encode(sample) else { return }
+        data.append(0x0A)
+        guard let handle = writeHandle() else { return }
+        if #available(iOS 13.4, *) {
+            do { try handle.write(contentsOf: data) } catch { closeHandle() }
+        } else {
+            handle.write(data)
+        }
+    }
+
+    func listSamples(sessionId: String, afterMs: Int64) -> [StoredSample] {
+        if let handle {
+            if #available(iOS 13.4, *) { try? handle.synchronize() } else { handle.synchronizeFile() }
+        }
+        guard let data = try? Data(contentsOf: samplesURL) else { return [] }
+        var result: [StoredSample] = []
+        for line in data.split(separator: 0x0A) where !line.isEmpty {
+            guard let sample = try? decoder.decode(StoredSample.self, from: Data(line)) else { continue }
+            guard sample.sessionId == sessionId, sample.capturedAtMs > afterMs else { continue }
+            result.append(sample)
+        }
+        return result
+    }
+
+    func closeHandle() {
+        guard let handle else { return }
+        if #available(iOS 13.4, *) { try? handle.close() } else { handle.closeFile() }
+        self.handle = nil
+    }
+
+    private func writeHandle() -> FileHandle? {
+        if let handle { return handle }
+        if !FileManager.default.fileExists(atPath: samplesURL.path) {
+            FileManager.default.createFile(atPath: samplesURL.path, contents: nil)
+        }
+        guard let opened = try? FileHandle(forWritingTo: samplesURL) else { return nil }
+        if #available(iOS 13.4, *) { _ = try? opened.seekToEnd() } else { opened.seekToEndOfFile() }
+        handle = opened
+        return opened
     }
 }
 
@@ -58,22 +135,42 @@ private struct ParsedMeasurement {
     let quality: StoredQuality
 }
 
-private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+/**
+ Dono da conexão BLE no iOS.
+
+ É um singleton criado pelo `AppDelegate` ainda dentro de
+ `didFinishLaunchingWithOptions`. A Apple exige que o `CBCentralManager` com
+ `restoreIdentifier` exista antes daquela função retornar; instanciá-lo mais
+ tarde (no ciclo de vida da view, por exemplo) faz o iOS não entregar
+ `willRestoreState` quando relança o app em segundo plano por um evento Core
+ Bluetooth — ou seja, a restauração de estado simplesmente não acontece.
+ */
+final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+    static let shared = IosBleSessionCoordinator()
+
     private static let restoreIdentifier = "com.crosscity.boxlink.ble.central"
     private static let heartRateService = CBUUID(string: "180D")
     private static let heartRateMeasurement = CBUUID(string: "2A37")
-    private static let cccd = CBUUID(string: "2902")
+    /// Intervalo mínimo entre gravações dos metadados durante a captura.
+    private static let metadataFlushMs: Int64 = 5000
 
     private let store = BleSessionStore()
-    private let emitEvent: (String, [String: Any]) -> Void
+    /// Referência fraca ao plugin: quando o WebView morre, a ponte some sozinha
+    /// sem precisar de um `detach` explícito — que, se chegasse atrasado,
+    /// desligaria os eventos de um plugin novo já registrado.
+    private weak var listener: BleForeground?
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
+    private var session: StoredSession?
     private var targetDeviceId: UUID?
     private var reconnectAttempt = 0
     private var reconnectWorkItem: DispatchWorkItem?
     private var scanTimeoutWorkItem: DispatchWorkItem?
     private var stopping = false
     private var subscribed = false
+    private var lastMetadataFlushMs: Int64 = 0
+    private var pendingCharacteristicDiscovery = 0
+    private var notifiableCandidates: [CBCharacteristic] = []
 
     private let knownServiceIds: Set<String> = [
         "180d", "fb005c80-02e7-f387-1cad-8acd2d8df0c8", "a026ee0b-0a7d-4ab3-97fa-f1500f9feb8b",
@@ -87,15 +184,43 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
         "ffe1", "fef6", "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
     ]
 
-    init(emitEvent: @escaping (String, [String: Any]) -> Void) {
-        self.emitEvent = emitEvent
+    private override init() {
         super.init()
+        session = store.loadSession()
         central = CBCentralManager(
             delegate: self,
             queue: DispatchQueue.main,
             options: [CBCentralManagerOptionRestoreIdentifierKey: Self.restoreIdentifier]
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(flushMetadata),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
     }
+
+    /// Ponto de entrada do `AppDelegate`: garante que o singleton — e, com ele,
+    /// o central manager com `restoreIdentifier` — exista durante o lançamento.
+    /// Devolve se há uma sessão pendente, o que também impede que a chamada
+    /// seja tratada como sem efeito.
+    @discardableResult
+    func prepare() -> Bool {
+        session?.active ?? false
+    }
+
+    /// O plugin Capacitor liga a ponte de eventos quando o WebView nasce. A
+    /// captura não depende dela: a amostra já está em disco quando o evento é
+    /// emitido, e o app a recupera pelo snapshot ao voltar ao primeiro plano.
+    func attach(_ plugin: BleForeground) {
+        listener = plugin
+    }
+
+    private func emitEvent(_ event: String, _ data: [String: Any]) {
+        listener?.notifyListeners(event, data: data)
+    }
+
+    // MARK: API do plugin
 
     func startSession(deviceId: String, deviceName: String?, sessionId: String) {
         guard let uuid = UUID(uuidString: deviceId) else {
@@ -109,27 +234,33 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
         scanTimeoutWorkItem?.cancel()
         targetDeviceId = uuid
 
-        let existing = store.load()
+        let existing = session ?? store.loadSession()
         if existing?.sessionId != sessionId {
-            if let current = existing, current.active {
-                var ended = current
-                ended.active = false
-                ended.endedAtMs = nowMs()
-                store.save(ended)
+            if var current = existing, current.active {
+                current.active = false
+                current.endedAtMs = nowMs()
+                store.saveSession(current)
             }
-            store.save(StoredSession(
+            store.resetSamples()
+            let fresh = StoredSession(
                 sessionId: sessionId,
                 deviceId: deviceId,
                 deviceName: deviceName,
                 startedAtMs: nowMs(),
                 endedAtMs: nil,
                 active: true,
-                samples: []
-            ))
+                sampleCount: 0,
+                lastBpm: nil,
+                lastSampleMs: nil
+            )
+            session = fresh
+            store.saveSession(fresh)
         } else if var resumed = existing, resumed.active {
             resumed.deviceName = deviceName ?? resumed.deviceName
-            store.save(resumed)
+            session = resumed
+            store.saveSession(resumed)
         }
+        lastMetadataFlushMs = nowMs()
 
         if central.state == .poweredOn {
             connectToTarget()
@@ -148,34 +279,35 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
         }
         self.peripheral = nil
         subscribed = false
-        if var session = store.load(), session.active {
-            session.active = false
-            session.endedAtMs = nowMs()
-            store.save(session)
-            emitStatus("disconnected", reason: "user")
-        } else {
-            emitStatus("disconnected", reason: "user")
+        pendingCharacteristicDiscovery = 0
+        notifiableCandidates = []
+        if var current = session ?? store.loadSession(), current.active {
+            current.active = false
+            current.endedAtMs = nowMs()
+            session = current
+            store.saveSession(current)
         }
+        store.closeHandle()
+        emitStatus("disconnected", reason: "user")
         targetDeviceId = nil
     }
 
     func activeSessionPayload() -> [String: Any] {
-        guard let session = store.load(), session.active else { return ["active": false, "sampleCount": 0] }
-        return sessionPayload(session)
+        guard let current = session ?? store.loadSession(), current.active else {
+            return ["active": false, "sampleCount": 0]
+        }
+        return sessionPayload(current)
     }
 
     func snapshotPayload(sessionId: String) -> [String: Any] {
-        guard let session = store.load(), session.sessionId == sessionId else {
+        guard let current = session ?? store.loadSession(), current.sessionId == sessionId else {
             return ["active": false, "sampleCount": 0]
         }
-        return sessionPayload(session)
+        return sessionPayload(current)
     }
 
     func samplesPayload(sessionId: String, afterMs: Int64) -> [String: Any] {
-        let samples = (store.load()?.samples ?? []).filter {
-            $0.sessionId == sessionId && $0.capturedAtMs > afterMs
-        }
-        return ["samples": samples.map(samplePayload)]
+        ["samples": store.listSamples(sessionId: sessionId, afterMs: afterMs).map(samplePayload)]
     }
 
     // MARK: CBCentralManagerDelegate
@@ -183,8 +315,9 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
         case .poweredOn:
-            if let session = store.load(), session.active {
-                targetDeviceId = UUID(uuidString: session.deviceId)
+            if session == nil { session = store.loadSession() }
+            if let current = session, current.active {
+                targetDeviceId = UUID(uuidString: current.deviceId)
                 connectToTarget()
             }
         case .unauthorized:
@@ -203,9 +336,11 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
 
     func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
         let restored = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral]) ?? []
-        guard let session = store.load(), session.active else { return }
-        targetDeviceId = UUID(uuidString: session.deviceId)
-        if let match = restored.first(where: { $0.identifier.uuidString.lowercased() == session.deviceId.lowercased() }) {
+        if session == nil { session = store.loadSession() }
+        guard let current = session, current.active else { return }
+        stopping = false
+        targetDeviceId = UUID(uuidString: current.deviceId)
+        if let match = restored.first(where: { $0.identifier.uuidString.lowercased() == current.deviceId.lowercased() }) {
             peripheral = match
             match.delegate = self
             emitStatus("reconnecting", reason: "state_restored")
@@ -228,6 +363,8 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
         self.peripheral = peripheral
         peripheral.delegate = self
         reconnectAttempt = 0
+        pendingCharacteristicDiscovery = 0
+        notifiableCandidates = []
         updateStoredDeviceName(peripheral.name)
         emitStatus("discovering", reason: nil)
         peripheral.discoverServices(nil)
@@ -241,7 +378,9 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         subscribed = false
-        guard !stopping, store.load()?.active == true else { return }
+        pendingCharacteristicDiscovery = 0
+        notifiableCandidates = []
+        guard !stopping, session?.active == true else { return }
         emitStatus("reconnecting", reason: error?.localizedDescription ?? "disconnected")
         scheduleReconnect()
     }
@@ -249,28 +388,45 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
     // MARK: CBPeripheralDelegate
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        guard !stopping, error == nil else {
-            emitDiagnostic(code: "service_discovery", message: error?.localizedDescription ?? "Não foi possível descobrir os serviços.")
+        guard !stopping else { return }
+        if let error {
+            emitDiagnostic(code: "service_discovery", message: error.localizedDescription)
             scheduleReconnect()
             return
         }
-        guard let services = peripheral.services else { scheduleReconnect(); return }
-        let service = services.first(where: { isLikelyHeartRateService($0.uuid) })
-        guard let service else {
-            emitDiagnostic(code: "hr_service_missing", message: "Nenhum serviço de frequência cardíaca conhecido foi encontrado.")
+        let services = peripheral.services ?? []
+        guard !services.isEmpty else {
+            emitDiagnostic(code: "hr_service_missing", message: "O monitor não expôs nenhum serviço BLE.")
             scheduleReconnect()
             return
         }
-        peripheral.discoverCharacteristics(nil, for: service)
+
+        // Varre todos os serviços candidatos em vez de apostar no primeiro que
+        // "parece" de FC: um serviço proprietário pode aparecer antes do 180D e
+        // não ter canal notificável nenhum. A ordenação garante que o padrão e
+        // os proprietários conhecidos sejam avaliados primeiro.
+        var candidates = services.filter { isLikelyHeartRateService($0.uuid) }
+        if candidates.isEmpty { candidates = services }
+        candidates.sort { serviceRank($0.uuid) < serviceRank($1.uuid) }
+
+        notifiableCandidates = []
+        pendingCharacteristicDiscovery = candidates.count
+        for service in candidates {
+            peripheral.discoverCharacteristics(nil, for: service)
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        guard !stopping, error == nil else {
-            emitDiagnostic(code: "characteristic_discovery", message: error?.localizedDescription ?? "Não foi possível descobrir o canal de FC.")
-            scheduleReconnect()
-            return
+        guard !stopping, pendingCharacteristicDiscovery > 0 else { return }
+        if error == nil {
+            notifiableCandidates.append(contentsOf: (service.characteristics ?? []).filter {
+                $0.properties.contains(.notify) || $0.properties.contains(.indicate)
+            })
         }
-        guard let characteristic = chooseCharacteristic(service.characteristics ?? []) else {
+        pendingCharacteristicDiscovery -= 1
+        guard pendingCharacteristicDiscovery == 0 else { return }
+
+        guard let characteristic = chooseCharacteristic(notifiableCandidates) else {
             emitDiagnostic(code: "hr_characteristic_missing", message: "Nenhum canal notificável de frequência cardíaca foi encontrado.")
             scheduleReconnect()
             return
@@ -290,24 +446,43 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard error == nil, subscribed, let data = characteristic.value else { return }
+        guard var current = session, current.active else { return }
         let isStandard = characteristic.uuid == Self.heartRateMeasurement
-        guard let measurement = parse(data: data, standard: isStandard), let session = store.load(), session.active else { return }
+        guard let measurement = parse(data: data, standard: isStandard) else { return }
+
+        let capturedAtMs = nowMs()
         let sample = StoredSample(
-            sessionId: session.sessionId,
-            capturedAtMs: nowMs(),
+            sessionId: current.sessionId,
+            capturedAtMs: capturedAtMs,
             bpm: measurement.bpm,
             rrIntervalsMs: measurement.rrIntervalsMs,
             quality: measurement.quality,
             sourceId: peripheral.identifier.uuidString,
-            sourceName: peripheral.name ?? session.deviceName
+            sourceName: peripheral.name ?? current.deviceName
         )
-        var updated = session
-        updated.samples.append(sample)
-        store.save(updated)
+        // A amostra vai para o disco antes do evento: se o WebView estiver
+        // pausado ou morto, o app a recupera pelo snapshot ao voltar.
+        store.appendSample(sample)
+
+        current.sampleCount += 1
+        current.lastBpm = sample.bpm
+        current.lastSampleMs = capturedAtMs
+        session = current
+        if capturedAtMs - lastMetadataFlushMs >= Self.metadataFlushMs {
+            lastMetadataFlushMs = capturedAtMs
+            store.saveSession(current)
+        }
+
         emitEvent("heartRate", samplePayload(sample))
     }
 
     // MARK: Core Bluetooth helpers
+
+    @objc private func flushMetadata() {
+        guard let current = session else { return }
+        lastMetadataFlushMs = nowMs()
+        store.saveSession(current)
+    }
 
     private func connectToTarget() {
         guard !stopping, central.state == .poweredOn, let target = targetDeviceId else { return }
@@ -338,7 +513,7 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
     }
 
     private func scheduleReconnect() {
-        guard !stopping, store.load()?.active == true else { return }
+        guard !stopping, session?.active == true else { return }
         reconnectWorkItem?.cancel()
         let delays: [Double] = [1, 2, 4]
         let delay = delays[min(reconnectAttempt, delays.count - 1)]
@@ -349,16 +524,24 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    private func chooseCharacteristic(_ characteristics: [CBCharacteristic]) -> CBCharacteristic? {
-        let notifiable = characteristics.filter { $0.properties.contains(.notify) || $0.properties.contains(.indicate) }
+    private func chooseCharacteristic(_ notifiable: [CBCharacteristic]) -> CBCharacteristic? {
         if let standard = notifiable.first(where: { $0.uuid == Self.heartRateMeasurement }) { return standard }
         if let known = notifiable.first(where: { knownCharacteristicIds.contains(normalized($0.uuid)) }) { return known }
         return notifiable.first
     }
 
+    /// Ordem de preferência: serviço padrão de FC, proprietários conhecidos e,
+    /// por último, o que só casou pela heurística de nome.
+    private func serviceRank(_ uuid: CBUUID) -> Int {
+        if uuid == Self.heartRateService { return 0 }
+        if knownServiceIds.contains(normalized(uuid)) { return 1 }
+        return 2
+    }
+
     private func isLikelyHeartRateService(_ uuid: CBUUID) -> Bool {
+        if uuid == Self.heartRateService { return true }
         let normalizedId = normalized(uuid)
-        return normalizedId == "180d" || knownServiceIds.contains(normalizedId) ||
+        return knownServiceIds.contains(normalizedId) ||
             normalizedId.contains("pmd") || normalizedId.contains("fff") || normalizedId.contains("ffe") ||
             normalizedId.contains("fef")
     }
@@ -434,9 +617,11 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
     }
 
     private func updateStoredDeviceName(_ name: String?) {
-        guard let name, !name.isEmpty, var session = store.load() else { return }
-        session.deviceName = name
-        store.save(session)
+        guard let name, !name.isEmpty, var current = session else { return }
+        guard current.deviceName != name else { return }
+        current.deviceName = name
+        session = current
+        store.saveSession(current)
     }
 
     private func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
@@ -447,14 +632,12 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
             "sessionId": session.sessionId,
             "deviceId": session.deviceId,
             "startedAtMs": session.startedAtMs,
-            "sampleCount": session.samples.count
+            "sampleCount": session.sampleCount
         ]
         if let deviceName = session.deviceName { result["deviceName"] = deviceName }
         if let endedAtMs = session.endedAtMs { result["endedAtMs"] = endedAtMs }
-        if let last = session.samples.last {
-            result["lastBpm"] = last.bpm
-            result["lastSampleMs"] = last.capturedAtMs
-        }
+        if let lastBpm = session.lastBpm { result["lastBpm"] = lastBpm }
+        if let lastSampleMs = session.lastSampleMs { result["lastSampleMs"] = lastSampleMs }
         return result
     }
 
@@ -478,10 +661,10 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
 
     private func emitStatus(_ status: String, reason: String?) {
         var payload: [String: Any] = ["status": status]
-        if let session = store.load() {
-            payload["sessionId"] = session.sessionId
-            payload["deviceId"] = session.deviceId
-            if let name = session.deviceName { payload["deviceName"] = name }
+        if let current = session {
+            payload["sessionId"] = current.sessionId
+            payload["deviceId"] = current.deviceId
+            if let name = current.deviceName { payload["deviceName"] = name }
         }
         if let reason { payload["reason"] = reason }
         emitEvent("status", payload)
@@ -489,10 +672,10 @@ private final class IosBleSessionCoordinator: NSObject, CBCentralManagerDelegate
 
     private func emitDiagnostic(code: String, message: String) {
         var payload: [String: Any] = ["code": code, "message": message, "level": "warning"]
-        if let session = store.load() {
-            payload["sessionId"] = session.sessionId
-            payload["deviceId"] = session.deviceId
-            if let name = session.deviceName { payload["deviceName"] = name }
+        if let current = session {
+            payload["sessionId"] = current.sessionId
+            payload["deviceId"] = current.deviceId
+            if let name = current.deviceName { payload["deviceName"] = name }
         }
         emitEvent("diagnostic", payload)
     }
@@ -510,12 +693,10 @@ public class BleForeground: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "listSamples", returnType: CAPPluginReturnPromise)
     ]
 
-    private var coordinator: IosBleSessionCoordinator!
+    private var coordinator: IosBleSessionCoordinator { IosBleSessionCoordinator.shared }
 
     override public func load() {
-        coordinator = IosBleSessionCoordinator { [weak self] event, data in
-            self?.notifyListeners(event, data: data)
-        }
+        coordinator.attach(self)
     }
 
     @objc func startSession(_ call: CAPPluginCall) {
