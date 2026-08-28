@@ -23,6 +23,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.SystemClock;
 
 import androidx.annotation.Nullable;
@@ -65,6 +66,11 @@ public final class HrBleForegroundService extends Service {
     private static final long[] RECONNECT_DELAYS_MS = {1000L, 2000L, 4000L};
     private static final long STALE_TIMEOUT_MS = 10000L;
     private static final long STALE_CHECK_MS = 2000L;
+    // O wake lock expira sozinho: uma sessão que parou de produzir leituras
+    // devolve a CPU em meia hora, mesmo que o serviço continue tentando
+    // reconectar. Enquanto houver batimentos chegando, o prazo é renovado.
+    private static final long WAKE_LOCK_TIMEOUT_MS = 30L * 60L * 1000L;
+    private static final long WAKE_LOCK_REFRESH_MS = 5L * 60L * 1000L;
 
     private static final UUID HR_SERVICE = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb");
     private static final UUID HR_MEASUREMENT = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb");
@@ -117,6 +123,8 @@ public final class HrBleForegroundService extends Service {
     private long lastSampleAtMs;
     private Runnable reconnectRunnable;
     private Runnable staleRunnable;
+    private PowerManager.WakeLock wakeLock;
+    private long wakeLockRefreshedAtMs;
 
     private static Set<UUID> unmodifiableUuidSet(String... values) {
         Set<UUID> result = new HashSet<>();
@@ -207,6 +215,8 @@ public final class HrBleForegroundService extends Service {
             stopSession("foreground_start_blocked");
             return false;
         }
+        // Fora do try: uma falha ao segurar a CPU não é uma falha de foreground.
+        acquireWakeLock();
         return true;
     }
 
@@ -419,6 +429,7 @@ public final class HrBleForegroundService extends Service {
 
         long capturedAt = System.currentTimeMillis();
         lastSampleAtMs = capturedAt;
+        refreshWakeLock(capturedAt);
         try {
             store.addSample(
                 sessionId,
@@ -543,6 +554,43 @@ public final class HrBleForegroundService extends Service {
         handler.postDelayed(reconnectRunnable, delay);
     }
 
+    /**
+     * Um Foreground Service mantém o processo vivo, mas não impede o aparelho de
+     * suspender a CPU. Sem o wake lock parcial, com a tela apagada e o celular
+     * parado, os {@link Handler#postDelayed} do watchdog de silêncio e do backoff
+     * de reconexão deixam de contar — as notificações BLE ainda acordam o rádio e
+     * são gravadas, mas a recuperação de uma queda de sinal fica lenta.
+     */
+    private void acquireWakeLock() {
+        if (wakeLock == null) {
+            PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+            if (power == null) return;
+            wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, getPackageName() + ":heart-rate-session");
+            // Sem contagem de referências, adquirir de novo apenas renova o
+            // prazo e liberar uma vez basta — não há como ficar desbalanceado.
+            wakeLock.setReferenceCounted(false);
+        }
+        try {
+            wakeLock.acquire(WAKE_LOCK_TIMEOUT_MS);
+            wakeLockRefreshedAtMs = System.currentTimeMillis();
+        } catch (RuntimeException ignored) {
+            // Sem wake lock a captura continua; só a reconexão fica mais lenta.
+        }
+    }
+
+    private void refreshWakeLock(long nowMs) {
+        if (wakeLock == null) return;
+        if (nowMs - wakeLockRefreshedAtMs < WAKE_LOCK_REFRESH_MS) return;
+        acquireWakeLock();
+    }
+
+    private void releaseWakeLock() {
+        if (wakeLock == null) return;
+        try {
+            if (wakeLock.isHeld()) wakeLock.release();
+        } catch (RuntimeException ignored) {}
+    }
+
     private void closeGatt() {
         if (gatt == null) return;
         try { gatt.disconnect(); } catch (RuntimeException ignored) {}
@@ -574,6 +622,7 @@ public final class HrBleForegroundService extends Service {
             if (sessionId != null) store.markEnded(sessionId, System.currentTimeMillis());
         }
         emitStatus("disconnected", reason);
+        releaseWakeLock();
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
         stopSelf();
     }
@@ -612,6 +661,9 @@ public final class HrBleForegroundService extends Service {
             if (staleRunnable != null) handler.removeCallbacks(staleRunnable);
             if (reconnectRunnable != null) handler.removeCallbacks(reconnectRunnable);
         }
+        // Rede de segurança: o processo pode ser encerrado sem passar por
+        // stopSession (memória baixa, kill do fabricante).
+        releaseWakeLock();
         if (store != null) store.close();
         super.onDestroy();
     }

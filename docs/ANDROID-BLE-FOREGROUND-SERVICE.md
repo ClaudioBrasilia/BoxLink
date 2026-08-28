@@ -49,9 +49,17 @@ A permissão de notificação é solicitada para transparência, mas uma recusa 
 
 O `startForeground` pode ser recusado pelo sistema por mais de um motivo: falta de permissão (`SecurityException`) ou bloqueio de início em segundo plano (`ForegroundServiceStartNotAllowedException` no Android 12+ e as exceções de tipo inválido no Android 14+, todas descendentes de `IllegalStateException`). O serviço trata as duas famílias, encerra a sessão de forma limpa e emite `disconnected`; sem isso, o reinício via `START_STICKY` com o app em segundo plano derrubaria o processo.
 
+## Wake lock
+
+Um Foreground Service mantém o processo vivo, mas não impede o aparelho de suspender a CPU — o Spotify só fica imune a isso porque o subsistema de áudio segura o processador enquanto toca. Sem um wake lock parcial, com a tela apagada e o celular parado, os `Handler.postDelayed` do watchdog de silêncio e do backoff de reconexão deixam de contar. As notificações BLE ainda acordam o rádio e são gravadas, mas a recuperação de uma queda de sinal fica lenta.
+
+O serviço adquire um `PARTIAL_WAKE_LOCK` assim que vira foreground e o libera em `stopSession` e em `onDestroy`. O lock é criado sem contagem de referências, então adquirir de novo apenas renova o prazo e uma única liberação basta — não há como ficar desbalanceado.
+
+O prazo é de trinta minutos e é renovado, no máximo a cada cinco, sempre que uma leitura válida chega. Assim uma sessão ativa mantém a CPU acordada indefinidamente, enquanto uma sessão que parou de produzir dados devolve o processador sozinha em meia hora, mesmo que o serviço continue tentando reconectar e mesmo que o usuário esqueça de encerrar o treino. A permissão `WAKE_LOCK` é normal e não gera diálogo.
+
 ## Limitações importantes
 
-O Foreground Service melhora substancialmente a continuidade, mas não cria uma garantia absoluta. O Android pode interromper a sessão em caso de force-stop, desativação do Bluetooth, bateria esgotada, falha do sensor ou políticas agressivas do fabricante. Remover o app da tela de recentes não deve encerrar o serviço, porque o manifesto usa `android:stopWithTask="false"`; entretanto, alguns fabricantes encerram processos independentemente dessa configuração.
+O Foreground Service melhora substancialmente a continuidade, mas não cria uma garantia absoluta. A publicação da FC para a TV do box continua sendo feita em JavaScript, pelo WebView: ela sobrevive a outro app por cima, mas para quando o usuário remove o BoxLink da lista de recentes, porque a Activity é destruída. A gravação local segue normalmente nesse caso. O Android pode interromper a sessão em caso de force-stop, desativação do Bluetooth, bateria esgotada, falha do sensor ou políticas agressivas do fabricante. Remover o app da tela de recentes não deve encerrar o serviço, porque o manifesto usa `android:stopWithTask="false"`; entretanto, alguns fabricantes encerram processos independentemente dessa configuração.
 
 O serviço precisa continuar sendo iniciado enquanto o aplicativo está visível, por exemplo quando o usuário toca em “Conectar”. Não se deve tentar iniciar uma nova sessão automaticamente de um timer JavaScript quando o app já está em background. Para distribuição na Play Store, a declaração do tipo `connectedDevice`, a justificativa de uso e a política de dados precisam ser revisadas junto às regras vigentes da Play Console [1] [2].
 
