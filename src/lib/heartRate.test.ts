@@ -12,6 +12,7 @@ import {
   isSameUuid,
   isLikelyHRService,
   isLikelyHRCharacteristic,
+  isAppleWatchName,
   HEART_RATE_SERVICE,
   HEART_RATE_MEASUREMENT,
 } from './heartRate';
@@ -115,5 +116,25 @@ describe('detecção de FC com UUIDs na forma curta', () => {
     // Protocolo do Garmin Connect — nunca carrega frequência cardíaca.
     expect(isLikelyHRCharacteristic('6a4e2810-667b-11e3-949a-0800200c9a66')).toBe(false);
     expect(isLikelyHRCharacteristic('6a4e2830-667b-11e3-949a-0800200c9a66')).toBe(false);
+  });
+});
+
+describe('isAppleWatchName', () => {
+  it('reconhece o nome anunciado pelo watchOS, inclusive personalizado', () => {
+    expect(isAppleWatchName('Apple Watch de Rafael')).toBe(true);
+    expect(isAppleWatchName('apple watch')).toBe(true);
+    expect(isAppleWatchName('AppleWatch')).toBe(true);
+    expect(isAppleWatchName('Watch Ultra 2')).toBe(true);
+    expect(isAppleWatchName('Watch Series 9')).toBe(true);
+    expect(isAppleWatchName('iWatch')).toBe(true);
+  });
+
+  it('não captura monitores de FC que realmente transmitem', () => {
+    expect(isAppleWatchName('Polar H10')).toBe(false);
+    expect(isAppleWatchName('Galaxy Watch6')).toBe(false);
+    expect(isAppleWatchName('Amazfit GTR 4')).toBe(false);
+    expect(isAppleWatchName('HeartCast')).toBe(false);
+    expect(isAppleWatchName('')).toBe(false);
+    expect(isAppleWatchName(null)).toBe(false);
   });
 });
