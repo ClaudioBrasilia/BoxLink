@@ -205,6 +205,23 @@ export function isLikelyHRDeviceName(name: string | undefined | null): boolean {
   );
 }
 
+/**
+ * Apple Watch pelo nome anunciado — inclui os nomes personalizados que o iOS
+ * gera ("Apple Watch de Rafael") e as variantes de modelo ("Watch Ultra",
+ * "Watch Series 9", "Watch SE", "iWatch").
+ *
+ * ⚠️ O Apple Watch NÃO expõe o serviço padrão de Frequência Cardíaca (0x180D)
+ * como periférico BLE: o watchOS só publica serviços proprietários para o
+ * iPhone pareado e recusa o GATT de qualquer outro central. Ele aparece no
+ * scan (e casa com os prefixos de nome), mas a conexão sempre falha — muitas
+ * vezes com um código opaco da plataforma. Detectar pelo nome permite trocar
+ * esse erro cru por uma orientação útil.
+ */
+export function isAppleWatchName(name: string | undefined | null): boolean {
+  if (!name) return false;
+  return /apple\s*watch|\biwatch\b|watch\s*(ultra|series|se)\b/i.test(name);
+}
+
 /** Sufixo da Base UUID da Bluetooth SIG — completa UUIDs de 16/32 bits. */
 const BLUETOOTH_BASE_UUID_SUFFIX = '-0000-1000-8000-00805f9b34fb';
 

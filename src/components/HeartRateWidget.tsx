@@ -19,7 +19,7 @@ import { useHeartRateSession } from '../hooks/useHeartRateSession';
 import { useKeepScreenAwake } from '../hooks/useKeepScreenAwake';
 import { useUserBiometrics } from '../hooks/useUserBiometrics';
 import HeartRateSummary from './HeartRateSummary';
-import { getHeartRateZone, intensityPct } from '../lib/heartRate';
+import { getHeartRateZone, intensityPct, isAppleWatchName } from '../lib/heartRate';
 import { cn } from '../lib/utils';
 import { APP_NAME } from '../lib/appMode';
 
@@ -35,7 +35,7 @@ const DEVICE_TIPS: { name: string; tip: string }[] = [
   { name: 'Samsung Galaxy Watch',     tip: 'Não transmite FC por Bluetooth direto. Para FC em tempo real, instale "Heart for Bluetooth" (grátis) na Play Store do relógio e deixe transmitindo. Alternativa: "Sincronizar com App de Saúde" (Health Connect) — mas a FC chega com atraso.' },
   { name: 'Samsung Galaxy Fit (pulseira)', tip: `Conecta direto: inicie um treino NA PULSEIRA (medição contínua de FC) e busque aqui. Se falhar, feche o app Galaxy Wearable — conectada ao celular, ela recusa o ${APP_NAME}.` },
   { name: 'iPhone (navegador)',       tip: `Safari e Chrome do iPhone não têm Bluetooth. Abra o ${APP_NAME} pelo navegador Bluefy (grátis na App Store) para conectar sem o app nativo.` },
-  { name: 'Apple Watch',              tip: 'Não transmite FC por Bluetooth. Use "Sincronizar com App de Saúde" (Apple Health) ou um app broadcaster (ex.: HeartCast) aberto no Bluefy.' },
+  { name: 'Apple Watch',              tip: 'Não transmite FC por Bluetooth para outros apps — ele aparece na busca, mas recusa a conexão. Use "Sincronizar com App de Saúde" (Apple Health) ou um app transmissor no relógio (ex.: HeartCast, ECHO HR, BlueHeart) e conecte nele.' },
   { name: 'Huawei / Xiaomi / genéricos', tip: 'Muitos usam UUID proprietário (0x3802) — já suportado. Se aparecer só como "Watch", confira pelo endereço/RSSI.' },
   { name: 'Mi Band / Amazfit',        tip: 'Não deixe conectado ao app Mi Fitness / Zepp ao mesmo tempo.' },
 ];
@@ -172,6 +172,48 @@ function GarminHint() {
         <li>No relógio: Configurações → Sensores → FC no pulso → <span className="text-white">Transmitir FC</span> (ou inicie um treino).</li>
         <li>Com o relógio no pulso, toque em "Buscar Novamente".</li>
       </ol>
+    </div>
+  );
+}
+
+// Dica específica para Apple Watch. Ele casa com os prefixos de nome e aparece
+// na lista, mas o watchOS não publica o serviço de FC (0x180D) para centrais
+// que não sejam o iPhone pareado — a conexão sempre termina em erro de GATT.
+function AppleWatchHint({ platform, onUseHealth }: { platform: string; onUseHealth?: () => void }) {
+  // Apple Health só existe no iPhone: no Android, o único caminho é um app
+  // transmissor rodando no relógio.
+  const canUseHealth = platform === 'ios' && !!onUseHealth;
+  return (
+    <div className="flex flex-col gap-1.5 bg-primary/5 border border-primary/20 rounded-xl p-3">
+      <p className="text-primary text-[9px] font-black uppercase tracking-widest">Apple Watch detectado</p>
+      <p className="text-white/60 text-[9px] font-black uppercase leading-relaxed">
+        O <span className="text-white">Apple Watch</span> não transmite FC por Bluetooth para outros apps —
+        o watchOS só libera a leitura para o iPhone pareado. Caminhos que funcionam:
+      </p>
+      <ol className="text-white/50 text-[9px] font-black uppercase leading-relaxed list-decimal pl-3.5 flex flex-col gap-0.5">
+        <li>
+          <span className="text-white">Tempo real</span>: instale no relógio um app transmissor
+          (ex.: <span className="text-white">HeartCast</span>, ECHO HR ou BlueHeart), abra-o e deixe transmitindo.
+          Ele aparece na busca com o nome do app — conecte nele, não no "Apple Watch".
+        </li>
+        {platform === 'ios' ? (
+          <li>
+            Ou use <span className="text-white">"Sincronizar com App de Saúde"</span> (Apple Health): funciona sem
+            app extra, mas a FC chega com atraso de alguns minutos.
+          </li>
+        ) : (
+          <li>
+            Neste aparelho não há Apple Health — o app transmissor no relógio é o único caminho para a FC do
+            Apple Watch.
+          </li>
+        )}
+      </ol>
+      {canUseHealth && (
+        <button onClick={onUseHealth}
+          className="mt-1 flex items-center justify-center gap-2 w-full py-2 rounded-xl bg-primary/10 border border-primary/30 text-primary text-[9px] font-black uppercase tracking-widest hover:bg-primary/20 transition-all">
+          <RefreshCw className="w-3 h-3" /> Sincronizar via App de Saúde
+        </button>
+      )}
     </div>
   );
 }
@@ -405,7 +447,9 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
                   <div className="min-w-0">
                     <p className="text-xs font-black text-white truncate">{d.name}</p>
                     <p className="text-[8px] font-black text-white/30 uppercase tracking-widest truncate">
-                      {d.hasHeartRateService ? '❤ Monitor cardíaco' : d.bonded ? '🔗 Pareado no aparelho' : `ID ${d.id.slice(-8)}`}
+                      {isAppleWatchName(d.name)
+                        ? '⌚ Não transmite FC — veja a dica abaixo'
+                        : d.hasHeartRateService ? '❤ Monitor cardíaco' : d.bonded ? '🔗 Pareado no aparelho' : `ID ${d.id.slice(-8)}`}
                     </p>
                   </div>
                   {typeof d.rssi === 'number' && (
@@ -459,6 +503,12 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
           encaminha para o App de Saúde (Health Connect / Apple Health) */}
       {error && (devices.some((d) => isSamsungName(d.name)) || isSamsungName(connectedDevice?.name) || isSamsungName(lastDevice?.name)) && (
         <SamsungHint platform={Capacitor.getPlatform()} onUseHealth={canFallback ? onFallback : undefined} />
+      )}
+
+      {/* Dica específica de Apple Watch: não expõe o serviço de FC por BLE —
+          encaminha para app transmissor ou Apple Health */}
+      {error && (devices.some((d) => isAppleWatchName(d.name)) || isAppleWatchName(connectedDevice?.name) || isAppleWatchName(lastDevice?.name)) && (
+        <AppleWatchHint platform={Capacitor.getPlatform()} onUseHealth={canFallback ? onFallback : undefined} />
       )}
 
       {/* Reconexão com um toque ao último dispositivo usado (nativo: conecta

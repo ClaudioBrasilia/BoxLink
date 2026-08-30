@@ -36,6 +36,7 @@ import {
   normalizeUuid,
   isSameUuid,
   isLikelyHRDeviceName,
+  isAppleWatchName,
   isLikelyHRService,
   isLikelyHRCharacteristic,
 } from '../lib/heartRate';
@@ -223,15 +224,63 @@ function isStandardOnlyBrand(name?: string | null): boolean {
   );
 }
 
-/** Converte erros técnicos do plugin/navegador em mensagens acionáveis. */
-function friendlyBleError(err: unknown): string {
+/**
+ * Orientação para relógios que aparecem no scan mas NUNCA entregam FC por BLE.
+ * Hoje só o Apple Watch — o watchOS não publica o serviço 0x180D para centrais
+ * que não sejam o iPhone pareado, então qualquer tentativa termina em erro de
+ * GATT (frequentemente com um código numérico cru da plataforma).
+ */
+export const APPLE_WATCH_NO_BLE_MESSAGE =
+  'O Apple Watch não transmite frequência cardíaca por Bluetooth para outros apps — o watchOS só libera a FC para o iPhone pareado. ' +
+  'Use "Sincronizar com App de Saúde" (Apple Health) ou instale um app transmissor no relógio (ex.: HeartCast, ECHO HR, BlueHeart), ' +
+  'deixe-o aberto transmitindo e busque novamente.';
+
+/** Mensagem sem conteúdo útil para o usuário (código cru, vazio, "unknown"). */
+function isOpaqueBleError(msg: string): boolean {
+  const trimmed = msg.trim();
+  if (!trimmed) return true;
+  // Códigos numéricos crus: CoreBluetooth/Bluefy ("2"), GATT do Android ("133"),
+  // "error 8", "status: 19"… nada disso diz nada a quem está no treino.
+  return /^(-?\d+|(?:gatt\s*)?(?:error|status|c[oó]digo|code)[\s:=#]*-?\d+|unknown(?:\s+(?:error|reason))?)$/i.test(trimmed);
+}
+
+/**
+ * Converte erros técnicos do plugin/navegador em mensagens acionáveis.
+ * `deviceName` (quando conhecido) permite orientar por marca em vez de repetir
+ * um código de erro cru na tela.
+ */
+function friendlyBleError(err: unknown, deviceName?: string | null): string {
   const msg = String((err as any)?.message || err || '');
+  const name = String((err as any)?.name || '');
+
   if (/permission|denied|not granted|autoriz/i.test(msg)) {
     return `Permissão de Bluetooth negada. Vá em Configurações → Apps → ${APP_NAME} → Permissões e permita "Dispositivos por perto" (ou Bluetooth).`;
   }
   if (/bluetooth.*(off|disabled|unavailable)|adapter/i.test(msg)) {
     return 'O Bluetooth está desligado. Ative o Bluetooth do aparelho e tente novamente.';
   }
+
+  // Cancelamento (usuário desistiu / nova sessão) não é falha do aparelho.
+  if (/cancelad|aborted|cancelled/i.test(msg)) return msg;
+
+  // Relógio que simplesmente não fala BLE de FC: explicar isso vale mais que
+  // qualquer tradução do erro da plataforma.
+  if (isAppleWatchName(deviceName)) return APPLE_WATCH_NO_BLE_MESSAGE;
+
+  // Falha de GATT (o dispositivo recusou/derrubou a conexão) ou erro opaco:
+  // sem uma mensagem legível, damos o próximo passo prático e guardamos o
+  // código cru no detalhe do diagnóstico.
+  if (isOpaqueBleError(msg) || name === 'NetworkError' || /gatt|connection failed|disconnected/i.test(msg)) {
+    const code = isOpaqueBleError(msg) ? msg.trim() : '';
+    return (
+      'O dispositivo recusou a conexão Bluetooth' +
+      (code ? ` (código ${code})` : '') +
+      '. Verifique se ele está transmitindo FC (inicie um treino ou ative "Transmitir FC"), ' +
+      'desconecte-o do app do fabricante e tente novamente. Relógios que só falam com o app da própria marca ' +
+      '(Apple Watch, Galaxy Watch) precisam do App de Saúde ou de um app transmissor.'
+    );
+  }
+
   return msg || 'Erro de Bluetooth';
 }
 
@@ -840,7 +889,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
 
   const noHeartRateError = (deviceName?: string | null) => {
     const name = deviceName || '';
-    const message = /garmin|forerunner|fenix|venu|vivoactive|vivosmart|instinct|epix|enduro/i.test(name)
+    const message = isAppleWatchName(name)
+      ? APPLE_WATCH_NO_BLE_MESSAGE
+      : /garmin|forerunner|fenix|venu|vivoactive|vivosmart|instinct|epix|enduro/i.test(name)
       ? 'Garmin conectado, mas sem FC. No relógio, ative “Transmitir FC”/“Broadcast Heart Rate”, inicie uma atividade e feche o Garmin Connect antes de tentar novamente.'
       : /polar|tickr|wahoo|h10|h9|verity/i.test(name)
         ? 'Sensor conectado, mas sem FC. Vista e umedeça a cinta, feche Polar Flow/Beat ou outro app que esteja usando o sensor e, no H10, habilite duas conexões BLE se precisar mantê-lo conectado a outro aparelho.'
@@ -1032,6 +1083,9 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           }
           // Falta de leitura de FC é determinística — retry não ajuda.
           if (e?.name === 'NoHeartRateError') break;
+          // Apple Watch recusa o GATT de qualquer central que não seja o iPhone
+          // pareado: insistir só faz o usuário esperar pelo mesmo erro.
+          if (isAppleWatchName(knownName)) break;
           if (attempt < CONNECT_ATTEMPTS) {
             console.warn(`[BLE] Tentativa ${attempt} falhou, tentando de novo...`, e);
             await sleep(RETRY_BASE_DELAY_MS * attempt);
@@ -1232,6 +1286,8 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           /* noop */
         }
         if (e?.name === 'NoHeartRateError') break;
+        // Apple Watch: recusa determinística (ver isAppleWatchName) — falha rápido.
+        if (isAppleWatchName(device.name)) break;
         if (attempt < CONNECT_ATTEMPTS) await sleep(RETRY_BASE_DELAY_MS * attempt);
       }
     }
@@ -1395,7 +1451,16 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         rrAdvertised: false,
         rrPayloadTruncated: false,
       });
-      recordDiagnostic('connect_start', 'Iniciando conexão com o dispositivo selecionado.', 'info', deviceId);
+      const deviceName =
+        devices.find((d) => d.id === deviceId)?.name ??
+        webDeviceRef.current?.name ??
+        (lastDevice?.id === deviceId ? lastDevice.name : null);
+      recordDiagnostic(
+        'connect_start',
+        'Iniciando conexão com o dispositivo selecionado.',
+        'info',
+        deviceName ? `${deviceName} · ${deviceId}` : deviceId
+      );
       updateStatus('connecting');
       try {
         if (isForegroundNative) await connectForeground(deviceId);
@@ -1403,13 +1468,26 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         else await connectWeb();
       } catch (err: any) {
         console.error('[BLE] connect erro', err);
-        const message = err?.name === 'AbortError' ? 'Operação cancelada.' : friendlyBleError(err);
+        const message =
+          err?.name === 'AbortError' ? 'Operação cancelada.' : friendlyBleError(err, deviceName);
+        // O código cru vai só para o detalhe do diagnóstico — a mensagem
+        // principal precisa dizer ao usuário o que fazer a seguir.
         recordDiagnostic('connection_error', message, 'error', err?.message || String(err));
         setError(message);
         updateStatus('error');
       }
     },
-    [isForegroundNative, connectForeground, isNative, connectNative, connectWeb, recordDiagnostic, updateStatus]
+    [
+      devices,
+      lastDevice,
+      isForegroundNative,
+      connectForeground,
+      isNative,
+      connectNative,
+      connectWeb,
+      recordDiagnostic,
+      updateStatus,
+    ]
   );
 
   // --------------------------------------------------------------------------
@@ -1431,6 +1509,10 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         clearTimeout(scanTimerRef.current);
         scanTimerRef.current = null;
       }
+
+      // Dispositivo escolhido no chooser desta busca (web). Fica local para não
+      // atribuir a falha ao device de uma busca anterior.
+      let chosenName: string | null = null;
 
       try {
         // Só bloqueia iOS-web quando NÃO há Web Bluetooth (Safari/Chrome/Edge do iPhone).
@@ -1547,6 +1629,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         );
 
         webDeviceRef.current = device;
+        chosenName = device.name ?? null;
         setDevices([
           {
             id: device.id,
@@ -1562,7 +1645,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         await connectWeb();
       } catch (err: any) {
         console.error('[BLE] scan erro', err);
-        const message = friendlyBleError(err);
+        const message = friendlyBleError(err, chosenName);
         recordDiagnostic('scan_error', message, 'error', err?.message || String(err));
         if (err?.name === 'NotFoundError') {
           // Chooser cancelado ou sem resultados nos filtros.
@@ -1571,7 +1654,7 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
           }
           updateStatus('disconnected');
         } else {
-          setError(friendlyBleError(err));
+          setError(message);
           updateStatus('error');
         }
       }
