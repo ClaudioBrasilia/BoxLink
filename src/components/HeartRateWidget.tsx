@@ -172,6 +172,10 @@ function GarminHint() {
         <li>No relógio: Configurações → Sensores → FC no pulso → <span className="text-white">Transmitir FC</span> (ou inicie um treino).</li>
         <li>Com o relógio no pulso, toque em "Buscar Novamente".</li>
       </ol>
+      <p className="text-white/50 text-[9px] font-black uppercase leading-relaxed">
+        Ao <span className="text-white">iniciar uma atividade</span> o relógio desliga o "Transmitir FC".
+        Ative a atividade primeiro e só depois ligue o Transmitir FC — ou reative-o quando o treino começar.
+      </p>
     </div>
   );
 }
