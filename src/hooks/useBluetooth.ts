@@ -85,7 +85,14 @@ const PROBE_KNOWN_MS = 6000;
 const PROBE_GENERIC_MS = 4000;
 const PROBE_TOTAL_BUDGET_MS = 20000;
 // Auto-reconexão em queda de sinal.
-const RECONNECT_DELAYS_MS = [1000, 2000, 4000];
+// Ao INICIAR UMA ATIVIDADE, o Garmin derruba a transmissão de FC e só a rearma
+// depois que a tela da atividade sobe — uma janela que costuma passar de 10s.
+// Com os 7s de espera anteriores a reconexão desistia no meio dessa troca e a
+// sessão caía justamente quando o treino começava. O orçamento total limita o
+// pior caso (aparelho que sumiu de vez), já que cada tentativa também gasta o
+// seu próprio tempo de GATT + probe.
+const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 8000, 8000];
+const RECONNECT_TOTAL_BUDGET_MS = 45000;
 // Watchdog de leitura travada: monitores de FC (Garmin, cintas, etc.) enviam
 // ~1 leitura/seg. Se o GATT continua "conectado" mas as notificações param de
 // chegar (comum no modo "Transmitir FC" do Garmin — a transmissão pausa sem
@@ -1321,12 +1328,25 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
       updateStatus('reconnecting');
       setHeartRate(null);
 
+      const startedAt = Date.now();
+      const name = deviceNameRef.current;
+      recordDiagnostic(
+        'reconnect_start',
+        'Transmissão de FC interrompida — tentando retomar sem encerrar a sessão.',
+        'info',
+        name || deviceId
+      );
+
       for (let i = 0; i < RECONNECT_DELAYS_MS.length; i++) {
         await sleep(RECONNECT_DELAYS_MS[i]);
         if (sessionGenRef.current !== gen || intentionalDisconnectRef.current) return;
+        if (Date.now() - startedAt > RECONNECT_TOTAL_BUDGET_MS) break;
         try {
           if (isNative) {
-            await establishNative(deviceId);
+            // O nome é obrigatório aqui: sem ele isStandardOnlyBrand() não
+            // reconhece a marca, o probe volta a aceitar canais proprietários e
+            // num Garmin isso vira BPM falso vindo do GFDI.
+            await establishNative(deviceId, name);
           } else {
             const device = webDeviceRef.current;
             if (!device) break;
@@ -1348,6 +1368,12 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
             return;
           }
           console.log(`[BLE] 🔄 Reconectado após queda (tentativa ${i + 1})`);
+          recordDiagnostic(
+            'reconnect_success',
+            `Transmissão retomada na tentativa ${i + 1}.`,
+            'success',
+            `${Math.round((Date.now() - startedAt) / 1000)}s fora do ar`
+          );
           updateStatus('connected');
           return;
         } catch (e) {
@@ -1355,9 +1381,25 @@ export function useBluetooth(userId?: string): UseBluetoothReturn {
         }
       }
 
-      if (sessionGenRef.current === gen) resetToDisconnected();
+      if (sessionGenRef.current !== gen) return;
+
+      recordDiagnostic(
+        'reconnect_failed',
+        'Não foi possível retomar a transmissão de FC.',
+        'error',
+        `${Math.round((Date.now() - startedAt) / 1000)}s de tentativas`
+      );
+      // Sem isto a FC apenas sumia da tela, sem dizer por quê. No Garmin o caso
+      // mais comum é a transmissão não voltar sozinha depois que a atividade
+      // começa — o que exige religar "Transmitir FC" no relógio.
+      setError(
+        /garmin|forerunner|f[eé]nix|fenix|venu|vivoactive|vivosmart|instinct|epix|enduro/i.test(name || '')
+          ? 'A transmissão de FC do Garmin parou. Ao iniciar uma atividade o relógio desliga o "Transmitir FC": reative-o (Configurações → Sensores → FC no pulso → Transmitir FC) e toque em Reconectar.'
+          : 'A transmissão de FC parou e não voltou. Confira se o dispositivo continua transmitindo e toque em Reconectar.'
+      );
+      resetToDisconnected();
     },
-    [isNative, establishNative, establishWeb, resetToDisconnected, updateStatus]
+    [isNative, establishNative, establishWeb, recordDiagnostic, resetToDisconnected, updateStatus]
   );
 
   useEffect(() => {
