@@ -7,6 +7,10 @@
 // ============================================================================
 import { describe, it, expect } from 'vitest';
 import {
+  isLoadBasedType,
+  formatWodResult,
+  isTimeBasedType,
+  isAmrapType,
   computeRepsPerMinute,
   parseTimeToSeconds,
   parseAmrapTotalReps,
@@ -123,5 +127,52 @@ describe('formatPace', () => {
 
   it('null continua null para a UI omitir', () => {
     expect(formatPace(null)).toBeNull();
+  });
+});
+
+describe('isLoadBasedType', () => {
+  it('reconhece treino de força e testes de RM', () => {
+    expect(isLoadBasedType('STRENGTH')).toBe(true);
+    expect(isLoadBasedType('strength')).toBe(true);
+    expect(isLoadBasedType('FORÇA')).toBe(true);
+    expect(isLoadBasedType('Forca')).toBe(true);
+    expect(isLoadBasedType('1RM')).toBe(true);
+    expect(isLoadBasedType('3RM Back Squat')).toBe(true);
+  });
+
+  it('não confunde com os tipos que contam reps ou tempo', () => {
+    expect(isLoadBasedType('FOR TIME')).toBe(false);
+    expect(isLoadBasedType('AMRAP')).toBe(false);
+    expect(isLoadBasedType('EMOM')).toBe(false);
+    expect(isLoadBasedType('')).toBe(false);
+    expect(isLoadBasedType(null)).toBe(false);
+  });
+
+  it('força não é tempo nem AMRAP — o resultado é carga', () => {
+    expect(isTimeBasedType('STRENGTH')).toBe(false);
+    expect(isAmrapType('STRENGTH')).toBe(false);
+  });
+});
+
+describe('formatWodResult', () => {
+  it('treino de força mostra a unidade que o número não carrega', () => {
+    expect(formatWodResult('80', 'STRENGTH')).toBe('80kg');
+    expect(formatWodResult('82.5', '1RM')).toBe('82.5kg');
+    expect(formatWodResult('82,5', 'FORÇA')).toBe('82,5kg');
+  });
+
+  it('não repete a unidade que o atleta já escreveu', () => {
+    expect(formatWodResult('80 kg', 'STRENGTH')).toBe('80 kg');
+  });
+
+  it('tempo e rounds+reps já se explicam pelo formato', () => {
+    expect(formatWodResult('12:45', 'FOR TIME')).toBe('12:45');
+    expect(formatWodResult('5+12', 'AMRAP')).toBe('5+12');
+    expect(formatWodResult('150', 'EMOM')).toBe('150');
+  });
+
+  it('resultado vazio continua vazio', () => {
+    expect(formatWodResult('', 'STRENGTH')).toBe('');
+    expect(formatWodResult(null, 'STRENGTH')).toBe('');
   });
 });

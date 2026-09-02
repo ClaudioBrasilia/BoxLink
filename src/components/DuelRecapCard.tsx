@@ -1,5 +1,5 @@
 import { computeDuelEdge, DuelScoreOutcome } from '../lib/duelScore';
-import { computeRepsPerMinute, formatPace, WodPaceMeta } from '../lib/pace';
+import { computeRepsPerMinute, formatPace, WodPaceMeta, formatWodResult } from '../lib/pace';
 import { cn } from '../lib/utils';
 
 interface RecapParticipant {
@@ -66,7 +66,7 @@ export default function DuelRecapCard({ wodName, wodType, outcome, participants,
           label="Resultado"
           participants={participants}
           winnerId={winnerId}
-          getValue={p => results[p.id] || '—'}
+          getValue={p => formatWodResult(results[p.id], wodType) || '—'}
         />
         {/* Sem linha de "Desempenho": o placar É o desempenho — as duas
             mostrariam o mesmo número. O que muda entre elas é o resultado

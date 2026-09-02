@@ -10,7 +10,7 @@ import { getWodByDate, getLatestWod } from '../lib/wods';
 import { formatInTimeZone } from 'date-fns-tz';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
 import { useAuth } from '../context/AuthContext';
-import { computeRepsPerMinute, formatPace, isTimeBasedType } from '../lib/pace';
+import { computeRepsPerMinute, formatPace, formatWodResult, isTimeBasedType } from '../lib/pace';
 import { computeRelativeStrength } from '../lib/relativeStrength';
 import { DuelScoreOutcome } from '../lib/duelScore';
 import DuelRecapCard from '../components/DuelRecapCard';
@@ -352,7 +352,7 @@ export default function Leaderboard() {
     if (activeTab === 'xp_mes')   return `${u.monthXp || 0} XP`;
     if (activeTab === 'freq')     return `${u.monthCheckinCount || 0} check-ins`;
     if (activeTab === 'clans')    return `${u.energy || 0} XP`;
-    if (activeTab === 'wod')      return u.result || '';
+    if (activeTab === 'wod')      return formatWodResult(u.result, wodInfo?.type);
     return '';
   };
 
