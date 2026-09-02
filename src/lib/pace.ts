@@ -36,6 +36,18 @@ export const isAmrapType = (type?: string | null): boolean =>
 export const isLoadBasedType = (type?: string | null): boolean =>
   LOAD_BASED_KEYWORDS.some(k => (type || '').toUpperCase().includes(k));
 
+/**
+ * Resultado do WOD como texto de exibição. Só acrescenta a unidade que o
+ * número sozinho não carrega: num treino de força "80" é 80kg. Tempo
+ * ("12:45") e rounds+reps ("5+12") já se explicam pelo próprio formato, e um
+ * resultado que o atleta escreveu com unidade ("80 kg") fica como está.
+ */
+export function formatWodResult(result?: string | null, type?: string | null): string {
+  const str = (result || '').trim();
+  if (!str || !isLoadBasedType(type)) return str;
+  return /^\d+([.,]\d+)?$/.test(str) ? `${str}kg` : str;
+}
+
 /** Converte "12:45" ou "1:02:34" em segundos. null se não for formato de tempo. */
 export function parseTimeToSeconds(result: string): number | null {
   const str = (result || '').trim();

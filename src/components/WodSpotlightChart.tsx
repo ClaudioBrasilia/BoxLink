@@ -11,6 +11,7 @@ import { motion } from 'framer-motion';
 import { Trophy } from 'lucide-react';
 import { cn } from '../lib/utils';
 import AthletePhoto from './AthletePhoto';
+import { formatWodResult } from '../lib/pace';
 import {
   WodSpotlightData,
   SpotlightMetric,
@@ -56,7 +57,7 @@ export default function WodSpotlightChart({
               size="xl" ringColor="border-primary" className="shadow-[0_0_40px_rgba(202,253,0,0.25)]" />
             <div className="text-center">
               <p className="text-white text-2xl font-headline font-black uppercase italic leading-none">{firstName}</p>
-              <p className="text-primary text-3xl font-headline font-black italic tabular-nums mt-2 leading-none">{data.leaderResult}</p>
+              <p className="text-primary text-3xl font-headline font-black italic tabular-nums mt-2 leading-none">{formatWodResult(data.leaderResult, data.wodType)}</p>
               <p className="text-white/30 text-[9px] font-black uppercase tracking-widest mt-1">Melhor do dia</p>
             </div>
           </div>
@@ -89,7 +90,7 @@ export default function WodSpotlightChart({
           size="md" ringColor="border-primary" />
         <div className="min-w-0">
           <p className="text-on-surface text-sm font-headline font-black uppercase italic leading-none truncate">{firstName}</p>
-          <p className="text-primary text-2xl font-headline font-black italic tabular-nums leading-none mt-1">{data.leaderResult}</p>
+          <p className="text-primary text-2xl font-headline font-black italic tabular-nums leading-none mt-1">{formatWodResult(data.leaderResult, data.wodType)}</p>
           <p className="text-on-surface-variant/60 text-[8px] font-black uppercase tracking-widest mt-1">Melhor do dia</p>
         </div>
       </div>

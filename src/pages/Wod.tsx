@@ -21,7 +21,7 @@ import { TrainingFeeling } from '../types';
 import { assessHrSessionQuality, fetchRecentHeartRateSessions, HrSessionQuality, linkHeartRateSessionToWodResult, StoredHrSession } from '../lib/heartRateSessions';
 import { effortFromSession, WodEffort } from '../lib/effort';
 import { useUserBiometrics } from '../hooks/useUserBiometrics';
-import { isLoadBasedType } from '../lib/pace';
+import { formatWodResult, isLoadBasedType } from '../lib/pace';
 
 const TIMEZONE = 'America/Sao_Paulo';
 
@@ -560,7 +560,7 @@ export default function Wod() {
                 <div className="flex items-center gap-2 text-primary">
                   <CheckCircle2 className="w-5 h-5" />
                   <span className="font-black text-sm">
-                    {category} — {result}{isStrength && 'kg'}
+                    {category} — {formatWodResult(result, wodType)}
                     {loadKg && !isStrength && <span className="text-on-surface-variant font-bold"> · {loadKg}kg</span>}
                   </span>
                 </div>

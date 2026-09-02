@@ -6,6 +6,8 @@
 // ficam só os dados e o cálculo; o desenho vive em WodSpotlightChart, para a
 // TV e o celular mostrarem exatamente o mesmo gráfico.
 
+import { isLoadBasedType } from './pace';
+
 export interface WodSpotlightData {
   athlete: { id: string; name: string; photoUrl: string | null };
   wodName: string;
@@ -64,15 +66,21 @@ export function formatScore(value: number, timeBased: boolean): string {
  * linha simplesmente não aparece, em vez de mostrar um número vazio.
  */
 export function buildSpotlightMetrics(d: WodSpotlightData): SpotlightMetric[] {
+  // Num treino de força o placar é carga, não repetição: o número é o mesmo,
+  // mas "80" sozinho não diz nada — vira "80kg", e a unidade da barra também.
+  const loadBased = isLoadBasedType(d.wodType);
+  const resultLabel = (value: number) =>
+    loadBased ? `${formatScore(value, false)}kg` : formatScore(value, d.timeBased);
+
   const metrics: SpotlightMetric[] = [
     {
       key: 'result',
       label: 'Resultado do WOD',
-      unit: d.timeBased ? 'tempo' : 'repetições',
+      unit: d.timeBased ? 'tempo' : loadBased ? 'kg' : 'repetições',
       mine: d.leaderScore,
       avg: d.avgScore,
-      mineLabel: formatScore(d.leaderScore, d.timeBased),
-      avgLabel: formatScore(d.avgScore, d.timeBased),
+      mineLabel: resultLabel(d.leaderScore),
+      avgLabel: resultLabel(d.avgScore),
       lowerIsBetter: d.timeBased,
       betterWord: d.timeBased ? 'mais rápido' : 'a mais',
       worseWord: d.timeBased ? 'mais lento' : 'a menos',

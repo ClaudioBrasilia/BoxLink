@@ -11,7 +11,7 @@ import AvatarPreview from '../components/AvatarPreview';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
 import AthletePhoto from '../components/AthletePhoto';
 import { TVSponsorBanner, useSponsors } from '../components/SponsorBanner';
-import { computeRepsPerMinute, parseTimeToSeconds, isTimeBasedType, WodPaceMeta } from '../lib/pace';
+import { computeRepsPerMinute, formatWodResult, parseTimeToSeconds, isTimeBasedType, WodPaceMeta } from '../lib/pace';
 import { computeRelativeStrength } from '../lib/relativeStrength';
 import { WodSpotlightData } from '../lib/wodSpotlight';
 import WodSpotlightChart from '../components/WodSpotlightChart';
@@ -593,7 +593,7 @@ export default function TV() {
 
   const rankingScoreLabel = (r: any) => rankingView === 'xp' ? `${r.xp} XP`
     : rankingView === 'frequency' ? `${r.count} aulas`
-    : r.result;
+    : formatWodResult(r.result, wod?.type);
   const tickerItems = {
     duels: tvConfig?.tickerItems?.duels ?? true,
     checkins: tvConfig?.tickerItems?.checkins ?? true,
