@@ -21,6 +21,7 @@ import { TrainingFeeling } from '../types';
 import { assessHrSessionQuality, fetchRecentHeartRateSessions, HrSessionQuality, linkHeartRateSessionToWodResult, StoredHrSession } from '../lib/heartRateSessions';
 import { effortFromSession, WodEffort } from '../lib/effort';
 import { useUserBiometrics } from '../hooks/useUserBiometrics';
+import { isLoadBasedType } from '../lib/pace';
 
 const TIMEZONE = 'America/Sao_Paulo';
 
@@ -290,10 +291,23 @@ export default function Wod() {
     setShowSessionPicker(false);
   };
 
+  // Formato do resultado, pelo tipo do WOD: tempo (FOR TIME), rounds+reps
+  // (AMRAP) ou carga em kg (STRENGTH/RM). Num treino de força o placar é a
+  // carga levantada — pedir "total de reps" ali é o campo errado, e o número
+  // digitado ainda entraria no ranking como se fosse volume.
+  const wodType = (wod?.type ?? '').toUpperCase();
+  const isTimeBased = wodType === 'FOR TIME' || wodType === 'TIME' || wodType === 'FORTIME';
+  const isAmrap = wodType === 'AMRAP';
+  const isStrength = isLoadBasedType(wodType);
+  const repsPerRound = (wod as any)?.reps_per_round as number | undefined;
+
   const handleSubmit = async () => {
     if (!user || !wod || !result.trim()) return;
     // Carga é opcional: campo vazio (ou inválido) grava null, não zero.
-    const parsedLoad = loadKg.trim() ? parseFloat(loadKg.replace(',', '.')) : NaN;
+    // No treino de força ela não é um campo à parte — o resultado JÁ é a carga,
+    // e é dela que sai a força relativa (carga ÷ peso corporal).
+    const loadSource = isStrength ? result : loadKg;
+    const parsedLoad = loadSource.trim() ? parseFloat(loadSource.replace(',', '.')) : NaN;
     const parsedLoadKg = Number.isFinite(parsedLoad) && parsedLoad > 0 ? parsedLoad : null;
     // Esforço medido hoje entra junto do resultado. Sem faixa conectada
     // (ou fora da janela) o campo nem vai no payload: editar um resultado não
@@ -388,10 +402,6 @@ export default function Wod() {
   };
 
   const isToday = isSameDay(selectedDate, new Date());
-  const wodType = (wod?.type ?? '').toUpperCase();
-  const isTimeBased = wodType === 'FOR TIME' || wodType === 'TIME' || wodType === 'FORTIME';
-  const isAmrap = wodType === 'AMRAP';
-  const repsPerRound = (wod as any)?.reps_per_round as number | undefined;
 
   if (inactivityLoading) {
     return (
@@ -550,8 +560,8 @@ export default function Wod() {
                 <div className="flex items-center gap-2 text-primary">
                   <CheckCircle2 className="w-5 h-5" />
                   <span className="font-black text-sm">
-                    {category} — {result}
-                    {loadKg && <span className="text-on-surface-variant font-bold"> · {loadKg}kg</span>}
+                    {category} — {result}{isStrength && 'kg'}
+                    {loadKg && !isStrength && <span className="text-on-surface-variant font-bold"> · {loadKg}kg</span>}
                   </span>
                 </div>
                 {savedEffort && (
@@ -569,7 +579,7 @@ export default function Wod() {
                 {/* Sem a carga o atleta fica de fora da força relativa. Como o
                     campo vive no formulário, quem já registrou o resultado não
                     o veria — este atalho abre a edição já apontando o que falta. */}
-                {!loadKg && (
+                {!loadKg && !isStrength && (
                   <button onClick={() => setEditing(true)}
                     className="flex items-center gap-2 bg-secondary/10 border border-secondary/20 rounded-2xl px-4 py-2.5 text-left">
                     <Dumbbell className="w-4 h-4 text-secondary shrink-0" />
@@ -608,7 +618,9 @@ export default function Wod() {
 
                 {/* Input de resultado */}
                 <div className="flex flex-col gap-2">
-                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Resultado</label>
+                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">
+                    {isStrength ? 'Resultado — carga máxima' : 'Resultado'}
+                  </label>
                   {isTimeBased ? (
                     <TimeInput value={result} onChange={setResult} disabled={submitting} />
                   ) : isAmrap ? (
@@ -618,6 +630,17 @@ export default function Wod() {
                       disabled={submitting}
                       repsPerRound={repsPerRound}
                     />
+                  ) : isStrength ? (
+                    /* Força: o resultado é a carga levantada. Meio kg de passo
+                       porque anilha fracionada é rotina em 1RM/3RM. */
+                    <div className="flex items-center gap-2 bg-surface-container-highest rounded-2xl p-4">
+                      <input type="number" inputMode="decimal" min={0} step="0.5" value={result}
+                        onChange={(e) => setResult(e.target.value)}
+                        placeholder="Carga máxima" disabled={submitting}
+                        className="flex-1 min-w-0 bg-transparent text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none placeholder:text-3xl"
+                      />
+                      <span className="text-xs font-black text-on-surface-variant uppercase tracking-widest shrink-0">kg</span>
+                    </div>
                   ) : (
                     <input type="number" inputMode="numeric" value={result}
                       onChange={(e) => setResult(e.target.value)}
@@ -625,28 +648,36 @@ export default function Wod() {
                       className="w-full bg-surface-container-highest rounded-2xl p-4 text-center font-headline font-black text-4xl text-on-surface outline-none appearance-none"
                     />
                   )}
+                  {isStrength && (
+                    <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest leading-snug">
+                      Maior carga vence o placar — e já entra na força relativa
+                    </p>
+                  )}
                 </div>
 
                 {/* Carga usada (opcional) — vira força relativa (carga ÷ peso
                     corporal) no ranking e nas comparações. Fica de fora quando
-                    o WOD não tem carga (corrida, burpee). */}
-                <div className="flex flex-col gap-2">
-                  <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">
-                    Carga usada <span className="opacity-50">(opcional)</span>
-                  </label>
-                  <div className="flex items-center gap-2 bg-surface-container-highest rounded-2xl px-4 py-3">
-                    <Dumbbell className="w-4 h-4 text-secondary shrink-0" />
-                    <input type="number" inputMode="decimal" min={0} step="0.5" value={loadKg}
-                      onChange={(e) => setLoadKg(e.target.value)}
-                      placeholder="Ex: 43" disabled={submitting}
-                      className="flex-1 bg-transparent font-bold text-on-surface outline-none appearance-none placeholder:text-on-surface-variant/40 placeholder:font-medium"
-                    />
-                    <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">kg</span>
+                    o WOD não tem carga (corrida, burpee) e no treino de força,
+                    onde a carga já é o próprio resultado. */}
+                {!isStrength && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">
+                      Carga usada <span className="opacity-50">(opcional)</span>
+                    </label>
+                    <div className="flex items-center gap-2 bg-surface-container-highest rounded-2xl px-4 py-3">
+                      <Dumbbell className="w-4 h-4 text-secondary shrink-0" />
+                      <input type="number" inputMode="decimal" min={0} step="0.5" value={loadKg}
+                        onChange={(e) => setLoadKg(e.target.value)}
+                        placeholder="Ex: 43" disabled={submitting}
+                        className="flex-1 bg-transparent font-bold text-on-surface outline-none appearance-none placeholder:text-on-surface-variant/40 placeholder:font-medium"
+                      />
+                      <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest">kg</span>
+                    </div>
+                    <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest leading-snug">
+                      Com seu peso no perfil, mostra quanto do próprio corpo você moveu
+                    </p>
                   </div>
-                  <p className="text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-widest leading-snug">
-                    Com seu peso no perfil, mostra quanto do próprio corpo você moveu
-                  </p>
-                </div>
+                )}
 
                 {/* Esforço (FC): não é um campo pra digitar — ou existe uma
                     medição recente pra anexar, ou o atleta fica sem a barra de

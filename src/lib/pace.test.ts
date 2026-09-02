@@ -7,6 +7,9 @@
 // ============================================================================
 import { describe, it, expect } from 'vitest';
 import {
+  isLoadBasedType,
+  isTimeBasedType,
+  isAmrapType,
   computeRepsPerMinute,
   parseTimeToSeconds,
   parseAmrapTotalReps,
@@ -123,5 +126,29 @@ describe('formatPace', () => {
 
   it('null continua null para a UI omitir', () => {
     expect(formatPace(null)).toBeNull();
+  });
+});
+
+describe('isLoadBasedType', () => {
+  it('reconhece treino de força e testes de RM', () => {
+    expect(isLoadBasedType('STRENGTH')).toBe(true);
+    expect(isLoadBasedType('strength')).toBe(true);
+    expect(isLoadBasedType('FORÇA')).toBe(true);
+    expect(isLoadBasedType('Forca')).toBe(true);
+    expect(isLoadBasedType('1RM')).toBe(true);
+    expect(isLoadBasedType('3RM Back Squat')).toBe(true);
+  });
+
+  it('não confunde com os tipos que contam reps ou tempo', () => {
+    expect(isLoadBasedType('FOR TIME')).toBe(false);
+    expect(isLoadBasedType('AMRAP')).toBe(false);
+    expect(isLoadBasedType('EMOM')).toBe(false);
+    expect(isLoadBasedType('')).toBe(false);
+    expect(isLoadBasedType(null)).toBe(false);
+  });
+
+  it('força não é tempo nem AMRAP — o resultado é carga', () => {
+    expect(isTimeBasedType('STRENGTH')).toBe(false);
+    expect(isAmrapType('STRENGTH')).toBe(false);
   });
 });

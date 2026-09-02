@@ -295,6 +295,8 @@ export default function Coach() {
                     <option>EMOM</option>
                     <option>FOR TIME</option>
                     <option>TABATA</option>
+                    <option>STRENGTH</option>
+                    <option>BENCHMARK</option>
                     <option>HERO WOD</option>
                   </select>
                 </div>

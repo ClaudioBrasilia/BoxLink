@@ -11,6 +11,8 @@
 
 const TIME_BASED_KEYWORDS = ['FOR TIME', 'TIME', 'TEMPO', 'RFT', 'CHIPPER'];
 const AMRAP_KEYWORDS = ['AMRAP'];
+// Tipos em que o placar é carga (kg): força pura e testes de RM.
+const LOAD_BASED_KEYWORDS = ['STRENGTH', 'FORÇA', 'FORCA', '1RM', '2RM', '3RM', '5RM'];
 
 export interface WodPaceMeta {
   type?: string | null;
@@ -24,6 +26,15 @@ export const isTimeBasedType = (type?: string | null): boolean =>
 
 export const isAmrapType = (type?: string | null): boolean =>
   AMRAP_KEYWORDS.some(k => (type || '').toUpperCase().includes(k));
+
+/**
+ * Treino de força: o resultado é a CARGA levantada (kg), não repetição nem
+ * tempo. Um STRENGTH/1RM ranqueia por maior carga — pedir "total de reps"
+ * nesses WODs é o campo errado, e o número digitado ainda entraria no
+ * ranking como se fosse volume.
+ */
+export const isLoadBasedType = (type?: string | null): boolean =>
+  LOAD_BASED_KEYWORDS.some(k => (type || '').toUpperCase().includes(k));
 
 /** Converte "12:45" ou "1:02:34" em segundos. null se não for formato de tempo. */
 export function parseTimeToSeconds(result: string): number | null {
