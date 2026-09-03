@@ -64,6 +64,11 @@ public final class HrBleForegroundService extends Service {
     private static final String CHANNEL_ID = "heart_rate_session";
     private static final int NOTIFICATION_ID = 4101;
     private static final long[] RECONNECT_DELAYS_MS = {1000L, 2000L, 4000L};
+    // Sem teto, o backoff satura no último atraso e o serviço fica tentando
+    // reconectar a cada 4s para sempre — o relógio some do ar e o app trava em
+    // "sinal perdido". Os limites abaixo espelham o autoReconnect do JS.
+    private static final int MAX_RECONNECT_ATTEMPTS = 8;
+    private static final long RECONNECT_BUDGET_MS = 45000L;
     private static final long STALE_TIMEOUT_MS = 10000L;
     private static final long STALE_CHECK_MS = 2000L;
     // O wake lock expira sozinho: uma sessão que parou de produzir leituras
@@ -120,6 +125,7 @@ public final class HrBleForegroundService extends Service {
     private boolean stopping;
     private boolean subscribed;
     private int reconnectAttempt;
+    private long reconnectStartedAtMs;
     private long lastSampleAtMs;
     private Runnable reconnectRunnable;
     private Runnable staleRunnable;
@@ -182,6 +188,7 @@ public final class HrBleForegroundService extends Service {
             : requestedName;
         stopping = false;
         reconnectAttempt = 0;
+        reconnectStartedAtMs = 0L;
         subscribed = false;
 
         if (!sameSession) {
@@ -300,6 +307,7 @@ public final class HrBleForegroundService extends Service {
             if (bluetoothGatt != gatt || stopping) return;
             if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                 reconnectAttempt = 0;
+                reconnectStartedAtMs = 0L;
                 emitStatus("discovering", null);
                 boolean started = bluetoothGatt.discoverServices();
                 if (!started) scheduleReconnect();
@@ -323,8 +331,10 @@ public final class HrBleForegroundService extends Service {
             }
             BluetoothGattCharacteristic characteristic = chooseCharacteristic(bluetoothGatt.getServices());
             if (characteristic == null) {
-                emitError("hr_characteristic_missing", "Nenhum canal notificável de frequência cardíaca foi encontrado.");
-                scheduleReconnect();
+                // Determinístico: o aparelho conectou e simplesmente não expõe FC
+                // por BLE (Galaxy Watch, Apple Watch, TV, fone). Reconectar só
+                // repete o mesmo resultado — encerra e explica o que fazer.
+                failSession("hr_characteristic_missing", noHeartRateMessage(deviceName));
                 return;
             }
             activeCharacteristic = characteristic;
@@ -543,9 +553,23 @@ public final class HrBleForegroundService extends Service {
     private void scheduleReconnect() {
         if (stopping || deviceId == null) return;
         if (reconnectRunnable != null) handler.removeCallbacks(reconnectRunnable);
+
+        long now = System.currentTimeMillis();
+        if (reconnectStartedAtMs == 0L) reconnectStartedAtMs = now;
+
+        boolean outOfAttempts = reconnectAttempt >= MAX_RECONNECT_ATTEMPTS;
+        boolean outOfTime = now - reconnectStartedAtMs > RECONNECT_BUDGET_MS;
+        if (outOfAttempts || outOfTime) {
+            failSession(
+                "reconnect_exhausted",
+                "A transmissão de FC não voltou. Confira se o dispositivo continua transmitindo e conecte de novo."
+            );
+            return;
+        }
+
         int index = Math.min(reconnectAttempt, RECONNECT_DELAYS_MS.length - 1);
         long delay = RECONNECT_DELAYS_MS[index];
-        reconnectAttempt = Math.min(reconnectAttempt + 1, RECONNECT_DELAYS_MS.length - 1);
+        reconnectAttempt++;
         emitStatus("reconnecting", null);
         reconnectRunnable = () -> {
             reconnectRunnable = null;
@@ -598,6 +622,41 @@ public final class HrBleForegroundService extends Service {
         gatt = null;
         activeCharacteristic = null;
         subscribed = false;
+    }
+
+    /**
+     * Espelha o noHeartRateError() do useBluetooth.ts: o app nativo precisa dar
+     * a mesma orientação por marca que a versão web já dava.
+     */
+    private String noHeartRateMessage(@Nullable String name) {
+        String value = name == null ? "" : name.toLowerCase(Locale.US);
+        if (value.contains("apple watch") || value.contains("watch de") || value.startsWith("apple")) {
+            return "Apple Watch não transmite FC por BLE para outros aparelhos. Use o app BoxLink no iPhone (Saúde/HealthKit) ou um monitor com transmissão padrão.";
+        }
+        if (value.matches(".*(garmin|forerunner|fenix|f\u00eanix|venu|vivoactive|vivosmart|instinct|epix|enduro).*")) {
+            return "Garmin conectado, mas sem FC. No relógio, ative \u201cTransmitir FC\u201d, inicie uma atividade e feche o Garmin Connect antes de tentar de novo.";
+        }
+        if (value.matches(".*(polar|tickr|wahoo|h10|h9|verity).*")) {
+            return "Sensor conectado, mas sem FC. Vista e umedeça a cinta e feche Polar Flow/Beat ou outro app que esteja usando o sensor.";
+        }
+        if (value.matches(".*(galaxy|samsung|gear|sm-r).*")) {
+            return "Samsung conectado, mas sem FC. O Galaxy Watch não transmite FC por BLE para outros apps: use Samsung Health/Health Connect ou um app transmissor no relógio.";
+        }
+        return "Dispositivo conectado, mas nenhuma leitura de FC chegou. Ative a transmissão de FC ou inicie um treino no dispositivo e tente de novo.";
+    }
+
+    /**
+     * Falha definitiva: registra no diagnóstico, avisa a UI com uma mensagem
+     * acionável e encerra a sessão. {@link #emitError} sozinho só alimenta o log
+     * do painel de diagnóstico — o usuário não vê nada e o serviço continua
+     * girando em reconexão.
+     */
+    private void failSession(String code, String message) {
+        emitError(code, message);
+        // O handleStatus do JS faz setError(event.reason): o reason precisa ser o
+        // texto legível, não o código, senão o usuário lê "hr_characteristic_missing".
+        emitStatus("error", message);
+        stopSession(code);
     }
 
     private void stopSession(String reason) {
