@@ -4,20 +4,21 @@
 // Gráfico moderno de BPM × tempo (área com gradiente) + estatísticas e
 // distribuição por zona de esforço. Engaja o aluno ao fechar a sessão.
 // ============================================================================
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from 'recharts';
 import { motion } from 'framer-motion';
 import { Activity, TrendingUp, TrendingDown, Timer, Flame, RotateCcw, Percent, Gauge, UserPlus, Footprints } from 'lucide-react';
 import type { HrSample } from '../hooks/useHeartRateSession';
-import {
-  ageFromBirthDate, estimateCalories, maxHrPercent, hasCalorieData, type Biometrics,
-} from '../lib/heartRate';
+import type { Biometrics } from '../lib/heartRate';
 import { readWorkoutMetrics, type WorkoutDeviceMetrics } from '../lib/healthMetrics';
-import { calculateHrvMetrics, hrvMetricLabel, type HrvMetric } from '../lib/hrv';
+import { hrvMetricLabel, type HrvMetric } from '../lib/hrv';
 import { hrvValidationLabel, hrvValidationReason, type HrvQualityReport } from '../lib/hrvValidation';
-import { saveHeartRateSession } from '../lib/heartRateSessions';
+import { saveHeartRateSessionOnce, hrSessionKey } from '../lib/heartRateSessions';
+import {
+  computeHrSessionStats, buildHrSessionPayload, HR_ZONE_MINIMUMS,
+} from '../lib/hrSessionStats';
 import { cn } from '../lib/utils';
 import { APP_NAME } from '../lib/appMode';
 
@@ -52,23 +53,15 @@ interface Props {
   onClose: () => void;
 }
 
-// Peso de cada zona para o índice de esforço (carga do treino).
-const ZONE_WEIGHTS = [1, 2, 3, 4, 5];
-
 // Zonas alinhadas a getHeartRateZone() — com hex para o gráfico e classe p/ barra.
+// Os limites vêm da lib: o mesmo corte usado no cálculo gravado no histórico.
 const ZONES = [
-  { min: 0,   label: 'Repouso',     hex: '#60a5fa', tw: 'bg-blue-400' },
-  { min: 100, label: 'Aquecimento', hex: '#4ade80', tw: 'bg-green-400' },
-  { min: 120, label: 'Aeróbico',    hex: '#facc15', tw: 'bg-yellow-400' },
-  { min: 140, label: 'Anaeróbico',  hex: '#fb923c', tw: 'bg-orange-400' },
-  { min: 160, label: 'Máximo',      hex: '#f87171', tw: 'bg-red-400' },
+  { min: HR_ZONE_MINIMUMS[0], label: 'Repouso',     hex: '#60a5fa', tw: 'bg-blue-400' },
+  { min: HR_ZONE_MINIMUMS[1], label: 'Aquecimento', hex: '#4ade80', tw: 'bg-green-400' },
+  { min: HR_ZONE_MINIMUMS[2], label: 'Aeróbico',    hex: '#facc15', tw: 'bg-yellow-400' },
+  { min: HR_ZONE_MINIMUMS[3], label: 'Anaeróbico',  hex: '#fb923c', tw: 'bg-orange-400' },
+  { min: HR_ZONE_MINIMUMS[4], label: 'Máximo',      hex: '#f87171', tw: 'bg-red-400' },
 ];
-
-function zoneIndex(bpm: number): number {
-  let idx = 0;
-  for (let i = 0; i < ZONES.length; i++) if (bpm >= ZONES[i].min) idx = i;
-  return idx;
-}
 
 function fmtTime(totalSec: number): string {
   const m = Math.floor(totalSec / 60);
@@ -110,44 +103,12 @@ export default function HeartRateSummary({
   persist, userId, source, deviceOverride, hrvMsOverride, hrvMetricOverride, hrvAtOverride, hrvQuality,
   caloriesSourceOverride, closeLabel, onClose,
 }: Props) {
-  const stats = useMemo(() => {
-    const bpms = samples.map((s) => s.bpm);
-    const avg = Math.round(bpms.reduce((a, b) => a + b, 0) / bpms.length);
-    const max = Math.max(...bpms);
-    const min = Math.min(...bpms);
-    const durationSec = samples[samples.length - 1]?.t ?? 0;
-
-    // Tempo por zona (cada amostra ≈ intervalo entre amostras)
-    const stepSec = samples.length > 1 ? Math.max(1, Math.round(durationSec / (samples.length - 1))) : 2;
-    const zoneSecs = new Array(ZONES.length).fill(0);
-    for (const s of samples) zoneSecs[zoneIndex(s.bpm)] += stepSec;
-    const totalZoneSec = zoneSecs.reduce((a, b) => a + b, 0) || 1;
-    const dominant = zoneSecs.indexOf(Math.max(...zoneSecs));
-
-    // Índice de esforço (carga): minutos em cada zona × peso da zona.
-    const effort = Math.round(
-      zoneSecs.reduce((acc, sec, i) => acc + (sec / 60) * ZONE_WEIGHTS[i], 0)
-    );
-
-    // Métricas dependentes da biometria (estimativa)
-    const age = ageFromBirthDate(bio.birthDate);
-    const estCalories = hasCalorieData(bio) ? estimateCalories(avg, durationSec / 60, bio) : null;
-    const avgPctMax = maxHrPercent(avg, age);
-    const calculatedHrv = calculateHrvMetrics(rrIntervalsMs);
-    const hrvMetric: HrvMetric | null = hrvMetricOverride ?? (calculatedHrv.rmssdMs != null ? 'rmssd' : null);
-    const hasHrvOverride = hrvMsOverride !== undefined;
-    const rawHrvMs = hasHrvOverride
-      ? hrvMsOverride
-      : hrvMetric === 'sdnn' ? calculatedHrv.sdnnMs : calculatedHrv.rmssdMs;
-    const hrvMs = hrvQuality && hrvQuality.status !== 'valid' ? null : rawHrvMs;
-
-    return {
-      avg, max, min, durationSec, zoneSecs, totalZoneSec, dominant, effort, estCalories, avgPctMax,
-      hrvMs, hrvMetric, hrvAt: hrvAtOverride ?? hrvQuality?.at ?? null,
-      hrvValidIntervals: calculatedHrv.validIntervals, hrvQuality: calculatedHrv.quality,
-      hrvValidation: hrvQuality ?? null,
-    };
-  }, [samples, bio, rrIntervalsMs, hrvMsOverride, hrvMetricOverride, hrvAtOverride, hrvQuality]);
+  const stats = useMemo(
+    () => computeHrSessionStats({
+      samples, bio, rrIntervalsMs, hrvMsOverride, hrvMetricOverride, hrvAtOverride, hrvQuality,
+    }),
+    [samples, bio, rrIntervalsMs, hrvMsOverride, hrvMetricOverride, hrvAtOverride, hrvQuality]
+  );
 
   // Métricas REAIS do relógio (calorias/passos) via Health Connect / Apple Health.
   // No histórico (deviceOverride) usamos o valor salvo, sem refazer a leitura.
@@ -172,46 +133,25 @@ export default function HeartRateSummary({
   const showSteps = device.steps != null;
 
   // Salva o treino no histórico UMA vez (apenas ao encerrar ao vivo).
-  const savedRef = useRef(false);
+  // A trava fica na lib: o widget também grava assim que a sessão encerra, para
+  // o treino não depender desta tela continuar aberta. Quem chegar primeiro vale.
+  const [saveFailed, setSaveFailed] = useState(false);
   useEffect(() => {
-    if (!persist || !userId || savedRef.current || !metricsSettled) return;
+    if (!persist || !userId || !metricsSettled) return;
     if (samples.length < 2) return;
-    savedRef.current = true;
-    const now = Date.now();
-    saveHeartRateSession({
-      user_id: userId,
-      started_at: startedAt ? new Date(startedAt).toISOString() : null,
-      ended_at: new Date(now).toISOString(),
-      duration_sec: stats.durationSec,
-      avg_bpm: stats.avg,
-      max_bpm: stats.max,
-      min_bpm: stats.min,
-      effort: stats.effort,
-      calories: calories ?? null,
-      calories_source: calories == null ? null : caloriesFromDevice ? 'device' : 'estimate',
-      steps: device.steps ?? null,
-      zone_secs: stats.zoneSecs,
-      dominant_zone: stats.dominant,
-      samples,
-      device_name: deviceName ?? null,
-      source: source ?? null,
-      rr_intervals_ms: rrIntervalsMs,
-      hrv_rmssd_ms: stats.hrvMetric === 'rmssd' ? stats.hrvMs : null,
-      hrv_sdnn_ms: stats.hrvMetric === 'sdnn' ? stats.hrvMs : null,
-      hrv_metric: stats.hrvMetric,
-      hrv_at: stats.hrvAt,
-      hrv_validation_status: hrvQuality?.status ?? (stats.hrvMs != null ? 'valid' : 'no_data'),
-      hrv_validation_reason: hrvQuality?.reasons?.join(',') ?? null,
-      hrv_valid_intervals: hrvQuality?.validIntervals ?? stats.hrvValidIntervals,
-      hrv_total_intervals: hrvQuality?.totalIntervals ?? null,
-      hrv_valid_ratio: hrvQuality?.validRatio ?? null,
-      hrv_age_sec: hrvQuality?.ageSec ?? null,
-      hrv_source_kind: hrvQuality?.sourceKind ?? (source === 'ble' ? 'ble' : source === 'health' ? (deviceName === 'Apple Health' ? 'apple_health' : 'health_connect') : null),
-      hrv_source_name: hrvQuality?.sourceName ?? deviceName ?? null,
-      hrv_source_id: hrvQuality?.sourceId ?? null,
-      hrv_platform: hrvQuality?.platform ?? null,
-      hrv_device_id: hrvQuality?.deviceId ?? null,
-    }).catch(() => {});
+    let cancelled = false;
+    const payload = buildHrSessionPayload({
+      userId, startedAt: startedAt ?? null, samples, bio, rrIntervalsMs,
+      hrvMsOverride, hrvMetricOverride, hrvAtOverride, hrvQuality,
+      deviceName, source,
+      deviceCalories: device.calories ?? null,
+      deviceSteps: device.steps ?? null,
+      caloriesSourceOverride,
+    });
+    saveHeartRateSessionOnce(hrSessionKey(userId, startedAt ?? null), payload).then((result) => {
+      if (!cancelled) setSaveFailed(!result.ok);
+    });
+    return () => { cancelled = true; };
   }, [persist, userId, metricsSettled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hrvSub = stats.hrvValidation && stats.hrvValidation.status !== 'valid'
@@ -358,6 +298,15 @@ export default function HeartRateSummary({
           )}
         </div>
       </div>
+
+      {saveFailed && (
+        <div className="rounded-2xl bg-red-500/10 border border-red-500/20 p-3">
+          <p className="text-red-400 text-[9px] font-black uppercase tracking-widest leading-relaxed">
+            Não foi possível salvar este treino no histórico. Verifique a conexão com a internet —
+            ao reabrir esta tela com sinal, a gravação é tentada novamente.
+          </p>
+        </div>
+      )}
 
       <button onClick={onClose}
         className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl bg-primary text-black text-xs font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-[0_0_20px_rgba(202,253,0,0.2)]">
