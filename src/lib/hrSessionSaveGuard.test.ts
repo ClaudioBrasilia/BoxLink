@@ -120,4 +120,16 @@ describe('saveHeartRateSession', () => {
     expect(result.ok).toBe(true);
     expect(insertMock).toHaveBeenCalledTimes(2);
   });
+
+  it('preserva a gravação quando o banco ainda não tem nenhuma coluna de HRV', async () => {
+    insertMock
+      .mockResolvedValueOnce({ error: { code: 'PGRST204', message: "could not find column 'hrv_platform'" } })
+      .mockResolvedValueOnce({ error: { code: 'PGRST204', message: "could not find column 'rr_intervals_ms'" } })
+      .mockResolvedValueOnce({ error: null });
+
+    const result = await saveHeartRateSession(payload);
+    expect(result.ok).toBe(true);
+    expect(insertMock).toHaveBeenCalledTimes(3);
+    expect(insertMock.mock.calls[2][0]).not.toHaveProperty('rr_intervals_ms');
+  });
 });

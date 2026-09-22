@@ -115,6 +115,28 @@ function withoutValidationMetadata(session: NewHrSession): Omit<NewHrSession,
   >;
 }
 
+/** Compatibilidade com ambientes que ainda só têm a tabela base de FC. */
+function withoutHrvMetadata(session: NewHrSession): Omit<NewHrSession,
+  'rr_intervals_ms' | 'hrv_rmssd_ms' | 'hrv_sdnn_ms' | 'hrv_metric' | 'hrv_at'
+  | 'hrv_validation_status' | 'hrv_validation_reason' | 'hrv_valid_intervals' | 'hrv_total_intervals'
+  | 'hrv_valid_ratio' | 'hrv_age_sec' | 'hrv_source_kind' | 'hrv_source_name' | 'hrv_source_id'
+  | 'hrv_platform' | 'hrv_device_id'
+> {
+  const legacy = { ...session } as Record<string, unknown>;
+  for (const key of [
+    'rr_intervals_ms', 'hrv_rmssd_ms', 'hrv_sdnn_ms', 'hrv_metric', 'hrv_at',
+    'hrv_validation_status', 'hrv_validation_reason', 'hrv_valid_intervals', 'hrv_total_intervals',
+    'hrv_valid_ratio', 'hrv_age_sec', 'hrv_source_kind', 'hrv_source_name', 'hrv_source_id',
+    'hrv_platform', 'hrv_device_id',
+  ]) delete legacy[key];
+  return legacy as Omit<NewHrSession,
+    'rr_intervals_ms' | 'hrv_rmssd_ms' | 'hrv_sdnn_ms' | 'hrv_metric' | 'hrv_at'
+    | 'hrv_validation_status' | 'hrv_validation_reason' | 'hrv_valid_intervals' | 'hrv_total_intervals'
+    | 'hrv_valid_ratio' | 'hrv_age_sec' | 'hrv_source_kind' | 'hrv_source_name' | 'hrv_source_id'
+    | 'hrv_platform' | 'hrv_device_id'
+  >;
+}
+
 export interface HrSessionSaveResult {
   ok: boolean;
   /** true quando a sessão já havia sido gravada por outro caminho. */
@@ -150,6 +172,15 @@ async function insertSession(session: NewHrSession): Promise<{ ok: boolean; erro
     if (!retry.error) {
       console.info('[HR sessions] Sessão salva sem metadados novos; aplique a migração de validação de HRV.');
       return { ok: true, error: null, retriable: false };
+    }
+    if (isSchemaMismatch(retry.error)) {
+      const base = withoutHrvMetadata(session);
+      const baseRetry = await supabase.from('heart_rate_sessions').insert(base);
+      if (!baseRetry.error) {
+        console.info('[HR sessions] Sessão salva sem colunas de HRV; aplique as migrações de HRV.');
+        return { ok: true, error: null, retriable: false };
+      }
+      return { ok: false, error: baseRetry.error.message, retriable: isRetriableSaveError(baseRetry.error) };
     }
     return { ok: false, error: retry.error.message, retriable: isRetriableSaveError(retry.error) };
   }

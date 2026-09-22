@@ -603,9 +603,28 @@ function HealthMode({ userId, platform }: { userId?: string; platform: string })
   useEffect(() => {
     if (wasActive.current && !isActive && samples.length >= MIN_SUMMARY_SAMPLES) {
       setFinished(true);
+      // A persistência não pode depender da tela de resumo continuar montada.
+      // Isso cobre saída do app/troca de tela logo após parar a leitura.
+      if (userId) {
+        const payload = buildHrSessionPayload({
+          userId,
+          startedAt: startedAt ?? null,
+          samples,
+          bio,
+          hrvMsOverride: hrvMs,
+          hrvMetricOverride: hrvMetric,
+          hrvAtOverride: hrvAt,
+          hrvQuality,
+          deviceName: appName,
+          source: 'health',
+        });
+        saveHeartRateSessionOnce(hrSessionKey(userId, startedAt ?? null), payload).then((result) => {
+          if (!result.ok) console.warn('[HR] histórico de saúde não salvo:', result.error);
+        });
+      }
     }
     wasActive.current = isActive;
-  }, [isActive, samples.length]);
+  }, [isActive, samples.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const closeSummary = () => {
     setFinished(false);
