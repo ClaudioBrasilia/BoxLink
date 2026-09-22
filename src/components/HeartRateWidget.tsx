@@ -20,6 +20,8 @@ import { useKeepScreenAwake } from '../hooks/useKeepScreenAwake';
 import { useUserBiometrics } from '../hooks/useUserBiometrics';
 import HeartRateSummary from './HeartRateSummary';
 import { getHeartRateZone, intensityPct, isAppleWatchName } from '../lib/heartRate';
+import { buildHrSessionPayload } from '../lib/hrSessionStats';
+import { saveHeartRateSessionOnce, hrSessionKey } from '../lib/heartRateSessions';
 import { cn } from '../lib/utils';
 import { APP_NAME } from '../lib/appMode';
 
@@ -375,13 +377,33 @@ function BleMode({ userId, onFallback, canFallback }: { userId?: string; onFallb
 
   // Mostra o resumo quando a sessão conectada termina (clique OU queda do sinal
   // sem conseguir reconectar).
+  //
+  // A GRAVAÇÃO acontece aqui, no mesmo instante — não na tela de resumo. Antes
+  // o treino só era salvo enquanto o resumo ficava montado: quem fechasse o app
+  // ao terminar perdia tudo, em silêncio. A trava em saveHeartRateSessionOnce
+  // impede gravação dupla quando o resumo também aparece.
   const wasConnected = useRef(false);
   useEffect(() => {
     if (wasConnected.current && !isSessionActive && samples.length >= MIN_SUMMARY_SAMPLES) {
       setFinished(true);
+      if (userId) {
+        const payload = buildHrSessionPayload({
+          userId,
+          startedAt: startedAt ?? null,
+          samples,
+          bio,
+          rrIntervalsMs: sessionRrIntervalsMs,
+          hrvQuality,
+          deviceName: connectedDevice?.name ?? lastDevice?.name ?? null,
+          source: 'ble',
+        });
+        saveHeartRateSessionOnce(hrSessionKey(userId, startedAt ?? null), payload).then((result) => {
+          if (!result.ok) console.warn('[HR] histórico não salvo:', result.error);
+        });
+      }
     }
     wasConnected.current = isSessionActive;
-  }, [isSessionActive, samples.length]);
+  }, [isSessionActive, samples.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const emptyAfterScan = hasScanned && !isScanning && !isConnected && devices.length === 0;
 

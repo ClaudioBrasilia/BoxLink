@@ -115,24 +115,103 @@ function withoutValidationMetadata(session: NewHrSession): Omit<NewHrSession,
   >;
 }
 
-export async function saveHeartRateSession(session: NewHrSession): Promise<void> {
-  try {
-    const { error } = await supabase.from('heart_rate_sessions').insert(session);
-    if (!error) return;
-    if (isSchemaMismatch(error)) {
-      const legacy = withoutValidationMetadata(session);
-      const retry = await supabase.from('heart_rate_sessions').insert(legacy);
-      if (!retry.error) {
-        console.info('[HR sessions] Sessão salva sem metadados novos; aplique a migração de validação de HRV.');
-        return;
-      }
-      console.warn('[HR sessions] insert legado falhou:', retry.error.message);
-      return;
+export interface HrSessionSaveResult {
+  ok: boolean;
+  /** true quando a sessão já havia sido gravada por outro caminho. */
+  deduped?: boolean;
+  error?: string;
+}
+
+/**
+ * Falhas que valem uma nova tentativa: rede caindo, timeout, 5xx. Erros de
+ * schema ou de permissão são determinísticos — repetir só atrasaria o aviso.
+ */
+function isRetriableSaveError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (isSchemaMismatch(error)) return false;
+  const msg = error.message ?? '';
+  if (/permission|denied|violates row-level security|jwt|not authorized/i.test(msg)) return false;
+  return /fetch|network|timeout|abort|connection|temporarily|unavailable|5\d\d/i.test(msg)
+    || error.code === '' || error.code == null;
+}
+
+const SAVE_RETRY_DELAYS_MS = [1000, 3000, 7000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function insertSession(session: NewHrSession): Promise<{ ok: boolean; error: string | null; retriable: boolean }> {
+  const { error } = await supabase.from('heart_rate_sessions').insert(session);
+  if (!error) return { ok: true, error: null, retriable: false };
+  if (isSchemaMismatch(error)) {
+    const legacy = withoutValidationMetadata(session);
+    const retry = await supabase.from('heart_rate_sessions').insert(legacy);
+    if (!retry.error) {
+      console.info('[HR sessions] Sessão salva sem metadados novos; aplique a migração de validação de HRV.');
+      return { ok: true, error: null, retriable: false };
     }
-    console.warn('[HR sessions] insert falhou:', error.message);
-  } catch (e) {
-    console.warn('[HR sessions] insert erro:', e);
+    return { ok: false, error: retry.error.message, retriable: isRetriableSaveError(retry.error) };
   }
+  return { ok: false, error: error.message, retriable: isRetriableSaveError(error) };
+}
+
+/**
+ * Grava o treino no histórico. Nunca lança — devolve o resultado para quem
+ * chamou poder avisar o atleta. Tenta de novo em falha de rede: num celular
+ * dentro da academia, uma queda momentânea de sinal não pode custar o treino.
+ */
+export async function saveHeartRateSession(session: NewHrSession): Promise<HrSessionSaveResult> {
+  let lastError = 'Erro desconhecido ao salvar.';
+  for (let attempt = 0; attempt <= SAVE_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const result = await insertSession(session);
+      if (result.ok) return { ok: true };
+      lastError = result.error ?? lastError;
+      if (!result.retriable) break;
+    } catch (e) {
+      lastError = String((e as any)?.message || e);
+    }
+    if (attempt < SAVE_RETRY_DELAYS_MS.length) await sleep(SAVE_RETRY_DELAYS_MS[attempt]);
+  }
+  console.warn('[HR sessions] insert falhou:', lastError);
+  return { ok: false, error: lastError };
+}
+
+// ─── Trava de gravação única ────────────────────────────────────────────────
+// A mesma sessão pode ser oferecida por dois caminhos: o widget, assim que ela
+// encerra, e a tela de resumo, se o atleta chegar nela. Quem chegar primeiro
+// grava; o segundo vira no-op. Sem isto o treino entraria duplicado no
+// histórico agora que a gravação não depende mais da tela.
+const inFlightSaves = new Map<string, Promise<HrSessionSaveResult>>();
+const savedKeys = new Set<string>();
+
+/** Identidade da sessão: mesmo atleta + mesmo instante de início. */
+export function hrSessionKey(userId: string, startedAtMs: number | null): string {
+  return `${userId}|${startedAtMs ?? 'sem-inicio'}`;
+}
+
+export async function saveHeartRateSessionOnce(
+  key: string,
+  session: NewHrSession,
+): Promise<HrSessionSaveResult> {
+  if (savedKeys.has(key)) return { ok: true, deduped: true };
+  const running = inFlightSaves.get(key);
+  if (running) return running;
+
+  const pending = saveHeartRateSession(session).then((result) => {
+    if (result.ok) savedKeys.add(key);
+    inFlightSaves.delete(key);
+    return result;
+  });
+  inFlightSaves.set(key, pending);
+  return pending;
+}
+
+/** Usado nos testes para isolar o estado da trava entre casos. */
+export function resetHrSessionSaveGuard(): void {
+  inFlightSaves.clear();
+  savedKeys.clear();
 }
 
 export async function fetchHeartRateSessions(
