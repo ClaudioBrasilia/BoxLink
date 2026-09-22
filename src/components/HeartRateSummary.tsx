@@ -135,7 +135,7 @@ export default function HeartRateSummary({
   // Salva o treino no histórico UMA vez (apenas ao encerrar ao vivo).
   // A trava fica na lib: o widget também grava assim que a sessão encerra, para
   // o treino não depender desta tela continuar aberta. Quem chegar primeiro vale.
-  const [saveFailed, setSaveFailed] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   useEffect(() => {
     if (!persist || !userId || !metricsSettled) return;
     if (samples.length < 2) return;
@@ -149,7 +149,20 @@ export default function HeartRateSummary({
       caloriesSourceOverride,
     });
     saveHeartRateSessionOnce(hrSessionKey(userId, startedAt ?? null), payload).then((result) => {
-      if (!cancelled) setSaveFailed(!result.ok);
+      if (cancelled) return;
+      if (result.ok) {
+        setSaveError(null);
+      } else {
+        const error = result.error || 'Erro desconhecido ao salvar.';
+        console.error('[HR] Falha ao salvar sessão no histórico', {
+          error,
+          userId,
+          source,
+          startedAt,
+          samples: samples.length,
+        });
+        setSaveError(error);
+      }
     });
     return () => { cancelled = true; };
   }, [persist, userId, metricsSettled]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -299,12 +312,13 @@ export default function HeartRateSummary({
         </div>
       </div>
 
-      {saveFailed && (
+      {saveError && (
         <div className="rounded-2xl bg-red-500/10 border border-red-500/20 p-3">
           <p className="text-red-400 text-[9px] font-black uppercase tracking-widest leading-relaxed">
             Não foi possível salvar este treino no histórico. Verifique a conexão com a internet —
             ao reabrir esta tela com sinal, a gravação é tentada novamente.
           </p>
+          <p className="text-red-300/70 text-[8px] font-mono break-words mt-2">Detalhe: {saveError}</p>
         </div>
       )}
 
