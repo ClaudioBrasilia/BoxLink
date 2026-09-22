@@ -249,6 +249,20 @@ export async function fetchHeartRateSessions(
   userId: string,
   limit = 30
 ): Promise<StoredHrSession[]> {
+  const result = await fetchHeartRateSessionsDetailed(userId, limit);
+  return result.sessions;
+}
+
+export interface HrSessionFetchResult {
+  sessions: StoredHrSession[];
+  error: string | null;
+}
+
+/** Consulta detalhada usada pelo Perfil para não mascarar erro como lista vazia. */
+export async function fetchHeartRateSessionsDetailed(
+  userId: string,
+  limit = 30
+): Promise<HrSessionFetchResult> {
   try {
     const { data, error } = await supabase
       .from('heart_rate_sessions')
@@ -256,10 +270,11 @@ export async function fetchHeartRateSessions(
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(limit);
-    if (error || !data) return [];
-    return data as StoredHrSession[];
-  } catch {
-    return [];
+    if (error) return { sessions: [], error: error.message };
+    if (!data) return { sessions: [], error: 'O Supabase não retornou dados.' };
+    return { sessions: data as StoredHrSession[], error: null };
+  } catch (e) {
+    return { sessions: [], error: String((e as any)?.message || e) };
   }
 }
 

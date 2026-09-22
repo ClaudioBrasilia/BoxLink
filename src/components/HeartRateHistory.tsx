@@ -5,10 +5,10 @@
 // ============================================================================
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Activity, Heart, ChevronRight, Loader2, Trash2, ArrowLeft, Flame } from 'lucide-react';
+import { Activity, Heart, ChevronRight, Loader2, Trash2, ArrowLeft, Flame, RefreshCw } from 'lucide-react';
 import HeartRateSummary from './HeartRateSummary';
 import {
-  fetchHeartRateSessions, deleteHeartRateSession, type StoredHrSession,
+  fetchHeartRateSessionsDetailed, deleteHeartRateSession, type StoredHrSession,
 } from '../lib/heartRateSessions';
 import type { Biometrics } from '../lib/heartRate';
 import { hrvValidationLabel } from '../lib/hrvValidation';
@@ -38,17 +38,25 @@ function fmtDate(iso: string | null): string {
 export default function HeartRateHistory({ userId, bio }: Props) {
   const [sessions, setSessions] = useState<StoredHrSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<StoredHrSession | null>(null);
 
-  useEffect(() => {
+  const loadSessions = () => {
     if (!userId) { setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
-    fetchHeartRateSessions(userId).then((rows) => {
-      if (!cancelled) { setSessions(rows); setLoading(false); }
+    setLoadError(null);
+    fetchHeartRateSessionsDetailed(userId).then(({ sessions: rows, error }) => {
+      if (!cancelled) {
+        setSessions(rows);
+        setLoadError(error);
+        setLoading(false);
+      }
     });
     return () => { cancelled = true; };
-  }, [userId]);
+  };
+
+  useEffect(() => loadSessions(), [userId]);
 
   const handleDelete = async (id: string) => {
     const ok = await deleteHeartRateSession(id);
@@ -92,6 +100,16 @@ export default function HeartRateHistory({ userId, bio }: Props) {
       {loading ? (
         <div className="flex justify-center py-6">
           <Loader2 className="w-5 h-5 text-white/30 animate-spin" />
+        </div>
+      ) : loadError ? (
+        <div className="flex flex-col items-center gap-3 py-4 text-center">
+          <p className="text-red-400 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
+            Não foi possível consultar o histórico de FC.
+          </p>
+          <p className="text-red-300/70 text-[8px] font-mono break-words">Detalhe: {loadError}</p>
+          <button onClick={loadSessions} className="flex items-center gap-1.5 text-primary text-[10px] font-black uppercase tracking-widest">
+            <RefreshCw className="w-3 h-3" /> Tentar novamente
+          </button>
         </div>
       ) : sessions.length === 0 ? (
         <p className="text-on-surface-variant/60 text-[11px] font-bold uppercase tracking-widest text-center py-4 leading-relaxed">
