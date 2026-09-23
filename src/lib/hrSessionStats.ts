@@ -114,6 +114,21 @@ export interface HrSessionPayloadInput extends HrSessionStatsInput {
   caloriesSourceOverride?: 'device' | 'estimate' | null;
 }
 
+/**
+ * Arredonda para coluna `integer` do Postgres.
+ *
+ * ⚠️ Isto não é firula: o histórico ficou 26 DIAS sem gravar nada porque
+ * hrvQuality.ageSec chega em segundos fracionários (ex.: 0.477) e a coluna
+ * hrv_age_sec é integer — o Postgres respondia
+ * `invalid input syntax for type integer: "0.477"` e o INSERT inteiro caía com
+ * 400. Vale para todo campo inteiro: calorias e passos vêm do app de saúde e
+ * também podem chegar fracionários.
+ */
+function toInt(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return Math.round(value);
+}
+
 /** Monta o registro exatamente como o histórico espera. */
 export function buildHrSessionPayload(input: HrSessionPayloadInput): NewHrSession {
   const stats = computeHrSessionStats(input);
@@ -131,16 +146,16 @@ export function buildHrSessionPayload(input: HrSessionPayloadInput): NewHrSessio
     user_id: userId,
     started_at: startedAt ? new Date(startedAt).toISOString() : null,
     ended_at: new Date(endedAtMs).toISOString(),
-    duration_sec: stats.durationSec,
-    avg_bpm: stats.avg,
-    max_bpm: stats.max,
-    min_bpm: stats.min,
-    effort: stats.effort,
-    calories: calories ?? null,
+    duration_sec: toInt(stats.durationSec),
+    avg_bpm: toInt(stats.avg),
+    max_bpm: toInt(stats.max),
+    min_bpm: toInt(stats.min),
+    effort: toInt(stats.effort),
+    calories: toInt(calories),
     calories_source: calories == null ? null : caloriesFromDevice ? 'device' : 'estimate',
-    steps: deviceSteps ?? null,
+    steps: toInt(deviceSteps),
     zone_secs: stats.zoneSecs,
-    dominant_zone: stats.dominant,
+    dominant_zone: toInt(stats.dominant),
     samples: input.samples,
     device_name: deviceName ?? null,
     source: source ?? null,
@@ -151,10 +166,10 @@ export function buildHrSessionPayload(input: HrSessionPayloadInput): NewHrSessio
     hrv_at: stats.hrvAt,
     hrv_validation_status: hrvQuality?.status ?? (stats.hrvMs != null ? 'valid' : 'no_data'),
     hrv_validation_reason: hrvQuality?.reasons?.join(',') ?? null,
-    hrv_valid_intervals: hrvQuality?.validIntervals ?? stats.hrvValidIntervals,
-    hrv_total_intervals: hrvQuality?.totalIntervals ?? null,
+    hrv_valid_intervals: toInt(hrvQuality?.validIntervals ?? stats.hrvValidIntervals),
+    hrv_total_intervals: toInt(hrvQuality?.totalIntervals),
     hrv_valid_ratio: hrvQuality?.validRatio ?? null,
-    hrv_age_sec: hrvQuality?.ageSec ?? null,
+    hrv_age_sec: toInt(hrvQuality?.ageSec),
     hrv_source_kind: hrvQuality?.sourceKind
       ?? (source === 'ble' ? 'ble' : source === 'health' ? (deviceName === 'Apple Health' ? 'apple_health' : 'health_connect') : null),
     hrv_source_name: hrvQuality?.sourceName ?? deviceName ?? null,

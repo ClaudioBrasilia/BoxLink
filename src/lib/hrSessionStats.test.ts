@@ -137,3 +137,67 @@ describe('buildHrSessionPayload', () => {
     expect(doResumo).toEqual(doWidget);
   });
 });
+
+// ============================================================================
+// Regressão do histórico parado por 26 dias. O Postgres recusava o INSERT com
+// `invalid input syntax for type integer: "0.477"`: hrvQuality.ageSec chega em
+// segundos fracionários e hrv_age_sec é integer. Todo campo que vai para coluna
+// inteira precisa chegar inteiro.
+// ============================================================================
+describe('campos de coluna integer', () => {
+  const base = {
+    userId: 'atleta-1',
+    startedAt: Date.UTC(2026, 8, 22, 12, 0, 0),
+    samples: serie([120, 130, 140]),
+    source: 'ble' as const,
+  };
+
+  it('arredonda ageSec fracionário — o valor que derrubava o INSERT', () => {
+    const row = buildHrSessionPayload({
+      ...base,
+      hrvQuality: { status: 'valid', ageSec: 0.477, validIntervals: 12, totalIntervals: 20 } as any,
+    });
+    expect(row.hrv_age_sec).toBe(0);
+    expect(Number.isInteger(row.hrv_age_sec)).toBe(true);
+  });
+
+  it('mantém a proporção de intervalos válidos fracionária (coluna numeric)', () => {
+    const row = buildHrSessionPayload({
+      ...base,
+      hrvQuality: { status: 'valid', validRatio: 0.477, ageSec: 3 } as any,
+    });
+    expect(row.hrv_valid_ratio).toBe(0.477);
+  });
+
+  it('arredonda calorias e passos vindos do app de saúde', () => {
+    const row = buildHrSessionPayload({ ...base, deviceCalories: 28.6, deviceSteps: 1200.4 });
+    expect(row.calories).toBe(29);
+    expect(row.steps).toBe(1200);
+  });
+
+  it('nenhum campo inteiro sai fracionário, mesmo com entradas quebradas', () => {
+    const row = buildHrSessionPayload({
+      ...base,
+      deviceCalories: 28.6,
+      deviceSteps: 1200.4,
+      hrvQuality: {
+        status: 'valid', ageSec: 0.477, validIntervals: 12.7, totalIntervals: 20.2,
+      } as any,
+    });
+    const inteiros = [
+      row.duration_sec, row.avg_bpm, row.max_bpm, row.min_bpm, row.effort,
+      row.calories, row.steps, row.dominant_zone,
+      row.hrv_valid_intervals, row.hrv_total_intervals, row.hrv_age_sec,
+    ];
+    for (const valor of inteiros) {
+      if (valor != null) expect(Number.isInteger(valor)).toBe(true);
+    }
+  });
+
+  it('preserva null em vez de virar zero quando não há valor', () => {
+    const row = buildHrSessionPayload(base);
+    expect(row.hrv_age_sec).toBeNull();
+    expect(row.steps).toBeNull();
+    expect(row.calories).toBeNull();
+  });
+});
