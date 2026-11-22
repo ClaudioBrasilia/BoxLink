@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle, Shield, Upload, Scale, BookOpen, ChevronDown } from 'lucide-react';
+import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle, Shield, Upload, Scale, BookOpen, ChevronDown, Flag } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   rankClans,
@@ -9,10 +9,14 @@ import {
   criteriaOption,
   tiebreakerOption,
   formatClanScore,
-  CRITERIA_OPTIONS,
+  isLowerBetter,
+  SELECTABLE_CRITERIA,
   TIEBREAKER_OPTIONS,
   DEFAULT_CRITERIA,
   DEFAULT_TIEBREAKER,
+  DEFAULT_TOP_N,
+  MIN_TOP_N,
+  MAX_TOP_N,
   SEASON_XP_TYPES,
   SEASON_XP_SOURCES,
   SEASON_XP_EXCLUDED,
@@ -20,6 +24,7 @@ import {
   type ClanRankingCriteria,
   type ClanTiebreaker,
 } from '../lib/clanRanking';
+import { computeWodStandings, wodPointsByUser } from '../lib/wodCompetition';
 
 interface Clan {
   id: string;
@@ -61,6 +66,8 @@ interface BoxSettings {
     end_date: string;
     ranking_criteria?: ClanRankingCriteria;
     tiebreaker?: ClanTiebreaker;
+    /** Quantos atletas contam na soma dos critérios de "melhores". */
+    top_n?: number;
   } | null;
   competition_mode: 'challenge' | 'season';
   allow_multiple_clans_per_user: boolean;
@@ -79,6 +86,8 @@ export default function Clans() {
   const [memberships, setMemberships] = useState<ClanMembership[]>([]);
   const [memberXp, setMemberXp] = useState<Record<string, number>>({});
   const [memberCheckins, setMemberCheckins] = useState<Record<string, number>>({});
+  const [memberWodPoints, setMemberWodPoints] = useState<Record<string, number>>({});
+  const [memberWodEvents, setMemberWodEvents] = useState<Record<string, number>>({});
   const [rewards, setRewards] = useState<Record<string, number>>({});
   const [showRules, setShowRules] = useState(false);
   const [territory, setTerritory] = useState<Territory | null>(null);
@@ -122,12 +131,14 @@ export default function Clans() {
     end_date: string;
     ranking_criteria: ClanRankingCriteria;
     tiebreaker: ClanTiebreaker;
+    top_n: number;
   }>({
     name: '',
     start_date: '',
     end_date: '',
     ranking_criteria: DEFAULT_CRITERIA,
     tiebreaker: DEFAULT_TIEBREAKER,
+    top_n: DEFAULT_TOP_N,
   });
 
   const colors = ['#CAFD00', '#FF4444', '#4444FF', '#FF8800', '#AA44FF', '#00CCFF', '#FF44AA'];
@@ -243,6 +254,53 @@ export default function Clans() {
       });
       setMemberXp(xpMap);
       setMemberCheckins(checkinMap);
+
+      // ── Pontos de WOD (temporada no modo competição) ──
+      // Só busca quando o critério é Resultado de WOD: são duas consultas a
+      // mais, na tabela do WOD do box (`wods` + `wod_results`), que é o único
+      // lugar onde todo mundo fez o MESMO treino e a comparação vale.
+      const seasonCfg = normalizeRankingConfig(season);
+      const wodPointsMap: Record<string, number> = {};
+      const wodEventsMap: Record<string, number> = {};
+      if (seasonCfg.criteria === 'wod_competition') {
+        // Mesmo fuso do placar do dia: a data do WOD é a data do box.
+        const boxDay = (date: Date) =>
+          date.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+        const startDay = season?.start_date
+          || boxDay(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+        const endDay = season?.end_date || boxDay(new Date());
+        const { data: wodsData } = await supabase
+          .from('wods')
+          .select('id, date, name, type')
+          .gte('date', startDay)
+          .lte('date', endDay);
+
+        if (wodsData && wodsData.length > 0) {
+          const { data: resultsData } = await supabase
+            .from('wod_results')
+            .select('wod_id, user_id, result')
+            .in('wod_id', wodsData.map((w: any) => w.id));
+
+          const standings = computeWodStandings(
+            wodsData.map((w: any) => ({
+              wodId: w.id,
+              date: w.date,
+              name: w.name,
+              type: w.type,
+              results: (resultsData || [])
+                .filter((r: any) => r.wod_id === w.id)
+                .map((r: any) => ({ userId: r.user_id, result: r.result })),
+            })),
+          );
+
+          Object.entries(wodPointsByUser(standings)).forEach(([userId, info]) => {
+            wodPointsMap[userId] = info.points;
+            wodEventsMap[userId] = info.events;
+          });
+        }
+      }
+      setMemberWodPoints(wodPointsMap);
+      setMemberWodEvents(wodEventsMap);
 
       const { data: territoriesData } = await supabase
         .from('territories')
@@ -393,7 +451,9 @@ export default function Clans() {
     () => normalizeRankingConfig(boxSettings.current_season),
     [boxSettings.current_season],
   );
-  const activeCriteria = criteriaOption(rankingConfig.criteria);
+  const activeCriteria = criteriaOption(rankingConfig.criteria, rankingConfig.topN);
+  const lowerIsBetter = isLowerBetter(rankingConfig.criteria);
+  const isWodSeason = rankingConfig.criteria === 'wod_competition';
 
   const leaderboard = useMemo(() => {
     const byId = new Map(clans.map((c) => [c.id, c]));
@@ -407,14 +467,34 @@ export default function Clans() {
             userId: m.user_id,
             xp: memberXp[m.user_id] || 0,
             checkins: memberCheckins[m.user_id] || 0,
+            wodPoints: memberWodPoints[m.user_id] ?? null,
+            wodEvents: memberWodEvents[m.user_id] || 0,
           })),
       })),
       rankingConfig,
     );
     return ranked.map((entry) => ({ ...entry, clan: byId.get(entry.id)! }));
-  }, [clans, memberships, memberXp, memberCheckins, rankingConfig]);
+  }, [clans, memberships, memberXp, memberCheckins, memberWodPoints, memberWodEvents, rankingConfig]);
 
   const maxScore = Math.max(...leaderboard.map((i) => i.score), 1);
+  // Faixa de pontos da competição: a barra cheia é do MENOR número, então a
+  // escala é invertida (1º lugar com a barra inteira, último com a menor).
+  const scoreRange = useMemo(() => {
+    const valid = leaderboard.map((i) => i.score).filter((s) => Number.isFinite(s));
+    if (valid.length === 0) return { best: 0, worst: 0 };
+    return { best: Math.min(...valid), worst: Math.max(...valid) };
+  }, [leaderboard]);
+
+  /** Largura da barra do card do time, respeitando a direção do critério. */
+  const barWidth = (score: number): number => {
+    if (!Number.isFinite(score)) return 0;
+    if (lowerIsBetter) {
+      const { best, worst } = scoreRange;
+      if (worst === best) return 100;
+      return Math.max(8, 100 - ((score - best) / (worst - best)) * 80);
+    }
+    return Math.max(0, (score / maxScore) * 100);
+  };
   const myEntry = myClan ? leaderboard.find((l) => l.clan.id === myClan.id) : undefined;
 
   const handleCreateClan = async () => {
@@ -641,13 +721,13 @@ export default function Clans() {
       } else {
         alert(
           `Temporada "${newSeason.name}" aberta!\n` +
-          `Critério de ranking: ${criteriaOption(newSeason.ranking_criteria).label} ` +
+          `Critério de ranking: ${criteriaOption(newSeason.ranking_criteria, newSeason.top_n).label} ` +
           `(desempate: ${tiebreakerOption(newSeason.tiebreaker).label.toLowerCase()}).\n` +
           `Os atletas já podem criar times.`,
         );
         setNewSeason({
           name: '', start_date: '', end_date: '',
-          ranking_criteria: DEFAULT_CRITERIA, tiebreaker: DEFAULT_TIEBREAKER,
+          ranking_criteria: DEFAULT_CRITERIA, tiebreaker: DEFAULT_TIEBREAKER, top_n: DEFAULT_TOP_N,
         });
         setShowSeasonModal(false);
         setTick((v) => v + 1);
@@ -1071,30 +1151,71 @@ export default function Clans() {
                     <Trophy className="w-3 h-3 text-primary" /> Critério de Ranking
                   </label>
                   <div className="grid grid-cols-2 gap-2">
-                    {CRITERIA_OPTIONS.map((opt) => {
+                    {SELECTABLE_CRITERIA.map((opt) => {
                       const selected = newSeason.ranking_criteria === opt.id;
+                      // O rótulo do "XP dos Melhores" acompanha o N escolhido.
+                      const option = criteriaOption(opt.id, newSeason.top_n);
                       return (
                         <button
                           key={opt.id}
                           type="button"
                           onClick={() => setNewSeason({ ...newSeason, ranking_criteria: opt.id })}
-                          className={`p-3 rounded-2xl border text-left transition-all ${
+                          className={`p-3 rounded-2xl border text-left transition-all ${opt.id === 'wod_competition' ? 'col-span-2' : ''} ${
                             selected
                               ? 'bg-primary/15 border-primary'
                               : 'bg-surface-container-highest border-outline-variant/10 hover:border-outline-variant/30'
                           }`}
                         >
                           <p className={`font-headline font-black text-xs uppercase italic ${selected ? 'text-primary' : 'text-on-surface'}`}>
-                            {opt.icon} {opt.label}
+                            {option.icon} {option.label}
                           </p>
-                          <p className="text-[10px] text-on-surface-variant mt-0.5">{opt.formula}</p>
+                          <p className="text-[10px] text-on-surface-variant mt-0.5">{option.formula}</p>
                         </button>
                       );
                     })}
                   </div>
                   <p className="text-[10px] text-on-surface-variant leading-relaxed bg-surface-container-highest rounded-xl p-3 border border-outline-variant/10">
-                    {criteriaOption(newSeason.ranking_criteria).description}
+                    {criteriaOption(newSeason.ranking_criteria, newSeason.top_n).description}
                   </p>
+
+                  {/* Quantos atletas contam — só faz sentido nos critérios de "melhores" */}
+                  {newSeason.ranking_criteria !== 'total_xp' && (
+                    <div className="bg-surface-container-highest rounded-2xl p-3 border border-outline-variant/10">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">
+                            Atletas que contam
+                          </p>
+                          <p className="text-[10px] text-on-surface-variant mt-0.5">
+                            {newSeason.ranking_criteria === 'wod_competition'
+                              ? 'Soma dos melhores resultados do time'
+                              : 'Soma do XP dos melhores do time'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setNewSeason({ ...newSeason, top_n: Math.max(MIN_TOP_N, newSeason.top_n - 1) })}
+                            disabled={newSeason.top_n <= MIN_TOP_N}
+                            className="w-8 h-8 rounded-lg bg-surface-container text-on-surface font-black disabled:opacity-30"
+                          >
+                            −
+                          </button>
+                          <span className="w-8 text-center font-headline font-black text-lg text-primary italic">
+                            {newSeason.top_n}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setNewSeason({ ...newSeason, top_n: Math.min(MAX_TOP_N, newSeason.top_n + 1) })}
+                            disabled={newSeason.top_n >= MAX_TOP_N}
+                            className="w-8 h-8 rounded-lg bg-surface-container text-on-surface font-black disabled:opacity-30"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* ── Desempate ── */}
@@ -1167,7 +1288,10 @@ export default function Clans() {
                     </p>
                   )}
                   <p className="text-on-surface-variant text-[10px] font-bold mt-0.5">
-                    {activeCriteria.icon} Vence por: {activeCriteria.formula.toLowerCase()}
+                    {activeCriteria.icon}{' '}
+                    {isWodSeason
+                      ? 'Menor soma de pontos vence'
+                      : `Vence por: ${activeCriteria.formula.toLowerCase()}`}
                   </p>
                 </div>
               </div>
@@ -1266,6 +1390,27 @@ export default function Clans() {
                 {/* Como ganhar XP */}
                 <div>
                   <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-2">4 · Como somar pontos para o time</p>
+                  {isWodSeason ? (
+                    <div className="flex flex-col gap-1.5">
+                      {[
+                        { icon: '🥇', label: '1º lugar no WOD', value: '1 ponto' },
+                        { icon: '🥈', label: '2º lugar no WOD', value: '2 pontos' },
+                        { icon: '🥉', label: '3º lugar no WOD', value: '3 pontos' },
+                        { icon: '🔁', label: 'Empate no WOD', value: 'mesma colocação' },
+                      ].map((row) => (
+                        <div key={row.label} className="flex items-center justify-between gap-2 bg-surface-container-highest rounded-xl px-3 py-2 border border-outline-variant/10">
+                          <p className="text-[11px] font-bold text-on-surface min-w-0">{row.icon} {row.label}</p>
+                          <span className="text-[11px] font-black text-primary text-right flex-shrink-0">{row.value}</span>
+                        </div>
+                      ))}
+                      <p className="text-[10px] text-on-surface-variant mt-1 leading-relaxed">
+                        Cada atleta soma os pontos dos seus WODs e o time soma os
+                        <span className="font-black text-on-surface"> {rankingConfig.topN} melhores</span> — quem somar
+                        <span className="font-black text-on-surface"> menos</span> vence. Contam os WODs do box publicados
+                        no período; quem não fez o WOD não entra na soma (não leva zero de graça).
+                      </p>
+                    </div>
+                  ) : (
                   <div className="flex flex-col gap-1.5">
                     {[
                       { ...SEASON_XP_SOURCES[0], value: `+${rewards.xp_per_checkin ?? 20} XP` },
@@ -1286,7 +1431,8 @@ export default function Clans() {
                       </div>
                     ))}
                   </div>
-                  {rankingConfig.criteria === 'checkins' && (
+                  )}
+                  {!isWodSeason && rankingConfig.criteria === 'checkins' && (
                     <p className="text-[10px] text-on-surface-variant mt-2 italic">
                       Nesta temporada o que decide é a quantidade de check-ins — o XP entra só como informação e no desempate.
                     </p>
@@ -1294,6 +1440,7 @@ export default function Clans() {
                 </div>
 
                 {/* O que não conta para o time */}
+                {!isWodSeason && (
                 <div>
                   <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-2">5 · O que não conta para o time</p>
                   <div className="flex flex-wrap gap-2 mb-2">
@@ -1312,6 +1459,7 @@ export default function Clans() {
                     temporada.
                   </p>
                 </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -1528,7 +1676,7 @@ export default function Clans() {
                   </div>
                   <div className="text-right">
                     <div className="flex items-center justify-end gap-1 text-primary font-black text-sm">
-                      <Zap className="w-3 h-3" /> {formatClanScore(item.score, rankingConfig.criteria)}
+                      {isWodSeason ? <Flag className="w-3 h-3" /> : <Zap className="w-3 h-3" />} {formatClanScore(item.score, rankingConfig.criteria)}
                       <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">{activeCriteria.unit}</span>
                     </div>
                     <div className={`flex items-center justify-end gap-1 text-[10px] font-bold ${item.memberCount >= boxSettings.max_clan_members ? 'text-secondary' : 'text-on-surface-variant'}`}>
@@ -1537,15 +1685,17 @@ export default function Clans() {
                     </div>
                     {/* Métricas secundárias — as que não são o critério em vigor */}
                     <div className="text-[10px] text-on-surface-variant font-bold mt-0.5">
-                      {rankingConfig.criteria !== 'total_xp' && <>{item.totalXp} XP · </>}
-                      {rankingConfig.criteria !== 'checkins' && <>{item.checkins} check-ins</>}
-                      {rankingConfig.criteria === 'checkins' && <>{item.avgXp} XP/atleta</>}
+                      {isWodSeason
+                        ? <>{item.wodEvents} WOD{item.wodEvents === 1 ? '' : 's'} · {item.wodScoredCount} na conta</>
+                        : rankingConfig.criteria === 'checkins'
+                          ? <>{item.avgXp} XP/atleta</>
+                          : <>{item.checkins} check-ins</>}
                     </div>
                   </div>
                 </div>
 
                 <div className="h-1.5 bg-surface-container-highest rounded-full overflow-hidden mb-3">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(0, (item.score / maxScore) * 100)}%`, backgroundColor: item.clan.color }} />
+                  <div className="h-full rounded-full transition-all" style={{ width: `${barWidth(item.score)}%`, backgroundColor: item.clan.color }} />
                 </div>
 
                 {!myClan && !alreadyRequested && (
@@ -1732,11 +1882,18 @@ export default function Clans() {
 
                       {/* Todas as métricas — o critério em vigor fica destacado */}
                       <div className="grid grid-cols-3 gap-2">
-                        {[
-                          { id: 'total_xp', label: 'XP Total', value: `${detail?.totalXp || 0}` },
-                          { id: 'avg_xp', label: 'Média/Atleta', value: `${detail?.avgXp || 0}` },
-                          { id: 'checkins', label: 'Check-ins', value: `${detail?.checkins || 0}` },
-                        ].map((m) => (
+                        {(isWodSeason
+                          ? [
+                              { id: 'wod_competition', label: 'Pontos WOD', value: formatClanScore(detail?.score ?? 0, 'wod_competition') },
+                              { id: 'wod_events', label: 'WODs feitos', value: `${detail?.wodEvents || 0}` },
+                              { id: 'total_xp', label: 'XP Total', value: `${detail?.totalXp || 0}` },
+                            ]
+                          : [
+                              { id: 'total_xp', label: 'XP Total', value: `${detail?.totalXp || 0}` },
+                              { id: 'top_xp', label: `Top ${rankingConfig.topN}`, value: `${detail?.topXp || 0}` },
+                              { id: 'checkins', label: 'Check-ins', value: `${detail?.checkins || 0}` },
+                            ]
+                        ).map((m) => (
                           <div
                             key={m.id}
                             className={`p-3 rounded-xl border text-center ${
@@ -1761,15 +1918,27 @@ export default function Clans() {
                   <div className="flex flex-col gap-2">
                     {[...clanMembers]
                       // Ordena pela métrica que decide a temporada
-                      .sort((a, b) =>
-                        rankingConfig.criteria === 'checkins'
+                      .sort((a, b) => {
+                        if (isWodSeason) {
+                          // Competição: menor pontuação primeiro, e quem não
+                          // fez nenhum WOD fica no fim (não é "zero ponto").
+                          const eventsA = memberWodEvents[a.id] || 0;
+                          const eventsB = memberWodEvents[b.id] || 0;
+                          if ((eventsA > 0) !== (eventsB > 0)) return eventsA > 0 ? -1 : 1;
+                          return (memberWodPoints[a.id] || 0) - (memberWodPoints[b.id] || 0);
+                        }
+                        return rankingConfig.criteria === 'checkins'
                           ? (memberCheckins[b.id] || 0) - (memberCheckins[a.id] || 0)
-                          : (memberXp[b.id] || 0) - (memberXp[a.id] || 0),
-                      )
+                          : (memberXp[b.id] || 0) - (memberXp[a.id] || 0);
+                      })
                       .map((member, idx) => {
                         const seasonXp = memberXp[member.id] || 0;
                         const seasonCheckins = memberCheckins[member.id] || 0;
-                        const topMetric = rankingConfig.criteria === 'checkins' ? seasonCheckins : seasonXp;
+                        const memberWodEventsFor = memberWodEvents[member.id] || 0;
+                        const memberWodPointsFor = memberWodPoints[member.id] || 0;
+                        const topMetric = isWodSeason
+                          ? (memberWodEventsFor > 0 ? 1 : 0)
+                          : rankingConfig.criteria === 'checkins' ? seasonCheckins : seasonXp;
                         const isMvp = idx === 0 && topMetric > 0;
                         return (
                           <div key={member.id} className={`flex justify-between items-center p-3 rounded-xl border ${isMvp ? 'bg-primary/10 border-primary/30' : 'bg-surface-container-highest border-outline-variant/10'}`}>
@@ -1784,8 +1953,12 @@ export default function Clans() {
                               </div>
                             </div>
                             <p className={`text-xs font-black text-right ${isMvp ? 'text-primary' : 'text-on-surface-variant'}`}>
-                              {seasonXp} XP
-                              <span className="block text-[10px] font-bold text-on-surface-variant">{seasonCheckins} check-ins</span>
+                              {isWodSeason ? `${memberWodPointsFor} pts` : `${seasonXp} XP`}
+                              <span className="block text-[10px] font-bold text-on-surface-variant">
+                                {isWodSeason
+                                  ? `${memberWodEventsFor} WOD${memberWodEventsFor === 1 ? '' : 's'}`
+                                  : `${seasonCheckins} check-ins`}
+                              </span>
                             </p>
                           </div>
                         );
