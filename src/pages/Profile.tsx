@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
-import { User, Zap, Coins, Activity, Trophy, Settings, ChevronRight, Medal, Calendar, LogOut, Clock, History, Plus, X, Award, Download, Share2, Edit2, Save, CalendarCheck, ChevronLeft, BookOpen, Timer, Dumbbell, Flame, StickyNote, Trash2, HelpCircle } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { User, Zap, Coins, Activity, Trophy, Settings, ChevronRight, ChevronDown, TrendingUp, Medal, Calendar, LogOut, Clock, History, Plus, X, Award, Download, Share2, Edit2, Save, CalendarCheck, ChevronLeft, BookOpen, Timer, Dumbbell, Flame, StickyNote, Trash2, HelpCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { RewardEvent, PersonalRecord, TrainingLog, TrainingLogCategory, TrainingFeeling } from '../types';
+import { buildXpSeries, periodLabel, summarizeEvolution } from '../lib/evolution';
+import { exercisesWithHistory, buildPrSeries, prProgress, prUnitLabel, formatPrPoint } from '../lib/prEvolution';
 import AvatarPreview from '../components/AvatarPreview';
 import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
@@ -68,6 +71,18 @@ export default function Profile() {
   const [bioSex, setBioSex] = useState<'' | 'male' | 'female'>('');
   const [bioSaving, setBioSaving] = useState(false);
   const [bioSaved, setBioSaved] = useState(false);
+  // Dados sensíveis começam escondidos: biometria e frequência só abrem quando
+  // o atleta pede (a tela do perfil é vista por cima do ombro na academia).
+  const [bioOpen, setBioOpen] = useState(false);
+  const [freqOpen, setFreqOpen] = useState(false);
+  const [freqCleanupOpen, setFreqCleanupOpen] = useState(false);
+  const [cleaningFreq, setCleaningFreq] = useState(false);
+  // Histórico de recompensas pagina em blocos em vez de despejar tudo.
+  const [historyVisible, setHistoryVisible] = useState(20);
+  const [rewardsCleanupOpen, setRewardsCleanupOpen] = useState(false);
+  const [cleaningRewards, setCleaningRewards] = useState(false);
+  // Exercício selecionado no gráfico de recordes (vazio = primeiro com histórico).
+  const [prExercise, setPrExercise] = useState('');
 
   // Biometria (para %FC máx no histórico) montada a partir dos campos do perfil
   const historyBio: Biometrics = {
@@ -207,6 +222,85 @@ export default function Profile() {
       setIsPrModalOpen(false);
       setNewPr({ exercise: '', value: '', date: new Date().toISOString().split('T')[0] });
     }
+  };
+
+  // ── Evolução de XP (o gráfico veio da página "Minha Evolução", que saiu) ──
+  const xpRewards = useMemo(
+    () => history.map((h) => ({ xp: h.xp, created_at: h.createdAt })),
+    [history],
+  );
+  const xpSeries = useMemo(() => buildXpSeries(xpRewards, 90), [xpRewards]);
+  const evolution = useMemo(
+    () => summarizeEvolution({
+      rewards: xpRewards,
+      // No individual não existe check-in: o treino é o registro do diário.
+      workoutDates: user?.accountType === 'individual'
+        ? trainingLogs.map((log) => log.date)
+        : checkinDates,
+      prDates: prs.map((pr) => pr.date),
+      days: 90,
+    }),
+    [xpRewards, checkinDates, trainingLogs, prs, user?.accountType],
+  );
+
+  // ── Recordes: só exercícios com 2+ marcas viram gráfico ──
+  const prExercises = useMemo(() => exercisesWithHistory(prs, 2), [prs]);
+  const activePrExercise = prExercise || prExercises[0] || '';
+  const prSeries = useMemo(() => buildPrSeries(prs, activePrExercise), [prs, activePrExercise]);
+  const prEvolutionData = prProgress(prSeries);
+
+  // ── Limpeza de histórico antigo ──
+  // Corte calculado ao meio-dia para a data não escorregar de dia pelo fuso.
+  const cutoffKey = (months: number) => {
+    const base = new Date(`${todayBR()}T12:00:00`);
+    base.setMonth(base.getMonth() - months);
+    return base.toISOString().slice(0, 10);
+  };
+  const prettyKey = (key: string) => key.split('-').reverse().join('/');
+
+  const handleCleanupCheckins = async (months: number) => {
+    if (!user) return;
+    const cutoff = cutoffKey(months);
+    const ok = confirm(
+      `Apagar os check-ins anteriores a ${prettyKey(cutoff)}?\n\n` +
+      'O XP e os BrazaCoins já ganhos não mudam, mas os totais de frequência e ' +
+      'as conquistas ligadas a check-ins podem cair.',
+    );
+    if (!ok) return;
+    setCleaningFreq(true);
+    const { error } = await supabase
+      .from('checkins')
+      .delete()
+      .eq('user_id', user.id)
+      .lt('date', cutoff);
+    setCleaningFreq(false);
+    if (error) { alert('Erro ao limpar histórico: ' + error.message); return; }
+    const remaining = checkinDates.filter((d) => d >= cutoff);
+    setCheckinDates(remaining);
+    setCheckinCount(remaining.length);
+    setFreqCleanupOpen(false);
+  };
+
+  const handleCleanupRewards = async (months: number) => {
+    if (!user) return;
+    const cutoff = cutoffKey(months);
+    const ok = confirm(
+      `Apagar o histórico de recompensas anterior a ${prettyKey(cutoff)}?\n\n` +
+      'O XP e os BrazaCoins já creditados no perfil não mudam. Saem da lista ' +
+      'apenas os registros antigos (e eles deixam de aparecer no histórico de ' +
+      'desafios e no ranking de meses passados).',
+    );
+    if (!ok) return;
+    setCleaningRewards(true);
+    const { error } = await supabase
+      .from('reward_history')
+      .delete()
+      .eq('user_id', user.id)
+      .lt('created_at', cutoff);
+    setCleaningRewards(false);
+    if (error) { alert('Erro ao limpar histórico: ' + error.message); return; }
+    setHistory((prev) => prev.filter((h) => (h.createdAt || '').slice(0, 10) >= cutoff));
+    setRewardsCleanupOpen(false);
   };
 
   const handleSaveProfile = async () => {
@@ -502,7 +596,7 @@ export default function Profile() {
         {[
           { icon: Calendar, label: 'Check-ins', value: checkinCount },
           { icon: Activity, label: 'Recordes', value: prs.length },
-          { icon: Trophy, label: 'Vitórias', value: '0' },
+          { icon: Trophy, label: 'Vitórias', value: duelsWon },
         ].map((stat) => (
           <div key={stat.label} className="bg-surface-container-low p-4 rounded-3xl border border-outline-variant/10 flex flex-col items-center gap-2">
             <stat.icon className="w-5 h-5 text-on-surface-variant opacity-50" />
@@ -512,17 +606,78 @@ export default function Profile() {
         ))}
       </section>
 
+      {/* Evolução de XP — o gráfico veio da página "Minha Evolução", que saiu */}
+      {history.length > 0 && (
+        <section className="bg-surface-container-low p-5 rounded-3xl border border-outline-variant/10 space-y-3">
+          <div className="flex justify-between items-start">
+            <h3 className="font-headline font-bold text-sm text-on-surface uppercase italic flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" /> EVOLUÇÃO DE XP
+            </h3>
+            <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">
+              últimos {periodLabel(90)}
+            </span>
+          </div>
+          <div className="h-40 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={xpSeries}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  stroke="#666"
+                  fontSize={9}
+                  tickLine={false}
+                  axisLine={false}
+                  interval={Math.max(0, Math.ceil(xpSeries.length / 5) - 1)}
+                />
+                <YAxis stroke="#666" fontSize={9} tickLine={false} axisLine={false} width={30} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#1C1C1C', border: '1px solid #333', borderRadius: '12px', fontSize: '12px' }}
+                  itemStyle={{ color: '#cafd00' }}
+                  formatter={(value: number) => [`${value} XP`, 'Acumulado']}
+                />
+                <Line type="monotone" dataKey="totalXp" stroke="#cafd00" strokeWidth={2.5} dot={false} activeDot={{ r: 5, strokeWidth: 0 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="text-[10px] text-on-surface-variant font-bold">
+            +{evolution.xpPerWeek} XP por semana · {evolution.streak}{' '}
+            {evolution.streak === 1 ? 'semana seguida' : 'semanas seguidas'} treinando
+          </p>
+        </section>
+      )}
+
       {/* Biometria — habilita calorias e % da FC máxima no monitor cardíaco */}
       <section className="bg-surface-container-low p-5 rounded-3xl border border-outline-variant/10 space-y-4">
-        <div className="flex items-center justify-between">
+        <button
+          onClick={() => setBioOpen((v) => !v)}
+          className="flex items-center justify-between w-full text-left"
+          aria-expanded={bioOpen}
+        >
           <h3 className="font-headline font-bold text-lg text-on-surface uppercase italic flex items-center gap-2">
             <Activity className="w-5 h-5 text-primary" /> BIOMETRIA
           </h3>
-          {bioSaved && <span className="text-primary text-[10px] font-black uppercase tracking-widest">SALVO ✓</span>}
-        </div>
+          <span className="flex items-center gap-2">
+            {bioSaved && <span className="text-primary text-[10px] font-black uppercase tracking-widest">SALVO ✓</span>}
+            <ChevronDown className={`w-5 h-5 text-on-surface-variant transition-transform duration-300 ${bioOpen ? 'rotate-180' : ''}`} />
+          </span>
+        </button>
         <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest opacity-70 leading-relaxed">
-          Preencha para ver calorias e % da FC máxima no resumo dos treinos.
+          {bioOpen
+            ? 'Preencha para ver calorias e % da FC máxima no resumo dos treinos.'
+            : 'Peso, altura, nascimento e sexo ficam ocultos. Toque para abrir.'}
         </p>
+
+        <AnimatePresence initial={false}>
+          {bioOpen && (
+            <motion.div
+              key="bio-fields"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              style={{ overflow: 'hidden' }}
+              className="space-y-4"
+            >
 
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1">
@@ -583,6 +738,9 @@ export default function Profile() {
           className="flex items-center justify-center gap-1 text-on-surface-variant/60 text-[10px] font-black uppercase tracking-widest hover:text-primary transition-colors pt-1">
           Política de Privacidade <ChevronRight className="w-3 h-3" />
         </a>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </section>
 
       {/* Histórico de treinos de FC */}
@@ -601,7 +759,79 @@ export default function Profile() {
             <Plus className="w-3 h-3" /> ADICIONAR
           </button>
         </div>
-        
+
+        {/* Evolução do recorde: só entra exercício com 2+ marcas na mesma unidade */}
+        {prExercises.length > 0 && (
+          <div className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Evolução</p>
+              {prEvolutionData && (
+                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                  prEvolutionData.improved
+                    ? 'text-primary bg-primary/10 border-primary/20'
+                    : 'text-on-surface-variant bg-surface-container-highest border-outline-variant/20'
+                }`}>
+                  {prEvolutionData.improved ? 'evoluindo' : 'sem evolução'}
+                </span>
+              )}
+            </div>
+
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+              {prExercises.map((exercise) => (
+                <button
+                  key={exercise}
+                  onClick={() => setPrExercise(exercise)}
+                  className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest whitespace-nowrap border transition-all ${
+                    activePrExercise === exercise
+                      ? 'bg-primary text-background border-primary'
+                      : 'bg-surface-container-highest text-on-surface-variant border-outline-variant/20'
+                  }`}
+                >
+                  {exercise}
+                </button>
+              ))}
+            </div>
+
+            <div className="h-40 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={prSeries}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
+                  <XAxis dataKey="label" stroke="#666" fontSize={9} tickLine={false} axisLine={false} />
+                  <YAxis
+                    stroke="#666"
+                    fontSize={9}
+                    tickLine={false}
+                    axisLine={false}
+                    width={34}
+                    label={{ value: prSeries[0] ? prUnitLabel(prSeries[0].kind) : '', angle: -90, position: 'insideLeft', fill: '#666', fontSize: 9 }}
+                  />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#1C1C1C', border: '1px solid #333', borderRadius: '12px', fontSize: '12px' }}
+                    itemStyle={{ color: '#cafd00' }}
+                    formatter={(value: any, _name: any, item: any) => [item?.payload?.raw ?? value, 'Marca']}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#cafd00"
+                    strokeWidth={2.5}
+                    dot={{ fill: '#cafd00', r: 3 }}
+                    activeDot={{ r: 5, strokeWidth: 0 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            {prEvolutionData && (
+              <p className="text-[10px] text-on-surface-variant font-bold">
+                {formatPrPoint(prEvolutionData.first)} →{' '}
+                <span className="text-primary font-black">{formatPrPoint(prEvolutionData.last)}</span>{' '}
+                desde {prEvolutionData.first.label}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="space-y-3">
           {prs.length > 0 ? prs.map((pr) => (
             <div key={pr.id} className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between group hover:border-primary/30 transition-all">
@@ -713,7 +943,7 @@ export default function Profile() {
               style={{ overflow: 'hidden' }}
             >
         <div className="space-y-3">
-          {history.length > 0 ? history.map((event) => (
+          {history.length > 0 ? history.slice(0, historyVisible).map((event) => (
             <div key={event.id} className="bg-surface-container-low p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between group hover:border-primary/30 transition-all">
               <div className="flex items-center gap-4">
                 <div className={cn(
@@ -746,6 +976,54 @@ export default function Profile() {
             </div>
           )}
         </div>
+
+        {history.length > 0 && (
+          <div className="flex flex-col gap-2 pt-1">
+            {history.length > historyVisible && (
+              <button
+                onClick={() => setHistoryVisible((v) => v + 20)}
+                className="w-full py-2.5 rounded-2xl bg-surface-container-highest text-on-surface-variant text-[10px] font-black uppercase tracking-widest hover:text-on-surface transition-colors"
+              >
+                Ver mais ({history.length - historyVisible} restantes)
+              </button>
+            )}
+            <button
+              onClick={() => setRewardsCleanupOpen((v) => !v)}
+              className="flex items-center justify-center gap-1 text-on-surface-variant/60 text-[10px] font-black uppercase tracking-widest hover:text-error transition-colors"
+            >
+              <Trash2 className="w-3 h-3" /> Limpar histórico antigo
+            </button>
+            {rewardsCleanupOpen && (
+              <div className="bg-surface-container-highest/40 border border-outline-variant/20 rounded-2xl p-3 space-y-2">
+                <p className="text-[9px] text-on-surface-variant font-bold leading-relaxed">
+                  Apaga os registros antigos da lista. O XP e os BrazaCoins do perfil não mudam.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => handleCleanupRewards(1)}
+                    disabled={cleaningRewards}
+                    className="py-2 rounded-xl bg-surface-container text-on-surface text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                  >
+                    {cleaningRewards ? '...' : 'mais de 1 mês'}
+                  </button>
+                  <button
+                    onClick={() => handleCleanupRewards(2)}
+                    disabled={cleaningRewards}
+                    className="py-2 rounded-xl bg-surface-container text-on-surface text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                  >
+                    {cleaningRewards ? '...' : 'mais de 2 meses'}
+                  </button>
+                </div>
+                <button
+                  onClick={() => setRewardsCleanupOpen(false)}
+                  className="w-full text-[9px] text-on-surface-variant font-black uppercase tracking-widest"
+                >
+                  cancelar
+                </button>
+              </div>
+            )}
+          </div>
+        )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -854,11 +1132,38 @@ export default function Profile() {
 
       {/* ===== CALENDÁRIO DE CHECK-INS ===== */}
       <section className="flex flex-col gap-4">
-        <div className="flex justify-between items-center">
+        <button
+          onClick={() => setFreqOpen((v) => !v)}
+          className="flex justify-between items-center w-full text-left"
+          aria-expanded={freqOpen}
+        >
           <h2 className="text-xl font-headline font-black text-on-surface uppercase italic flex items-center gap-2">
             <CalendarCheck className="w-6 h-6 text-primary" /> HISTÓRICO DE TREINOS
           </h2>
-        </div>
+          <span className="flex items-center gap-2">
+            <span className="text-[9px] text-on-surface-variant font-black uppercase tracking-widest">
+              {freqOpen ? 'ocultar' : 'mostrar'}
+            </span>
+            <ChevronDown className={`w-5 h-5 text-on-surface-variant transition-transform duration-300 ${freqOpen ? 'rotate-180' : ''}`} />
+          </span>
+        </button>
+        {!freqOpen && (
+          <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest opacity-60">
+            Calendário e resumo mensal ficam ocultos. Toque para abrir.
+          </p>
+        )}
+
+        <AnimatePresence initial={false}>
+          {freqOpen && (
+            <motion.div
+              key="freq-body"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              style={{ overflow: 'hidden' }}
+              className="flex flex-col gap-4"
+            >
 
         {/* Month navigator */}
         <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 p-5 flex flex-col gap-4">
@@ -975,6 +1280,50 @@ export default function Profile() {
             </div>
           );
         })()}
+
+        {/* Limpeza: a lista de meses não pode crescer para sempre */}
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={() => setFreqCleanupOpen((v) => !v)}
+            className="flex items-center justify-center gap-1 text-on-surface-variant/60 text-[10px] font-black uppercase tracking-widest hover:text-error transition-colors"
+          >
+            <Trash2 className="w-3 h-3" /> Limpar histórico antigo
+          </button>
+          {freqCleanupOpen && (
+            <div className="bg-surface-container-highest/40 border border-outline-variant/20 rounded-2xl p-3 space-y-2">
+              <p className="text-[9px] text-on-surface-variant font-bold leading-relaxed">
+                Apaga check-ins antigos para o calendário não virar uma lista sem fim.
+                XP e BrazaCoins já ganhos não mudam.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => handleCleanupCheckins(6)}
+                  disabled={cleaningFreq}
+                  className="py-2 rounded-xl bg-surface-container text-on-surface text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                >
+                  {cleaningFreq ? '...' : 'mais de 6 meses'}
+                </button>
+                <button
+                  onClick={() => handleCleanupCheckins(12)}
+                  disabled={cleaningFreq}
+                  className="py-2 rounded-xl bg-surface-container text-on-surface text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                >
+                  {cleaningFreq ? '...' : 'mais de 12 meses'}
+                </button>
+              </div>
+              <button
+                onClick={() => setFreqCleanupOpen(false)}
+                className="w-full text-[9px] text-on-surface-variant font-black uppercase tracking-widest"
+              >
+                cancelar
+              </button>
+            </div>
+          )}
+        </div>
+
+            </motion.div>
+          )}
+        </AnimatePresence>
       </section>
 
       {/* ===== CONQUISTAS ===== */}

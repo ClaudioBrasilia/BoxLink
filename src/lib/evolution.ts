@@ -1,10 +1,10 @@
 // src/lib/evolution.ts
-// Agregações da tela "Minha Evolução".
+// Agregações de evolução do atleta (hoje usadas no Perfil).
 //
-// A tela antiga era um arquivo: lista de WODs (que já vive no Diário/Perfil) e
-// lista de desafios (que já é a página Desafios). Aqui ficam as contas que
-// respondem "estou evoluindo?": XP no período, constância por semana, sequência
-// de semanas treinadas e recordes batidos.
+// Nasceram na página "Minha Evolução", que saiu: metade dela repetia Diário e
+// Desafios. As contas ficaram e agora alimentam o gráfico de XP e a linha de
+// constância no Perfil: XP no período, constância por semana, sequência de
+// semanas treinadas e recordes batidos.
 //
 // Funções puras, sem Supabase: os testes ficam em `evolution.test.ts`.
 // Datas do banco chegam como 'YYYY-MM-DD' (checkins, training_logs) ou ISO

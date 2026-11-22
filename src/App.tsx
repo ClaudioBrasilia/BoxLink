@@ -22,7 +22,6 @@ const MyBox = import.meta.env.VITE_APP_MODE !== 'individual'
   ? lazyRoute(() => import('./pages/MyBox'))
   : null;
 const Profile = lazyRoute(() => import('./pages/Profile'));
-const Progress = lazyRoute(() => import('./pages/Progress'));
 const AvatarCustomization = lazyRoute(() => import('./pages/AvatarCustomization'));
 const Admin = import.meta.env.VITE_APP_MODE !== 'individual'
   ? lazyRoute(() => import('./pages/Admin'))
@@ -214,7 +213,6 @@ function AppRoutes() {
           <Route path="insights"    element={<Insights />} />
           <Route path="frequencia"  element={<Frequencia />} />
           <Route path="duels"       element={<VisitorGuard page="duels"><Duels /></VisitorGuard>} />
-          <Route path="progress"    element={<VisitorGuard page="progress"><Progress /></VisitorGuard>} />
           <Route path="avatar"      element={<VisitorGuard page="avatar"><AvatarCustomization /></VisitorGuard>} />
           <Route path="benchmarks"  element={<VisitorGuard page="benchmarks"><Benchmarks /></VisitorGuard>} />
           <Route path="shop"        element={<Shop />} />

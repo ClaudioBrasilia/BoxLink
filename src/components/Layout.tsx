@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, LineChart, Activity, Users, BookOpen, Flame, Heart, ShoppingBag, BarChart3 } from 'lucide-react';
+import { Home, Timer, Trophy, User, Swords, Zap, Box, LayoutDashboard, LogOut, Menu, X, Activity, Users, BookOpen, Flame, Heart, ShoppingBag, BarChart3 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { Suspense, useState, useEffect } from 'react';
@@ -68,7 +68,6 @@ export default function Layout() {
     ? [
         { icon: Heart,       label: 'Frequência', path: '/frequencia' },
         { icon: Activity,    label: 'Insights',   path: '/insights' },
-        { icon: LineChart,   label: 'Evolução',   path: '/progress' },
         { icon: BarChart3,   label: 'Benchmarks', path: '/benchmarks' },
         { icon: ShoppingBag, label: 'Loja',       path: '/shop' },
       ]
@@ -76,7 +75,6 @@ export default function Layout() {
         { icon: BookOpen,    label: 'Diário',     path: '/diario' },
         { icon: Activity,    label: 'Insights',   path: '/insights' },
         { icon: Zap,         label: 'Desafios',   path: '/challenges' },
-        { icon: LineChart,   label: 'Evolução',   path: '/progress' },
         { icon: BarChart3,   label: 'Benchmarks', path: '/benchmarks' },
         { icon: Box,         label: 'Meu Box',    path: '/mybox' },
         { icon: Users,       label: 'Times',      path: '/clans' },
