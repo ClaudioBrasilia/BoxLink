@@ -358,3 +358,14 @@ export async function deleteHeartRateSession(id: string): Promise<boolean> {
     return false;
   }
 }
+
+/** Apaga todo o histórico de FC do atleta (usado no "Excluir histórico"). */
+export async function deleteAllHeartRateSessions(userId: string): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const { error } = await supabase.from('heart_rate_sessions').delete().eq('user_id', userId);
+    return !error;
+  } catch {
+    return false;
+  }
+}

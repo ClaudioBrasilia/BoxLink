@@ -8,6 +8,14 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { RewardEvent, PersonalRecord, TrainingLog, TrainingLogCategory, TrainingFeeling } from '../types';
 import { buildXpSeries, periodLabel, summarizeEvolution } from '../lib/evolution';
 import { exercisesWithHistory, buildPrSeries, prProgress, prUnitLabel, formatPrPoint } from '../lib/prEvolution';
+import {
+  DEFAULT_KEEP_DAYS,
+  clampKeepDays,
+  keepWindowLabel,
+  markPruneDone,
+  pruneMarkerKey,
+  shouldPruneToday,
+} from '../lib/rewardRetention';
 import AvatarPreview from '../components/AvatarPreview';
 import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import { calcInactivity, InactivitySettings } from '../utils/inactivity';
@@ -281,27 +289,61 @@ export default function Profile() {
     setFreqCleanupOpen(false);
   };
 
-  const handleCleanupRewards = async (months: number) => {
+  // A limpeza das recompensas é feita no banco, pela função
+  // `prune_my_reward_history`, que respeita o mês corrente, a temporada aberta
+  // do time e preserva as linhas de desafio. Aqui só disparamos e recarregamos.
+  const pruneRewards = async (keepDays: number): Promise<{ ok: boolean; removed: number }> => {
+    if (!user) return { ok: false, removed: 0 };
+    const { data, error } = await supabase.rpc('prune_my_reward_history', {
+      p_keep_days: clampKeepDays(keepDays),
+    });
+    if (error) return { ok: false, removed: 0 };
+    const removed = typeof data === 'number' ? data : 0;
+    if (removed > 0) {
+      const { data: fresh } = await supabase
+        .from('reward_history')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      setHistory(((fresh || []) as any[]).map((h) => ({ ...h, createdAt: h.created_at })));
+    }
+    return { ok: true, removed };
+  };
+
+  const handleCleanupRewards = async (keepDays: number) => {
     if (!user) return;
-    const cutoff = cutoffKey(months);
     const ok = confirm(
-      `Apagar o histórico de recompensas anterior a ${prettyKey(cutoff)}?\n\n` +
-      'O XP e os BrazaCoins já creditados no perfil não mudam. Saem da lista ' +
-      'apenas os registros antigos (e eles deixam de aparecer no histórico de ' +
-      'desafios e no ranking de meses passados).',
+      `Limpar o histórico de recompensas com mais de ${keepWindowLabel(keepDays)}?\n\n` +
+      'Nada que ainda conte para o ranking do mês ou para a temporada do time é apagado, ' +
+      'e o XP e os BrazaCoins do perfil não mudam.',
     );
     if (!ok) return;
     setCleaningRewards(true);
-    const { error } = await supabase
-      .from('reward_history')
-      .delete()
-      .eq('user_id', user.id)
-      .lt('created_at', cutoff);
+    const result = await pruneRewards(keepDays);
     setCleaningRewards(false);
-    if (error) { alert('Erro ao limpar histórico: ' + error.message); return; }
-    setHistory((prev) => prev.filter((h) => (h.createdAt || '').slice(0, 10) >= cutoff));
     setRewardsCleanupOpen(false);
+    if (!result.ok) {
+      alert('Não foi possível limpar agora. Verifique se a migration de retenção foi aplicada no Supabase.');
+      return;
+    }
+    if (result.removed > 0) {
+      alert(`${result.removed} ${result.removed === 1 ? 'registro antigo removido' : 'registros antigos removidos'}.`);
+    }
   };
+
+  // Limpeza automática: uma vez por dia, ao abrir o Perfil.
+  useEffect(() => {
+    if (!user?.id) return;
+    const storage = typeof window !== 'undefined' ? window.localStorage : null;
+    const key = pruneMarkerKey(user.id);
+    if (!shouldPruneToday(storage, key)) return;
+    pruneRewards(DEFAULT_KEEP_DAYS).then(({ ok }) => {
+      // Só marca o dia quando a função do banco respondeu: migration pendente
+      // não pode "queimar" a tentativa de hoje.
+      if (ok) markPruneDone(storage, key);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const handleSaveProfile = async () => {
     if (!editName.trim() || !user) return;
@@ -996,18 +1038,19 @@ export default function Profile() {
             {rewardsCleanupOpen && (
               <div className="bg-surface-container-highest/40 border border-outline-variant/20 rounded-2xl p-3 space-y-2">
                 <p className="text-[9px] text-on-surface-variant font-bold leading-relaxed">
-                  Apaga os registros antigos da lista. O XP e os BrazaCoins do perfil não mudam.
+                  A limpeza roda sozinha uma vez por dia. Aqui você pode forçar agora.
+                  Nada que conte para o mês ou para a temporada do time é apagado.
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => handleCleanupRewards(1)}
+                    onClick={() => handleCleanupRewards(30)}
                     disabled={cleaningRewards}
                     className="py-2 rounded-xl bg-surface-container text-on-surface text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
                   >
                     {cleaningRewards ? '...' : 'mais de 1 mês'}
                   </button>
                   <button
-                    onClick={() => handleCleanupRewards(2)}
+                    onClick={() => handleCleanupRewards(60)}
                     disabled={cleaningRewards}
                     className="py-2 rounded-xl bg-surface-container text-on-surface text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
                   >
