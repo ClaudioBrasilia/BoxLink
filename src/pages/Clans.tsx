@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle, Shield, Upload, Scale, BookOpen, ChevronDown, Flag } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Users, Swords, Plus, Crown, LogIn, Zap, Trophy, X, Check, LogOut, Clock, History, Settings, ToggleLeft, ToggleRight, AlertCircle, Shield, Upload, Scale, BookOpen, ChevronDown, Flag, Search, Copy, Share2, KeyRound, UserPlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   rankClans,
@@ -25,6 +26,15 @@ import {
   type ClanTiebreaker,
 } from '../lib/clanRanking';
 import { computeWodStandings, wodPointsByUser } from '../lib/wodCompetition';
+import {
+  normalizeSearchTerm,
+  sanitizeSearchTerm,
+  normalizeInviteCode,
+  clanInviteLink,
+  inviteCandidateState,
+  inviteCandidateLabel,
+  canInviteCandidate,
+} from '../lib/clanInvite';
 
 interface Clan {
   id: string;
@@ -38,6 +48,8 @@ interface Clan {
   season_name?: string;
   start_date?: string;
   end_date?: string;
+  /** Código que o atleta digita (ou recebe no link) para entrar sozinho. */
+  invite_code?: string;
 }
 
 interface ClanMembership {
@@ -81,6 +93,7 @@ interface BoxSettings {
 
 export default function Clans() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [clans, setClans] = useState<Clan[]>([]);
   const [historicClans, setHistoricClans] = useState<Clan[]>([]);
   const [memberships, setMemberships] = useState<ClanMembership[]>([]);
@@ -110,9 +123,15 @@ export default function Clans() {
   const [clanMembers, setClanMembers] = useState<{ id: string; name: string; role: string; xp: number; membershipId: string }[]>([]);
   const [pendingRequests, setPendingRequests] = useState<(ClanMembership & { profiles: { name: string } })[]>([]);
   const [invitations, setInvitations] = useState<(ClanMembership & { clans: Clan })[]>([]);
-  const [athleteSearch, setAthleteSearch] = useState('');
-  const [foundAthletes, setFoundAthletes] = useState<{ id: string; name: string }[]>([]);
-  const [loadingSearch, setLoadingSearch] = useState(false);
+  // Convite de atleta (modal) e entrada por código
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteQuery, setInviteQuery] = useState('');
+  const [inviteResults, setInviteResults] = useState<{ id: string; name: string; email?: string | null }[]>([]);
+  const [inviteSearching, setInviteSearching] = useState(false);
+  const [inviteFeedback, setInviteFeedback] = useState<string | null>(null);
+  const [joinCode, setJoinCode] = useState('');
+  const [joiningByCode, setJoiningByCode] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [newClanName, setNewClanName] = useState('');
   const [newClanMotto, setNewClanMotto] = useState('');
   const [newClanColor, setNewClanColor] = useState('#CAFD00');
@@ -167,6 +186,13 @@ export default function Clans() {
   useEffect(() => {
     fetchAll();
   }, [tick]);
+
+  // Link de convite (/clans?convite=ABC123) já deixa o código preenchido,
+  // para o atleta só confirmar.
+  useEffect(() => {
+    const code = normalizeInviteCode(searchParams.get('convite'));
+    if (code) setJoinCode(code);
+  }, [searchParams]);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -364,35 +390,155 @@ export default function Clans() {
     }
   };
 
-  const searchAthletes = async (query: string) => {
-    if (query.trim().length < 3) { setFoundAthletes([]); return; }
-    setLoadingSearch(true);
+  // ── Busca de atleta para convidar ──
+  // Duas letras já buscam, por nome ou e-mail e sem acento: "joao" acha
+  // "João" pela coluna gerada `profiles.search_name` (migration 20261122).
+  // Banco sem a coluna cai na busca direta por nome/e-mail.
+  const searchInviteCandidates = async (term: string) => {
+    const clean = sanitizeSearchTerm(term);
+    if (clean.length < 2) { setInviteResults([]); setInviteSearching(false); return; }
+    setInviteSearching(true);
     try {
-      const { data: allMemberships } = await supabase.from('clan_memberships').select('user_id');
-      const memberIds = (allMemberships || []).map((m) => m.user_id);
-      const { data: athletes } = await supabase
+      const bySearchName = await supabase
         .from('profiles')
-        .select('id, name')
-        .ilike('name', `%${query}%`)
-        .not('id', 'in', `(${memberIds.length > 0 ? memberIds.join(',') : '""'})`)
-        .limit(5);
-      setFoundAthletes(athletes || []);
+        .select('id, name, email')
+        .like('search_name', `%${normalizeSearchTerm(clean)}%`)
+        .limit(10);
+
+      let rows = bySearchName.data as { id: string; name: string; email?: string | null }[] | null;
+      if (bySearchName.error) {
+        const like = `%${clean}%`;
+        const byNameOrEmail = await supabase
+          .from('profiles')
+          .select('id, name, email')
+          .or(`name.ilike.${like},email.ilike.${like}`)
+          .limit(10);
+        rows = byNameOrEmail.data as typeof rows;
+      }
+
+      setInviteResults((rows || []).filter((p) => p.id !== user?.id));
     } finally {
-      setLoadingSearch(false);
+      setInviteSearching(false);
     }
   };
+
+  // Debounce: uma consulta por tecla digitada é desperdício.
+  useEffect(() => {
+    if (!showInviteModal) return;
+    const term = inviteQuery.trim();
+    if (term.length < 2) { setInviteResults([]); setInviteSearching(false); return; }
+    setInviteSearching(true);
+    const timer = setTimeout(() => { searchInviteCandidates(term); }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inviteQuery, showInviteModal]);
 
   const sendInvite = async (athleteId: string) => {
     if (!myClan) return;
     const { error } = await supabase.from('clan_memberships').insert({
       clan_id: myClan.id, user_id: athleteId, role: 'member', status: 'invited',
     });
-    if (!error) {
-      alert('Convite enviado!');
-      setAthleteSearch('');
-      setFoundAthletes([]);
-    } else {
+    if (error) {
       alert('Erro ao enviar convite: ' + error.message);
+      return;
+    }
+    setInviteFeedback('Convite enviado!');
+    setTimeout(() => setInviteFeedback(null), 2500);
+    setTick((v) => v + 1);
+  };
+
+  // ── Código do time: copiar e compartilhar ──
+  const inviteCode = normalizeInviteCode(myClan?.invite_code);
+
+  const handleCopyInviteCode = async () => {
+    if (!inviteCode) return;
+    try {
+      await navigator.clipboard.writeText(inviteCode);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    } catch {
+      alert(`Código do time: ${inviteCode}`);
+    }
+  };
+
+  const handleShareInvite = async () => {
+    if (!inviteCode || !myClan) return;
+    const link = clanInviteLink(inviteCode, window.location.origin);
+    const text = `Entra no meu time "${myClan.name}" no BoxLink! Código: ${inviteCode}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Convite BoxLink', text, url: link });
+        return;
+      } catch {
+        // Cancelado pelo usuário — cai no copiar.
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(`${text}\n${link}`);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    } catch {
+      alert(`${text}\n${link}`);
+    }
+  };
+
+  // ── Entrar no time com o código ──
+  const handleJoinByCode = async (raw?: string) => {
+    const code = normalizeInviteCode(raw ?? joinCode);
+    if (!code) { alert('Digite o código do time.'); return; }
+    if (!user) return;
+    setJoiningByCode(true);
+    try {
+      const { data: clan } = await supabase
+        .from('clans')
+        .select('id, name, is_active')
+        .eq('invite_code', code)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (!clan) { alert('Código inválido ou time encerrado.'); return; }
+
+      const existing = memberships.find((m) => m.clan_id === clan.id && m.user_id === user.id);
+      if (existing?.status === 'approved') { alert(`Você já está no time ${clan.name}.`); return; }
+      if (existing?.status === 'pending') { alert('Sua solicitação já está aguardando aprovação do capitão.'); return; }
+
+      const { count } = await supabase
+        .from('clan_memberships')
+        .select('id', { count: 'exact', head: true })
+        .eq('clan_id', clan.id)
+        .eq('status', 'approved');
+      if ((count || 0) >= boxSettings.max_clan_members) { alert('Time cheio.'); return; }
+
+      // Convite pendente vira aprovação direta; os outros casos viram
+      // solicitação (ou entram direto, se o time aprova automático).
+      const status = existing?.status === 'invited'
+        ? 'approved'
+        : boxSettings.auto_approve_members ? 'approved' : 'pending';
+
+      let error: { message: string } | null = null;
+      if (existing && existing.status !== 'invited') {
+        // Recusado antes: sai da lista e entra de novo (o banco trava 1 linha
+        // por time + atleta).
+        const removed = await supabase.from('clan_memberships').delete().eq('id', existing.id);
+        if (removed.error) { alert('Erro ao entrar no time: ' + removed.error.message); return; }
+      }
+      if (existing && existing.status === 'invited') {
+        const updated = await supabase.from('clan_memberships').update({ status }).eq('id', existing.id);
+        error = updated.error;
+      } else {
+        const inserted = await supabase
+          .from('clan_memberships')
+          .insert({ clan_id: clan.id, user_id: user.id, role: 'member', status });
+        error = inserted.error;
+      }
+      if (error) { alert('Erro ao entrar no time: ' + error.message); return; }
+
+      alert(status === 'approved'
+        ? `Você entrou no time ${clan.name}!`
+        : `Solicitação enviada para ${clan.name}. Aguarde o capitão aprovar.`);
+      setJoinCode('');
+      setTick((v) => v + 1);
+    } finally {
+      setJoiningByCode(false);
     }
   };
 
@@ -438,12 +584,20 @@ export default function Clans() {
   const handleAcceptInvite = async (inviteId: string) => {
     const { error } = await supabase
       .from('clan_memberships').update({ status: 'approved' }).eq('id', inviteId);
-    if (!error) setTick((v) => v + 1);
+    if (error) {
+      alert('Não foi possível aceitar o convite: ' + error.message);
+      return;
+    }
+    setTick((v) => v + 1);
   };
 
   const handleRejectInvite = async (inviteId: string) => {
     const { error } = await supabase.from('clan_memberships').delete().eq('id', inviteId);
-    if (!error) setTick((v) => v + 1);
+    if (error) {
+      alert('Não foi possível recusar o convite: ' + error.message);
+      return;
+    }
+    setTick((v) => v + 1);
   };
 
   // Critério de ranking da temporada (temporadas antigas caem no padrão: XP total)
@@ -603,7 +757,12 @@ export default function Clans() {
       ? 'Você é o capitão! Se sair, o time ficará sem líder. Deseja continuar?'
       : 'Tem certeza que deseja sair do time?';
     if (!confirm(msg)) return;
-    await supabase.from('clan_memberships').delete().eq('id', myMembership.id);
+    // Antes o erro era engolido e a tela limpava o time sem o banco apagar nada.
+    const { error } = await supabase.from('clan_memberships').delete().eq('id', myMembership.id);
+    if (error) {
+      alert('Não foi possível sair do time: ' + error.message);
+      return;
+    }
     setMyClan(null);
     setMyMembership(null);
     setTick((v) => v + 1);
@@ -1319,6 +1478,34 @@ export default function Clans() {
         );
       })()}
 
+      {/* ── Entrar com código de convite ── */}
+      {!myClan && (
+        <div className="bg-surface-container-low rounded-[2rem] border border-primary/30 p-5">
+          <p className="text-[10px] text-primary font-black uppercase tracking-widest flex items-center gap-1.5 mb-1">
+            <KeyRound className="w-3.5 h-3.5" /> Tem um código de convite?
+          </p>
+          <p className="text-on-surface-variant text-[11px] font-bold mb-3">
+            Digite o código que o capitão do time enviou para entrar direto.
+          </p>
+          <div className="flex gap-2">
+            <input
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              placeholder="EX: A1B2C3"
+              maxLength={12}
+              className="flex-1 min-w-0 bg-surface-container-highest border-none rounded-xl p-3 font-headline font-black text-center tracking-[0.25em] text-on-surface outline-none uppercase"
+            />
+            <button
+              onClick={() => handleJoinByCode()}
+              disabled={joiningByCode || joinCode.trim().length < 4}
+              className="px-4 rounded-xl bg-primary text-background font-headline font-black text-xs uppercase italic disabled:opacity-40 flex items-center gap-1"
+            >
+              {joiningByCode ? '...' : <><LogIn className="w-4 h-4" /> Entrar</>}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Regras da Temporada (visível para todos os atletas) ── */}
       <div className="bg-surface-container-low rounded-[2rem] border border-outline-variant/10 overflow-hidden">
         <button
@@ -1517,9 +1704,18 @@ export default function Clans() {
               {myClan.motto && <p className="text-on-surface-variant text-xs italic mt-1">"{myClan.motto}"</p>}
             </div>
             {isCaptain && (
-              <button onClick={handleLeaveClan} className="text-error text-xs font-black uppercase hover:underline flex items-center gap-1">
-                <LogOut className="w-3 h-3" /> Sair
-              </button>
+              <div className="flex flex-col items-end gap-2">
+                {/* Convite em destaque: era o ponto mais confuso do fluxo. */}
+                <button
+                  onClick={() => { setShowInviteModal(true); setInviteQuery(''); setInviteResults([]); setInviteFeedback(null); }}
+                  className="bg-primary text-background px-3 py-2 rounded-xl font-headline font-black text-[10px] uppercase italic flex items-center gap-1.5"
+                >
+                  <UserPlus className="w-3.5 h-3.5" /> Convidar
+                </button>
+                <button onClick={handleLeaveClan} className="text-error text-xs font-black uppercase hover:underline flex items-center gap-1">
+                  <LogOut className="w-3 h-3" /> Sair
+                </button>
+              </div>
             )}
           </div>
 
@@ -1551,31 +1747,15 @@ export default function Clans() {
           {isCaptain && (
             <div className="space-y-3 pt-4 border-t border-outline-variant/10">
               <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest">Gerenciar Time</p>
-              
-              {/* Buscar e Convidar Atletas */}
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  value={athleteSearch}
-                  onChange={(e) => {
-                    setAthleteSearch(e.target.value);
-                    searchAthletes(e.target.value);
-                  }}
-                  placeholder="Buscar atleta para convidar..."
-                  className="w-full bg-surface-container-highest border-none rounded-xl p-3 text-xs font-bold text-on-surface outline-none"
-                />
-                {loadingSearch && <p className="text-xs text-on-surface-variant">Buscando...</p>}
-                {foundAthletes.length > 0 && (
-                  <div className="flex flex-col gap-2">
-                    {foundAthletes.map((athlete) => (
-                      <div key={athlete.id} className="flex justify-between items-center bg-surface-container-highest p-3 rounded-xl border border-outline-variant/10">
-                        <span className="text-xs font-bold text-on-surface uppercase">{athlete.name}</span>
-                        <button onClick={() => sendInvite(athlete.id)} className="p-1.5 bg-primary/20 text-primary rounded-lg"><Plus className="w-4 h-4" /></button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+
+              {/* Convite: busca por nome/e-mail + código do time (modal) */}
+              <button
+                onClick={() => { setShowInviteModal(true); setInviteQuery(''); setInviteResults([]); setInviteFeedback(null); }}
+                className="w-full py-3 rounded-xl border border-primary/30 bg-primary/10 text-primary font-headline font-black text-xs uppercase italic flex items-center justify-center gap-2"
+              >
+                <UserPlus className="w-4 h-4" /> Convidar atleta
+                <span className="text-[10px] font-bold normal-case italic text-on-surface-variant">busca ou código</span>
+              </button>
 
               {/* Membros Aprovados */}
               {clanMembers.length > 0 && (
@@ -1964,6 +2144,118 @@ export default function Clans() {
                         );
                       })}
                   </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Modal Convidar para o Time ── */}
+      <AnimatePresence>
+        {showInviteModal && isCaptain && myClan && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4"
+            onClick={() => setShowInviteModal(false)}
+          >
+            <motion.div
+              initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
+              className="bg-surface-container-low rounded-[2rem] p-6 w-full max-w-md max-h-[85vh] overflow-y-auto no-scrollbar"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-2">
+                <h2 className="font-headline font-black text-on-surface text-xl uppercase italic">Convidar</h2>
+                <button onClick={() => setShowInviteModal(false)}><X className="w-5 h-5 text-on-surface-variant" /></button>
+              </div>
+              <p className="text-[11px] text-on-surface-variant font-bold mb-4">
+                Busque pelo nome ou e-mail — ou mande o código do time para o atleta entrar sozinho.
+              </p>
+
+              <div className="relative mb-2">
+                <Search className="w-4 h-4 text-on-surface-variant absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  autoFocus
+                  value={inviteQuery}
+                  onChange={(e) => setInviteQuery(e.target.value)}
+                  placeholder="Nome ou e-mail (2 letras já busca)"
+                  className="w-full bg-surface-container-highest border-none rounded-2xl py-3 pl-9 pr-3 text-xs font-bold text-on-surface outline-none"
+                />
+              </div>
+
+              {inviteFeedback && (
+                <p className="text-[11px] font-black text-primary mb-2 flex items-center gap-1">
+                  <Check className="w-3 h-3" /> {inviteFeedback}
+                </p>
+              )}
+              {inviteSearching && <p className="text-[11px] text-on-surface-variant">Buscando...</p>}
+              {!inviteSearching && inviteQuery.trim().length === 1 && (
+                <p className="text-[11px] text-on-surface-variant">Digite pelo menos 2 letras.</p>
+              )}
+              {!inviteSearching && inviteQuery.trim().length >= 2 && inviteResults.length === 0 && (
+                <p className="text-[11px] text-on-surface-variant">
+                  Nenhum atleta encontrado. Confira o nome ou use o código do time abaixo.
+                </p>
+              )}
+
+              <div className="flex flex-col gap-2 mt-2">
+                {inviteResults.map((athlete) => {
+                  // Antes o atleta indisponível sumia da lista sem explicação.
+                  const state = inviteCandidateState(athlete.id, myClan.id, memberships);
+                  const label = inviteCandidateLabel(state);
+                  const allowed = canInviteCandidate(state);
+                  return (
+                    <div key={athlete.id} className="flex items-center justify-between gap-2 bg-surface-container-highest p-3 rounded-xl border border-outline-variant/10">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-on-surface uppercase truncate">{athlete.name}</p>
+                        <p className="text-[10px] text-on-surface-variant truncate">
+                          {label || athlete.email || 'Livre para convite'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => sendInvite(athlete.id)}
+                        disabled={!allowed}
+                        className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 flex-shrink-0 ${
+                          allowed ? 'bg-primary text-background' : 'bg-surface-container text-on-surface-variant opacity-60'
+                        }`}
+                      >
+                        {allowed ? <><Plus className="w-3 h-3" /> Convidar</> : label}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Código do time */}
+              <div className="mt-5 pt-5 border-t border-outline-variant/10">
+                <p className="text-[10px] text-primary font-black uppercase tracking-widest flex items-center gap-1 mb-2">
+                  <KeyRound className="w-3 h-3" /> Código do time
+                </p>
+                <div className="bg-surface-container-highest rounded-2xl p-4 text-center border border-outline-variant/10">
+                  <p className="font-headline font-black text-2xl text-primary italic tracking-[0.3em]">
+                    {inviteCode || '—'}
+                  </p>
+                  <p className="text-[10px] text-on-surface-variant mt-1">
+                    {inviteCode
+                      ? 'Quem digitar este código entra no time (ou pede para entrar)'
+                      : 'Código indisponível — falta rodar a migration de convites'}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <button
+                    onClick={handleCopyInviteCode}
+                    disabled={!inviteCode}
+                    className="py-3 rounded-xl bg-surface-container-highest text-on-surface font-headline font-black text-[10px] uppercase italic flex items-center justify-center gap-1 disabled:opacity-40"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> {copiedCode ? 'Copiado!' : 'Copiar código'}
+                  </button>
+                  <button
+                    onClick={handleShareInvite}
+                    disabled={!inviteCode}
+                    className="py-3 rounded-xl bg-primary text-background font-headline font-black text-[10px] uppercase italic flex items-center justify-center gap-1 disabled:opacity-40"
+                  >
+                    <Share2 className="w-3.5 h-3.5" /> Compartilhar
+                  </button>
                 </div>
               </div>
             </motion.div>

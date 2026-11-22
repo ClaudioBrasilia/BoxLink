@@ -23,6 +23,7 @@ import { fetchHeartRateSessions } from '../lib/heartRateSessions';
 import { calculateFamilyCardioSignal } from '../lib/crossfitReadiness';
 import { buildCrossFitSuggestion } from '../lib/crossfitSuggestions';
 import { calculateHrvReadinessSignal, hrvRecordsFromHealthSessions, type HrvReadinessSignal } from '../lib/hrv';
+import ClanInviteBanner from '../components/ClanInviteBanner';
 
 export default function Dashboard() {
   const { user, updateUser } = useAuth();
@@ -423,6 +424,8 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
+      {/* Convite de time pendente: o atleta precisa ver isso sem abrir Times. */}
+      <ClanInviteBanner />
 
       <ReadinessCard
         result={readiness}
